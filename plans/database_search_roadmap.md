@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 00:34 — completed PB-01 ✅ (new src/citeclaw/prompts/search_refine.py with SYSTEM + USER_TEMPLATE + RESPONSE_SCHEMA; thinking field is FIRST in the schema's properties dict; literal `"agent_decision"` quoted in the user template for PB-02's stub; verify command + format() round-trip both green — **Phase B started**)
 - 2026-04-09 00:26 — completed PA-10 ✅ (extended FakeS2Client with search_bulk/search_match/fetch_recommendations/fetch_author_papers as canned-response surfaces + register_* helpers; recs keyed on sorted tuple; deepcopy on the way out; 25 new tests in test_search_phase_a_e2e.py; 4-file verify 126/126 green; full suite 606/6 — **Phase A DONE**)
 - 2026-04-09 00:19 — completed PA-09 ✅ (new src/citeclaw/search/ package with apply_local_query — pure AND-ed predicate filter over PaperRecord lists; strict on missing metadata except abstract_regex which is lenient; 26 new tests in test_search_query_engine.py; full suite 581 passed/6 skipped)
 - 2026-04-09 00:13 — completed PA-08 ✅ (added rejection_ledger + searched_signals + reinforcement_log fields to Context; record_rejections now also appends to ledger using same category key as rejection_counts; 5 new tests in test_filters_runner.py; full suite 555 passed/6 skipped)
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-04-08 23:54 — completed PA-03 ✅ (added fetch_author_papers to SemanticScholarClient with cache-first pagination capped at limit; added get/put_author_papers to S2CacheLayer; 11 new tests, 38 total green)
 - 2026-04-08 23:47 — completed PA-04 ✅ (added search_queries + author_papers cache tables, 5 new methods, _SEARCH_TTL_DAYS_DEFAULT=30 constant, 14 new test_cache.py tests; PA-03 skipped ⏭️ since it depends on PA-04's methods which now exist — PA-03 unblocked for next run)
 - 2026-04-08 23:39 — completed PA-02 ✅ (added fetch_recommendations + fetch_recommendations_for_paper to SemanticScholarClient; introduced S2Http.get_url helper for non-/graph/v1 URLs; 13 new tests, 27 total green)
-- 2026-04-08 23:34 — completed PA-01 ✅ (added search_bulk/search_match/search_relevance to SemanticScholarClient + 14 monkey-patched tests; tests green; had to clear stale __pycache__ from old CitNet2 path before pytest worked)
 
 ---
 
@@ -200,7 +200,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
 
 ## Phase B — Iterative meta-LLM search agent
 
-- [ ] **PB-01. Prompt module `src/citeclaw/prompts/search_refine.py`**
+- [x] **PB-01. Prompt module `src/citeclaw/prompts/search_refine.py`**
   - **What.** New file with:
     - `SYSTEM` — role: "You design targeted literature-database queries given a topic and a sample of papers already in the collection. Before committing to a query, think out loud in the `thinking` field. Inspect results, refine, decide satisfied/abort."
     - `USER_TEMPLATE` — takes `{topic_description}`, `{anchor_papers_block}`, `{transcript}` (prior turns including prior `thinking`), `{iteration}`, `{max_iterations}`, `{target_count}`. Output JSON matching `RESPONSE_SCHEMA`.
@@ -208,6 +208,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     - The literal string `"agent_decision"` MUST appear in `USER_TEMPLATE` for stub recognition.
   - **Files touched.** New: `src/citeclaw/prompts/search_refine.py`.
   - **Verify done.** `python -c "from citeclaw.prompts.search_refine import SYSTEM, USER_TEMPLATE, RESPONSE_SCHEMA; assert 'agent_decision' in USER_TEMPLATE and RESPONSE_SCHEMA['properties']['thinking']['type'] == 'string'"`.
+  - ✅ 2026-04-09 — Created the new prompt module with all three exports. SYSTEM emphasizes the "think before deciding" pattern and lists the four lifecycle states. USER_TEMPLATE renders all six placeholders (topic_description / anchor_papers_block / transcript / iteration / max_iterations / target_count) and contains the literal `"agent_decision"` (quoted exactly as it would appear in JSON) inside a numbered field-order legend — that's what PB-02's stub will key on via `if '"agent_decision"' in user:`. RESPONSE_SCHEMA is a `dict[str, Any]` with `properties` insertion-ordered as `thinking → query → agent_decision → reasoning`, all four required, `additionalProperties: False`, and the four-element enum on agent_decision. Verified the format() round-trip works with realistic placeholder values and the quoted token survives formatting. PB-02 can now monkey-patch the stub against this schema; PB-03's AgentTurn dataclass mirrors the same field names so JSON parsing in PB-04 will be straightforward.
 
 - [ ] **PB-02. Stub client extension for agent prompts**
   - **What.** Add a branch to `stub_respond` in `src/citeclaw/clients/llm/stub.py`: `if '"agent_decision"' in user:`. Count `"query":` occurrences in `user` (transcript grows per iteration). Return deterministic JSON with ALL four fields (thinking first):
