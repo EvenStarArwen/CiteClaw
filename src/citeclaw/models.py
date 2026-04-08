@@ -19,10 +19,25 @@ class FilterResult(enum.Enum):
     PENDING_LLM = "pending_llm"
 
 
-class PaperSource(str, enum.Enum):
+class PaperSource:
+    """String constants for the ``PaperRecord.source`` field.
+
+    Was a ``str`` enum until PA-07 — replaced with a plain namespace
+    class so the expansion family can introduce new sources (``search``,
+    ``semantic``, ``author``, ``reinforced``) without a schema migration
+    or enum-extension dance. Existing comparisons like
+    ``p.source == PaperSource.BACKWARD`` keep working because the class
+    attributes are now plain strings rather than enum members whose
+    ``str`` value happens to match.
+    """
+
     SEED = "seed"
     BACKWARD = "backward"
     FORWARD = "forward"
+    SEARCH = "search"
+    SEMANTIC = "semantic"
+    AUTHOR = "author"
+    REINFORCED = "reinforced"
 
 
 class LLMVerdict(str, enum.Enum):
@@ -45,7 +60,10 @@ class PaperRecord(BaseModel):
     influential_citation_count: int | None = None
     references: list[str] = Field(default_factory=list)
     depth: int = 0
-    source: PaperSource = PaperSource.BACKWARD
+    # Free-form string label (PA-07). Use :class:`PaperSource` constants
+    # for the canonical values; new expansion modes can supply their own
+    # string without requiring a model migration.
+    source: str = "backward"
     llm_verdict: LLMVerdict | None = None
     llm_reasoning: str | None = None
     supporting_papers: list[str] = Field(default_factory=list)

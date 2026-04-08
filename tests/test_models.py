@@ -88,9 +88,9 @@ class TestPaperRecord:
     def test_model_dump_stringifies_enums(self):
         p = PaperRecord(paper_id="x")
         dumped = p.model_dump()
-        # When the enum default is in place the raw enum appears — but once we
-        # assign an enum value explicitly it serializes to its string form.
-        p.source = PaperSource.FORWARD.value
+        # PA-07: source is now a plain ``str`` field; PaperSource constants
+        # are themselves strings, so direct assignment Just Works.
+        p.source = PaperSource.FORWARD
         p.llm_verdict = LLMVerdict.ACCEPT.value
         dumped = p.model_dump()
         assert dumped["source"] == "forward"
@@ -155,9 +155,15 @@ class TestEnums:
         assert FilterResult.PENDING_LLM.value == "pending_llm"
 
     def test_paper_source(self):
-        assert PaperSource.SEED.value == "seed"
-        assert PaperSource.FORWARD.value == "forward"
-        assert PaperSource.BACKWARD.value == "backward"
+        # PA-07: PaperSource is a constants namespace, not an enum.
+        assert PaperSource.SEED == "seed"
+        assert PaperSource.FORWARD == "forward"
+        assert PaperSource.BACKWARD == "backward"
+        # New expansion-family sources also live here.
+        assert PaperSource.SEARCH == "search"
+        assert PaperSource.SEMANTIC == "semantic"
+        assert PaperSource.AUTHOR == "author"
+        assert PaperSource.REINFORCED == "reinforced"
 
     def test_llm_verdict(self):
         assert LLMVerdict.ACCEPT.value == "accept"
