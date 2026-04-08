@@ -13,10 +13,6 @@ candidates** in 30 minutes and extracted **400+ milestone papers** (2% acceptanc
 with high precision and recall — at a total cost of **$0.70** using Gemini 3 Flash-Lite.
 [Visualization](https://drive.google.com/file/d/14nNVAOmLy8FvEwKcRBwOVRu7tSpZeyFL/view?usp=sharing).
 
-CiteClaw is developed by a collaborative team at the **University of Exeter** (computer
-science) and the **John Innes Centre** (plant science). Related prior work:
-*PlantScience.ai* (Molecular Plant, 2026) and *LitChat* (IJCAI, 2025).
-
 ---
 
 ## Why CiteClaw
