@@ -33,6 +33,11 @@ AUTHOR_FIELDS = "name,citationCount,hIndex,paperCount,affiliations"
 AUTHOR_BATCH_URL = "https://api.semanticscholar.org/graph/v1/author/batch"
 _MAX_AUTHOR_BATCH = 1000
 
+# Recommendations API lives outside ``/graph/v1`` so it must be addressed
+# by full URL rather than the BASE_URL-relative path used by ``S2Http.get``.
+RECOMMENDATIONS_BATCH_URL = "https://api.semanticscholar.org/recommendations/v1/papers"
+RECOMMENDATIONS_FORPAPER_URL = "https://api.semanticscholar.org/recommendations/v1/papers/forpaper"
+
 
 class SemanticScholarClient:
     """Stateful S2 client with caching, rate-limiting, and budget tracking."""
@@ -162,6 +167,69 @@ class SemanticScholarClient:
             "offset": offset,
         }
         return self._http.get("/paper/search", params, req_type="search")
+
+    # ------------------------------------------------------------------
+    # Recommendations (PA-02: powers ExpandBySemantics; no caching, freshness wins)
+    # ------------------------------------------------------------------
+
+    def fetch_recommendations(
+        self,
+        positive_ids: list[str],
+        *,
+        negative_ids: list[str] | None = None,
+        limit: int = 100,
+        fields: str = "paperId,title",
+    ) -> list[dict[str, Any]]:
+        """Multi-anchor SPECTER2 kNN via ``POST /recommendations/v1/papers``.
+
+        Posts ``{"positivePaperIds": [...], "negativePaperIds": [...]}`` and
+        unwraps the ``recommendedPapers`` envelope so callers always
+        receive a flat list. Use this for ``ExpandBySemantics`` where
+        the input signal supplies multiple anchors.
+
+        Does NOT cache — recommendations are non-deterministic and
+        cheap relative to caching overhead.
+        """
+        body: dict[str, Any] = {"positivePaperIds": list(positive_ids)}
+        if negative_ids:
+            body["negativePaperIds"] = list(negative_ids)
+        result = self._http.post(
+            RECOMMENDATIONS_BATCH_URL,
+            params={"fields": fields, "limit": limit},
+            json_body=body,
+            req_type="recommendations",
+        )
+        if isinstance(result, dict):
+            recs = result.get("recommendedPapers")
+            if isinstance(recs, list):
+                return recs
+        return []
+
+    def fetch_recommendations_for_paper(
+        self,
+        paper_id: str,
+        *,
+        limit: int = 100,
+        fields: str = "paperId,title",
+    ) -> list[dict[str, Any]]:
+        """Single-anchor SPECTER2 kNN via
+        ``GET /recommendations/v1/papers/forpaper/{paper_id}``.
+
+        Convenience wrapper for the common case of "recommendations for
+        ONE paper" — saves callers the boilerplate of wrapping a single
+        id in a list and posting. Returns the unwrapped
+        ``recommendedPapers`` list.
+        """
+        result = self._http.get_url(
+            f"{RECOMMENDATIONS_FORPAPER_URL}/{paper_id}",
+            {"fields": fields, "limit": limit},
+            req_type="recommendations",
+        )
+        if isinstance(result, dict):
+            recs = result.get("recommendedPapers")
+            if isinstance(recs, list):
+                return recs
+        return []
 
     # ------------------------------------------------------------------
     # References

@@ -34,30 +34,57 @@ def client(tmp_path: Path) -> SemanticScholarClient:
 
 
 class _Recorder:
-    """Reusable monkey-patch helper for ``client._http.get``.
+    """Reusable monkey-patch helper for ``client._http`` methods.
 
-    Replaces the bound method with a plain callable that captures every
+    Replaces a bound method with a plain callable that captures every
     invocation and returns a canned response. Tests can then assert on
-    ``rec.calls[i]`` for path/params/req_type and on ``rec.last`` for the
-    most recent invocation.
+    ``rec.calls[i]`` for the captured args and on ``rec.last`` for the
+    most recent invocation. Three install methods are provided so tests
+    can patch ``get`` (relative path), ``get_url`` (full URL), or
+    ``post`` (full URL with json body).
     """
 
     def __init__(self, response: Any) -> None:
         self._response = response
         self.calls: list[dict[str, Any]] = []
 
+    def _maybe_raise(self) -> Any:
+        if isinstance(self._response, BaseException):
+            raise self._response
+        return self._response
+
     def install(self, client: SemanticScholarClient) -> None:
         def fake_get(path: str, params: dict[str, Any] | None = None, *, req_type: str = "other"):
             self.calls.append({"path": path, "params": params, "req_type": req_type})
-            if isinstance(self._response, BaseException):
-                raise self._response
-            return self._response
+            return self._maybe_raise()
 
         client._http.get = fake_get  # type: ignore[method-assign]
 
+    def install_get_url(self, client: SemanticScholarClient) -> None:
+        def fake_get_url(url: str, params: dict[str, Any] | None = None, *, req_type: str = "other"):
+            self.calls.append({"url": url, "params": params, "req_type": req_type})
+            return self._maybe_raise()
+
+        client._http.get_url = fake_get_url  # type: ignore[method-assign]
+
+    def install_post(self, client: SemanticScholarClient) -> None:
+        def fake_post(
+            url: str,
+            params: dict[str, Any] | None = None,
+            json_body: Any = None,
+            *,
+            req_type: str = "batch",
+        ):
+            self.calls.append(
+                {"url": url, "params": params, "json_body": json_body, "req_type": req_type}
+            )
+            return self._maybe_raise()
+
+        client._http.post = fake_post  # type: ignore[method-assign]
+
     @property
     def last(self) -> dict[str, Any]:
-        assert self.calls, "no http.get call captured"
+        assert self.calls, "no http call captured"
         return self.calls[-1]
 
 
@@ -263,3 +290,174 @@ class TestSearchRelevance:
         params = rec.last["params"]
         assert params["limit"] == 50
         assert params["offset"] == 50
+
+
+# ---------------------------------------------------------------------------
+# fetch_recommendations (PA-02)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchRecommendations:
+    def test_basic_post_call_shape(self, client: SemanticScholarClient):
+        rec = _Recorder(
+            {
+                "recommendedPapers": [
+                    {"paperId": "rec-1", "title": "Recommended 1"},
+                    {"paperId": "rec-2", "title": "Recommended 2"},
+                ]
+            }
+        )
+        rec.install_post(client)
+
+        result = client.fetch_recommendations(["anchor-1", "anchor-2"])
+
+        assert (
+            rec.last["url"]
+            == "https://api.semanticscholar.org/recommendations/v1/papers"
+        )
+        assert rec.last["req_type"] == "recommendations"
+        assert rec.last["json_body"] == {"positivePaperIds": ["anchor-1", "anchor-2"]}
+        params = rec.last["params"]
+        assert params["fields"] == "paperId,title"
+        assert params["limit"] == 100
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0]["paperId"] == "rec-1"
+
+    def test_negative_ids_added_when_provided(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": []})
+        rec.install_post(client)
+
+        client.fetch_recommendations(
+            ["anchor-1"], negative_ids=["neg-1", "neg-2"], limit=25,
+        )
+
+        body = rec.last["json_body"]
+        assert body["positivePaperIds"] == ["anchor-1"]
+        assert body["negativePaperIds"] == ["neg-1", "neg-2"]
+        assert rec.last["params"]["limit"] == 25
+
+    def test_negative_ids_omitted_when_unset(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": []})
+        rec.install_post(client)
+
+        client.fetch_recommendations(["anchor-1"])
+
+        body = rec.last["json_body"]
+        assert "negativePaperIds" not in body
+
+    def test_custom_fields_forwarded(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": []})
+        rec.install_post(client)
+
+        client.fetch_recommendations(
+            ["a"], fields="paperId,title,year,abstract",
+        )
+
+        assert rec.last["params"]["fields"] == "paperId,title,year,abstract"
+
+    def test_unwraps_recommended_papers_envelope(self, client: SemanticScholarClient):
+        rec = _Recorder(
+            {"recommendedPapers": [{"paperId": "p"}]}
+        )
+        rec.install_post(client)
+
+        result = client.fetch_recommendations(["a"])
+
+        # Result should be the inner list, not the wrapper dict
+        assert isinstance(result, list)
+        assert result == [{"paperId": "p"}]
+
+    def test_returns_empty_list_when_envelope_missing(self, client: SemanticScholarClient):
+        rec = _Recorder({})
+        rec.install_post(client)
+
+        result = client.fetch_recommendations(["a"])
+
+        assert result == []
+
+    def test_returns_empty_list_when_response_not_dict(self, client: SemanticScholarClient):
+        rec = _Recorder([{"paperId": "p"}])  # unexpected list response
+        rec.install_post(client)
+
+        result = client.fetch_recommendations(["a"])
+
+        assert result == []
+
+    def test_positive_ids_are_copied_not_mutated(self, client: SemanticScholarClient):
+        """Pass-by-reference protection: caller's list shouldn't end up in
+        the request body verbatim, in case the caller later mutates it."""
+        rec = _Recorder({"recommendedPapers": []})
+        rec.install_post(client)
+        ids = ["a", "b"]
+
+        client.fetch_recommendations(ids)
+
+        sent = rec.last["json_body"]["positivePaperIds"]
+        assert sent == ids
+        assert sent is not ids  # was list-copied
+
+
+# ---------------------------------------------------------------------------
+# fetch_recommendations_for_paper (PA-02)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchRecommendationsForPaper:
+    def test_basic_get_call_shape(self, client: SemanticScholarClient):
+        rec = _Recorder(
+            {
+                "recommendedPapers": [
+                    {"paperId": "fp-1", "title": "Forpaper 1"},
+                    {"paperId": "fp-2", "title": "Forpaper 2"},
+                ]
+            }
+        )
+        rec.install_get_url(client)
+
+        result = client.fetch_recommendations_for_paper("anchor")
+
+        assert (
+            rec.last["url"]
+            == "https://api.semanticscholar.org/recommendations/v1/papers/forpaper/anchor"
+        )
+        assert rec.last["req_type"] == "recommendations"
+        params = rec.last["params"]
+        assert params["fields"] == "paperId,title"
+        assert params["limit"] == 100
+        assert len(result) == 2
+        assert result[0]["paperId"] == "fp-1"
+
+    def test_custom_limit_and_fields(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": []})
+        rec.install_get_url(client)
+
+        client.fetch_recommendations_for_paper(
+            "anchor", limit=50, fields="paperId,title,abstract",
+        )
+
+        params = rec.last["params"]
+        assert params["limit"] == 50
+        assert params["fields"] == "paperId,title,abstract"
+
+    def test_url_includes_paper_id(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": []})
+        rec.install_get_url(client)
+
+        client.fetch_recommendations_for_paper("DOI:10.1234/abc")
+
+        assert rec.last["url"].endswith("/forpaper/DOI:10.1234/abc")
+
+    def test_unwraps_envelope(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": [{"paperId": "p"}]})
+        rec.install_get_url(client)
+
+        result = client.fetch_recommendations_for_paper("a")
+
+        assert result == [{"paperId": "p"}]
+
+    def test_returns_empty_list_when_envelope_missing(self, client: SemanticScholarClient):
+        rec = _Recorder({})
+        rec.install_get_url(client)
+
+        assert client.fetch_recommendations_for_paper("a") == []

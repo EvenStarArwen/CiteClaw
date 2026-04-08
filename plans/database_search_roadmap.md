@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-08 23:39 — completed PA-02 ✅ (added fetch_recommendations + fetch_recommendations_for_paper to SemanticScholarClient; introduced S2Http.get_url helper for non-/graph/v1 URLs; 13 new tests, 27 total green)
 - 2026-04-08 23:34 — completed PA-01 ✅ (added search_bulk/search_match/search_relevance to SemanticScholarClient + 14 monkey-patched tests; tests green; had to clear stale __pycache__ from old CitNet2 path before pytest worked)
 - 2026-04-08 22:00 — bootstrap: roadmap file created by interactive Claude session; cron worker not yet active
 
@@ -94,13 +95,14 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x` (uses monkey-patched `S2Http.get`; no network).
   - ✅ 2026-04-08 — Added a "Search" section to `api.py` with all three methods, an `httpx` import for the `search_match` 404→None catch, and a `_SEARCH_BULK_FILTER_KEYS` whitelist tuple so PA-05 can reuse the same allowlist when wiring caches. New `tests/test_s2_search_api.py` has 14 tests using a `_Recorder` helper that monkey-patches `client._http.get`. Note for next runs: stale `__pycache__` from the old `CitNet2` repo path broke pytest collection — had to wipe it once; if a future task sees `ModuleNotFoundError: citeclaw`, run `find . -name __pycache__ -exec rm -rf {} +` and use `PYTHONPATH=src python -m pytest …` since the package isn't pip-installed.
 
-- [ ] **PA-02. `fetch_recommendations` on `SemanticScholarClient`**
+- [x] **PA-02. `fetch_recommendations` on `SemanticScholarClient`**
   - **What.** Add to `src/citeclaw/clients/s2/api.py`:
     - `fetch_recommendations(positive_ids, *, negative_ids=None, limit=100, fields="paperId,title") -> list[dict]` → `POST /recommendations/v1/papers` with body `{"positivePaperIds": [...], "negativePaperIds": [...]}`. `req_type="recommendations"`.
     - `fetch_recommendations_for_paper(paper_id, *, limit=100, fields=...) -> list[dict]` → `GET /recommendations/v1/papers/forpaper/{paper_id}`.
   - **Why.** Powers `ExpandBySemantics`. S2 does the SPECTER2 kNN over its full corpus for us.
   - **Files touched.** `src/citeclaw/clients/s2/api.py`. Append to `tests/test_s2_search_api.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x`.
+  - ✅ 2026-04-08 — Both methods unwrap S2's `recommendedPapers` envelope so callers always get a flat list. Recommendations live outside `/graph/v1`, so I added a small `S2Http.get_url(full_url, ...)` helper (mirrors `get` but skips BASE_URL prepend) — that lightweight http.py addition is the one file outside the task's listed "Files touched" but it's the cleanest way to keep retry/throttle/budget shared. New constants `RECOMMENDATIONS_BATCH_URL` / `RECOMMENDATIONS_FORPAPER_URL` in api.py. Also extended `_Recorder` in tests with `install_post` and `install_get_url` siblings — PA-03 will need install_get_url too when pagination tests are added.
 
 - [ ] **PA-03. `fetch_author_papers` on `SemanticScholarClient`**
   - **What.** Add `fetch_author_papers(author_id, *, limit=100, fields="paperId,title,year,venue,citationCount") -> list[dict]` → `GET /graph/v1/author/{author_id}/papers` with pagination. `req_type="author_papers"`. Caches per-author under the new `author_papers` cache table (PA-04).

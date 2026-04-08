@@ -110,6 +110,25 @@ class S2Http:
         retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(6),
+        before_sleep=lambda rs: _retry_message(rs, "request"),
+    )
+    def get_url(
+        self, url: str, params: dict[str, Any] | None = None, *, req_type: str = "other",
+    ) -> dict[str, Any]:
+        """Like :meth:`get` but accepts a full URL instead of a ``/graph/v1``
+        relative path. Used by endpoints outside the graph API (e.g.
+        ``/recommendations/v1``)."""
+        self._throttle()
+        self._budget.record_s2(req_type)
+        resp = self._http.get(url, params=params or {})
+        resp.raise_for_status()
+        self._clear_retry()
+        return resp.json()
+
+    @retry(
+        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
+        wait=wait_random_exponential(min=2, max=60),
+        stop=stop_after_attempt(6),
         before_sleep=lambda rs: _retry_message(rs, "batch"),
     )
     def post(
