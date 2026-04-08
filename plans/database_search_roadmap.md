@@ -75,7 +75,6 @@ These were settled in the design conversation. Do NOT relitigate them; if you di
 8. **Filter atoms must tolerate `fctx.source=None`.** Verified once in PC-05 and enforced via build-time errors thereafter.
 9. **Web UI lives in `web/`** as a subdirectory. Stack: React 18 + Vite + TypeScript + Tailwind v4 + shadcn/ui + sigma.js (ForceAtlas 2) + React Flow + FastAPI + WebSockets.
 10. **Phase F (meta-review agent) is human-gated.** Cron-Claude stops if it reaches it.
-11. **Project rename CitNet2 → CiteClaw is partially done** (directory renamed; package `src/citnet/` rename is PG-01).
 
 ---
 
@@ -84,31 +83,31 @@ These were settled in the design conversation. Do NOT relitigate them; if you di
 Goal: every Phase A module is unit-testable with zero pipeline touch.
 
 - [ ] **PA-01. `search_bulk` / `search_match` / `search_relevance` on `SemanticScholarClient`**
-  - **What.** Extend `src/citnet/clients/s2/api.py` with three methods:
+  - **What.** Extend `src/citeclaw/clients/s2/api.py` with three methods:
     - `search_bulk(query, *, filters=None, sort=None, token=None, limit=1000) -> dict` → `GET /paper/search/bulk`. Forwards `year, venue, fieldsOfStudy, minCitationCount, publicationTypes, publicationDateOrYear, openAccessPdf` from `filters`. `fields="paperId,title"` only. `req_type="search"`.
     - `search_match(title) -> dict | None` → `GET /paper/search/match`. `req_type="search_match"`.
     - `search_relevance(query, *, limit=100, offset=0) -> dict` → `GET /paper/search`. `req_type="search"`.
   - All three reuse `_throttle`, `_http.get`, existing backoff. Cache wiring is PA-05.
   - **Why.** Minimum S2 surface Phase B's agent depends on.
-  - **Files touched.** `src/citnet/clients/s2/api.py`. New: `tests/test_s2_search_api.py`.
+  - **Files touched.** `src/citeclaw/clients/s2/api.py`. New: `tests/test_s2_search_api.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x` (uses monkey-patched `S2Http.get`; no network).
 
 - [ ] **PA-02. `fetch_recommendations` on `SemanticScholarClient`**
-  - **What.** Add to `src/citnet/clients/s2/api.py`:
+  - **What.** Add to `src/citeclaw/clients/s2/api.py`:
     - `fetch_recommendations(positive_ids, *, negative_ids=None, limit=100, fields="paperId,title") -> list[dict]` → `POST /recommendations/v1/papers` with body `{"positivePaperIds": [...], "negativePaperIds": [...]}`. `req_type="recommendations"`.
     - `fetch_recommendations_for_paper(paper_id, *, limit=100, fields=...) -> list[dict]` → `GET /recommendations/v1/papers/forpaper/{paper_id}`.
   - **Why.** Powers `ExpandBySemantics`. S2 does the SPECTER2 kNN over its full corpus for us.
-  - **Files touched.** `src/citnet/clients/s2/api.py`. Append to `tests/test_s2_search_api.py`.
+  - **Files touched.** `src/citeclaw/clients/s2/api.py`. Append to `tests/test_s2_search_api.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x`.
 
 - [ ] **PA-03. `fetch_author_papers` on `SemanticScholarClient`**
   - **What.** Add `fetch_author_papers(author_id, *, limit=100, fields="paperId,title,year,venue,citationCount") -> list[dict]` → `GET /graph/v1/author/{author_id}/papers` with pagination. `req_type="author_papers"`. Caches per-author under the new `author_papers` cache table (PA-04).
   - **Why.** Powers `ExpandByAuthor`. Today's `fetch_authors_batch` only returns author metadata, not paper lists.
-  - **Files touched.** `src/citnet/clients/s2/api.py`, `src/citnet/cache.py` (depends on PA-04). Append to `tests/test_s2_search_api.py`.
+  - **Files touched.** `src/citeclaw/clients/s2/api.py`, `src/citeclaw/cache.py` (depends on PA-04). Append to `tests/test_s2_search_api.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x`.
 
 - [ ] **PA-04. Cache tables: `search_queries` + `author_papers`**
-  - **What.** Append to `_SCHEMA` in `src/citnet/cache.py`:
+  - **What.** Append to `_SCHEMA` in `src/citeclaw/cache.py`:
     ```sql
     CREATE TABLE IF NOT EXISTS search_queries (
       query_hash TEXT PRIMARY KEY,
@@ -123,38 +122,38 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     );
     ```
     Add `Cache.get_search_results/put_search_results/has_search_results(query_hash, ttl_days=30)` and `Cache.get_author_papers/put_author_papers(author_id)`.
-  - **Files touched.** `src/citnet/cache.py`. Append to `tests/test_cache.py`.
+  - **Files touched.** `src/citeclaw/cache.py`. Append to `tests/test_cache.py`.
   - **Verify done.** `pytest tests/test_cache.py -x`.
 
 - [ ] **PA-05. Wire caches into `search_bulk`, `fetch_recommendations`, `fetch_author_papers`**
   - **What.** Add `query_hash = sha256(json.dumps({"q": q, "filters": f, "sort": s, "token": t}, sort_keys=True)).hexdigest()` to `search_bulk`. Cache via new `S2CacheLayer.get_search_results/put_search_results` (records hits in `BudgetTracker.record_s2("search", cached=True)`). Cache `fetch_author_papers` per-author. Do NOT cache `search_match` or `fetch_recommendations` (freshness matters).
-  - **Files touched.** `src/citnet/clients/s2/cache_layer.py`, `src/citnet/clients/s2/api.py`.
+  - **Files touched.** `src/citeclaw/clients/s2/cache_layer.py`, `src/citeclaw/clients/s2/api.py`.
   - **Verify done.** Extend `tests/test_s2_search_api.py`: call each cached method twice with identical args; second call must serve from cache.
 
 - [ ] **PA-06. Extend `PaperRecord` with `fields_of_study` + `publication_types`**
-  - **What.** Add `fields_of_study: list[str] = Field(default_factory=list)` and `publication_types: list[str] = Field(default_factory=list)` to `src/citnet/models.py::PaperRecord`. Extend `PAPER_FIELDS` in `api.py` with `fieldsOfStudy,publicationTypes,s2FieldsOfStudy`. Extend `paper_to_record` in `converters.py` to populate them (merge `s2FieldsOfStudy` into `fields_of_study`).
-  - **Files touched.** `src/citnet/models.py`, `src/citnet/clients/s2/api.py`, `src/citnet/clients/s2/converters.py`. New test in `tests/test_models.py`.
+  - **What.** Add `fields_of_study: list[str] = Field(default_factory=list)` and `publication_types: list[str] = Field(default_factory=list)` to `src/citeclaw/models.py::PaperRecord`. Extend `PAPER_FIELDS` in `api.py` with `fieldsOfStudy,publicationTypes,s2FieldsOfStudy`. Extend `paper_to_record` in `converters.py` to populate them (merge `s2FieldsOfStudy` into `fields_of_study`).
+  - **Files touched.** `src/citeclaw/models.py`, `src/citeclaw/clients/s2/api.py`, `src/citeclaw/clients/s2/converters.py`. New test in `tests/test_models.py`.
   - **Verify done.** `pytest tests/ -x`.
 
 - [ ] **PA-07. `PaperRecord.source: str` instead of frozen enum**
   - **What.** Replace the `PaperSource` enum field on `PaperRecord` with `source: str = "backward"`. Keep `PaperSource` as a constants namespace: `class PaperSource: SEED="seed"; FORWARD="forward"; BACKWARD="backward"; SEARCH="search"; SEMANTIC="semantic"; AUTHOR="author"; REINFORCED="reinforced"`. Audit all call sites that compare `p.source == PaperSource.X` — they continue working because `use_enum_values=True`.
-  - **Files touched.** `src/citnet/models.py`. Possibly a few call sites in steps/.
+  - **Files touched.** `src/citeclaw/models.py`. Possibly a few call sites in steps/.
   - **Verify done.** `pytest tests/ -x`.
 
 - [ ] **PA-08. `Context` additions: rejection ledger + idempotency sets + reinforcement log**
-  - **What.** In `src/citnet/context.py`, add three fields:
+  - **What.** In `src/citeclaw/context.py`, add three fields:
     ```python
     rejection_ledger: dict[str, list[str]] = field(default_factory=dict)
     searched_signals: set[str] = field(default_factory=set)
     reinforcement_log: list[dict] = field(default_factory=list)
     ```
-    Update `record_rejections` in `src/citnet/filters/runner.py` to also append to `rejection_ledger[paper.paper_id]`.
+    Update `record_rejections` in `src/citeclaw/filters/runner.py` to also append to `rejection_ledger[paper.paper_id]`.
   - **Why.** `HumanInTheLoop` needs per-paper rejection reasons; `ExpandBy*` steps need per-signal idempotency; `ReinforceGraph` needs a place to log decisions.
-  - **Files touched.** `src/citnet/context.py`, `src/citnet/filters/runner.py`. New test asserting the ledger is populated on rejection.
+  - **Files touched.** `src/citeclaw/context.py`, `src/citeclaw/filters/runner.py`. New test asserting the ledger is populated on rejection.
   - **Verify done.** `pytest tests/ -x`.
 
-- [ ] **PA-09. `src/citnet/search/query_engine.py` — pure `apply_local_query`**
-  - **What.** New package `src/citnet/search/__init__.py` + `src/citnet/search/query_engine.py`. Exports one pure function:
+- [ ] **PA-09. `src/citeclaw/search/query_engine.py` — pure `apply_local_query`**
+  - **What.** New package `src/citeclaw/search/__init__.py` + `src/citeclaw/search/query_engine.py`. Exports one pure function:
     ```python
     def apply_local_query(
         papers: list[PaperRecord], *,
@@ -169,7 +168,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     ```
     AND-ed predicates; strict on missing metadata except `abstract_regex` (lenient — S2 often lacks abstracts). Regexes with `re.IGNORECASE`.
   - **Why.** S2 API can't express regex, abstract text search, or arbitrary unions. Used optionally by expand steps for post-fetch trim.
-  - **Files touched.** New: `src/citnet/search/__init__.py`, `src/citnet/search/query_engine.py`, `tests/test_search_query_engine.py`.
+  - **Files touched.** New: `src/citeclaw/search/__init__.py`, `src/citeclaw/search/query_engine.py`, `tests/test_search_query_engine.py`.
   - **Verify done.** `pytest tests/test_search_query_engine.py -x` with ~10 cases.
 
 - [ ] **PA-10. `FakeS2Client` extensions + Phase A e2e test**
@@ -181,25 +180,25 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
 
 ## Phase B — Iterative meta-LLM search agent
 
-- [ ] **PB-01. Prompt module `src/citnet/prompts/search_refine.py`**
+- [ ] **PB-01. Prompt module `src/citeclaw/prompts/search_refine.py`**
   - **What.** New file with:
     - `SYSTEM` — role: "You design targeted literature-database queries given a topic and a sample of papers already in the collection. Before committing to a query, think out loud in the `thinking` field. Inspect results, refine, decide satisfied/abort."
     - `USER_TEMPLATE` — takes `{topic_description}`, `{anchor_papers_block}`, `{transcript}` (prior turns including prior `thinking`), `{iteration}`, `{max_iterations}`, `{target_count}`. Output JSON matching `RESPONSE_SCHEMA`.
     - `RESPONSE_SCHEMA` — JSON Schema enforcing fields IN ORDER: `thinking` (string, FIRST), `query` (object with `text`, optional `filters`, optional `sort`), `agent_decision` (enum: initial|refine|satisfied|abort), `reasoning` (string).
     - The literal string `"agent_decision"` MUST appear in `USER_TEMPLATE` for stub recognition.
-  - **Files touched.** New: `src/citnet/prompts/search_refine.py`.
-  - **Verify done.** `python -c "from citnet.prompts.search_refine import SYSTEM, USER_TEMPLATE, RESPONSE_SCHEMA; assert 'agent_decision' in USER_TEMPLATE and RESPONSE_SCHEMA['properties']['thinking']['type'] == 'string'"`.
+  - **Files touched.** New: `src/citeclaw/prompts/search_refine.py`.
+  - **Verify done.** `python -c "from citeclaw.prompts.search_refine import SYSTEM, USER_TEMPLATE, RESPONSE_SCHEMA; assert 'agent_decision' in USER_TEMPLATE and RESPONSE_SCHEMA['properties']['thinking']['type'] == 'string'"`.
 
 - [ ] **PB-02. Stub client extension for agent prompts**
-  - **What.** Add a branch to `stub_respond` in `src/citnet/clients/llm/stub.py`: `if '"agent_decision"' in user:`. Count `"query":` occurrences in `user` (transcript grows per iteration). Return deterministic JSON with ALL four fields (thinking first):
+  - **What.** Add a branch to `stub_respond` in `src/citeclaw/clients/llm/stub.py`: `if '"agent_decision"' in user:`. Count `"query":` occurrences in `user` (transcript grows per iteration). Return deterministic JSON with ALL four fields (thinking first):
     - 0 → `{"thinking": "stub: initial exploration", "query": {"text": "test topic"}, "agent_decision": "initial", "reasoning": "stub initial"}`
     - 1 → `{"thinking": "stub: prior was too broad, narrowing", "query": {"text": "test topic narrowed"}, "agent_decision": "refine", "reasoning": "stub refine"}`
     - ≥2 → `{"thinking": "stub: results saturated", "query": {"text": "test topic narrowed"}, "agent_decision": "satisfied", "reasoning": "stub satisfied"}`
-  - **Files touched.** `src/citnet/clients/llm/stub.py`. Append to `tests/test_llm.py`.
+  - **Files touched.** `src/citeclaw/clients/llm/stub.py`. Append to `tests/test_llm.py`.
   - **Verify done.** `pytest tests/test_llm.py -x`. Tests assert `thinking` field non-empty.
 
 - [ ] **PB-03. Agent module + dataclasses**
-  - **What.** New `src/citnet/agents/__init__.py` + `src/citnet/agents/iterative_search.py`:
+  - **What.** New `src/citeclaw/agents/__init__.py` + `src/citeclaw/agents/iterative_search.py`:
     ```python
     @dataclass
     class AgentConfig:
@@ -231,8 +230,8 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
         tokens_used: int
         s2_requests_used: int
     ```
-  - **Files touched.** New: `src/citnet/agents/__init__.py`, `src/citnet/agents/iterative_search.py`.
-  - **Verify done.** `python -c "from citnet.agents.iterative_search import AgentConfig, AgentTurn; c = AgentConfig(); assert c.max_iterations == 4 and c.reasoning_effort == 'high'"`.
+  - **Files touched.** New: `src/citeclaw/agents/__init__.py`, `src/citeclaw/agents/iterative_search.py`.
+  - **Verify done.** `python -c "from citeclaw.agents.iterative_search import AgentConfig, AgentTurn; c = AgentConfig(); assert c.max_iterations == 4 and c.reasoning_effort == 'high'"`.
 
 - [ ] **PB-04. `run_iterative_search` loop**
   - **What.** Implement:
@@ -249,7 +248,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     Transcript formatting for the next iteration's user prompt MUST include each prior turn's `Thinking:`, `Query:`, `Observed:`, `Sample titles:`, `Decision:` lines so the agent's earlier reasoning is visible to its later self.
     LLM client built once at start with `build_llm_client(ctx.config, ctx.budget, model=config.model or ctx.config.search_model or ctx.config.screening_model, reasoning_effort=config.reasoning_effort)`.
     When `anchor_papers` is empty, render the block as `"(No anchor papers — bootstrap from topic description alone.)"`.
-  - **Files touched.** `src/citnet/agents/iterative_search.py`.
+  - **Files touched.** `src/citeclaw/agents/iterative_search.py`.
   - **Verify done.** Next task tests it.
 
 - [ ] **PB-05. Unit tests for the agent**
@@ -275,7 +274,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
 ## Phase C — `ExpandBy*` family (integration)
 
 - [ ] **PC-01. `ExpandBySearch` step (FLAGSHIP — ship this first)**
-  - **What.** New `src/citnet/steps/expand_by_search.py`. Class:
+  - **What.** New `src/citeclaw/steps/expand_by_search.py`. Class:
     ```python
     class ExpandBySearch:
         name = "ExpandBySearch"
@@ -299,11 +298,11 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
             # 13. Return StepResult(signal=passed, in_count=len(hydrated), stats={...}).
     ```
   - **Why.** The flagship feature. Demonstrates the full agent loop end-to-end.
-  - **Files touched.** New: `src/citnet/steps/expand_by_search.py`. Register in `src/citnet/steps/__init__.py` with `_build_expand_by_search(d, blocks)`.
+  - **Files touched.** New: `src/citeclaw/steps/expand_by_search.py`. Register in `src/citeclaw/steps/__init__.py` with `_build_expand_by_search(d, blocks)`.
   - **Verify done.** PC-08 e2e test covers it.
 
 - [ ] **PC-02. `ExpandBySemantics` step**
-  - **What.** New `src/citnet/steps/expand_by_semantics.py`:
+  - **What.** New `src/citeclaw/steps/expand_by_semantics.py`:
     ```python
     class ExpandBySemantics:
         name = "ExpandBySemantics"
@@ -318,11 +317,11 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
             # Hydrate, enrich abstracts, dedup, stamp source="semantic", apply screener, add survivors.
     ```
     No LLM, no agent. S2 API does the SPECTER2 kNN.
-  - **Files touched.** New: `src/citnet/steps/expand_by_semantics.py`. Register in `steps/__init__.py`.
+  - **Files touched.** New: `src/citeclaw/steps/expand_by_semantics.py`. Register in `steps/__init__.py`.
   - **Verify done.** PC-08 e2e test.
 
 - [ ] **PC-03. `ExpandByAuthor` step**
-  - **What.** New `src/citnet/steps/expand_by_author.py`:
+  - **What.** New `src/citeclaw/steps/expand_by_author.py`:
     ```python
     class ExpandByAuthor:
         name = "ExpandByAuthor"
@@ -339,28 +338,28 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
             # 6. Flatten, dedup against ctx.seen, hydrate + enrich abstracts.
             # 7. Stamp source="author"; apply screener; add survivors to collection.
     ```
-  - **Files touched.** New: `src/citnet/steps/expand_by_author.py`. Register in `steps/__init__.py`. May need to refactor `src/citnet/author_graph.py` to expose graph-building logic separately from the GraphML writer.
+  - **Files touched.** New: `src/citeclaw/steps/expand_by_author.py`. Register in `steps/__init__.py`. May need to refactor `src/citeclaw/author_graph.py` to expose graph-building logic separately from the GraphML writer.
   - **Verify done.** PC-08 e2e test.
 
 - [ ] **PC-04. `ResolveSeeds` step (preprint + published pairs)**
-  - **What.** New `src/citnet/steps/resolve_seeds.py`. Reads `ctx.config.seed_papers` which now allows entries of either `{paper_id: ...}` or `{title: ...}`. For each:
+  - **What.** New `src/citeclaw/steps/resolve_seeds.py`. Reads `ctx.config.seed_papers` which now allows entries of either `{paper_id: ...}` or `{title: ...}`. For each:
     - `{paper_id: ...}` → keep as-is.
     - `{title: ...}` → `ctx.s2.search_match(title)` → resolved paperId.
     - For each resolved paper: fetch metadata to get `external_ids`. If `include_siblings=True`, attempt to fetch each external ID (DOI, ArXiv) as a separate S2 paper. If they resolve to DIFFERENT paper IDs, add ALL to the result set.
     - Write result to `ctx.resolved_seed_ids: list[str]`.
-    Then update `src/citnet/steps/load_seeds.py` to read `ctx.resolved_seed_ids` if present, else fall back to `ctx.config.seed_papers`.
+    Then update `src/citeclaw/steps/load_seeds.py` to read `ctx.resolved_seed_ids` if present, else fall back to `ctx.config.seed_papers`.
   - **Why.** S2 sometimes has citation/reference data on only one of preprint/published — loading both maximizes graph coverage before `MergeDuplicates`.
-  - **Files touched.** New: `src/citnet/steps/resolve_seeds.py`. Modified: `src/citnet/steps/load_seeds.py`. Register in `steps/__init__.py`. Update `src/citnet/config.py` seed schema to accept `{title: ...}` entries.
+  - **Files touched.** New: `src/citeclaw/steps/resolve_seeds.py`. Modified: `src/citeclaw/steps/load_seeds.py`. Register in `steps/__init__.py`. Update `src/citeclaw/config.py` seed schema to accept `{title: ...}` entries.
   - **Verify done.** New test in `tests/test_resolve_seeds.py` using `FakeS2Client.search_match` with a title that resolves to two distinct paper_ids (preprint + published).
 
 - [ ] **PC-05. Verify all filter atoms tolerate `fctx.source=None`**
-  - **What.** Audit `src/citnet/filters/atoms/*.py` and `src/citnet/filters/measures/*.py` for any access to `fctx.source` / `fctx.source_refs` / `fctx.source_citers` without a None check. Existing similarity measures should already handle it (CLAUDE.md claim — verify). For any filter that strictly requires a source, raise a clear error in its constructor / build-time check, not at runtime, with message: `"Filter X requires a source paper but was used in a source-less context (likely ExpandBySearch / ExpandBySemantics / ExpandByAuthor)"`.
-  - **Files touched.** Possibly `src/citnet/filters/atoms/*.py`, `src/citnet/filters/measures/*.py`. New test asserting each atom + measure handles `source=None` without crashing.
+  - **What.** Audit `src/citeclaw/filters/atoms/*.py` and `src/citeclaw/filters/measures/*.py` for any access to `fctx.source` / `fctx.source_refs` / `fctx.source_citers` without a None check. Existing similarity measures should already handle it (CLAUDE.md claim — verify). For any filter that strictly requires a source, raise a clear error in its constructor / build-time check, not at runtime, with message: `"Filter X requires a source paper but was used in a source-less context (likely ExpandBySearch / ExpandBySemantics / ExpandByAuthor)"`.
+  - **Files touched.** Possibly `src/citeclaw/filters/atoms/*.py`, `src/citeclaw/filters/measures/*.py`. New test asserting each atom + measure handles `source=None` without crashing.
   - **Verify done.** `pytest tests/ -x`.
 
 - [ ] **PC-06. `search_model` global in `Settings` + seed schema update**
-  - **What.** Add `search_model: str = ""` to `Settings` in `src/citnet/config.py` (empty → fall back to `screening_model`). Update seed config parsing to accept `{paper_id: ...}` OR `{title: ...}` (or both).
-  - **Files touched.** `src/citnet/config.py`. Test in `tests/test_config.py`.
+  - **What.** Add `search_model: str = ""` to `Settings` in `src/citeclaw/config.py` (empty → fall back to `screening_model`). Update seed config parsing to accept `{paper_id: ...}` OR `{title: ...}` (or both).
+  - **Files touched.** `src/citeclaw/config.py`. Test in `tests/test_config.py`.
   - **Verify done.** `pytest tests/test_config.py -x`.
 
 - [ ] **PC-07. Example YAML `config_bio_with_expansion.yaml`**
@@ -409,7 +408,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     ```
     The `forward_screener` / `backward_strict` / `backward_loose` block definitions are copied from `config_bio.yaml`'s `blocks:` section verbatim. **The thesis: every new expand step reuses an existing screener — no new screening rules invented.**
   - **Files touched.** New: `config_bio_with_expansion.yaml`.
-  - **Verify done.** `python -c "from citnet.config import load_settings; s = load_settings('config_bio_with_expansion.yaml'); assert len(s.pipeline_built) > 10"`.
+  - **Verify done.** `python -c "from citeclaw.config import load_settings; s = load_settings('config_bio_with_expansion.yaml'); assert len(s.pipeline_built) > 10"`.
 
 - [ ] **PC-08. End-to-end stub-mode pipeline test**
   - **What.** New `tests/test_expand_family_e2e.py`. Uses stub LLM + `FakeS2Client` (with `search_bulk`, `fetch_recommendations`, `fetch_author_papers` extensions from PA-10). Minimal pipeline exercising the full chain: `ResolveSeeds → LoadSeeds → ExpandForward → Rerank → ExpandBySearch → ExpandBySemantics → ExpandByAuthor → Finalize`. Asserts:
@@ -437,7 +436,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
 ## Phase D — ReinforceGraph + Human-in-the-Loop (CLI)
 
 - [ ] **PD-01. `ReinforceGraph` step v1**
-  - **What.** New `src/citnet/steps/reinforce_graph.py`:
+  - **What.** New `src/citeclaw/steps/reinforce_graph.py`:
     ```python
     class ReinforceGraph:
         name = "ReinforceGraph"
@@ -455,11 +454,11 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
             # 8. Return StepResult(signal=passed, ...).
     ```
     Module docstring labels this as v1; future versions can use betweenness, community-aware, or learned metrics.
-  - **Files touched.** New: `src/citnet/steps/reinforce_graph.py`. Register in `steps/__init__.py`.
+  - **Files touched.** New: `src/citeclaw/steps/reinforce_graph.py`. Register in `steps/__init__.py`.
   - **Verify done.** New test `tests/test_reinforce_graph.py` with a hand-built collection + seen set where a high-pagerank rejected paper is restored.
 
 - [ ] **PD-02. `HumanInTheLoop` step v1 (CLI)**
-  - **What.** New `src/citnet/steps/human_in_the_loop.py`:
+  - **What.** New `src/citeclaw/steps/human_in_the_loop.py`:
     ```python
     class HumanInTheLoop:
         name = "HumanInTheLoop"
@@ -479,7 +478,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
             # 7. If any filter's agreement < 0.5, prompt user: continue / stop.
             # 8. Return signal unchanged.
     ```
-  - **Files touched.** New: `src/citnet/steps/human_in_the_loop.py`. Register in `steps/__init__.py`.
+  - **Files touched.** New: `src/citeclaw/steps/human_in_the_loop.py`. Register in `steps/__init__.py`.
   - **Verify done.** New test mocking `rich.prompt.Confirm` with canned label sequence; asserts report is written and agreement computed.
 
 - [ ] **PD-03. Integration test: HITL + ReinforceGraph in composed pipeline**
@@ -505,13 +504,13 @@ Lives in `web/` subdirectory. Stack: React 18 + Vite + TypeScript + Tailwind v4 
     - `GET /api/papers/{paper_id}` — return PaperRecord as JSON (read from `data_bio/cache.db`).
     - `GET /api/runs/{run_id}` — return run state from `data_bio/run_state.json`.
     - `POST /api/runs` — trigger a new run with a config name; return `run_id`.
-  - All endpoints reuse Pydantic models from `citnet.models` / `citnet.config` directly.
+  - All endpoints reuse Pydantic models from `citeclaw.models` / `citeclaw.config` directly.
   - **Files touched.** `web/backend/api/*.py`, `web/backend/main.py`.
   - **Verify done.** `curl localhost:9999/api/configs` returns JSON.
 
 - [ ] **PE-03. Pipeline event bus + WebSocket stream**
-  - **What.** Refactor `src/citnet/pipeline.py::run_pipeline` to emit events to an injected `EventSink` abstraction with methods `step_start`, `step_end`, `paper_added`, `paper_rejected`, `shape_table_update`. Default sink is no-op (preserves current CLI behavior). New `src/citnet/event_sink.py`. In `web/backend/`, add `ws/run_stream.py` — WebSocket endpoint `ws://localhost:9999/api/runs/{run_id}/stream` that subscribes to the sink and pushes events.
-  - **Files touched.** `src/citnet/pipeline.py`, new `src/citnet/event_sink.py`, new `web/backend/ws/run_stream.py`.
+  - **What.** Refactor `src/citeclaw/pipeline.py::run_pipeline` to emit events to an injected `EventSink` abstraction with methods `step_start`, `step_end`, `paper_added`, `paper_rejected`, `shape_table_update`. Default sink is no-op (preserves current CLI behavior). New `src/citeclaw/event_sink.py`. In `web/backend/`, add `ws/run_stream.py` — WebSocket endpoint `ws://localhost:9999/api/runs/{run_id}/stream` that subscribes to the sink and pushes events.
+  - **Files touched.** `src/citeclaw/pipeline.py`, new `src/citeclaw/event_sink.py`, new `web/backend/ws/run_stream.py`.
   - **Verify done.** New `tests/test_event_sink.py` with a recording sink asserting the expected event sequence.
 
 - [ ] **PE-04. React scaffold: routing, layout, 3-pane shell**
@@ -541,13 +540,13 @@ Lives in `web/` subdirectory. Stack: React 18 + Vite + TypeScript + Tailwind v4 
 
 - [ ] **PE-09. HumanInTheLoop web integration**
   - **What.** When `HumanInTheLoop` runs, backend emits `hitl_request` event with the k sampled papers. Frontend shows shadcn `Dialog` modal with paper cards + yes/no buttons + progress bar. User submits → `POST /api/runs/{run_id}/hitl` → backend unblocks the step. Refactor `HumanInTheLoop.run()` to be awaitable on an external signal (asyncio.Event or shared dict).
-  - **Files touched.** `src/citnet/steps/human_in_the_loop.py`, `web/backend/api/runs.py`, `web/frontend/src/components/HitlModal.tsx`.
+  - **Files touched.** `src/citeclaw/steps/human_in_the_loop.py`, `web/backend/api/runs.py`, `web/frontend/src/components/HitlModal.tsx`.
   - **Verify done.** Manual e2e: run example YAML with HITL, click through modal, verify report is written.
 
 - [ ] **PE-10. Polish + packaging**
-  - **What.** `pnpm build` for production bundle. Wire FastAPI to serve the static files. Package as `python -m citnet web` CLI subcommand. Add screenshots / demo GIF to `README.md`.
-  - **Files touched.** `src/citnet/__main__.py`, `web/README.md`, possibly `pyproject.toml` extras.
-  - **Verify done.** `python -m citnet web --port 9999` serves the full UI on :9999. **Phase E DONE.**
+  - **What.** `pnpm build` for production bundle. Wire FastAPI to serve the static files. Package as `python -m citeclaw web` CLI subcommand. Add screenshots / demo GIF to `README.md`.
+  - **Files touched.** `src/citeclaw/__main__.py`, `web/README.md`, possibly `pyproject.toml` extras.
+  - **Verify done.** `python -m citeclaw web --port 9999` serves the full UI on :9999. **Phase E DONE.**
 
 ---
 
@@ -571,18 +570,6 @@ Open questions for the design session:
 
 ---
 
-## Phase G — Project rename CitNet → CiteClaw (partial)
-
-The directory rename `CitNet2/ → CiteClaw/` is already done. The Python package rename is still pending.
-
-- [ ] **PG-01. Rename `src/citnet/` → `src/citeclaw/`**
-  - **What.** Move the package, update all imports, update CLI module (`python -m citnet → python -m citeclaw`), update `pyproject.toml` package name, update test imports, update `config_bio.yaml` if it references `citnet` anywhere. Update `CLAUDE.md` and `README.md`. Also update this roadmap's file path references (search for `src/citnet/` and replace with `src/citeclaw/`).
-  - Best done AFTER Phase C stabilizes to minimize merge conflicts with the many new files Phase A-C creates.
-  - **Files touched.** Everything with `citnet` in path/content. Single coordinated changeset.
-  - **Verify done.** `pytest tests/ -x`, `python -m citeclaw --help` works.
-
----
-
 ## Risks and open questions
 
 1. **Agent prompt quality** — unit tests prove plumbing, not reasoning. PB-06's manual script is the only real validation. Reserve a human review session before Phase D.
@@ -591,4 +578,3 @@ The directory rename `CitNet2/ → CiteClaw/` is already done. The Python packag
 4. **Web UI scope creep** — Phase E is ambitious. Ship E-01 to E-05 first as a demo. Don't block Phase C/D on E.
 5. **ReinforceGraph v1 is deliberately dumb** — pagerank-rank-in-seen is a heuristic. Expect to iterate on the algorithm in v2.
 6. **`ResolveSeeds` sibling cost** — each title-with-preprint-and-published triggers 2-3 extra S2 calls. Acceptable for ≤20 seeds; document.
-7. **PG-01 timing** — do AFTER Phase C stabilizes to minimize rebase pain.
