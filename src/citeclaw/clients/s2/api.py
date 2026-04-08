@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import httpx
+
 from citeclaw.cache import Cache
 from citeclaw.clients.s2.cache_layer import S2CacheLayer
 from citeclaw.clients.s2.converters import edge_to_record, paper_to_record
@@ -61,6 +63,105 @@ class SemanticScholarClient:
         if not rec:
             raise SemanticScholarAPIError(f"S2 returned no paperId for {paper_id}")
         return rec
+
+    # ------------------------------------------------------------------
+    # Search (PA-01: bare HTTP surface; cache wiring lands in PA-05)
+    # ------------------------------------------------------------------
+
+    # Whitelist of S2-recognized filter parameters that ``search_bulk``
+    # forwards from its ``filters`` dict. Anything not in this set is
+    # silently dropped — keeps callers from accidentally smuggling
+    # unsupported keys into the request.
+    _SEARCH_BULK_FILTER_KEYS = (
+        "year",
+        "venue",
+        "fieldsOfStudy",
+        "minCitationCount",
+        "publicationTypes",
+        "publicationDateOrYear",
+        "openAccessPdf",
+    )
+
+    def search_bulk(
+        self,
+        query: str,
+        *,
+        filters: dict[str, Any] | None = None,
+        sort: str | None = None,
+        token: str | None = None,
+        limit: int = 1000,
+    ) -> dict[str, Any]:
+        """Bulk paper search via ``GET /paper/search/bulk``.
+
+        Returns the raw JSON response dict from S2 (typically containing
+        ``data``, ``total``, and ``token`` keys). Only ``paperId,title``
+        are requested — call ``enrich_batch`` afterwards for full
+        metadata. Filters are forwarded only when present in
+        :attr:`_SEARCH_BULK_FILTER_KEYS`.
+
+        Does NOT cache — that's PA-05's job.
+        """
+        params: dict[str, Any] = {
+            "query": query,
+            "fields": "paperId,title",
+            "limit": limit,
+        }
+        if filters:
+            for key in self._SEARCH_BULK_FILTER_KEYS:
+                value = filters.get(key)
+                if value is not None:
+                    params[key] = value
+        if sort is not None:
+            params["sort"] = sort
+        if token is not None:
+            params["token"] = token
+        return self._http.get("/paper/search/bulk", params, req_type="search")
+
+    def search_match(self, title: str) -> dict[str, Any] | None:
+        """Best-match paper lookup by title via ``GET /paper/search/match``.
+
+        Returns the matched paper dict, or ``None`` when S2 has no
+        match. Used by ``ResolveSeeds`` to convert fuzzy title seed
+        entries into canonical paper ids. Does NOT cache — title
+        resolutions are rare and freshness matters more than savings.
+        """
+        try:
+            result = self._http.get(
+                "/paper/search/match",
+                {"query": title, "fields": PAPER_FIELDS},
+                req_type="search_match",
+            )
+        except httpx.HTTPStatusError as exc:
+            # S2 returns 404 when no paper matches the title — treat
+            # that as a clean "no match" rather than an error.
+            if exc.response is not None and exc.response.status_code == 404:
+                return None
+            raise
+        data = result.get("data") if isinstance(result, dict) else None
+        if isinstance(data, list) and data:
+            return data[0]
+        return None
+
+    def search_relevance(
+        self,
+        query: str,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Relevance-ranked search via ``GET /paper/search``.
+
+        Lighter-weight than :meth:`search_bulk` for exploratory single
+        queries. Returns the raw JSON dict; only ``paperId,title`` are
+        requested. Does NOT cache.
+        """
+        params: dict[str, Any] = {
+            "query": query,
+            "fields": "paperId,title",
+            "limit": limit,
+            "offset": offset,
+        }
+        return self._http.get("/paper/search", params, req_type="search")
 
     # ------------------------------------------------------------------
     # References

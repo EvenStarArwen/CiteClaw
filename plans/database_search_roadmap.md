@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-08 23:34 — completed PA-01 ✅ (added search_bulk/search_match/search_relevance to SemanticScholarClient + 14 monkey-patched tests; tests green; had to clear stale __pycache__ from old CitNet2 path before pytest worked)
 - 2026-04-08 22:00 — bootstrap: roadmap file created by interactive Claude session; cron worker not yet active
 
 ---
@@ -82,7 +83,7 @@ These were settled in the design conversation. Do NOT relitigate them; if you di
 
 Goal: every Phase A module is unit-testable with zero pipeline touch.
 
-- [ ] **PA-01. `search_bulk` / `search_match` / `search_relevance` on `SemanticScholarClient`**
+- [x] **PA-01. `search_bulk` / `search_match` / `search_relevance` on `SemanticScholarClient`**
   - **What.** Extend `src/citeclaw/clients/s2/api.py` with three methods:
     - `search_bulk(query, *, filters=None, sort=None, token=None, limit=1000) -> dict` → `GET /paper/search/bulk`. Forwards `year, venue, fieldsOfStudy, minCitationCount, publicationTypes, publicationDateOrYear, openAccessPdf` from `filters`. `fields="paperId,title"` only. `req_type="search"`.
     - `search_match(title) -> dict | None` → `GET /paper/search/match`. `req_type="search_match"`.
@@ -91,6 +92,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Why.** Minimum S2 surface Phase B's agent depends on.
   - **Files touched.** `src/citeclaw/clients/s2/api.py`. New: `tests/test_s2_search_api.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x` (uses monkey-patched `S2Http.get`; no network).
+  - ✅ 2026-04-08 — Added a "Search" section to `api.py` with all three methods, an `httpx` import for the `search_match` 404→None catch, and a `_SEARCH_BULK_FILTER_KEYS` whitelist tuple so PA-05 can reuse the same allowlist when wiring caches. New `tests/test_s2_search_api.py` has 14 tests using a `_Recorder` helper that monkey-patches `client._http.get`. Note for next runs: stale `__pycache__` from the old `CitNet2` repo path broke pytest collection — had to wipe it once; if a future task sees `ModuleNotFoundError: citeclaw`, run `find . -name __pycache__ -exec rm -rf {} +` and use `PYTHONPATH=src python -m pytest …` since the package isn't pip-installed.
 
 - [ ] **PA-02. `fetch_recommendations` on `SemanticScholarClient`**
   - **What.** Add to `src/citeclaw/clients/s2/api.py`:
