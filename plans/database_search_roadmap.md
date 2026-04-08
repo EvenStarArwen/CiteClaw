@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-08 23:47 — completed PA-04 ✅ (added search_queries + author_papers cache tables, 5 new methods, _SEARCH_TTL_DAYS_DEFAULT=30 constant, 14 new test_cache.py tests; PA-03 skipped ⏭️ since it depends on PA-04's methods which now exist — PA-03 unblocked for next run)
 - 2026-04-08 23:39 — completed PA-02 ✅ (added fetch_recommendations + fetch_recommendations_for_paper to SemanticScholarClient; introduced S2Http.get_url helper for non-/graph/v1 URLs; 13 new tests, 27 total green)
 - 2026-04-08 23:34 — completed PA-01 ✅ (added search_bulk/search_match/search_relevance to SemanticScholarClient + 14 monkey-patched tests; tests green; had to clear stale __pycache__ from old CitNet2 path before pytest worked)
 - 2026-04-08 22:00 — bootstrap: roadmap file created by interactive Claude session; cron worker not yet active
@@ -109,8 +110,9 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Why.** Powers `ExpandByAuthor`. Today's `fetch_authors_batch` only returns author metadata, not paper lists.
   - **Files touched.** `src/citeclaw/clients/s2/api.py`, `src/citeclaw/cache.py` (depends on PA-04). Append to `tests/test_s2_search_api.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x`.
+  - ⏭️ 2026-04-08 — Skipped this run because PA-03's caching arm depends on `Cache.get_author_papers`/`put_author_papers`, which only land in PA-04. Did PA-04 first; now unblocked. Next run should pick this up — will need to call `cache.get_author_papers(author_id)` / `cache.put_author_papers(author_id, papers)` after the paginated S2 GET, and use the new `S2Http.get_url` helper from PA-02 if pagination logic ends up there. Pagination follow-up: S2's author/papers endpoint paginates via `offset`/`next` token — model the loop on `S2Http.paginate` rather than reinventing it (consider adding an `author_papers` branch or building a small in-`api.py` paginator).
 
-- [ ] **PA-04. Cache tables: `search_queries` + `author_papers`**
+- [x] **PA-04. Cache tables: `search_queries` + `author_papers`**
   - **What.** Append to `_SCHEMA` in `src/citeclaw/cache.py`:
     ```sql
     CREATE TABLE IF NOT EXISTS search_queries (
@@ -128,6 +130,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     Add `Cache.get_search_results/put_search_results/has_search_results(query_hash, ttl_days=30)` and `Cache.get_author_papers/put_author_papers(author_id)`.
   - **Files touched.** `src/citeclaw/cache.py`. Append to `tests/test_cache.py`.
   - **Verify done.** `pytest tests/test_cache.py -x`.
+  - ✅ 2026-04-08 — Added both tables to `_SCHEMA` plus a `_SEARCH_TTL_DAYS_DEFAULT = 30` module constant so PA-05 can reference the same default. New helper `Cache._is_fresh(fetched_at_iso, ttl_days)` parses ISO timestamps and tolerates naive datetimes (older rows). 14 new test_cache.py tests covering put/get/has roundtrip, TTL expiration via direct SQL backdating, persistence across instances, query_json round-trip, and the empty-list-vs-missing distinction for author_papers. The TTL test pattern (UPDATE … fetched_at to a backdated ISO string then read) is reusable — PA-05's cache-hit tests can copy it.
 
 - [ ] **PA-05. Wire caches into `search_bulk`, `fetch_recommendations`, `fetch_author_papers`**
   - **What.** Add `query_hash = sha256(json.dumps({"q": q, "filters": f, "sort": s, "token": t}, sort_keys=True)).hexdigest()` to `search_bulk`. Cache via new `S2CacheLayer.get_search_results/put_search_results` (records hits in `BudgetTracker.record_s2("search", cached=True)`). Cache `fetch_author_papers` per-author. Do NOT cache `search_match` or `fetch_recommendations` (freshness matters).

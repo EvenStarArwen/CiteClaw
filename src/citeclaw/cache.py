@@ -6,11 +6,15 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Generator
 
 log = logging.getLogger("citeclaw.cache")
+
+# Default freshness window for cached search results (PA-04). PA-05 will
+# reuse this when wiring search_bulk through the cache layer.
+_SEARCH_TTL_DAYS_DEFAULT = 30
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS paper_metadata (
@@ -34,6 +38,17 @@ CREATE TABLE IF NOT EXISTS paper_embeddings (
     fetched_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS author_metadata (
+    author_id  TEXT PRIMARY KEY,
+    data       TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS search_queries (
+    query_hash TEXT PRIMARY KEY,
+    query_json TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS author_papers (
     author_id  TEXT PRIMARY KEY,
     data       TEXT NOT NULL,
     fetched_at TEXT NOT NULL
@@ -165,6 +180,98 @@ class Cache:
         with self._cursor() as cur:
             cur.execute("SELECT 1 FROM author_metadata WHERE author_id = ? LIMIT 1", (author_id,))
             return cur.fetchone() is not None
+
+    # --- search query results (PA-04) — keyed by hash, TTL-aware ---
+
+    def _is_fresh(self, fetched_at_iso: str, ttl_days: int) -> bool:
+        """True iff ``fetched_at_iso`` is within ``ttl_days`` of now."""
+        try:
+            fetched = datetime.fromisoformat(fetched_at_iso)
+        except ValueError:
+            return False
+        # Be tolerant of naive timestamps in older rows.
+        if fetched.tzinfo is None:
+            fetched = fetched.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - fetched <= timedelta(days=ttl_days)
+
+    def get_search_results(
+        self, query_hash: str, ttl_days: int = _SEARCH_TTL_DAYS_DEFAULT,
+    ) -> dict[str, Any] | None:
+        """Return cached search response for ``query_hash``, or None on miss
+        / expired entry. The TTL knob exists so callers can override the
+        default freshness window when policy demands it (e.g. PA-05)."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT result_json, fetched_at FROM search_queries WHERE query_hash = ?",
+                (query_hash,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            log.debug("Cache MISS [search_queries] %s", query_hash[:12])
+            return None
+        result_json, fetched_at = row
+        if not self._is_fresh(fetched_at, ttl_days):
+            log.debug("Cache STALE [search_queries] %s (ttl=%d)", query_hash[:12], ttl_days)
+            return None
+        log.debug("Cache HIT [search_queries] %s", query_hash[:12])
+        return json.loads(result_json)
+
+    def put_search_results(
+        self, query_hash: str, query: dict[str, Any], result: dict[str, Any],
+    ) -> None:
+        """Persist a search response keyed by its query hash. ``query`` is
+        the original query dict (stored verbatim for debuggability) and
+        ``result`` is the JSON-serialisable response payload."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT OR REPLACE INTO search_queries "
+                "(query_hash, query_json, result_json, fetched_at) VALUES (?, ?, ?, ?)",
+                (query_hash, json.dumps(query), json.dumps(result), now),
+            )
+        log.debug("Cache STORE [search_queries] %s", query_hash[:12])
+
+    def has_search_results(
+        self, query_hash: str, ttl_days: int = _SEARCH_TTL_DAYS_DEFAULT,
+    ) -> bool:
+        """True iff a non-expired result exists for ``query_hash``."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT fetched_at FROM search_queries WHERE query_hash = ? LIMIT 1",
+                (query_hash,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            return False
+        return self._is_fresh(row[0], ttl_days)
+
+    # --- author papers (PA-04) — full paper list per author ---
+
+    def get_author_papers(self, author_id: str) -> list[dict[str, Any]] | None:
+        """Return cached paper list for ``author_id``, or None on miss."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT data FROM author_papers WHERE author_id = ?", (author_id,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            log.debug("Cache MISS [author_papers] %s", author_id)
+            return None
+        log.debug("Cache HIT [author_papers] %s", author_id)
+        return json.loads(row[0])
+
+    def put_author_papers(
+        self, author_id: str, data: list[dict[str, Any]],
+    ) -> None:
+        """Persist the full S2 paper list for ``author_id``."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT OR REPLACE INTO author_papers (author_id, data, fetched_at) "
+                "VALUES (?, ?, ?)",
+                (author_id, json.dumps(data), now),
+            )
+        log.debug("Cache STORE [author_papers] %s", author_id)
 
     def close(self) -> None:
         self._conn.close()
