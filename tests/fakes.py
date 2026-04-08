@@ -80,6 +80,14 @@ class FakeS2Client:
         self._papers: dict[str, dict[str, Any]] = dict(corpus or {})
         self._embeddings: dict[str, list[float] | None] = {}
         self._authors: dict[str, dict[str, Any]] = {}
+        # Phase A search surface: query-keyed canned responses, each
+        # registered explicitly via the ``register_*`` helpers below.
+        # Unregistered keys fall through to empty results so tests that
+        # don't care about a particular surface aren't forced to set it up.
+        self._search_bulk_results: dict[str, list[dict[str, Any]]] = {}
+        self._search_match_results: dict[str, dict[str, Any]] = {}
+        self._recommendation_results: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+        self._author_papers_results: dict[str, list[dict[str, Any]]] = {}
         # Bookkeeping so tests can assert call counts
         self.calls: dict[str, int] = {}
 
@@ -269,6 +277,119 @@ class FakeS2Client:
             else:
                 out[aid] = {}
         return out
+
+    # ------------------------------------------------------------------
+    # Search surface (Phase A: PA-01 / PA-02 / PA-03)
+    # ------------------------------------------------------------------
+    #
+    # The real ``SemanticScholarClient`` exposes four new search-flavored
+    # methods after PA-01..PA-05. Phase B's meta-LLM agent and Phase C's
+    # ``ExpandBy*`` step family will exercise them through this fake. To
+    # keep tests deterministic, callers register canned responses keyed
+    # by the relevant primary input (query text, anchor ids, author id);
+    # unregistered keys return empty payloads in the same shape the real
+    # client uses for empty results, so dependent code is exercised on
+    # both populated and empty paths without surprising None checks.
+
+    def register_search_bulk(
+        self, query: str, papers: list[dict[str, Any]],
+    ) -> None:
+        """Register a canned ``search_bulk`` response for ``query``."""
+        self._search_bulk_results[query] = list(papers)
+
+    def search_bulk(
+        self,
+        query: str,
+        *,
+        filters: dict[str, Any] | None = None,
+        sort: str | None = None,
+        token: str | None = None,
+        limit: int = 1000,
+    ) -> dict[str, Any]:
+        """Canned bulk search response keyed by ``query`` text.
+
+        Mirrors the real client's payload shape (``data`` / ``total`` /
+        ``token``). ``filters`` / ``sort`` / ``token`` are accepted for
+        signature compatibility but ignored — Phase A tests don't need
+        the filter dimension and we'd rather have one canned answer per
+        query than a combinatorial registration table.
+        """
+        self._record_call("search_bulk")
+        papers = self._search_bulk_results.get(query, [])
+        sliced = [copy.deepcopy(p) for p in papers[:limit]]
+        return {"data": sliced, "total": len(papers), "token": None}
+
+    def register_search_match(
+        self, title: str, paper: dict[str, Any] | None,
+    ) -> None:
+        """Register a canned ``search_match`` response for ``title``.
+
+        Pass ``paper=None`` to clear an earlier registration.
+        """
+        if paper is None:
+            self._search_match_results.pop(title, None)
+        else:
+            self._search_match_results[title] = dict(paper)
+
+    def search_match(self, title: str) -> dict[str, Any] | None:
+        """Canned best-match title lookup. Returns ``None`` when the
+        title hasn't been registered, mirroring the real client's
+        behavior on a 404 / empty data array."""
+        self._record_call("search_match")
+        hit = self._search_match_results.get(title)
+        return copy.deepcopy(hit) if hit is not None else None
+
+    def register_recommendations(
+        self, positive_ids: list[str], papers: list[dict[str, Any]],
+    ) -> None:
+        """Register canned recommendations for the given anchor set.
+
+        The key is order-independent: ``["a", "b"]`` and ``["b", "a"]``
+        share one canned entry. Pass exactly the anchor ids the test
+        will later send through ``fetch_recommendations``.
+        """
+        key = tuple(sorted(positive_ids))
+        self._recommendation_results[key] = list(papers)
+
+    def fetch_recommendations(
+        self,
+        positive_ids: list[str],
+        *,
+        negative_ids: list[str] | None = None,
+        limit: int = 100,
+        fields: str = "paperId,title",
+    ) -> list[dict[str, Any]]:
+        """Canned multi-anchor SPECTER2 kNN response. Looks up canned
+        results by the sorted tuple of ``positive_ids``; returns ``[]``
+        when no entry is registered. ``negative_ids`` / ``fields`` are
+        accepted for signature compatibility but ignored.
+        """
+        self._record_call("fetch_recommendations")
+        key = tuple(sorted(positive_ids))
+        papers = self._recommendation_results.get(key, [])
+        return [copy.deepcopy(p) for p in papers[:limit]]
+
+    def register_author_papers(
+        self, author_id: str, papers: list[dict[str, Any]],
+    ) -> None:
+        """Register a canned paper list for ``author_id``."""
+        self._author_papers_results[author_id] = list(papers)
+
+    def fetch_author_papers(
+        self,
+        author_id: str,
+        *,
+        limit: int = 100,
+        fields: str = "paperId,title,year,venue,citationCount",
+    ) -> list[dict[str, Any]]:
+        """Canned author-papers lookup. Returns the registered list
+        truncated to ``limit``, or ``[]`` when ``author_id`` has not
+        been registered. ``fields`` is accepted for signature
+        compatibility but ignored.
+        """
+        self._record_call("fetch_author_papers")
+        papers = self._author_papers_results.get(author_id, [])
+        return [copy.deepcopy(p) for p in papers[:limit]]
 
     def close(self) -> None:
         return None

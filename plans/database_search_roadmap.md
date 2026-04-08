@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 00:26 — completed PA-10 ✅ (extended FakeS2Client with search_bulk/search_match/fetch_recommendations/fetch_author_papers as canned-response surfaces + register_* helpers; recs keyed on sorted tuple; deepcopy on the way out; 25 new tests in test_search_phase_a_e2e.py; 4-file verify 126/126 green; full suite 606/6 — **Phase A DONE**)
 - 2026-04-09 00:19 — completed PA-09 ✅ (new src/citeclaw/search/ package with apply_local_query — pure AND-ed predicate filter over PaperRecord lists; strict on missing metadata except abstract_regex which is lenient; 26 new tests in test_search_query_engine.py; full suite 581 passed/6 skipped)
 - 2026-04-09 00:13 — completed PA-08 ✅ (added rejection_ledger + searched_signals + reinforcement_log fields to Context; record_rejections now also appends to ledger using same category key as rejection_counts; 5 new tests in test_filters_runner.py; full suite 555 passed/6 skipped)
 - 2026-04-09 00:08 — completed PA-07 ✅ (replaced PaperSource str enum with constants namespace class adding SEARCH/SEMANTIC/AUTHOR/REINFORCED; PaperRecord.source is now plain str; production sites already used string literals so zero call-site changes; updated 3 test sites in test_models.py; full suite 550 passed/6 skipped)
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-04-08 23:47 — completed PA-04 ✅ (added search_queries + author_papers cache tables, 5 new methods, _SEARCH_TTL_DAYS_DEFAULT=30 constant, 14 new test_cache.py tests; PA-03 skipped ⏭️ since it depends on PA-04's methods which now exist — PA-03 unblocked for next run)
 - 2026-04-08 23:39 — completed PA-02 ✅ (added fetch_recommendations + fetch_recommendations_for_paper to SemanticScholarClient; introduced S2Http.get_url helper for non-/graph/v1 URLs; 13 new tests, 27 total green)
 - 2026-04-08 23:34 — completed PA-01 ✅ (added search_bulk/search_match/search_relevance to SemanticScholarClient + 14 monkey-patched tests; tests green; had to clear stale __pycache__ from old CitNet2 path before pytest worked)
-- 2026-04-08 22:00 — bootstrap: roadmap file created by interactive Claude session; cron worker not yet active
 
 ---
 
@@ -190,10 +190,11 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Verify done.** `pytest tests/test_search_query_engine.py -x` with ~10 cases.
   - ✅ 2026-04-09 — Created the new `search/` package with `__init__.py` re-exporting `apply_local_query` (so callers can `from citeclaw.search import apply_local_query`). Pure function — no Context, no S2, no LLM dependency. Each predicate is skipped when None and AND-ed when set; missing-metadata behavior matches the spec exactly (strict everywhere except `abstract_regex`, which is lenient because S2 often returns no abstract). Regexes pre-compile once with `re.IGNORECASE` and use `re.search` semantics so callers don't need to anchor. 26 new tests in `test_search_query_engine.py` organized in 8 classes (TestNoPredicates / TestYearRange / TestMinCitations / TestVenueRegex / TestTitleRegex / TestAbstractRegex / TestFieldsOfStudyAny / TestPublicationTypesAny / TestCombinedPredicates) — well above the spec's "~10 cases". Full suite 581 passed/6 skipped. PC-01's `ExpandBySearch` will pipe its hydrated candidates through this before calling `apply_block` so callers can use both approaches together.
 
-- [ ] **PA-10. `FakeS2Client` extensions + Phase A e2e test**
+- [x] **PA-10. `FakeS2Client` extensions + Phase A e2e test**
   - **What.** Extend `tests/fakes.py::FakeS2Client` with `search_bulk`, `search_match`, `fetch_recommendations`, `fetch_author_papers` — query-keyed canned responses suitable for downstream Phase B and C tests. Then write `tests/test_search_phase_a_e2e.py` exercising each new API method against the fake.
   - **Files touched.** `tests/fakes.py`, new `tests/test_search_phase_a_e2e.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py tests/test_cache.py tests/test_search_query_engine.py tests/test_search_phase_a_e2e.py -x`. **Phase A DONE** when all green.
+  - ✅ 2026-04-09 — Added 4 canned-response surfaces to FakeS2Client (`search_bulk`/`search_match`/`fetch_recommendations`/`fetch_author_papers`) plus matching `register_*` helpers; init seeds the four backing dicts. Each surface is order-independent where it matters (`fetch_recommendations` keys on the *sorted* tuple of positive ids, mirroring the cache hash recipe), accepts ignored-but-signature-compatible kwargs (`filters`/`sort`/`token` for search_bulk; `negative_ids`/`fields` for recs; `fields` for author_papers), and deepcopies returned dicts so test mutation can't poison the canned table. New `tests/test_search_phase_a_e2e.py` has 25 tests in 5 classes (TestFakeSearchBulk/TestFakeSearchMatch/TestFakeFetchRecommendations/TestFakeFetchAuthorPapers + a TestFakeSurfaceIntegration cross-method test that proves one client can serve all four surfaces and the per-method call counters stay isolated). Verification command (4-file run) green at 126/126; full suite 606 passed/6 skipped — zero regressions. **Phase A is now DONE** — next run starts Phase B.
 
 ---
 
