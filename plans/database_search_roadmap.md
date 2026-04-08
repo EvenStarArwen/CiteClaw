@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 00:19 — completed PA-09 ✅ (new src/citeclaw/search/ package with apply_local_query — pure AND-ed predicate filter over PaperRecord lists; strict on missing metadata except abstract_regex which is lenient; 26 new tests in test_search_query_engine.py; full suite 581 passed/6 skipped)
 - 2026-04-09 00:13 — completed PA-08 ✅ (added rejection_ledger + searched_signals + reinforcement_log fields to Context; record_rejections now also appends to ledger using same category key as rejection_counts; 5 new tests in test_filters_runner.py; full suite 555 passed/6 skipped)
 - 2026-04-09 00:08 — completed PA-07 ✅ (replaced PaperSource str enum with constants namespace class adding SEARCH/SEMANTIC/AUTHOR/REINFORCED; PaperRecord.source is now plain str; production sites already used string literals so zero call-site changes; updated 3 test sites in test_models.py; full suite 550 passed/6 skipped)
 - 2026-04-09 00:03 — completed PA-06 ✅ (added fields_of_study + publication_types to PaperRecord, extended PAPER_FIELDS with fieldsOfStudy/s2FieldsOfStudy/publicationTypes, paper_to_record merges legacy + s2 lists with dedup; 9 new tests in test_models.py; full suite 550 passed/6 skipped)
@@ -169,7 +170,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Verify done.** `pytest tests/ -x`.
   - ✅ 2026-04-09 — Added all three fields with `field(default_factory=...)` defaults so existing Context constructions stay backward-compatible. `record_rejections` now appends to `rejection_ledger.setdefault(paper.paper_id, []).append(key)` using the SAME key as `rejection_counts` — this guarantees the per-paper ledger and the global counts can never disagree, which `HumanInTheLoop` will rely on for balanced sampling. 5 new tests in `TestRecordRejections`: single-rejection, multi-rejection accumulation across calls, separation by paper_id, blank-category falls through as "unknown", and a baseline assertion that the new fields start empty on a fresh Context. Full `pytest tests/ -x` green: 555 passed (5 more than last run), 6 skipped. Note for PC-01: `searched_signals` is the key the ExpandBy* family will hash into; the docstring on the field describes the expected fingerprint shape (step name + signal ids + agent config).
 
-- [ ] **PA-09. `src/citeclaw/search/query_engine.py` — pure `apply_local_query`**
+- [x] **PA-09. `src/citeclaw/search/query_engine.py` — pure `apply_local_query`**
   - **What.** New package `src/citeclaw/search/__init__.py` + `src/citeclaw/search/query_engine.py`. Exports one pure function:
     ```python
     def apply_local_query(
@@ -187,6 +188,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Why.** S2 API can't express regex, abstract text search, or arbitrary unions. Used optionally by expand steps for post-fetch trim.
   - **Files touched.** New: `src/citeclaw/search/__init__.py`, `src/citeclaw/search/query_engine.py`, `tests/test_search_query_engine.py`.
   - **Verify done.** `pytest tests/test_search_query_engine.py -x` with ~10 cases.
+  - ✅ 2026-04-09 — Created the new `search/` package with `__init__.py` re-exporting `apply_local_query` (so callers can `from citeclaw.search import apply_local_query`). Pure function — no Context, no S2, no LLM dependency. Each predicate is skipped when None and AND-ed when set; missing-metadata behavior matches the spec exactly (strict everywhere except `abstract_regex`, which is lenient because S2 often returns no abstract). Regexes pre-compile once with `re.IGNORECASE` and use `re.search` semantics so callers don't need to anchor. 26 new tests in `test_search_query_engine.py` organized in 8 classes (TestNoPredicates / TestYearRange / TestMinCitations / TestVenueRegex / TestTitleRegex / TestAbstractRegex / TestFieldsOfStudyAny / TestPublicationTypesAny / TestCombinedPredicates) — well above the spec's "~10 cases". Full suite 581 passed/6 skipped. PC-01's `ExpandBySearch` will pipe its hydrated candidates through this before calling `apply_block` so callers can use both approaches together.
 
 - [ ] **PA-10. `FakeS2Client` extensions + Phase A e2e test**
   - **What.** Extend `tests/fakes.py::FakeS2Client` with `search_bulk`, `search_match`, `fetch_recommendations`, `fetch_author_papers` — query-keyed canned responses suitable for downstream Phase B and C tests. Then write `tests/test_search_phase_a_e2e.py` exercising each new API method against the fake.

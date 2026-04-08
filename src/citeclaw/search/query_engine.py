@@ -1,0 +1,97 @@
+"""Pure local query engine — AND-ed predicate filtering over PaperRecords.
+
+The S2 ``/paper/search/bulk`` endpoint can express a useful but
+limited subset of predicates: year ranges, venue names, citation
+floors, fields-of-study tags, publication types. It cannot express:
+
+  - regex matches over venue / title / abstract,
+  - abstract text search at all (S2 only matches title-field tokens),
+  - the union of two unrelated criteria,
+  - "at least one of these tags" without sending them as the OR query.
+
+The expansion family (PA-09 onward) handles those cases by fetching a
+slightly-too-broad superset from S2 and then trimming the result with
+:func:`apply_local_query` before LLM screening. This module is pure:
+no S2, no LLM, no Context — just a function from a list to a list.
+"""
+
+from __future__ import annotations
+
+import re
+
+from citeclaw.models import PaperRecord
+
+
+def apply_local_query(
+    papers: list[PaperRecord],
+    *,
+    venue_regex: str | None = None,
+    year_min: int | None = None,
+    year_max: int | None = None,
+    min_citations: int | None = None,
+    fields_of_study_any: list[str] | None = None,
+    publication_types_any: list[str] | None = None,
+    abstract_regex: str | None = None,
+    title_regex: str | None = None,
+) -> list[PaperRecord]:
+    """Return the subset of ``papers`` matching every supplied predicate.
+
+    Predicates default to ``None`` (skip). Each non-None predicate is
+    AND-ed: a paper must match all of them to survive.
+
+    **Strictness on missing metadata.** If a predicate is set and the
+    paper's value is missing (``None`` for scalar fields, empty list
+    for list fields), the paper is REJECTED — except for
+    ``abstract_regex``, which is LENIENT (papers with ``abstract is
+    None`` always pass). The lenient carve-out exists because S2
+    frequently returns no abstract for a substantial fraction of its
+    corpus, and dropping all of those papers would be a much harsher
+    filter than the user intended.
+
+    Regexes use :func:`re.search` semantics with ``re.IGNORECASE`` so
+    callers don't need to anchor or worry about case.
+    """
+    venue_re = re.compile(venue_regex, re.IGNORECASE) if venue_regex else None
+    title_re = re.compile(title_regex, re.IGNORECASE) if title_regex else None
+    abstract_re = re.compile(abstract_regex, re.IGNORECASE) if abstract_regex else None
+
+    fos_wanted: set[str] | None = (
+        set(fields_of_study_any) if fields_of_study_any is not None else None
+    )
+    types_wanted: set[str] | None = (
+        set(publication_types_any) if publication_types_any is not None else None
+    )
+
+    out: list[PaperRecord] = []
+    for p in papers:
+        if year_min is not None:
+            if p.year is None or p.year < year_min:
+                continue
+        if year_max is not None:
+            if p.year is None or p.year > year_max:
+                continue
+        if min_citations is not None:
+            if p.citation_count is None or p.citation_count < min_citations:
+                continue
+        if venue_re is not None:
+            if not p.venue or not venue_re.search(p.venue):
+                continue
+        if title_re is not None:
+            # ``title`` is always a string (default ""), so no None
+            # branch is needed; an empty title simply won't match a
+            # non-trivial regex.
+            if not title_re.search(p.title):
+                continue
+        if abstract_re is not None:
+            # LENIENT: missing abstract → pass. Only present-but-mismatched
+            # abstracts cause a reject.
+            if p.abstract is not None and not abstract_re.search(p.abstract):
+                continue
+        if fos_wanted is not None:
+            if not (fos_wanted & set(p.fields_of_study)):
+                continue
+        if types_wanted is not None:
+            if not (types_wanted & set(p.publication_types)):
+                continue
+        out.append(p)
+    return out
