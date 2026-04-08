@@ -1,0 +1,111 @@
+# Tiny offline test config — uses stub LLM, real S2 API at <1 req/s.
+# Export S2_API_KEY in the environment; it is not read from this file.
+
+screening_model: "stub"
+data_dir: "test_data"
+
+topic_description: >
+  ML/DL/language/foundation models for biology (DNA, RNA, protein sequence/structure data).
+
+seed_papers:
+  - paper_id: "DOI:10.1126/science.ade2574"           # ESM
+  - paper_id: "DOI:10.48550/arXiv.2206.13517"         # ProGen2
+
+max_papers_total: 50
+llm_batch_size: 5
+llm_concurrency: 4
+s2_requests_per_second: 0.9
+max_llm_tokens: 5000000
+max_s2_requests: 50000
+
+graph_label_instruction: "Output the model name introduced in the paper, or empty string."
+
+# =================================================================
+# BLOCKS
+# =================================================================
+blocks:
+  year_layer:    {type: YearFilter, min: 2018, max: 2025}
+  cit_base:      {type: CitationFilter, beta: 50}
+  cit_strict:    {type: CitationFilter, beta: 60}
+
+  similarity:
+    type: SimilarityFilter
+    threshold: 0.025
+    on_no_data: pass        # default; spelled explicitly for clarity
+    measures:
+      - {type: RefSim}
+      - {type: CitSim, pass_if_cited_at_least: 200}
+      - {type: SemanticSim, embedder: s2}   # uses S2's SPECTER2 embeddings
+
+  title_llm:
+    type: LLMFilter
+    scope: title
+    prompt: "the paper is related to ML/DL for DNA/RNA/protein data"
+
+  abstract_llm:
+    type: LLMFilter
+    scope: title_abstract
+    prompt: "the paper proposes a NEW ML/DL method/benchmark"
+
+  not_pure_app:
+    type: Not
+    layer:
+      type: LLMFilter
+      scope: title_abstract
+      prompt: "the paper is purely an application of existing models"
+
+  tiered_cit:
+    type: Route
+    routes:
+      - if: {venue_in: ["arXiv", "bioRxiv", "medRxiv"]}
+        pass_to: cit_strict
+      - default: cit_base
+
+  forward_screener:
+    type: Sequential
+    layers: [year_layer, tiered_cit, similarity, title_llm, abstract_llm, not_pure_app]
+
+  backward_loose:
+    type: Sequential
+    layers: [year_layer, tiered_cit, title_llm]
+
+  rescreen_block:
+    type: Sequential
+    layers:
+      - {type: LLMFilter, scope: title_abstract, prompt: "the paper is in scope for the survey topic"}
+
+# =================================================================
+# PIPELINE
+# =================================================================
+pipeline:
+  - step: LoadSeeds
+
+  - step: ExpandForward
+    max_citations: 30
+    screener: forward_screener
+
+  - step: ReScreen
+    screener: rescreen_block
+
+  - step: ExpandBackward
+    screener: backward_loose
+
+  - step: Rerank
+    metric: citation
+    k: 20
+
+  - step: Parallel
+    branches:
+      - - step: Rerank
+          metric: pagerank
+          k: 3
+          diversity:
+            algorithm: walktrap
+            n_communities: 2
+        - step: ExpandForward
+          max_citations: 30
+          screener: forward_screener
+      - - step: ExpandBackward
+          screener: backward_loose
+
+  - step: Finalize

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "citeclaw"
+version = "0.1.0"
+description = "Snowballing-based literature acquisition system for systematic literature reviews"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27,<1",
+    "pydantic>=2.5,<3",
+    "pydantic-settings>=2.1,<3",
+    "python-igraph>=0.11,<1",
+    "tenacity>=8.2,<10",
+    "openai>=1.10,<2",
+    "google-genai>=1.0,<2",
+    "pyyaml>=6.0,<7",
+    "rich>=13.0,<15",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+]
+topic_model = [
+    "umap-learn>=0.5,<1",
+    "hdbscan>=0.8.33,<1",
+    "scikit-learn>=1.3,<2",
+    "numpy>=1.24,<3",
+]
+
+[project.scripts]
+citeclaw = "citeclaw.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/citeclaw"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120

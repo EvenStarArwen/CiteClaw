@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Env
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Claude Code — local only, never push
+CLAUDE.md
+BRAINSTORM.md
+.claude/
+
+# Data & generated artifacts
+data/
+data_bio/
+test_data/
+scratch/
+*.db
+citeclaw.log
