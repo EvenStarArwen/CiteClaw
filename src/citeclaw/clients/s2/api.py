@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from typing import Any
 
@@ -104,8 +106,20 @@ class SemanticScholarClient:
         metadata. Filters are forwarded only when present in
         :attr:`_SEARCH_BULK_FILTER_KEYS`.
 
-        Does NOT cache — that's PA-05's job.
+        Cache (PA-05): the response is keyed by a sha256 over
+        ``{q, filters, sort, token}`` (limit is intentionally excluded so
+        a wider call can serve a narrower follower from cache). Cache
+        hits bump ``BudgetTracker._s2_cache["search"]``; misses go to
+        the network and persist the response.
         """
+        cache_key_payload = {"q": query, "filters": filters, "sort": sort, "token": token}
+        query_hash = hashlib.sha256(
+            json.dumps(cache_key_payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        cached = self._cache.get_search_results(query_hash)
+        if cached is not None:
+            return cached
+
         params: dict[str, Any] = {
             "query": query,
             "fields": "paperId,title",
@@ -120,7 +134,9 @@ class SemanticScholarClient:
             params["sort"] = sort
         if token is not None:
             params["token"] = token
-        return self._http.get("/paper/search/bulk", params, req_type="search")
+        result = self._http.get("/paper/search/bulk", params, req_type="search")
+        self._cache.put_search_results(query_hash, cache_key_payload, result)
+        return result
 
     def search_match(self, title: str) -> dict[str, Any] | None:
         """Best-match paper lookup by title via ``GET /paper/search/match``.

@@ -610,3 +610,137 @@ class TestFetchAuthorPapers:
         client.fetch_author_papers("A1", limit=10)
 
         assert len(client._cache.get_author_papers("A1")) == 10
+
+
+# ---------------------------------------------------------------------------
+# PA-05: cache wiring for search_bulk + fetch_author_papers; negative
+# coverage for the deliberately-uncached paths.
+# ---------------------------------------------------------------------------
+
+
+class TestSearchBulkCacheWiring:
+    def test_second_identical_call_serves_from_cache(self, client: SemanticScholarClient):
+        """Two identical calls → one HTTP call, one cache hit."""
+        rec = _Recorder({"data": [{"paperId": "p1"}], "total": 1})
+        rec.install(client)
+
+        first = client.search_bulk("transformers", filters={"year": "2020-2025"})
+        second = client.search_bulk("transformers", filters={"year": "2020-2025"})
+
+        assert first == second
+        assert len(rec.calls) == 1
+        assert client._budget._s2_api.get("search", 0) == 0  # we monkey-patched http.get
+        assert client._budget._s2_cache.get("search", 0) == 1
+
+    def test_different_filters_miss_cache(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", filters={"year": "2020"})
+        client.search_bulk("q", filters={"year": "2021"})
+
+        assert len(rec.calls) == 2
+        assert client._budget._s2_cache.get("search", 0) == 0
+
+    def test_different_query_text_misses_cache(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("topic A")
+        client.search_bulk("topic B")
+
+        assert len(rec.calls) == 2
+
+    def test_different_sort_misses_cache(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", sort="citationCount:desc")
+        client.search_bulk("q", sort="year:desc")
+
+        assert len(rec.calls) == 2
+
+    def test_different_token_misses_cache(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", token=None)
+        client.search_bulk("q", token="page-2")
+
+        assert len(rec.calls) == 2
+
+    def test_filter_dict_key_order_does_not_affect_hash(self, client: SemanticScholarClient):
+        """sort_keys=True in the hash payload means dict ordering is irrelevant."""
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", filters={"year": "2020", "venue": "Nature"})
+        client.search_bulk("q", filters={"venue": "Nature", "year": "2020"})
+
+        assert len(rec.calls) == 1  # second is a cache hit
+
+    def test_cache_persists_full_response_payload(self, client: SemanticScholarClient):
+        """The cached value should be the EXACT response, including
+        any S2-side metadata like ``token``, ``total``, etc."""
+        rec = _Recorder({
+            "data": [{"paperId": "p1"}, {"paperId": "p2"}],
+            "total": 2,
+            "token": "next-page-cursor",
+        })
+        rec.install(client)
+
+        client.search_bulk("q")
+        # Now read the cache directly to confirm everything round-tripped
+        cached = client._cache.get_search_results(_query_hash_for("q", None, None, None))
+        assert cached == {
+            "data": [{"paperId": "p1"}, {"paperId": "p2"}],
+            "total": 2,
+            "token": "next-page-cursor",
+        }
+
+
+def _query_hash_for(
+    query: str, filters: Any, sort: Any, token: Any,
+) -> str:
+    """Mirror the hash recipe used inside ``search_bulk`` so a test can
+    verify the exact cache key without reaching into the SUT."""
+    import hashlib
+    import json as _json
+
+    payload = {"q": query, "filters": filters, "sort": sort, "token": token}
+    return hashlib.sha256(
+        _json.dumps(payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+class TestUncachedSurfaces:
+    """The spec deliberately leaves ``search_match`` and
+    ``fetch_recommendations`` uncached because freshness matters there.
+    Confirm two identical calls always reach the network."""
+
+    def test_search_match_is_not_cached(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": [{"paperId": "match-1"}]})
+        rec.install(client)
+
+        client.search_match("Some Title")
+        client.search_match("Some Title")
+
+        assert len(rec.calls) == 2
+
+    def test_fetch_recommendations_post_is_not_cached(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": [{"paperId": "rec-1"}]})
+        rec.install_post(client)
+
+        client.fetch_recommendations(["anchor"])
+        client.fetch_recommendations(["anchor"])
+
+        assert len(rec.calls) == 2
+
+    def test_fetch_recommendations_for_paper_is_not_cached(self, client: SemanticScholarClient):
+        rec = _Recorder({"recommendedPapers": [{"paperId": "fp-1"}]})
+        rec.install_get_url(client)
+
+        client.fetch_recommendations_for_paper("anchor")
+        client.fetch_recommendations_for_paper("anchor")
+
+        assert len(rec.calls) == 2

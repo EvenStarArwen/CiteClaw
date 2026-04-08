@@ -88,3 +88,15 @@ class S2CacheLayer:
         self, author_id: str, papers: list[dict[str, Any]],
     ) -> None:
         self._cache.put_author_papers(author_id, papers)
+
+    # ----- search results (PA-05) -----
+    def get_search_results(self, query_hash: str) -> dict[str, Any] | None:
+        cached = self._cache.get_search_results(query_hash)
+        if cached is not None:
+            self._budget.record_s2("search", cached=True)
+        return cached
+
+    def put_search_results(
+        self, query_hash: str, query: dict[str, Any], result: dict[str, Any],
+    ) -> None:
+        self._cache.put_search_results(query_hash, query, result)
