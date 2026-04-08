@@ -61,6 +61,14 @@ class PaperRecord(BaseModel):
     # ``MergeDuplicates`` step (e.g. the preprint ID of a peer-reviewed
     # canonical paper). An empty list is the common case.
     aliases: list[str] = Field(default_factory=list)
+    # S2 ``fieldsOfStudy`` + ``s2FieldsOfStudy.category`` merged and
+    # deduplicated. Used by the local query engine (PA-09) and by
+    # filters that want to gate on subject area without needing the LLM.
+    fields_of_study: list[str] = Field(default_factory=list)
+    # S2 ``publicationTypes`` (e.g. ``["JournalArticle", "Review"]``) — a
+    # cheap structured signal for distinguishing surveys / methods /
+    # editorials.
+    publication_types: list[str] = Field(default_factory=list)
 
     model_config = {"use_enum_values": True}
 

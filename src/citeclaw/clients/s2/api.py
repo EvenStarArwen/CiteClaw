@@ -24,6 +24,11 @@ PAPER_FIELDS = ",".join([
     "paperId", "title", "abstract", "venue", "year", "citationCount", "referenceCount",
     "influentialCitationCount", "openAccessPdf", "externalIds",
     "authors.authorId", "authors.name",
+    # PA-06: subject-area + publication-type signals for the local query
+    # engine and filters. ``fieldsOfStudy`` is the legacy flat list while
+    # ``s2FieldsOfStudy`` is S2's richer per-source list — converters.py
+    # merges both into PaperRecord.fields_of_study.
+    "fieldsOfStudy", "s2FieldsOfStudy", "publicationTypes",
 ])
 EDGE_LIGHT = ",".join(["paperId", "title", "year", "venue", "citationCount"])
 EDGE_IDS_AND_COUNTS = ",".join(["paperId", "year", "citationCount"])

@@ -32,6 +32,31 @@ def paper_to_record(data: dict[str, Any]) -> PaperRecord | None:
             if v is None:
                 continue
             external_ids[str(k)] = str(v)
+    # ``fieldsOfStudy`` (legacy flat list of strings) merged with
+    # ``s2FieldsOfStudy`` (newer list of ``{"category", "source"}`` dicts).
+    # Order is preserved (legacy first, then S2 categories) and duplicates
+    # are dropped via a seen-set.
+    fields_of_study: list[str] = []
+    seen_fos: set[str] = set()
+    fos_legacy = data.get("fieldsOfStudy") or []
+    if isinstance(fos_legacy, list):
+        for f in fos_legacy:
+            if isinstance(f, str) and f and f not in seen_fos:
+                seen_fos.add(f)
+                fields_of_study.append(f)
+    fos_s2 = data.get("s2FieldsOfStudy") or []
+    if isinstance(fos_s2, list):
+        for entry in fos_s2:
+            if isinstance(entry, dict):
+                cat = entry.get("category")
+                if isinstance(cat, str) and cat and cat not in seen_fos:
+                    seen_fos.add(cat)
+                    fields_of_study.append(cat)
+    # ``publicationTypes`` is a flat list of S2's enum strings.
+    pub_types_raw = data.get("publicationTypes") or []
+    publication_types: list[str] = []
+    if isinstance(pub_types_raw, list):
+        publication_types = [t for t in pub_types_raw if isinstance(t, str) and t]
     return PaperRecord(
         paper_id=pid,
         title=data.get("title") or "",
@@ -48,6 +73,8 @@ def paper_to_record(data: dict[str, Any]) -> PaperRecord | None:
         pdf_url=pdf_url or None,
         authors=authors,
         external_ids=external_ids,
+        fields_of_study=fields_of_study,
+        publication_types=publication_types,
     )
 
 

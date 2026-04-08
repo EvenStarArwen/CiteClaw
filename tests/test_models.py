@@ -38,6 +38,19 @@ class TestPaperRecord:
         # Dedup-related fields default to empty containers.
         assert p.external_ids == {}
         assert p.aliases == []
+        # PA-06: subject area + publication type fields
+        assert p.fields_of_study == []
+        assert p.publication_types == []
+
+    def test_fields_of_study_and_publication_types(self):
+        """Direct construction sets the new fields."""
+        p = PaperRecord(
+            paper_id="x",
+            fields_of_study=["Computer Science", "Biology"],
+            publication_types=["JournalArticle", "Review"],
+        )
+        assert p.fields_of_study == ["Computer Science", "Biology"]
+        assert p.publication_types == ["JournalArticle", "Review"]
 
     def test_external_ids_and_aliases(self):
         p = PaperRecord(
@@ -162,3 +175,107 @@ class TestExceptions:
         ):
             assert issubclass(cls, CiteClawError)
             assert issubclass(cls, Exception)
+
+
+# ---------------------------------------------------------------------------
+# PA-06: paper_to_record extracts fields_of_study + publication_types
+# from the various S2 response shapes.
+# ---------------------------------------------------------------------------
+
+
+class TestPaperToRecordSubjectFields:
+    def test_legacy_fields_of_study_string_list(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "fieldsOfStudy": ["Computer Science", "Biology"],
+        })
+        assert rec is not None
+        assert rec.fields_of_study == ["Computer Science", "Biology"]
+
+    def test_s2_fields_of_study_dict_list(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "s2FieldsOfStudy": [
+                {"category": "Medicine", "source": "external"},
+                {"category": "Genetics", "source": "s2-fos-model"},
+            ],
+        })
+        assert rec is not None
+        assert rec.fields_of_study == ["Medicine", "Genetics"]
+
+    def test_merges_legacy_and_s2_lists(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "fieldsOfStudy": ["Computer Science"],
+            "s2FieldsOfStudy": [
+                {"category": "Computer Science", "source": "s2"},  # dup
+                {"category": "Mathematics", "source": "s2"},
+            ],
+        })
+        assert rec is not None
+        # Legacy comes first, dup is dropped, s2-only categories appended.
+        assert rec.fields_of_study == ["Computer Science", "Mathematics"]
+
+    def test_publication_types_passthrough(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "publicationTypes": ["JournalArticle", "Review"],
+        })
+        assert rec is not None
+        assert rec.publication_types == ["JournalArticle", "Review"]
+
+    def test_missing_subject_fields_default_to_empty(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({"paperId": "p1"})
+        assert rec is not None
+        assert rec.fields_of_study == []
+        assert rec.publication_types == []
+
+    def test_null_fields_of_study_does_not_explode(self):
+        """S2 sometimes returns ``null`` for omitted list fields."""
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "fieldsOfStudy": None,
+            "s2FieldsOfStudy": None,
+            "publicationTypes": None,
+        })
+        assert rec is not None
+        assert rec.fields_of_study == []
+        assert rec.publication_types == []
+
+    def test_skips_malformed_s2_entries(self):
+        """An ``s2FieldsOfStudy`` entry without a string ``category`` is dropped."""
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "s2FieldsOfStudy": [
+                {"category": "Biology"},
+                {"source": "external"},  # no category — drop
+                "not-a-dict",            # bad shape — drop
+                {"category": 42},        # non-string category — drop
+            ],
+        })
+        assert rec is not None
+        assert rec.fields_of_study == ["Biology"]
+
+    def test_skips_non_string_publication_types(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "publicationTypes": ["JournalArticle", None, 42, "Review"],
+        })
+        assert rec is not None
+        assert rec.publication_types == ["JournalArticle", "Review"]
