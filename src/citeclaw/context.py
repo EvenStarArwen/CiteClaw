@@ -34,6 +34,26 @@ class Context:
 
     rejection_counts: Counter[str] = field(default_factory=Counter)
 
+    # PA-08: per-paper rejection categories. Mirrors ``rejection_counts``
+    # but keyed by paper id so ``HumanInTheLoop`` can sample papers
+    # rejected by a specific filter and surface their full screening
+    # history. Populated by ``record_rejections``; may contain duplicate
+    # category strings if a paper was rejected at multiple stages.
+    rejection_ledger: dict[str, list[str]] = field(default_factory=dict)
+
+    # PA-08: idempotency set for the ``ExpandBy*`` family. Each step
+    # adds a fingerprint over (step name, signal ids, agent config) so a
+    # second invocation with identical inputs is a no-op rather than
+    # duplicating work / spending budget.
+    searched_signals: set[str] = field(default_factory=set)
+
+    # PA-08: append-only audit log for ``ReinforceGraph`` decisions.
+    # Each entry is a dict in the shape
+    # ``{"paper_id": str, "metric": str, "score": float, "reason": str}``
+    # but the schema is intentionally loose so future versions of the
+    # step can extend it without a migration.
+    reinforcement_log: list[dict] = field(default_factory=list)
+
     # Per-edge metadata indexed by (src_paper_id, dst_paper_id) where src
     # is the cited paper and dst is the citing paper. Each value is
     # ``{contexts: list[str], intents: list[str], is_influential: bool}``.

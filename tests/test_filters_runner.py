@@ -228,3 +228,61 @@ class TestRecordRejections:
             _fctx(ctx),
         )
         assert ctx.rejection_counts["unknown"] == 1
+
+    def test_ledger_records_single_rejection(self, ctx):
+        """PA-08: ``rejection_ledger`` should pick up the same category
+        string as ``rejection_counts``, indexed by paper id."""
+        ps = _papers("p1")
+        record_rejections(
+            [(ps[0], FilterOutcome(False, "year too low", "year"))],
+            _fctx(ctx),
+        )
+        assert ctx.rejection_ledger == {"p1": ["year"]}
+
+    def test_ledger_accumulates_when_paper_rejected_multiple_times(self, ctx):
+        """A paper rejected by two consecutive screeners should have BOTH
+        category strings in its ledger entry — that's how HumanInTheLoop
+        will reconstruct full screening history."""
+        ps = _papers("p1")
+        record_rejections(
+            [(ps[0], FilterOutcome(False, "year too low", "year"))],
+            _fctx(ctx),
+        )
+        record_rejections(
+            [(ps[0], FilterOutcome(False, "abstract irrelevant", "llm_topic"))],
+            _fctx(ctx),
+        )
+        assert ctx.rejection_ledger["p1"] == ["year", "llm_topic"]
+
+    def test_ledger_separates_by_paper_id(self, ctx):
+        ps = _papers("p1", "p2", "p3")
+        record_rejections(
+            [
+                (ps[0], FilterOutcome(False, "y", "year")),
+                (ps[1], FilterOutcome(False, "c", "citation")),
+                (ps[2], FilterOutcome(False, "y", "year")),
+            ],
+            _fctx(ctx),
+        )
+        assert ctx.rejection_ledger == {
+            "p1": ["year"],
+            "p2": ["citation"],
+            "p3": ["year"],
+        }
+
+    def test_ledger_uses_unknown_for_blank_category(self, ctx):
+        ps = _papers("p1")
+        record_rejections(
+            [(ps[0], FilterOutcome(False, "no reason", ""))],
+            _fctx(ctx),
+        )
+        assert ctx.rejection_ledger["p1"] == ["unknown"]
+        # And the count and ledger agree
+        assert ctx.rejection_counts["unknown"] == 1
+
+    def test_ledger_starts_empty(self, ctx):
+        """A fresh Context should have an empty ledger and the new
+        searched_signals + reinforcement_log fields too."""
+        assert ctx.rejection_ledger == {}
+        assert ctx.searched_signals == set()
+        assert ctx.reinforcement_log == []

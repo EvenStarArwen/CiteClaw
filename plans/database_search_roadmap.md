@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 00:13 — completed PA-08 ✅ (added rejection_ledger + searched_signals + reinforcement_log fields to Context; record_rejections now also appends to ledger using same category key as rejection_counts; 5 new tests in test_filters_runner.py; full suite 555 passed/6 skipped)
 - 2026-04-09 00:08 — completed PA-07 ✅ (replaced PaperSource str enum with constants namespace class adding SEARCH/SEMANTIC/AUTHOR/REINFORCED; PaperRecord.source is now plain str; production sites already used string literals so zero call-site changes; updated 3 test sites in test_models.py; full suite 550 passed/6 skipped)
 - 2026-04-09 00:03 — completed PA-06 ✅ (added fields_of_study + publication_types to PaperRecord, extended PAPER_FIELDS with fieldsOfStudy/s2FieldsOfStudy/publicationTypes, paper_to_record merges legacy + s2 lists with dedup; 9 new tests in test_models.py; full suite 550 passed/6 skipped)
 - 2026-04-08 23:58 — completed PA-05 ✅ (wired search_bulk through S2CacheLayer with sha256(q,filters,sort,token) hash; added get/put_search_results to cache layer; 10 new tests covering hit/miss + negative coverage for uncached search_match/recommendations; 48 total green)
@@ -155,7 +156,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Verify done.** `pytest tests/ -x`.
   - ✅ 2026-04-09 — Audit found ALL production assignments (`load_seeds.py`, `expand_forward.py`, `expand_backward.py`) and comparisons (`network.py`, `checkpoint.py`, `graphml_writer.py`) already used string literals — the enum was a vestigial type annotation. Replaced `class PaperSource(str, enum.Enum)` with a plain `class PaperSource` namespace adding the four new sources, changed `source: PaperSource = PaperSource.BACKWARD` to `source: str = "backward"`, and updated 3 test sites in `test_models.py` (line 93 dropped the `.value`, lines 158-160 became direct string compares, and added asserts for the new SEARCH/SEMANTIC/AUTHOR/REINFORCED constants). Zero `src/` files outside `models.py` needed touching. Full `pytest tests/ -x` green: 550 passed, 6 skipped. PaperRecord docstring on `source` now points readers to `PaperSource` for canonical values without forcing them to use it.
 
-- [ ] **PA-08. `Context` additions: rejection ledger + idempotency sets + reinforcement log**
+- [x] **PA-08. `Context` additions: rejection ledger + idempotency sets + reinforcement log**
   - **What.** In `src/citeclaw/context.py`, add three fields:
     ```python
     rejection_ledger: dict[str, list[str]] = field(default_factory=dict)
@@ -166,6 +167,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Why.** `HumanInTheLoop` needs per-paper rejection reasons; `ExpandBy*` steps need per-signal idempotency; `ReinforceGraph` needs a place to log decisions.
   - **Files touched.** `src/citeclaw/context.py`, `src/citeclaw/filters/runner.py`. New test asserting the ledger is populated on rejection.
   - **Verify done.** `pytest tests/ -x`.
+  - ✅ 2026-04-09 — Added all three fields with `field(default_factory=...)` defaults so existing Context constructions stay backward-compatible. `record_rejections` now appends to `rejection_ledger.setdefault(paper.paper_id, []).append(key)` using the SAME key as `rejection_counts` — this guarantees the per-paper ledger and the global counts can never disagree, which `HumanInTheLoop` will rely on for balanced sampling. 5 new tests in `TestRecordRejections`: single-rejection, multi-rejection accumulation across calls, separation by paper_id, blank-category falls through as "unknown", and a baseline assertion that the new fields start empty on a fresh Context. Full `pytest tests/ -x` green: 555 passed (5 more than last run), 6 skipped. Note for PC-01: `searched_signals` is the key the ExpandBy* family will hash into; the docstring on the field describes the expected fingerprint shape (step name + signal ids + agent config).
 
 - [ ] **PA-09. `src/citeclaw/search/query_engine.py` — pure `apply_local_query`**
   - **What.** New package `src/citeclaw/search/__init__.py` + `src/citeclaw/search/query_engine.py`. Exports one pure function:
