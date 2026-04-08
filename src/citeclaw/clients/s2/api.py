@@ -543,6 +543,65 @@ class SemanticScholarClient:
                 out[aid] = data
         return out
 
+    # ------------------------------------------------------------------
+    # Author papers (PA-03: powers ExpandByAuthor)
+    # ------------------------------------------------------------------
+
+    # S2's max page size for the author/papers endpoint. Mirrors the
+    # PAGE_SIZE constant in http.py for consistency with the existing
+    # references / citations paginator.
+    _AUTHOR_PAPERS_PAGE_SIZE = 100
+
+    def fetch_author_papers(
+        self,
+        author_id: str,
+        *,
+        limit: int = 100,
+        fields: str = "paperId,title,year,venue,citationCount",
+    ) -> list[dict[str, Any]]:
+        """Fetch papers authored by ``author_id`` via
+        ``GET /author/{author_id}/papers``.
+
+        Cache-first: when a per-author entry exists in the
+        ``author_papers`` cache table (PA-04), the cached list is
+        returned (sliced to ``limit``) without any S2 traffic. Otherwise
+        the endpoint is paginated using S2's standard
+        ``offset``/``limit`` query params, capped at ``limit`` rows so
+        very prolific authors don't blow up the budget. The full
+        result-set we collected is then persisted under ``author_id``.
+
+        ``limit`` is the upper bound on the *returned* list — pagination
+        stops as soon as ``limit`` items are accumulated. ``fields``
+        defaults to a lightweight projection suitable for ranking; pass a
+        wider field list when you need abstracts.
+        """
+        cached = self._cache.get_author_papers(author_id)
+        if cached is not None:
+            return cached[:limit] if limit and limit > 0 else cached
+
+        results: list[dict[str, Any]] = []
+        offset = 0
+        page_size = self._AUTHOR_PAPERS_PAGE_SIZE
+        while True:
+            data = self._http.get(
+                f"/author/{author_id}/papers",
+                {"fields": fields, "limit": page_size, "offset": offset},
+                req_type="author_papers",
+            )
+            batch = data.get("data", []) if isinstance(data, dict) else []
+            if not batch:
+                break
+            results.extend(batch)
+            if limit and len(results) >= limit:
+                results = results[:limit]
+                break
+            if len(batch) < page_size:
+                break
+            offset += len(batch)
+
+        self._cache.put_author_papers(author_id, results)
+        return results
+
     def _batch_fetch(self, paper_ids: list[str], *, fields: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for i in range(0, len(paper_ids), _MAX_BATCH):

@@ -461,3 +461,152 @@ class TestFetchRecommendationsForPaper:
         rec.install_get_url(client)
 
         assert client.fetch_recommendations_for_paper("a") == []
+
+
+# ---------------------------------------------------------------------------
+# fetch_author_papers (PA-03)
+# ---------------------------------------------------------------------------
+
+
+def _install_paginated_get(client: SemanticScholarClient, pages: list[Any]) -> list[dict[str, Any]]:
+    """Monkey-patch ``client._http.get`` to return successive entries
+    from ``pages`` on each call. Returns a list that the test can read
+    after running to inspect captured args."""
+    iter_pages = iter(pages)
+    calls: list[dict[str, Any]] = []
+
+    def fake_get(path: str, params: dict[str, Any] | None = None, *, req_type: str = "other"):
+        calls.append({"path": path, "params": params, "req_type": req_type})
+        try:
+            return next(iter_pages)
+        except StopIteration:  # safety net for over-call
+            return {"data": []}
+
+    client._http.get = fake_get  # type: ignore[method-assign]
+    return calls
+
+
+class TestFetchAuthorPapers:
+    def test_basic_single_page(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": [{"paperId": "p1", "title": "T1"}, {"paperId": "p2"}]})
+        rec.install(client)
+
+        result = client.fetch_author_papers("A1")
+
+        assert rec.last["path"] == "/author/A1/papers"
+        assert rec.last["req_type"] == "author_papers"
+        params = rec.last["params"]
+        assert params["fields"] == "paperId,title,year,venue,citationCount"
+        assert params["limit"] == 100  # S2 page size, not the user's `limit`
+        assert params["offset"] == 0
+        assert len(result) == 2
+        assert result[0]["paperId"] == "p1"
+
+    def test_persists_to_cache_after_fetch(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": [{"paperId": "p1"}]})
+        rec.install(client)
+
+        client.fetch_author_papers("A1")
+        # Underlying Cache should now have an entry
+        assert client._cache.get_author_papers("A1") == [{"paperId": "p1"}]
+
+    def test_cache_hit_skips_http(self, client: SemanticScholarClient):
+        # Pre-populate the cache directly
+        client._cache.put_author_papers("A1", [{"paperId": "cached-1"}, {"paperId": "cached-2"}])
+        rec = _Recorder({"data": [{"paperId": "fresh-from-api"}]})
+        rec.install(client)
+
+        result = client.fetch_author_papers("A1")
+
+        assert result == [{"paperId": "cached-1"}, {"paperId": "cached-2"}]
+        assert rec.calls == []  # http.get should NOT have been invoked
+
+    def test_cache_hit_slices_to_limit(self, client: SemanticScholarClient):
+        client._cache.put_author_papers(
+            "A1", [{"paperId": f"p{i}"} for i in range(10)],
+        )
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        result = client.fetch_author_papers("A1", limit=3)
+
+        assert len(result) == 3
+        assert [p["paperId"] for p in result] == ["p0", "p1", "p2"]
+        assert rec.calls == []
+
+    def test_paginates_when_first_page_full(self, client: SemanticScholarClient):
+        full_page = [{"paperId": f"p{i}"} for i in range(100)]
+        second_page = [{"paperId": f"p{i}"} for i in range(100, 150)]
+        calls = _install_paginated_get(
+            client, [{"data": full_page}, {"data": second_page}, {"data": []}],
+        )
+
+        result = client.fetch_author_papers("A1", limit=200)
+
+        assert len(result) == 150
+        # Two HTTP calls: offset=0 then offset=100
+        assert len(calls) == 2
+        assert calls[0]["params"]["offset"] == 0
+        assert calls[1]["params"]["offset"] == 100
+
+    def test_stops_paginating_when_limit_reached(self, client: SemanticScholarClient):
+        full_page_1 = [{"paperId": f"p{i}"} for i in range(100)]
+        full_page_2 = [{"paperId": f"p{i}"} for i in range(100, 200)]
+        calls = _install_paginated_get(client, [{"data": full_page_1}, {"data": full_page_2}])
+
+        result = client.fetch_author_papers("A1", limit=150)
+
+        assert len(result) == 150
+        assert result[-1]["paperId"] == "p149"
+        # Two pages were needed; a third page would have been wasted
+        assert len(calls) == 2
+
+    def test_stops_paginating_on_short_page(self, client: SemanticScholarClient):
+        """Less than a full page implies no more results — bail out."""
+        calls = _install_paginated_get(
+            client, [{"data": [{"paperId": f"p{i}"} for i in range(40)]}],
+        )
+
+        result = client.fetch_author_papers("A1", limit=200)
+
+        assert len(result) == 40
+        assert len(calls) == 1  # only one HTTP call
+
+    def test_empty_author_returns_empty_list(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        result = client.fetch_author_papers("EmptyAuthor")
+
+        assert result == []
+        # Empty list is still cached so we don't re-fetch
+        assert client._cache.get_author_papers("EmptyAuthor") == []
+
+    def test_custom_fields_forwarded(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.fetch_author_papers("A1", fields="paperId,title,abstract")
+
+        assert rec.last["params"]["fields"] == "paperId,title,abstract"
+
+    def test_cache_hit_records_budget(self, client: SemanticScholarClient):
+        """A cache hit should bump the cached counter, not the api counter."""
+        client._cache.put_author_papers("A1", [{"paperId": "p1"}])
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.fetch_author_papers("A1")
+
+        assert client._budget._s2_cache.get("author_papers", 0) == 1
+        assert client._budget._s2_api.get("author_papers", 0) == 0
+
+    def test_caches_truncated_result_when_limit_caps(self, client: SemanticScholarClient):
+        """If pagination is capped by ``limit``, the cached list reflects
+        what we actually fetched (not the full author corpus)."""
+        full_page = [{"paperId": f"p{i}"} for i in range(100)]
+        _install_paginated_get(client, [{"data": full_page}])
+
+        client.fetch_author_papers("A1", limit=10)
+
+        assert len(client._cache.get_author_papers("A1")) == 10

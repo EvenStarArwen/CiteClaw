@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-08 23:54 — completed PA-03 ✅ (added fetch_author_papers to SemanticScholarClient with cache-first pagination capped at limit; added get/put_author_papers to S2CacheLayer; 11 new tests, 38 total green)
 - 2026-04-08 23:47 — completed PA-04 ✅ (added search_queries + author_papers cache tables, 5 new methods, _SEARCH_TTL_DAYS_DEFAULT=30 constant, 14 new test_cache.py tests; PA-03 skipped ⏭️ since it depends on PA-04's methods which now exist — PA-03 unblocked for next run)
 - 2026-04-08 23:39 — completed PA-02 ✅ (added fetch_recommendations + fetch_recommendations_for_paper to SemanticScholarClient; introduced S2Http.get_url helper for non-/graph/v1 URLs; 13 new tests, 27 total green)
 - 2026-04-08 23:34 — completed PA-01 ✅ (added search_bulk/search_match/search_relevance to SemanticScholarClient + 14 monkey-patched tests; tests green; had to clear stale __pycache__ from old CitNet2 path before pytest worked)
@@ -105,12 +106,13 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x`.
   - ✅ 2026-04-08 — Both methods unwrap S2's `recommendedPapers` envelope so callers always get a flat list. Recommendations live outside `/graph/v1`, so I added a small `S2Http.get_url(full_url, ...)` helper (mirrors `get` but skips BASE_URL prepend) — that lightweight http.py addition is the one file outside the task's listed "Files touched" but it's the cleanest way to keep retry/throttle/budget shared. New constants `RECOMMENDATIONS_BATCH_URL` / `RECOMMENDATIONS_FORPAPER_URL` in api.py. Also extended `_Recorder` in tests with `install_post` and `install_get_url` siblings — PA-03 will need install_get_url too when pagination tests are added.
 
-- [ ] **PA-03. `fetch_author_papers` on `SemanticScholarClient`**
+- [x] **PA-03. `fetch_author_papers` on `SemanticScholarClient`**
   - **What.** Add `fetch_author_papers(author_id, *, limit=100, fields="paperId,title,year,venue,citationCount") -> list[dict]` → `GET /graph/v1/author/{author_id}/papers` with pagination. `req_type="author_papers"`. Caches per-author under the new `author_papers` cache table (PA-04).
   - **Why.** Powers `ExpandByAuthor`. Today's `fetch_authors_batch` only returns author metadata, not paper lists.
   - **Files touched.** `src/citeclaw/clients/s2/api.py`, `src/citeclaw/cache.py` (depends on PA-04). Append to `tests/test_s2_search_api.py`.
   - **Verify done.** `pytest tests/test_s2_search_api.py -x`.
   - ⏭️ 2026-04-08 — Skipped this run because PA-03's caching arm depends on `Cache.get_author_papers`/`put_author_papers`, which only land in PA-04. Did PA-04 first; now unblocked. Next run should pick this up — will need to call `cache.get_author_papers(author_id)` / `cache.put_author_papers(author_id, papers)` after the paginated S2 GET, and use the new `S2Http.get_url` helper from PA-02 if pagination logic ends up there. Pagination follow-up: S2's author/papers endpoint paginates via `offset`/`next` token — model the loop on `S2Http.paginate` rather than reinventing it (consider adding an `author_papers` branch or building a small in-`api.py` paginator).
+  - ✅ 2026-04-08 — Added `fetch_author_papers` to api.py with an inline cache-first paginator (mirrors `S2Http.paginate`'s offset/limit shape but lives in api.py since the URL is `/author/{id}/papers` not `/paper/{id}/{edge}`). Module-level constant `_AUTHOR_PAPERS_PAGE_SIZE = 100`. The `limit` arg caps both pagination *and* the returned slice — so the cached entry reflects exactly what was fetched, not the author's full corpus (deliberate trade-off documented in the docstring; if a downstream user later asks for a bigger limit, they get the cached short list). Also added `get_author_papers`/`put_author_papers` to `S2CacheLayer` (wraps Cache and bumps `_s2_cache["author_papers"]` on hit) — that cache_layer.py file is outside PA-03's listed "Files touched" but it's the only way to wire the new cache table through the budget tracker. 11 new tests including a `_install_paginated_get` helper for multi-page scenarios; full file at 38 tests.
 
 - [x] **PA-04. Cache tables: `search_queries` + `author_papers`**
   - **What.** Append to `_SCHEMA` in `src/citeclaw/cache.py`:
