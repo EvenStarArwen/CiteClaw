@@ -115,6 +115,12 @@ SCALEDOWN: int = int(os.environ.get("CITECLAW_VLLM_SCALEDOWN", "300"))
 # default; the deploy script can pin model-specific knobs without us having
 # to add a typed env var for every flag vLLM ships.
 EXTRA_VLLM_ARGS: str = os.environ.get("CITECLAW_VLLM_EXTRA_ARGS", "")
+
+# Name of a Modal secret to attach to the function. Required for gated
+# models on HuggingFace (Gemma, Llama, etc.) where the secret should
+# expose ``HF_TOKEN``. Empty (the default) attaches no secret, which
+# preserves prior behavior for public models like Qwen3.5.
+HF_SECRET_NAME: str = os.environ.get("CITECLAW_VLLM_HF_SECRET", "")
 # vLLM version.
 #
 # 0.19.0 is the first stable release with Qwen3.5-122B-A10B support (added in
@@ -220,11 +226,21 @@ image = (
 
 _GPU_SPEC = f"{GPU_TYPE}:{GPU_COUNT}" if GPU_COUNT > 1 else GPU_TYPE
 
+# Optional HuggingFace secret. Modal looks the secret up at deploy time;
+# if HF_SECRET_NAME is empty we attach nothing (so the default Qwen path
+# keeps working without the user needing any secret). For gated models
+# like Gemma 4 the deploy script sets CITECLAW_VLLM_HF_SECRET=huggingface
+# and the secret must contain HF_TOKEN.
+_FUNCTION_SECRETS: list[modal.Secret] = (
+    [modal.Secret.from_name(HF_SECRET_NAME)] if HF_SECRET_NAME else []
+)
+
 
 @app.function(
     image=image,
     gpu=_GPU_SPEC,
     volumes={"/root/.cache/huggingface": hf_cache_vol},
+    secrets=_FUNCTION_SECRETS,
     # Keep the container warm briefly to absorb bursty CiteClaw batches:
     scaledown_window=SCALEDOWN,
     # vLLM can serve many requests concurrently on a single replica:
