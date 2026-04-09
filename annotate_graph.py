@@ -43,15 +43,27 @@ def _custom_reasoning_kwargs(reasoning_effort: str) -> dict[str, Any]:
     - ``"off"`` / ``"none"``: disable thinking
     - ``"low"`` / ``"medium"`` / ``"high"`` / ``"minimal"``: enable thinking +
       forward effort level to servers that honor it natively.
+
+    PH-09: also sets ``skip_special_tokens: False`` so vLLM keeps the
+    ``<|channel>...<channel|>`` thinking-block delimiters visible in the
+    response text — without this, the gemma4 reasoning parser can't find
+    the markers and the entire thinking trace leaks into
+    ``message.content`` as a ``thought\\n...`` blob. Same fix as
+    citeclaw.clients.llm.openai_client._custom_endpoint_reasoning_kwargs.
     """
     e = (reasoning_effort or "").strip().lower()
     if not e:
         return {}
+    extra_body: dict[str, Any] = {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "skip_special_tokens": False,
+    }
     if e in ("off", "none", "false", "disable", "disabled"):
-        return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+        return {"extra_body": extra_body}
+    extra_body["chat_template_kwargs"]["enable_thinking"] = True
     return {
         "reasoning_effort": e,
-        "extra_body": {"chat_template_kwargs": {"enable_thinking": True}},
+        "extra_body": extra_body,
     }
 
 
