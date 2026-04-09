@@ -32,10 +32,15 @@ topic_model = [
     "numpy>=1.24,<3",
 ]
 pdf = [
-    # Pure-Python PDF parser used by citeclaw.clients.pdf for the
-    # full_text LLMFilter scope. Lazy-imported so installs without this
-    # extra still work for every other scope. ``pypdf`` is the
-    # actively-maintained successor of PyPDF2.
+    # PyMuPDF (``import pymupdf``) is the primary parser used by
+    # ``citeclaw.clients.pdf.parse_pdf_bytes`` — dramatically better
+    # column / reading-order extraction on two-column scientific PDFs
+    # than pypdf, and several times faster. Note: AGPL licensed.
+    "pymupdf>=1.24,<2",
+    # ``pypdf`` is kept as a pure-Python fallback for environments where
+    # PyMuPDF cannot be installed (or where the AGPL is unacceptable).
+    # ``parse_pdf_bytes`` automatically falls back to pypdf if pymupdf
+    # is missing.
     "pypdf>=4.0,<6",
 ]
 
