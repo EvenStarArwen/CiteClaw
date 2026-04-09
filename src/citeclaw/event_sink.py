@@ -18,10 +18,10 @@ Event taxonomy
     every paper that's in ``ctx.collection`` after a step but wasn't
     before, one ``paper_added`` event is emitted between
     ``step_start`` and ``step_end``.
-  * ``paper_rejected(paper_id, category)`` — reserved for v2 (steps
-    that want per-paper rejection events will call into the sink
-    directly via ``ctx.event_sink``). The Protocol declares it so
-    third-party sinks can wire it up early.
+  * ``paper_rejected(paper_id, category)`` — declared on the Protocol
+    so third-party sinks can wire it up early. Not emitted by the
+    runner in v1; future step-level callers will fan out via their
+    own sink reference.
   * ``shape_table_update(rendered_shape)`` — fired once at the end of
     the run with the rendered shape table.
 

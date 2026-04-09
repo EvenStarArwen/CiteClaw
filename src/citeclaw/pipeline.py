@@ -260,9 +260,8 @@ def run_pipeline(
                 dashboard.end_step()
 
             # Synthesise per-paper paper_added events from the
-            # collection delta. Steps that want to emit paper_added in
-            # real-time can call into ctx.event_sink directly in v2;
-            # for v1 we just compare the keysets at step boundaries.
+            # collection delta — we compare the keyset before/after
+            # step.run() and emit one paper_added per newly-added id.
             after_coll_ids = set(ctx.collection.keys())
             new_ids = after_coll_ids - before_coll_ids
             for pid in sorted(new_ids):
