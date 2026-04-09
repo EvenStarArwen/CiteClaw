@@ -197,6 +197,32 @@ class PdfFetcher:
             )
             return None, "too_large"
 
+        # Detect HTML responses early. Some publishers (paywalls,
+        # captchas, redirect landing pages) serve a 200 response with
+        # an HTML body when an unauthenticated client asks for the PDF
+        # URL. Trying to feed that to pypdf produces noisy ``invalid
+        # pdf header: b'<!DOC'`` error spam in the logs without any
+        # useful output. Sniff the first 32 bytes for HTML / non-PDF
+        # markers and bail cleanly with a ``not_pdf`` error category.
+        head = body[:32].lstrip()
+        head_lower = head.lower()
+        if (
+            head_lower.startswith(b"<!doc")
+            or head_lower.startswith(b"<html")
+            or head_lower.startswith(b"<?xml")
+        ):
+            log.info(
+                "PdfFetcher: %s served HTML, not PDF (%s)",
+                paper.paper_id, url,
+            )
+            return None, "not_pdf"
+        if not head.startswith(b"%PDF"):
+            log.info(
+                "PdfFetcher: %s response is not a PDF (head=%r) (%s)",
+                paper.paper_id, head[:16], url,
+            )
+            return None, "not_pdf"
+
         text = self._parse_pdf_bytes(body)
         if text is None:
             return None, "parse_failed"

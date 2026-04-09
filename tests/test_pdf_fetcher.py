@@ -160,16 +160,74 @@ class TestPdfFetcherDownload:
         assert cached is not None
         assert cached["error"] == "too_large"
 
-    def test_parse_failed_caches_parse_failed(self, cache: Cache, monkeypatch):
-        """Bytes that aren't a valid PDF should cache a ``parse_failed``
-        marker, not raise."""
+    def test_non_pdf_body_caches_not_pdf(self, cache: Cache, monkeypatch):
+        """Bytes that don't start with the ``%PDF`` magic should cache a
+        ``not_pdf`` marker rather than try to feed pypdf a non-PDF."""
         fetcher = PdfFetcher(cache)
         monkeypatch.setattr(fetcher._http, "get", self._stub_get(b"not a pdf"))
         paper = PaperRecord(paper_id="p1", title="x", pdf_url="https://x/a.pdf")
         assert fetcher.text_for(paper) is None
         cached = cache.get_full_text("p1")
         assert cached is not None
-        assert cached["error"] == "parse_failed"
+        assert cached["error"] == "not_pdf"
+
+    def test_html_paywall_response_caches_not_pdf(
+        self, cache: Cache, monkeypatch,
+    ):
+        """PH-09: some publishers serve a 200 OK with an HTML body when
+        an unauthenticated client asks for the PDF URL (paywall, captcha,
+        redirect landing page). Detect this from the body's first bytes
+        and bail cleanly with ``not_pdf`` rather than producing
+        ``invalid pdf header`` spam from pypdf."""
+        fetcher = PdfFetcher(cache)
+        html_body = (
+            b"<!DOCTYPE html>\n<html><head><title>Login Required</title>"
+            b"</head><body>Please log in to access this article.</body></html>"
+        )
+        monkeypatch.setattr(fetcher._http, "get", self._stub_get(html_body))
+        paper = PaperRecord(paper_id="p1", title="x", pdf_url="https://paywall/a.pdf")
+        assert fetcher.text_for(paper) is None
+        cached = cache.get_full_text("p1")
+        assert cached is not None
+        assert cached["error"] == "not_pdf"
+
+    def test_lowercase_html_doctype_also_caught(
+        self, cache: Cache, monkeypatch,
+    ):
+        """HTML detection must be case-insensitive — some servers emit
+        the doctype in lowercase or with leading whitespace."""
+        fetcher = PdfFetcher(cache)
+        for body in [
+            b"<!doctype html>\n<html>...</html>",
+            b"\n  <html><body>...</body></html>",
+            b"<?xml version='1.0'?><html>...</html>",
+        ]:
+            paper_id = f"paper_{hash(body)}"
+            monkeypatch.setattr(fetcher._http, "get", self._stub_get(body))
+            paper = PaperRecord(paper_id=paper_id, title="x", pdf_url="https://x/a.pdf")
+            assert fetcher.text_for(paper) is None
+            cached = cache.get_full_text(paper_id)
+            assert cached is not None
+            assert cached["error"] == "not_pdf", f"failed for body={body!r}"
+
+    def test_real_pdf_header_still_parses(
+        self, cache: Cache, monkeypatch,
+    ):
+        """A body that starts with the genuine ``%PDF-`` magic should
+        proceed to pypdf, not be rejected by the early HTML sniffer."""
+        fetcher = PdfFetcher(cache)
+        pdf_bytes = _make_pdf_bytes()
+        # Confirm the test fixture actually starts with %PDF.
+        assert pdf_bytes.startswith(b"%PDF"), "test fixture is not a real PDF"
+        monkeypatch.setattr(fetcher._http, "get", self._stub_get(pdf_bytes))
+        paper = PaperRecord(paper_id="p1", title="x", pdf_url="https://x/a.pdf")
+        # Result depends on whether pypdf can extract text from the
+        # blank-page fixture; either parse_failed or success is fine,
+        # but it must NOT be not_pdf.
+        fetcher.text_for(paper)
+        cached = cache.get_full_text("p1")
+        assert cached is not None
+        assert cached["error"] != "not_pdf"
 
 
 # ---------------------------------------------------------------------------

@@ -424,8 +424,11 @@ def annotate(
         )
 
     # Results indexed by vertex id so we can write them back in order at
-    # the end. Pre-populate with fallback labels for nodes past the limit.
-    labels: list[str] = [(t or "?")[:40] for t, _ in nodes]
+    # the end. Pre-populate with fallback labels (truncated titles) for
+    # nodes past the limit OR nodes that fail to label. ``nodes`` items
+    # are ``(paper_id, pdf_url, title, abstract)`` 4-tuples — index 2 is
+    # the title.
+    labels: list[str] = [((node[2] or "?")[:40]) for node in nodes]
 
     # Concurrency: the Modal vLLM server is configured for up to 256
     # concurrent inputs (`@modal.concurrent(max_inputs=256)`), and measured
