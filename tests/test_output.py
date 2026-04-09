@@ -186,7 +186,15 @@ class TestExportGraphml:
 
     def test_edge_weight_and_similarities_present(self, tmp_path: Path):
         """Every edge should carry ref_similarity, cit_similarity,
-        semantic_similarity, and a combined weight attribute."""
+        semantic_similarity, and a combined weight attribute.
+
+        PH-09: ``weight`` is now derived from REF and CIT similarity
+        ONLY (semantic similarity is stored but excluded from the
+        weight). For a 2-paper collection with one edge, both raw
+        similarities are 0 (no shared refs / citers), so the edge
+        falls into the "zero" bucket and gets the floor (_MIN_SIM
+        when there are no valid edges to compute Q1 from).
+        """
         collection = {
             "A": _paper("A", references=[]),
             "B": _paper("B", references=["A"]),
@@ -199,16 +207,9 @@ class TestExportGraphml:
         assert {"ref_similarity", "cit_similarity", "semantic_similarity", "weight"}.issubset(edge_attrs)
         # With no s2 prefetch, semantic_similarity is 0.0 for all edges.
         assert g.es[0]["semantic_similarity"] == 0.0
-        # weight is the max of the three, floored at _MIN_SIM.
+        # Weight is computed without semantic similarity.
         from citeclaw.output.graphml_writer import _MIN_SIM
         assert g.es[0]["weight"] >= _MIN_SIM
-        expected = max(
-            g.es[0]["ref_similarity"],
-            g.es[0]["cit_similarity"],
-            g.es[0]["semantic_similarity"],
-            _MIN_SIM,
-        )
-        assert abs(g.es[0]["weight"] - expected) < 1e-9
 
     def test_semantic_similarity_from_s2_embeddings(self, tmp_path: Path, fake_s2):
         """When an s2 client is passed in, export_graphml should prefetch
@@ -378,6 +379,125 @@ class TestExportGraphml:
         ids = {v["paper_id"]: v["cluster_x"] for v in g.vs}
         assert ids["A"] == 0
         assert ids["B"] == -1
+
+
+# ---------------------------------------------------------------------------
+# PH-09: _compute_edge_weights helper (max of normalised ref/cit + Q1 floor)
+# ---------------------------------------------------------------------------
+
+
+class TestComputeEdgeWeights:
+    """The PH-09 weight rule: drop semantic similarity from the weight,
+    normalise ref / cit by their global maxima, take the max, and replace
+    edges with no ref/cit signal with the lower 25% quantile of valid
+    weights (instead of the previous 1e-5 floor)."""
+
+    def test_empty_input(self):
+        from citeclaw.output.graphml_writer import _compute_edge_weights
+        assert _compute_edge_weights([], []) == []
+
+    def test_normalization_makes_max_one(self):
+        """The largest ref or cit similarity should map to weight = 1.0."""
+        from citeclaw.output.graphml_writer import _compute_edge_weights
+        weights = _compute_edge_weights(
+            raw_ref=[0.5, 0.25, 0.125],  # max = 0.5
+            raw_cit=[0.0, 0.0, 0.0],
+        )
+        assert weights[0] == 1.0
+        assert weights[1] == 0.5
+        assert weights[2] == 0.25
+
+    def test_max_of_normalised_ref_and_cit(self):
+        """Each edge's weight = max of its two normalised similarities."""
+        from citeclaw.output.graphml_writer import _compute_edge_weights
+        weights = _compute_edge_weights(
+            raw_ref=[0.5, 0.0, 0.4],   # max = 0.5
+            raw_cit=[0.0, 0.4, 0.2],   # max = 0.4
+        )
+        # E1: max(0.5/0.5, 0.0/0.4) = max(1.0, 0.0) = 1.0
+        # E2: max(0.0/0.5, 0.4/0.4) = max(0.0, 1.0) = 1.0
+        # E3: max(0.4/0.5, 0.2/0.4) = max(0.8, 0.5)  = 0.8
+        assert weights[0] == 1.0
+        assert weights[1] == 1.0
+        assert abs(weights[2] - 0.8) < 1e-9
+
+    def test_zero_signal_edge_gets_q1_of_valid_weights(self):
+        """Edges where BOTH raw ref and raw cit are 0 should be replaced
+        by Q1 of the non-zero edge weights — NOT the median, NOT 1e-5."""
+        from citeclaw.output.graphml_writer import _compute_edge_weights
+        # Build a corpus where the valid weights are exactly 0.1, 0.2,
+        # 0.3, 0.4 after normalisation. Then add 2 zero-signal edges.
+        # Q1 of [0.1, 0.2, 0.3, 0.4] (inclusive method) = 0.175.
+        weights = _compute_edge_weights(
+            raw_ref=[0.1, 0.2, 0.3, 0.4, 0.0, 0.0],
+            raw_cit=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        )
+        # First 4 are valid: max_ref = 0.4 → weights = 0.25, 0.5, 0.75, 1.0
+        valid = sorted([weights[0], weights[1], weights[2], weights[3]])
+        # Use approximate equality — 0.3/0.4 produces 0.7499999999... in
+        # binary float, not the exact 0.75 we'd write by hand.
+        assert all(abs(a - b) < 1e-9 for a, b in zip(valid, [0.25, 0.5, 0.75, 1.0]))
+        # Q1 of [0.25, 0.5, 0.75, 1.0] using statistics.quantiles
+        # method='inclusive' = 0.4375.
+        import statistics
+        expected_q1 = statistics.quantiles(valid, n=4, method="inclusive")[0]
+        assert abs(weights[4] - expected_q1) < 1e-9
+        assert abs(weights[5] - expected_q1) < 1e-9
+
+    def test_q1_lower_than_median(self):
+        """Verify the floor is the LOWER quartile, not the median —
+        otherwise the implementation would silently fall back to the
+        previous (less aggressive) median behaviour."""
+        from citeclaw.output.graphml_writer import _compute_edge_weights
+        weights = _compute_edge_weights(
+            raw_ref=[0.1, 0.5, 0.9, 0.0],  # max = 0.9
+            raw_cit=[0.0, 0.0, 0.0, 0.0],
+        )
+        # Valid normalised weights: 0.111, 0.555, 1.0
+        # Median = 0.555, Q1 (inclusive) = ~0.333, so floor edge gets ~0.333
+        zero_edge_weight = weights[3]
+        median_of_valid = 0.5 / 0.9  # ~0.555
+        assert zero_edge_weight < median_of_valid
+
+    def test_all_zero_edges_falls_back_to_min_sim(self):
+        """When NO edge has any ref/cit signal at all, there's nothing to
+        compute Q1 from — fall back to _MIN_SIM for every edge so Gephi
+        still keeps them visible."""
+        from citeclaw.output.graphml_writer import _compute_edge_weights, _MIN_SIM
+        weights = _compute_edge_weights(
+            raw_ref=[0.0, 0.0, 0.0],
+            raw_cit=[0.0, 0.0, 0.0],
+        )
+        assert weights == [_MIN_SIM, _MIN_SIM, _MIN_SIM]
+
+    def test_single_valid_edge_q1_equals_that_edge(self):
+        """With only one valid weight, statistics.quantiles can't compute
+        n=4 quartiles — the helper falls back to that single value."""
+        from citeclaw.output.graphml_writer import _compute_edge_weights
+        weights = _compute_edge_weights(
+            raw_ref=[0.5, 0.0, 0.0],
+            raw_cit=[0.0, 0.0, 0.0],
+        )
+        # E1 is the only valid: weight = 0.5/0.5 = 1.0
+        # E2, E3 are floor → Q1 = 1.0 (the only valid weight)
+        assert weights[0] == 1.0
+        assert weights[1] == 1.0
+        assert weights[2] == 1.0
+
+    def test_semantic_similarity_does_not_affect_weight(self):
+        """The whole point of PH-09: semantic similarity must be
+        excluded from the weight calculation. The helper signature
+        doesn't even take it as input — this test guards the
+        contract by computing weights for an edge that would have a
+        big semantic similarity in the OLD model."""
+        from citeclaw.output.graphml_writer import _compute_edge_weights
+        # No ref/cit signal at all, but semantic_similarity would have
+        # been ~0.95 in the old code. The helper has no semantic input,
+        # so the result is purely the floor.
+        weights = _compute_edge_weights(raw_ref=[0.0], raw_cit=[0.0])
+        # Single edge with no signal: falls into the "all zero" branch
+        from citeclaw.output.graphml_writer import _MIN_SIM
+        assert weights == [_MIN_SIM]
 
 
 # ---------------------------------------------------------------------------

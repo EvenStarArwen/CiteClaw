@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,69 @@ from citeclaw.models import PaperRecord
 log = logging.getLogger("citeclaw.output.graphml")
 
 _MIN_SIM = 1e-5  # avoid exact zero (Gephi drops weight=0 edges)
+
+
+def _compute_edge_weights(
+    raw_ref: list[float],
+    raw_cit: list[float],
+) -> list[float]:
+    """Compute the per-edge ``weight`` attribute used by Gephi rendering.
+
+    PH-09: the weight is computed from REF / CIT similarity ONLY —
+    semantic similarity is intentionally excluded so the visual
+    layout reflects citation-graph structure (who cites whom, who is
+    cited by whom) rather than abstract embedding similarity. The
+    semantic_similarity attribute is still computed and stored on each
+    edge by the caller; it just no longer drives the layout.
+
+    Algorithm:
+        1. norm_ref[i] = raw_ref[i] / global_max(raw_ref)
+        2. norm_cit[i] = raw_cit[i] / global_max(raw_cit)
+        3. weight[i]   = max(norm_ref[i], norm_cit[i])
+        4. For edges where BOTH raw_ref[i] AND raw_cit[i] are zero (no
+           citation-graph signal at all), replace the weight with the
+           lower 25% quantile (Q1) of the non-zero edge weights. This
+           keeps "no signal" edges visible at a meaningful baseline
+           rather than at the previous 1e-5 floor (which Gephi
+           rendered as essentially invisible) or at the median (which
+           overstated their importance).
+
+    Edge cases:
+        - Empty input → empty output
+        - All edges zero (no real signal) → fall back to ``_MIN_SIM``
+          for every edge so Gephi still keeps them
+        - Only one valid weight → Q1 = that single value
+    """
+    if not raw_ref:
+        return []
+    n = len(raw_ref)
+    assert len(raw_cit) == n, "raw_ref and raw_cit must be the same length"
+
+    max_ref = max(raw_ref) if raw_ref else 0.0
+    max_cit = max(raw_cit) if raw_cit else 0.0
+
+    weights: list[float] = []
+    is_zero: list[bool] = []
+    for rs, cs in zip(raw_ref, raw_cit):
+        nr = (rs / max_ref) if max_ref > 0 else 0.0
+        nc = (cs / max_cit) if max_cit > 0 else 0.0
+        weights.append(max(nr, nc))
+        is_zero.append(rs <= 0 and cs <= 0)
+
+    valid_weights = [w for w, z in zip(weights, is_zero) if not z]
+    if not valid_weights:
+        # Whole graph has no ref/cit overlap — keep edges visible at floor.
+        return [_MIN_SIM] * n
+
+    # Q1 (lower quartile) of the non-zero edge weights. ``inclusive``
+    # matches numpy's default and handles small samples gracefully:
+    # for a single valid weight, Q1 == that weight.
+    if len(valid_weights) >= 2:
+        q1 = statistics.quantiles(valid_weights, n=4, method="inclusive")[0]
+    else:
+        q1 = valid_weights[0]
+
+    return [q1 if z else w for w, z in zip(weights, is_zero)]
 
 
 def _semantic_cosine(
@@ -68,9 +132,18 @@ def export_graphml(
     When ``s2`` is provided, SPECTER2 embeddings are prefetched for every
     paper in the collection (via ``s2.fetch_embeddings_batch``) and the
     resulting cosine similarity is stored as a per-edge ``semantic_similarity``
-    attribute. The edge-level ``weight`` attribute is always the max of
-    ``ref_similarity``, ``cit_similarity``, and ``semantic_similarity``
-    (floored at ``_MIN_SIM`` so Gephi keeps the edge).
+    attribute.
+
+    PH-09: the edge-level ``weight`` attribute is computed by
+    :func:`_compute_edge_weights` from REF and CIT similarity ONLY —
+    semantic similarity is excluded from the weight (but still stored
+    on the edge as ``semantic_similarity``). Each measure is normalised
+    by its global maximum so the two are on a comparable [0, 1] scale,
+    then ``weight = max(norm_ref, norm_cit)``. Edges where BOTH
+    ref_similarity and cit_similarity are zero get the lower 25% quantile
+    (Q1) of the non-zero edge weights, so "no signal" edges stay
+    visible in Gephi at a meaningful baseline rather than at the
+    previous 1e-5 floor.
 
     When ``clusters`` is provided, each entry (a
     :class:`~citeclaw.cluster.base.ClusterResult`) becomes two node attributes
@@ -154,7 +227,6 @@ def export_graphml(
     edge_ref_sim: list[float] = []
     edge_cit_sim: list[float] = []
     edge_sem_sim: list[float] = []
-    edge_weight: list[float] = []
     seen_edges: set[tuple[int, int]] = set()
 
     def _add_edge(src_pid: str, tgt_pid: str) -> None:
@@ -173,13 +245,14 @@ def export_graphml(
         ss = _semantic_cosine(src_pid, tgt_pid, embeddings)
         edge_list.append(key)
         edge_pair_keys.append((src_pid, tgt_pid))
-        edge_ref_sim.append(max(rs, _MIN_SIM))
-        edge_cit_sim.append(max(cs, _MIN_SIM))
+        # PH-09: store raw ref / cit similarity (no floor) so the
+        # attribute reflects the true Jaccard score. The weight floor
+        # is now applied AFTER all edges are built, by
+        # ``_compute_edge_weights``, which uses Q1 of non-zero weights
+        # as the floor instead of the previous 1e-5 sentinel.
+        edge_ref_sim.append(rs)
+        edge_cit_sim.append(cs)
         edge_sem_sim.append(ss)
-        # Combined weight: max of the three similarities, floored at _MIN_SIM.
-        # (Semantic can be 0 when embeddings are missing; ref/cit are already
-        # floored. Floor again here so weight=0 edges don't slip through.)
-        edge_weight.append(max(rs, cs, ss, _MIN_SIM))
 
     for p in papers:
         for ref_id in p.references:
@@ -197,7 +270,10 @@ def export_graphml(
         g.es["ref_similarity"] = edge_ref_sim
         g.es["cit_similarity"] = edge_cit_sim
         g.es["semantic_similarity"] = edge_sem_sim
-        g.es["weight"] = edge_weight
+        # PH-09: weight = max of normalised ref / cit similarity, with
+        # zero-signal edges promoted to Q1 of the non-zero edge weights.
+        # Semantic similarity is intentionally excluded from the weight.
+        g.es["weight"] = _compute_edge_weights(edge_ref_sim, edge_cit_sim)
 
         contexts_attr: list[str] = []
         intents_attr: list[str] = []
