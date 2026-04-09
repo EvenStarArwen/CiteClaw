@@ -438,3 +438,277 @@ class TestExpandFamilyEndToEnd:
             f"second run grew collection from {size_after_first} to "
             f"{size_after_second}"
         )
+
+
+# ---------------------------------------------------------------------------
+# PD-03: HITL + ReinforceGraph composed pipeline integration test
+# ---------------------------------------------------------------------------
+#
+# Drives a different chain through the same offline machinery:
+#
+#     LoadSeeds → ExpandForward → HumanInTheLoop (mocked) →
+#     ExpandBySearch → ReinforceGraph → Finalize
+#
+# The corpus is shaped so that ExpandForward rejects a structurally
+# important paper (REJ-1, year=2010 → fails the YearFilter) which has
+# its references pointing back into the collection. ReinforceGraph then
+# hydrates REJ-1, sees that it cites multiple collection papers
+# (giving it high incoming-edge PageRank in the combined graph), and
+# rescues it under a loosened rescue screener. The HITL step in the
+# middle samples accepted + rejected papers, asks a (mocked)
+# rich.prompt.Confirm.ask, and writes hitl_report.json.
+# ---------------------------------------------------------------------------
+
+
+def _build_pd03_corpus(fs: _BudgetAwareFakeS2) -> None:
+    """Populate the fake S2 client for the PD-03 composed pipeline.
+
+    Includes a deliberately rejected paper (REJ-1, year=2010) whose
+    references point into the collection — that's the load-bearing
+    structure for ReinforceGraph's PageRank-based rescue. The search
+    + recommendation surfaces are pre-canned just enough so the
+    iterative agent has something to chew on without dragging in the
+    full PC-08 corpus.
+    """
+    seed_1 = make_paper(
+        "PD03-SEED-1",
+        title="PD-03 Seed One",
+        year=2020,
+        citation_count=800,
+        venue="Nature",
+        authors=[{"authorId": "PD03-A1", "name": "Alice"}],
+    )
+    seed_2 = make_paper(
+        "PD03-SEED-2",
+        title="PD-03 Seed Two",
+        year=2021,
+        citation_count=600,
+        venue="Science",
+        authors=[{"authorId": "PD03-A2", "name": "Bob"}],
+    )
+    fs.add(seed_1)
+    fs.add(seed_2)
+
+    # CITER-1 cites SEED-1, year=2022 → passes the year filter and
+    # gets accepted by ExpandForward.
+    citer_1 = make_paper(
+        "PD03-CITER-1",
+        title="PD-03 Citer One",
+        year=2022,
+        citation_count=200,
+        venue="ICML",
+        references=["PD03-SEED-1"],
+        authors=[{"authorId": "PD03-A1", "name": "Alice"}],
+    )
+    fs.add(citer_1)
+
+    # REJ-1 cites BOTH seeds AND CITER-1, but year=2010 makes it fail
+    # the year filter → it lands in ctx.seen with an llm_*-style
+    # rejection category. Its rich reference list gives it 3 incoming
+    # edges in the combined citation graph, so its PageRank
+    # significantly exceeds the teleport baseline once ReinforceGraph
+    # hydrates it.
+    rej_1 = make_paper(
+        "PD03-REJ-1",
+        title="PD-03 Rejected (high pagerank)",
+        year=2010,
+        citation_count=150,
+        venue="JMLR",
+        references=["PD03-SEED-1", "PD03-SEED-2", "PD03-CITER-1"],
+        authors=[{"authorId": "PD03-A2", "name": "Bob"}],
+    )
+    fs.add(rej_1)
+
+    # Search-bulk canned responses so the iterative agent's two stub
+    # queries return at least one new paper.
+    search_paper = make_paper(
+        "PD03-SEARCH-1",
+        title="PD-03 Searched Result",
+        year=2023,
+        citation_count=80,
+        venue="ACL",
+        authors=[{"authorId": "PD03-A1", "name": "Alice"}],
+    )
+    fs.add(search_paper)
+    fs.register_search_bulk("test topic", [search_paper])
+    fs.register_search_bulk("test topic narrowed", [search_paper])
+
+
+def _build_pd03_pipeline_dict() -> list[dict]:
+    """The PD-03 composed chain. The rescue screener uses a year=1900
+    floor so REJ-1 (year=2010) survives the second pass."""
+    return [
+        {"step": "LoadSeeds"},
+        {
+            "step": "ExpandForward",
+            "max_citations": 10,
+            "screener": "year_strict",  # rejects REJ-1 (year=2010)
+        },
+        {
+            "step": "HumanInTheLoop",
+            "k": 4,
+            "include_accepted": True,
+            "include_rejected": True,
+            "balance_by_filter": False,
+            "seed": 0,
+        },
+        {
+            "step": "ExpandBySearch",
+            "agent": {"max_iterations": 3, "target_count": 50},
+            "screener": "year_strict",
+        },
+        {
+            "step": "ReinforceGraph",
+            "metric": "pagerank",
+            "top_n": 30,
+            "percentile_floor": 0.0,    # disable floor so REJ-1 passes
+            "screener": "year_loose",   # year=1900 floor, accepts REJ-1
+        },
+        {"step": "Finalize"},
+    ]
+
+
+@pytest.fixture
+def pd03_ctx(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Context:
+    """A Context wired for the PD-03 composed pipeline + a budget-aware
+    fake S2 client populated by ``_build_pd03_corpus``."""
+    monkeypatch.setenv("CITECLAW_NO_DASHBOARD", "1")
+    cfg = Settings(
+        screening_model="stub",
+        data_dir=tmp_path / "pd03_data",
+        topic_description="A topic for the PD-03 composed pipeline",
+        seed_papers=[
+            SeedPaper(paper_id="PD03-SEED-1"),
+            SeedPaper(paper_id="PD03-SEED-2"),
+        ],
+        max_papers_total=10_000,
+        blocks={
+            "year_strict": {
+                "type": "YearFilter",
+                "min": 2018,
+                "max": 2030,
+            },
+            "year_loose": {
+                "type": "YearFilter",
+                "min": 1900,
+                "max": 2030,
+            },
+        },
+        pipeline=_build_pd03_pipeline_dict(),
+    )
+    cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    cache = Cache(cfg.data_dir / "cache.db")
+    budget = BudgetTracker()
+    fake = _BudgetAwareFakeS2(budget)
+    _build_pd03_corpus(fake)
+    return Context(config=cfg, s2=fake, cache=cache, budget=budget)
+
+
+def _install_confirm_always_true(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Replace ``rich.prompt.Confirm.ask`` with a function that always
+    returns True and captures every prompt it sees. Returned list lets
+    the test count how many prompts the step issued."""
+    from rich.prompt import Confirm
+
+    captured: list[str] = []
+
+    def _ask(prompt: str, *args: Any, **kwargs: Any) -> bool:
+        captured.append(prompt)
+        return True
+
+    monkeypatch.setattr(Confirm, "ask", _ask)
+    return captured
+
+
+class TestHITLAndReinforceGraphIntegration:
+    """PD-03 integration: LoadSeeds → ExpandForward → HumanInTheLoop →
+    ExpandBySearch → ReinforceGraph → Finalize."""
+
+    def test_pipeline_runs_to_finalize_with_all_pd_steps(
+        self, pd03_ctx: Context, monkeypatch: pytest.MonkeyPatch,
+    ):
+        """The composed chain must run end-to-end without raising and
+        emit a shape table that lists every user-defined step (plus
+        the auto-injected MergeDuplicates before Finalize)."""
+        _install_confirm_always_true(monkeypatch)
+
+        run_pipeline(pd03_ctx)
+        shape = _read_shape_summary(pd03_ctx)
+        for name in (
+            "LoadSeeds", "ExpandForward", "HumanInTheLoop",
+            "ExpandBySearch", "ReinforceGraph",
+            "MergeDuplicates", "Finalize",
+        ):
+            assert name in shape, f"step {name!r} missing from shape table:\n{shape}"
+
+    def test_human_in_the_loop_writes_report(
+        self, pd03_ctx: Context, monkeypatch: pytest.MonkeyPatch,
+    ):
+        """HITL must write hitl_report.json under data_dir, with at
+        least one labelled candidate captured under
+        ``labels_collected``."""
+        captured_prompts = _install_confirm_always_true(monkeypatch)
+
+        run_pipeline(pd03_ctx)
+        report_path = pd03_ctx.config.data_dir / "hitl_report.json"
+        assert report_path.exists(), f"hitl_report.json missing: {report_path}"
+
+        import json
+        report = json.loads(report_path.read_text())
+        assert report["candidates"] >= 1
+        assert report["labels_collected"] >= 1
+        assert report["timeouts"] == 0
+        # The mocked Confirm.ask was called at least once for the per-paper
+        # questions; may also be called once for the continue/stop prompt.
+        assert len(captured_prompts) >= report["labels_collected"]
+
+    def test_reinforce_graph_rescues_high_pagerank_rejected_paper(
+        self, pd03_ctx: Context, monkeypatch: pytest.MonkeyPatch,
+    ):
+        """REJ-1 starts in ctx.seen but NOT ctx.collection (rejected
+        by the year filter in ExpandForward). After ReinforceGraph
+        runs, it MUST be back in ctx.collection with
+        source="reinforced" and an entry in ctx.reinforcement_log."""
+        _install_confirm_always_true(monkeypatch)
+
+        run_pipeline(pd03_ctx)
+
+        # The rejected paper from ExpandForward must be back in the
+        # collection courtesy of ReinforceGraph.
+        assert "PD03-REJ-1" in pd03_ctx.collection
+        rescued = pd03_ctx.collection["PD03-REJ-1"]
+        assert rescued.source == "reinforced"
+        assert rescued.llm_verdict == "accept"
+
+        # The reinforcement_log records the rescue with the metric
+        # name and a positive PageRank score.
+        log_entries = [
+            e for e in pd03_ctx.reinforcement_log
+            if e.get("paper_id") == "PD03-REJ-1"
+        ]
+        assert len(log_entries) == 1
+        entry = log_entries[0]
+        assert entry["metric"] == "pagerank"
+        assert entry["score"] > 0
+        assert "rescued" in entry["reason"]
+
+    def test_collection_grows_through_full_chain(
+        self, pd03_ctx: Context, monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Sanity check on the bookkeeping: LoadSeeds, ExpandForward,
+        ExpandBySearch, and ReinforceGraph each contribute non-zero
+        Δcoll. HumanInTheLoop is non-destructive (Δcoll = 0)."""
+        _install_confirm_always_true(monkeypatch)
+
+        run_pipeline(pd03_ctx)
+        shape = _read_shape_summary(pd03_ctx)
+
+        assert _delta_for_step(shape, "LoadSeeds") > 0
+        assert _delta_for_step(shape, "ExpandForward") > 0
+        assert _delta_for_step(shape, "ExpandBySearch") > 0
+        assert _delta_for_step(shape, "ReinforceGraph") > 0
+        # HITL is non-destructive — its Δcoll stays at zero.
+        assert _delta_for_step(shape, "HumanInTheLoop") == 0
