@@ -124,13 +124,24 @@ HF_SECRET_NAME: str = os.environ.get("CITECLAW_VLLM_HF_SECRET", "")
 
 # Optional pre-built Docker image reference. When set, skip the
 # ``nvidia/cuda + pip install vllm`` build path and pull this image
-# directly. Use this for models whose vLLM support requires a transformers
-# version that conflicts with the current vLLM PyPI release — e.g. Gemma 4
-# 31B needs ``transformers>=5.5.0`` but vLLM 0.19.0 pins
-# ``transformers<5``, so the only working option is the official
-# ``vllm/vllm-openai:gemma4`` image. Empty (default) preserves the
-# build-from-source path used by Qwen3.5 et al.
+# directly. Empty (default) uses the build-from-source path. Note: most
+# prebuilt vLLM images set ENTRYPOINT=["vllm"], which conflicts with
+# Modal's container entrypoint mechanism, so this option is reserved
+# for special cases that explicitly handle the entrypoint reset.
 IMAGE_REF: str = os.environ.get("CITECLAW_VLLM_IMAGE_REF", "")
+
+# Force-install a specific transformers version AFTER vllm. Used when a
+# new model architecture (e.g. Gemma 4 31B's ``model_type=gemma4``) needs
+# a transformers release more recent than the one vLLM's wheel pins.
+# Pip's --force-reinstall override is required because vLLM 0.19.0
+# pins ``transformers<5`` in its wheel metadata even though the runtime
+# is compatible with transformers 5.x. Empty (default) uses whatever
+# vLLM's wheel resolves on its own.
+#
+# Examples:
+#   "transformers==5.5.0"  — pin a specific release
+#   "git+https://github.com/huggingface/transformers.git"  — main branch
+FORCE_TRANSFORMERS: str = os.environ.get("CITECLAW_VLLM_FORCE_TRANSFORMERS", "")
 # vLLM version.
 #
 # 0.19.0 is the first stable release with Qwen3.5-122B-A10B support (added in
@@ -180,10 +191,17 @@ hf_cache_vol = modal.Volume.from_name("citeclaw-hf-cache", create_if_missing=Tru
 # 2. ``IMAGE_REF`` empty (default) → build from nvidia/cuda + pip install
 #    a pinned vLLM version. Used by Qwen3.5-122B and the legacy path.
 if IMAGE_REF:
-    # Prebuilt vllm/vllm-openai images already ship Python + vllm — do
-    # NOT add a second Python. Modal handles registry images that have
-    # python on PATH directly.
-    _base_image = modal.Image.from_registry(IMAGE_REF)
+    # Reserved for special cases — most prebuilt vllm images set
+    # ENTRYPOINT=["vllm"] which conflicts with Modal's container
+    # entrypoint mechanism. Use FORCE_TRANSFORMERS instead for the
+    # common Gemma 4 case.
+    _base_image = modal.Image.from_registry(
+        IMAGE_REF,
+        setup_dockerfile_commands=[
+            "RUN ln -sf $(command -v python3 || command -v python3.12) "
+            "/usr/local/bin/python || true",
+        ],
+    )
 else:
     _base_image = (
         # CUDA devel image gives us `nvcc` under /usr/local/cuda, which FlashInfer
@@ -206,6 +224,14 @@ else:
             "flashinfer-python",
         )
     )
+    if FORCE_TRANSFORMERS:
+        # Force-upgrade transformers AFTER vLLM. vLLM 0.19.0's wheel pins
+        # ``transformers<5`` but the runtime is compatible with 5.x; the
+        # pin only matters at install-time. Use --force-reinstall to
+        # override the metadata pin without uninstalling vLLM.
+        _base_image = _base_image.run_commands(
+            f"pip install --upgrade --force-reinstall --no-deps {FORCE_TRANSFORMERS}",
+        )
 
 image = (
     _base_image
@@ -252,6 +278,7 @@ image = (
             # ``Function has 2 dependencies but container got 3 object ids``.
             "CITECLAW_VLLM_HF_SECRET": HF_SECRET_NAME,
             "CITECLAW_VLLM_IMAGE_REF": IMAGE_REF,
+            "CITECLAW_VLLM_FORCE_TRANSFORMERS": FORCE_TRANSFORMERS,
         }
     )
 )
