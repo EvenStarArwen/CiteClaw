@@ -1,0 +1,130 @@
+# CiteClaw configuration — demonstrates the per-model endpoint registry.
+#
+# This config is identical in pipeline shape to ``config_bio.yaml`` but
+# routes specific filter blocks at a self-hosted Gemma 4 31B endpoint
+# deployed on Modal, while keeping cheaper steps on Gemini. The point is
+# to show how a single YAML can mix providers — every block's ``model:``
+# field is just an alias the factory looks up in the ``models:`` registry
+# below, so switching from "gemini-3-flash" to "gemma-4-31b" on any block
+# is a one-string change.
+#
+# Run: python -m citeclaw -c config_bio_with_gemma.yaml
+#
+# Prereq — deploy the Gemma 4 endpoint once with:
+#
+#     CITECLAW_VLLM_APP_NAME=citeclaw-vllm-gemma \
+#     CITECLAW_VLLM_MODEL=google/gemma-4-31B-it \
+#     CITECLAW_VLLM_GPU=B200 \
+#     CITECLAW_VLLM_MAX_MODEL_LEN=32768 \
+#     CITECLAW_VLLM_REASONING_PARSER=gemma4 \
+#     CITECLAW_VLLM_EXTRA_ARGS="--tool-call-parser gemma4 --gpu-memory-utilization 0.92" \
+#     CITECLAW_VLLM_HF_SECRET=huggingface \
+#     CITECLAW_VLLM_FORCE_TRANSFORMERS="git+https://github.com/huggingface/transformers.git" \
+#     modal deploy modal_vllm_server.py
+#
+# Then export the bearer token (it never goes in the YAML):
+#
+#     export CITECLAW_VLLM_API_KEY=citeclaw-gemma-key
+
+screening_model: "gemini-3.1-flash-lite-preview"  # cheap default for most blocks
+reasoning_effort: "minimal"
+
+data_dir: "data_bio_gemma"
+topic_description: >
+  Machine learning, deep learning, language models, and foundation models developed specifically for biology
+  (e.g., DNA, RNA/protein sequence/structure data, as well as genomic, transcriptomic, or single-cell omics data),
+  or benchmark/survey papers on these topics.
+
+# =================================================================
+# MODELS — per-alias endpoint registry
+# =================================================================
+#
+# Each entry maps a YAML alias (the string a block writes in ``model:``)
+# to an OpenAI-compatible endpoint. Aliases NOT in this dict fall through
+# to legacy routing (Gemini detection / OpenAI SaaS), so leaving the
+# default ``screening_model: gemini-...`` above keeps working unchanged.
+#
+# To add another self-hosted model, deploy it as a separate Modal app
+# (``CITECLAW_VLLM_APP_NAME=...``) and add a new key here.
+models:
+  gemma-4-31b:
+    base_url: "https://cola-lab--citeclaw-vllm-gemma-serve.modal.run/v1"
+    served_model_name: "google/gemma-4-31B-it"
+    api_key_env: "CITECLAW_VLLM_API_KEY"
+    reasoning_parser: "gemma4"
+
+seed_papers:
+  - paper_id: "DOI:10.48550/arXiv.2306.15794"         # HyenaDNA
+  - paper_id: "DOI:10.48550/arXiv.2206.13517"         # ProGen2
+  - paper_id: "DOI:10.1101/2023.12.07.570727"         # ProteinGym
+
+max_papers_total: 500
+llm_batch_size: 10
+llm_concurrency: 16
+
+# =================================================================
+# BLOCKS
+# =================================================================
+blocks:
+  year_layer:    {type: YearFilter, min: 2017, max: 2025}
+  cit_base:      {type: CitationFilter, beta: 30}
+
+  similarity:
+    type: SimilarityFilter
+    threshold: 0.025
+    on_no_data: pass
+    measures:
+      - {type: RefSim}
+      - {type: CitSim, pass_if_cited_at_least: 200}
+      - {type: SemanticSim, embedder: s2}
+
+  # Cheap title screen — stays on Gemini Flash Lite (the global default).
+  title_llm:
+    type: LLMFilter
+    scope: title
+    prompt: "the paper develops or evaluates an ML/DL model for biology"
+
+  # Heavyweight abstract screen — routed at the self-hosted Gemma 4 31B
+  # endpoint via the ``model:`` alias. ``reasoning_effort: off`` keeps the
+  # gemma4 thinking parser dormant for fast batch screening; flip to
+  # "high" to let it think before answering.
+  abstract_llm_gemma:
+    type: LLMFilter
+    scope: title_abstract
+    model: "gemma-4-31b"
+    reasoning_effort: "off"
+    prompt: "the paper develops a NEW ML/DL/foundation model, benchmark, or software platform for biology"
+
+  # Same model alias used as a Not-wrapped predicate. The Not block sees
+  # the same OpenAIClient instance because the registry caches per-alias.
+  not_pure_app_gemma:
+    type: Not
+    layer:
+      type: LLMFilter
+      scope: title_abstract
+      model: "gemma-4-31b"
+      reasoning_effort: "off"
+      prompt: "the paper is purely an application of existing models without any methodological contribution"
+
+  forward_screener:
+    type: Sequential
+    layers: [year_layer, cit_base, similarity, title_llm, abstract_llm_gemma, not_pure_app_gemma]
+
+# =================================================================
+# PIPELINE
+# =================================================================
+pipeline:
+  - step: LoadSeeds
+
+  - step: ExpandForward
+    max_citations: 50
+    screener: forward_screener
+
+  - step: ExpandBackward
+    screener: forward_screener
+
+  - step: Rerank
+    metric: citation
+    k: 50
+
+  - step: Finalize
