@@ -26,6 +26,70 @@ class SeedPaper(BaseModel):
     abstract: str | None = None
 
 
+class ModelEndpoint(BaseModel):
+    """One entry in the ``models:`` registry.
+
+    Maps a YAML alias (e.g. ``gemma-4-31b``) to an OpenAI-compatible
+    endpoint and the underlying model name vLLM/Ollama serves on it. This
+    is what lets a single config file mix Gemini, OpenAI SaaS, and one or
+    more self-hosted vLLM endpoints — every block can pick a model alias
+    independently and the factory routes each to its own endpoint.
+
+    Fields
+    ------
+    base_url : str
+        The OpenAI-compatible HTTP endpoint, e.g.
+        ``https://you--citeclaw-vllm-gemma-serve.modal.run/v1``. The
+        trailing ``/v1`` is required (vLLM serves the OpenAI surface
+        under that prefix).
+    served_model_name : str
+        The exact model string the endpoint expects in the chat-completions
+        ``model`` field — typically a HuggingFace ID like
+        ``google/gemma-4-31B-it``. May differ from the YAML alias.
+    api_key_env : str
+        Name of the environment variable that holds the bearer token. The
+        key itself never appears in YAML; the loader resolves the env var
+        at startup. Empty means "use ``CITECLAW_VLLM_API_KEY`` if set,
+        otherwise no auth".
+    reasoning_parser : str
+        Hint for downstream tooling that the endpoint understands a
+        specific reasoning parser (``gemma4``, ``qwen3``, ``deepseek_r1``,
+        ...). The vLLM server is started with this parser at deploy time;
+        the client uses the field as documentation only.
+    request_timeout : float | None
+        Per-endpoint override for ``llm_request_timeout``. ``None`` falls
+        back to the global setting. Useful when one endpoint (e.g. a
+        large reasoning model) needs longer timeouts than the rest.
+    """
+
+    base_url: str
+    served_model_name: str = ""
+    api_key_env: str = ""
+    reasoning_parser: str = ""
+    request_timeout: float | None = None
+
+    @property
+    def resolved_api_key(self) -> str:
+        """Look up the bearer token from the configured env var.
+
+        Returns ``""`` when neither ``api_key_env`` nor the documented
+        fallbacks (``CITECLAW_VLLM_API_KEY``, ``OPENAI_API_KEY``) are set.
+        Some self-hosted endpoints accept any non-empty string, in which
+        case ``"none"`` is fine; the OpenAI SDK rejects an empty string,
+        so the OpenAIClient will substitute ``"none"`` if this returns
+        empty.
+        """
+        if self.api_key_env:
+            v = os.environ.get(self.api_key_env, "")
+            if v:
+                return v
+        for fallback in ("CITECLAW_VLLM_API_KEY", "OPENAI_API_KEY"):
+            v = os.environ.get(fallback, "")
+            if v:
+                return v
+        return ""
+
+
 class Settings(BaseSettings):
     # API keys
     openai_api_key: str = ""
@@ -45,6 +109,18 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_request_timeout: float = 300.0
+    # Per-model endpoint registry. Each key is a YAML alias the user picks
+    # (e.g. ``gemma-4-31b``); each value is a :class:`ModelEndpoint`. When
+    # a block sets ``model: gemma-4-31b``, the factory looks up that alias
+    # here, builds an OpenAIClient pointed at the alias's ``base_url``, and
+    # tells it to send ``served_model_name`` over the wire. This is what
+    # lets a single config switch between Gemini, OpenAI SaaS, and one or
+    # more self-hosted vLLM endpoints with a single string in the YAML.
+    #
+    # Aliases that are NOT in the registry fall through to the legacy
+    # routing (Gemini detection / global ``llm_base_url`` / OpenAI SaaS),
+    # so existing configs keep working unchanged.
+    models: dict[str, ModelEndpoint] = Field(default_factory=dict)
     llm_batch_size: int = 20
     llm_concurrency: int = 4
     # Structured-output kill switch. When True (default) the screening

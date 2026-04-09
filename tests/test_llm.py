@@ -629,7 +629,7 @@ class TestStructuredOutput:
         # Avoid the real openai.OpenAI constructor.
         monkeypatch.setattr(
             "citeclaw.clients.llm.openai_client._build_openai_sdk",
-            lambda cfg: FakeSDK(),
+            lambda cfg, **_kw: FakeSDK(),
         )
 
         cfg = Settings(
@@ -676,7 +676,7 @@ class TestStructuredOutput:
 
         monkeypatch.setattr(
             "citeclaw.clients.llm.openai_client._build_openai_sdk",
-            lambda cfg: FakeSDK(),
+            lambda cfg, **_kw: FakeSDK(),
         )
         cfg = Settings(data_dir=tmp_path, screening_model="gpt-4o", openai_api_key="sk-test")
         client = OpenAIClient(cfg, BudgetTracker())
@@ -712,7 +712,7 @@ class TestStructuredOutput:
 
         monkeypatch.setattr(
             "citeclaw.clients.llm.openai_client._build_openai_sdk",
-            lambda cfg: FakeSDK(),
+            lambda cfg, **_kw: FakeSDK(),
         )
         cfg = Settings(
             data_dir=tmp_path,

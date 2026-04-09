@@ -52,7 +52,30 @@ def _custom_endpoint_reasoning_kwargs(reasoning_effort: str) -> dict[str, Any]:
     }
 
 
-def _build_openai_sdk(config: Settings) -> openai.OpenAI:
+def _build_openai_sdk(
+    config: Settings,
+    *,
+    endpoint_base_url: str | None = None,
+    endpoint_api_key: str | None = None,
+    endpoint_timeout: float | None = None,
+) -> openai.OpenAI:
+    """Construct an ``openai.OpenAI`` SDK client.
+
+    The optional ``endpoint_*`` overrides win over the global
+    ``llm_base_url`` / ``llm_api_key`` fields. They are how the
+    per-model registry (``Settings.models``) routes a single config
+    file at multiple OpenAI-compatible endpoints — one OpenAIClient
+    instance per registry alias, each with its own SDK client. The
+    legacy ``config.llm_base_url`` path is preserved unchanged when
+    no overrides are passed.
+    """
+    if endpoint_base_url:
+        api_key = endpoint_api_key or config.llm_api_key or config.openai_api_key or "none"
+        return openai.OpenAI(
+            api_key=api_key,
+            base_url=endpoint_base_url.rstrip("/"),
+            timeout=endpoint_timeout if endpoint_timeout is not None else config.llm_request_timeout,
+        )
     if config.llm_base_url:
         api_key = config.llm_api_key or config.openai_api_key or "none"
         return openai.OpenAI(
@@ -80,6 +103,18 @@ class OpenAIClient:
     instance can serve multiple models if needed. ``_is_reasoning`` is
     derived from the resolved model, not the global config, so overriding
     a base ``gpt-4o`` client to ``o3-mini`` still takes the reasoning path.
+
+    Per-instance endpoint overrides
+    -------------------------------
+    The four optional ``endpoint_*`` / ``served_model_name`` kwargs are used
+    by the registry-routing path in ``factory.build_llm_client``. When the
+    YAML alias resolves to an entry in ``Settings.models``, the factory
+    constructs one OpenAIClient per alias, each pointed at the alias's own
+    OpenAI-compatible endpoint and asked to send the alias's
+    ``served_model_name`` over the wire. The ``model`` field on this
+    instance stays as the YAML alias (used for budget bookkeeping and
+    pricing), while the SDK call uses ``served_model_name``. When the
+    overrides are absent, behaviour is identical to the legacy path.
     """
 
     def __init__(
@@ -89,18 +124,37 @@ class OpenAIClient:
         *,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        endpoint_base_url: str | None = None,
+        endpoint_api_key: str | None = None,
+        endpoint_timeout: float | None = None,
+        served_model_name: str | None = None,
     ) -> None:
         self._config = config
         self._budget = budget
         self._model = model or config.screening_model
+        # ``_served_model_name`` is what we send over the wire as the
+        # OpenAI ``model`` field; the YAML alias stays in ``self._model``
+        # so the budget tracker / pricing table see a stable name.
+        self._served_model_name = served_model_name or self._model
         self._reasoning_effort = (
             reasoning_effort if reasoning_effort is not None else config.reasoning_effort
         )
-        self._is_custom = bool(config.llm_base_url)
+        # Custom-endpoint paths (registry alias OR legacy llm_base_url) skip
+        # the OpenAI o-series reasoning detection — those endpoints host OSS
+        # models that take ``chat_template_kwargs`` instead of
+        # ``reasoning_effort=...``. The registry path is detected by the
+        # presence of ``endpoint_base_url``; the legacy path by
+        # ``config.llm_base_url``.
+        self._is_custom = bool(endpoint_base_url) or bool(config.llm_base_url)
         self._is_reasoning = (not self._is_custom) and any(
             self._model.startswith(p) for p in _OPENAI_REASONING_PREFIXES
         )
-        self._sdk = _build_openai_sdk(config)
+        self._sdk = _build_openai_sdk(
+            config,
+            endpoint_base_url=endpoint_base_url,
+            endpoint_api_key=endpoint_api_key,
+            endpoint_timeout=endpoint_timeout,
+        )
 
     @property
     def supports_logprobs(self) -> bool:
@@ -128,7 +182,7 @@ class OpenAIClient:
             raise BudgetExhaustedError(f"Budget exhausted: {self._budget.summary()}")
 
         kwargs: dict[str, Any] = dict(
-            model=self._model,
+            model=self._served_model_name,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
