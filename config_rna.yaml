@@ -27,12 +27,16 @@
 #   python -m citeclaw -c config_rna.yaml
 #   python annotate_graph.py data_rna/citation_network.graphml \
 #       -c config_rna.yaml \
-#       --use-title --use-abstract --use-full-text \
 #       -i "1-word model / benchmark name (e.g., RNA-FM, Evo2, RNAGym)"
 #
+# The annotator's field toggles + endpoint live in the graph_label_*
+# keys below, so the invocation above picks them up automatically —
+# no CLI flags required.
+#
 # Env vars (keys are NEVER read from this file):
-#   export GEMINI_API_KEY=...
-#   export S2_API_KEY=...          # or SEMANTIC_SCHOLAR_API_KEY
+#   export S2_API_KEY=...                # or SEMANTIC_SCHOLAR_API_KEY
+#   export GEMINI_API_KEY=...            # pipeline default (unused here, no LLMFilter blocks)
+#   export CITECLAW_VLLM_API_KEY=...     # bearer token for the Modal Gemma endpoint below
 
 screening_model: "gemini-3.1-flash-lite-preview"
 reasoning_effort: "minimal"
@@ -42,6 +46,34 @@ topic_description: >
   RNA foundation models — pre-trained language / deep-learning models for
   non-coding RNA, mRNA / CDS, UTR, structure-aware RNA, RNA generation,
   DNA+RNA multi-modal sequences, and related RNA benchmarks / surveys.
+
+# =================================================================
+# ANNOTATOR — Gemma 4 31B @ Modal, highest reasoning, full-text PDFs
+# =================================================================
+# The graph_label_* fields override the pipeline-wide screening_model /
+# reasoning_effort / llm_base_url for the annotate_graph.py run only.
+# That lets this file leave the pipeline on cheap Gemini (it doesn't
+# actually invoke any LLM — the pipeline is CitationFilter-only — but
+# the default stays sensible for follow-on edits) while targeting the
+# self-hosted Gemma 4 endpoint for paper labelling, where we can
+# afford heavy reasoning + full-text reading.
+#
+# Deploy Gemma once with (identical to config_bio_with_gemma.yaml):
+#   CITECLAW_VLLM_APP_NAME=citeclaw-vllm-gemma \
+#   CITECLAW_VLLM_MODEL=google/gemma-4-31B-it \
+#   CITECLAW_VLLM_GPU=B200 \
+#   CITECLAW_VLLM_MAX_MODEL_LEN=32768 \
+#   CITECLAW_VLLM_REASONING_PARSER=gemma4 \
+#   CITECLAW_VLLM_EXTRA_ARGS="--tool-call-parser gemma4 --gpu-memory-utilization 0.92" \
+#   CITECLAW_VLLM_HF_SECRET=huggingface \
+#   modal deploy modal_vllm_server.py
+graph_label_model: "google/gemma-4-31B-it"
+graph_label_base_url: "https://cola-lab--citeclaw-vllm-gemma-serve.modal.run/v1"
+graph_label_reasoning_effort: "high"
+graph_label_use_title: true
+graph_label_use_abstract: true
+graph_label_use_full_text: true
+graph_label_full_text_max_chars: 28000
 
 # Soft cap; the seeds-only screener keeps the true collection at 73.
 max_papers_total: 200
