@@ -13,6 +13,9 @@ output schema and returns matching JSON with deterministic verdicts:
   - LLM reranker   (``{"index": N, "score": <int>}``)   → score=3
   - Topic naming   (``{"topic_label": ..., "summary": ...}``)
                                                         → label="stub-topic", summary="stub summary"
+  - Iterative search agent (``{"thinking": ..., "query": ..., "agent_decision": ..., "reasoning": ...}``)
+                                                        → three-state lifecycle initial → refine → satisfied,
+    advanced by counting prior ``"query":`` JSON keys in the transcript.
   - Annotate label (free-text "Label:" prompt)          → "stub-label"
 """
 
@@ -40,6 +43,41 @@ def stub_respond(system: str, user: str) -> str:
     """Return a deterministic JSON / text response for the given prompt."""
     if '"topic_label"' in user:
         return json.dumps({"topic_label": "stub-topic", "summary": "stub summary"})
+    if '"agent_decision"' in user:
+        # Iterative search agent (citeclaw.agents.iterative_search). Each
+        # iteration's user prompt embeds the prior turns' raw JSON in the
+        # transcript section, so the count of ``"query":`` JSON keys grows
+        # by exactly 1 per completed iteration. Map that count to a
+        # deterministic three-state lifecycle:
+        #
+        #   0 prior queries → "initial"  (first turn)
+        #   1 prior query   → "refine"   (narrow after seeing first results)
+        #  ≥2 prior queries → "satisfied" (terminate the loop)
+        #
+        # Every response carries all four schema fields with ``thinking``
+        # first so PB-04's parser can lift the scratchpad straight into the
+        # AgentTurn dataclass and PB-05's tests can assert non-empty thinking.
+        n_prior_queries = user.count('"query":')
+        if n_prior_queries == 0:
+            return json.dumps({
+                "thinking": "stub: initial exploration",
+                "query": {"text": "test topic"},
+                "agent_decision": "initial",
+                "reasoning": "stub initial",
+            })
+        if n_prior_queries == 1:
+            return json.dumps({
+                "thinking": "stub: prior was too broad, narrowing",
+                "query": {"text": "test topic narrowed"},
+                "agent_decision": "refine",
+                "reasoning": "stub refine",
+            })
+        return json.dumps({
+            "thinking": "stub: results saturated",
+            "query": {"text": "test topic narrowed"},
+            "agent_decision": "satisfied",
+            "reasoning": "stub satisfied",
+        })
     if '"score"' in user:
         n = _extract_n(user)
         return json.dumps([{"index": i, "score": 3} for i in range(1, n + 1)])

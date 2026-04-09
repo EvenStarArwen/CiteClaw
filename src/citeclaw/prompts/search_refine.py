@@ -51,7 +51,7 @@ USER_TEMPLATE = (
     "whose fields appear in this exact order:\n"
     '  1. "thinking": free-text scratchpad — fill this BEFORE deciding '
     "the query, so later turns can see the chain of reasoning.\n"
-    '  2. "query": object with "text" (required), optional "filters", '
+    '  2. "query" — an object with "text" (required), optional "filters", '
     'optional "sort".\n'
     '  3. "agent_decision": one of "initial" / "refine" / "satisfied" '
     '/ "abort".\n'
