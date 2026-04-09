@@ -23,6 +23,27 @@ Quickstart
        export CITECLAW_VLLM_API_KEY="citeclaw-local-key"
        export CITECLAW_VLLM_MAX_MODEL_LEN=16384
        export CITECLAW_VLLM_SCALEDOWN=300         # idle seconds before shutdown
+       export CITECLAW_VLLM_REASONING_PARSER=""  # gemma4 / qwen3 / deepseek_r1 / ...
+       export CITECLAW_VLLM_EXTRA_ARGS=""        # extra `vllm serve` flags
+       export CITECLAW_VLLM_APP_NAME="citeclaw-vllm-test"  # Modal app name
+
+   To deploy MULTIPLE distinct vLLM endpoints (e.g. one Qwen + one Gemma),
+   set CITECLAW_VLLM_APP_NAME to a unique value per deploy. Each app gets
+   its own URL; the CiteClaw config's `models:` registry can route YAML
+   aliases to each one independently. Example::
+
+       # Qwen3.5-122B endpoint
+       CITECLAW_VLLM_APP_NAME=citeclaw-vllm-qwen \
+       CITECLAW_VLLM_MODEL=Qwen/Qwen3.5-122B-A10B-FP8 \
+       CITECLAW_VLLM_REASONING_PARSER=qwen3 \
+       modal deploy modal_vllm_server.py
+
+       # Gemma 4 31B endpoint
+       CITECLAW_VLLM_APP_NAME=citeclaw-vllm-gemma \
+       CITECLAW_VLLM_MODEL=google/gemma-4-31B-it \
+       CITECLAW_VLLM_REASONING_PARSER=gemma4 \
+       CITECLAW_VLLM_EXTRA_ARGS="--tool-call-parser gemma4 --gpu-memory-utilization 0.92" \
+       modal deploy modal_vllm_server.py
 
 3. Deploy (one-shot, long-lived):
 
@@ -88,6 +109,12 @@ GPU_COUNT: int = int(os.environ.get("CITECLAW_VLLM_GPU_COUNT", "1"))
 API_KEY: str = os.environ.get("CITECLAW_VLLM_API_KEY", "citeclaw-local-key")
 MAX_MODEL_LEN: int = int(os.environ.get("CITECLAW_VLLM_MAX_MODEL_LEN", "16384"))
 SCALEDOWN: int = int(os.environ.get("CITECLAW_VLLM_SCALEDOWN", "300"))
+# Optional extra `vllm serve` flags as a single shell-quoted string. Used for
+# things vLLM exposes per-model — e.g. `--tool-call-parser gemma4`,
+# `--kv-cache-dtype fp8`, `--gpu-memory-utilization 0.92`, etc. Empty by
+# default; the deploy script can pin model-specific knobs without us having
+# to add a typed env var for every flag vLLM ships.
+EXTRA_VLLM_ARGS: str = os.environ.get("CITECLAW_VLLM_EXTRA_ARGS", "")
 # vLLM version.
 #
 # 0.19.0 is the first stable release with Qwen3.5-122B-A10B support (added in
@@ -108,8 +135,13 @@ VLLM_VERSION: str = os.environ.get("CITECLAW_VLLM_VERSION", "0.19.0")
 # cause vLLM to error at startup. Default is empty (no parser).
 REASONING_PARSER: str = os.environ.get("CITECLAW_VLLM_REASONING_PARSER", "")
 
-# Pin a stable Modal app name so users can `modal app stop citeclaw-vllm`
-APP_NAME = "citeclaw-vllm-test"
+# Modal app name. Configurable via env var so the same file can deploy
+# multiple distinct vLLM endpoints in the same Modal account — e.g.
+# ``citeclaw-vllm-qwen`` for Qwen3.5-122B and ``citeclaw-vllm-gemma`` for
+# Gemma 4 31B — and the CiteClaw config can route different YAML aliases
+# to each. The default ``citeclaw-vllm-test`` preserves prior behavior
+# for users who only need one endpoint.
+APP_NAME: str = os.environ.get("CITECLAW_VLLM_APP_NAME", "citeclaw-vllm-test")
 PORT = 8000
 
 # ---------------------------------------------------------------------------
@@ -174,6 +206,8 @@ image = (
             "CITECLAW_VLLM_SCALEDOWN": str(SCALEDOWN),
             "CITECLAW_VLLM_VERSION": VLLM_VERSION,
             "CITECLAW_VLLM_REASONING_PARSER": REASONING_PARSER,
+            "CITECLAW_VLLM_APP_NAME": APP_NAME,
+            "CITECLAW_VLLM_EXTRA_ARGS": EXTRA_VLLM_ARGS,
         }
     )
 )
@@ -258,8 +292,14 @@ def serve() -> None:
         # The parser makes vLLM expose thinking content as a separate field
         # so CiteClaw can count reasoning tokens in its budget tracker.
         cmd += ["--reasoning-parser", REASONING_PARSER]
+    if EXTRA_VLLM_ARGS:
+        # Allow passing arbitrary `vllm serve` flags from the deploy
+        # environment without having to add a typed env var for every
+        # one. Use ``shlex.split`` so quoted multi-word values survive.
+        import shlex
+        cmd += shlex.split(EXTRA_VLLM_ARGS)
 
-    print(f"[citeclaw-vllm] Launching vLLM: model={MODEL_NAME} gpu={_GPU_SPEC} max_len={MAX_MODEL_LEN}")
+    print(f"[citeclaw-vllm] Launching vLLM: app={APP_NAME} model={MODEL_NAME} gpu={_GPU_SPEC} max_len={MAX_MODEL_LEN}")
     print(f"[citeclaw-vllm] Command: {' '.join(cmd)}")
 
     # Sanity check: can we even import vllm? (fail fast with a clear error
