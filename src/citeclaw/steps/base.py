@@ -13,6 +13,10 @@ class StepResult:
     signal: list[PaperRecord]
     in_count: int
     stats: dict[str, Any] = field(default_factory=dict)
+    # When True, the pipeline runner short-circuits to ``Finalize`` after
+    # this step. Used by ``HumanInTheLoop`` to surface a "user clicked
+    # stop" signal cleanly — every other step leaves it False.
+    stop_pipeline: bool = False
 
 
 class BaseStep(Protocol):

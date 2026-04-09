@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 
 from citeclaw.cache import Cache
 from citeclaw.clients.s2 import SemanticScholarClient
@@ -224,6 +225,11 @@ def run_pipeline(
     _warn_similarity_in_sourceless_steps(pipeline)
     sink: EventSink = event_sink if event_sink is not None else NullEventSink()
 
+    # Wallclock anchor for steps that gate on "wait N minutes since
+    # pipeline start" — currently only HumanInTheLoop. Set on the
+    # context so the step can read it without re-plumbing pipeline state.
+    ctx.pipeline_started_at = time.monotonic()
+
     dashboard = _build_dashboard(cfg, len(pipeline))
     ctx.dashboard = dashboard
     dashboard.attach(ctx)
@@ -280,6 +286,24 @@ def run_pipeline(
                 " ".join(f"{k}={v}" for k, v in result.stats.items() if k != "branches"),
             )
             signal = result.signal
+            if getattr(result, "stop_pipeline", False):
+                dashboard.warn(
+                    f"{step.name} requested pipeline stop — short-circuiting to Finalize"
+                )
+                if step.name != "Finalize":
+                    dashboard.begin_step(idx + 1, "Finalize", _describe_step(Finalize()))
+                    try:
+                        finalize_result = Finalize().run(signal, ctx)
+                    finally:
+                        dashboard.end_step()
+                    shape.record(
+                        "Finalize",
+                        finalize_result.in_count,
+                        len(finalize_result.signal),
+                        0,
+                        finalize_result.stats,
+                    )
+                break
             if ctx.budget.is_exhausted(cfg) or len(ctx.collection) >= cfg.max_papers_total:
                 dashboard.warn("Budget/cap reached — stopping early")
                 if step.name != "Finalize":

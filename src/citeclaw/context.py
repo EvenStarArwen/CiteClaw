@@ -49,6 +49,25 @@ class Context:
     # category strings if a paper was rejected at multiple stages.
     rejection_ledger: dict[str, list[str]] = field(default_factory=dict)
 
+    # Per-LLM-filter screening trace. ``papers_screened_by_filter`` lists
+    # which paper_ids each LLM filter actually saw (regardless of
+    # outcome) — needed by ``HumanInTheLoop`` so per-filter agreement
+    # is computed only over papers a given filter ran on, not papers a
+    # later filter never got to see. ``papers_accepted_by_filter`` lists
+    # the per-filter accept set, used by HITL to sample only LLM-accepted
+    # papers (rather than also pulling in hard-rule accepts from
+    # YearFilter / CitationFilter / etc.). Populated by the LLMFilter
+    # branch of ``filters.runner.apply_block``.
+    papers_screened_by_filter: dict[str, set[str]] = field(default_factory=dict)
+    papers_accepted_by_filter: dict[str, set[str]] = field(default_factory=dict)
+
+    # Wallclock anchor (``time.monotonic()``) at the moment
+    # ``run_pipeline`` started. Steps that gate on "wait N minutes since
+    # pipeline start" — currently only ``HumanInTheLoop`` — read this to
+    # decide whether they should sleep before sampling. Populated by
+    # ``run_pipeline``; ``None`` outside of an active run.
+    pipeline_started_at: float | None = None
+
     # PA-08: idempotency set for the ``ExpandBy*`` family. Each step
     # adds a fingerprint over (step name, signal ids, agent config) so a
     # second invocation with identical inputs is a no-op rather than

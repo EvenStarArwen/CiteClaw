@@ -103,10 +103,29 @@ def _build_expand_by_author(d: dict, blocks: dict) -> BaseStep:
 
 
 def _build_human_in_the_loop(d: dict, blocks: dict) -> BaseStep:
-    """Build a ``HumanInTheLoop`` step from its YAML dict."""
+    """Build a ``HumanInTheLoop`` step from its YAML dict.
+
+    The PD-02 v2 schema:
+
+      - ``enabled`` (default ``False``) — opt-in flag so unattended
+        runs never block on input.
+      - ``min_delay_sec`` (default 180s = 3 min) — minimum elapsed time
+        from pipeline start before HITL takes input. If less time has
+        passed when the step is reached, it sleeps the remainder.
+      - ``first_prompt_timeout_sec`` (default 60s = 1 min) — wallclock
+        deadline for the FIRST prompt. If no response in that window,
+        the step bails with no labels and the pipeline keeps going.
+      - ``k`` (default 10) — number of papers to label.
+      - ``include_accepted`` / ``include_rejected`` — sampling pools.
+      - ``balance_by_filter`` — round-robin from each LLM rejection
+        bucket so per-filter agreement gets a fair sample.
+      - ``seed`` — RNG seed for deterministic test fixtures.
+    """
     return HumanInTheLoop(
+        enabled=bool(d.get("enabled", False)),
+        min_delay_sec=int(d.get("min_delay_sec", 180)),
+        first_prompt_timeout_sec=int(d.get("first_prompt_timeout_sec", 60)),
         k=int(d.get("k", 10)),
-        timeout_sec=int(d.get("timeout_sec", 120)),
         include_accepted=bool(d.get("include_accepted", True)),
         include_rejected=bool(d.get("include_rejected", True)),
         balance_by_filter=bool(d.get("balance_by_filter", True)),

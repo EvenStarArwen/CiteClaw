@@ -121,6 +121,21 @@ def apply_block(
         from citeclaw.screening.llm_runner import dispatch_batch
 
         verdicts = dispatch_batch(papers, block, fctx.ctx)
+        # Track per-filter screening trace for HumanInTheLoop. ``screened``
+        # is every paper this filter actually ran on (so HITL only counts
+        # toward agreement on papers the filter saw). ``accepted`` is the
+        # per-filter accept set so HITL can sample LLM-accepted papers
+        # specifically (rather than papers that survived only on cheap
+        # rules upstream). Both are bound on the context and survive
+        # across step boundaries.
+        cat = f"llm_{block.name}"
+        ctx_obj = fctx.ctx
+        screened_set = ctx_obj.papers_screened_by_filter.setdefault(cat, set())
+        accepted_set = ctx_obj.papers_accepted_by_filter.setdefault(cat, set())
+        for p in papers:
+            screened_set.add(p.paper_id)
+            if verdicts.get(p.paper_id, False):
+                accepted_set.add(p.paper_id)
         passed = [p for p in papers if verdicts.get(p.paper_id, False)]
         rejected = [
             (p, FilterOutcome(False, f"llm:{block.name}", f"llm_{block.name}"))
