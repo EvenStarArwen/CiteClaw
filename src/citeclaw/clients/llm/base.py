@@ -8,11 +8,23 @@ from typing import Any, Protocol, runtime_checkable
 
 @dataclass
 class LLMResponse:
-    """Single LLM call result. ``logprob_tokens`` is empty for providers that
-    don't expose logprobs (Gemini, reasoning models, stub)."""
+    """Single LLM call result.
+
+    ``text`` is the clean assistant answer (the OpenAI ``message.content``
+    field for chat models). ``reasoning_content`` is the model's thinking
+    trace, when the provider exposes it as a separate field — vLLM with
+    a working reasoning parser populates ``message.reasoning``, OpenAI's
+    o-series populates ``completion_tokens_details``, and Gemini 2.5/3
+    surfaces it via ``thinking`` parts on the response. Empty string when
+    the model didn't think or the provider didn't expose it.
+
+    ``logprob_tokens`` is empty for providers that don't expose logprobs
+    (Gemini, reasoning models, stub).
+    """
 
     text: str
     logprob_tokens: list[Any] = field(default_factory=list)
+    reasoning_content: str = ""
 
 
 @runtime_checkable

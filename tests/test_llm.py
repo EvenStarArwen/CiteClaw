@@ -404,6 +404,91 @@ class TestModelEndpointRegistry:
         # No positive reasoning_effort field when disabled.
         assert "reasoning_effort" not in create_call
 
+    def test_skip_special_tokens_false_set_when_thinking_enabled(
+        self, tmp_path, monkeypatch,
+    ):
+        """PH-07: ``skip_special_tokens: false`` MUST be in extra_body
+        whenever the custom-endpoint reasoning kwargs are touched.
+
+        Without this flag, vLLM's tokenizer strips the
+        ``<|channel>...<channel|>`` thinking-block delimiters during
+        decode, which then prevents the gemma4 reasoning parser from
+        finding them — every thinking trace leaks into ``message.content``
+        as a ``thought\\n...`` blob while ``message.reasoning`` stays None.
+        Verified empirically against the live Modal Gemma 4 31B endpoint
+        (PH-07a probe).
+        """
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="high")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        assert create_call["extra_body"]["skip_special_tokens"] is False
+
+    def test_skip_special_tokens_false_set_when_thinking_disabled(
+        self, tmp_path, monkeypatch,
+    ):
+        """The flag is also set on the explicit ``reasoning_effort: off``
+        path. Some Gemma chat templates inject an empty
+        ``<|channel>thought\\n<channel|>`` placeholder when thinking is
+        disabled, and stripping it would still confuse the parser."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="off")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        assert create_call["extra_body"]["skip_special_tokens"] is False
+
+    def test_skip_special_tokens_absent_when_no_reasoning_effort(
+        self, tmp_path, monkeypatch,
+    ):
+        """When the operator never touches reasoning_effort at all (the
+        screening_model isn't a thinking model), we should NOT inject
+        the skip_special_tokens flag — it would be a noisy non-standard
+        kwarg sent to non-vLLM endpoints (the SaaS OpenAI API ignores
+        unknown fields but it pollutes the request)."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            reasoning_effort="",  # explicitly unset
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker())
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        # No extra_body at all in this case (the function returns {} early).
+        assert "extra_body" not in create_call or "skip_special_tokens" not in create_call.get("extra_body", {})
+
 
 # ---------------------------------------------------------------------------
 # llm_runner._parse and _parse_matches

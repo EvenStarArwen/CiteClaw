@@ -40,15 +40,48 @@ def _extract_reasoning_tokens(usage: Any) -> int:
 
 
 def _custom_endpoint_reasoning_kwargs(reasoning_effort: str) -> dict[str, Any]:
-    """Map ``reasoning_effort`` to OSS chat-template kwargs."""
+    """Map ``reasoning_effort`` to OSS chat-template kwargs.
+
+    Two interlocked knobs are required for Gemma 4 thinking mode to
+    actually surface clean content + separate reasoning:
+
+    1. ``chat_template_kwargs.enable_thinking=True`` tells the chat
+       template to inject the ``<|think|>`` capability marker so the
+       model is allowed to emit a thinking block.
+
+    2. ``skip_special_tokens=False`` tells vLLM's tokenizer NOT to
+       strip the ``<|channel>`` / ``<channel|>`` thinking-block
+       delimiters during decode. Without this flag, the markers vanish
+       from the response text and vLLM's ``gemma4`` reasoning parser
+       can no longer find them — every thinking trace then leaks into
+       ``message.content`` as a raw text block starting with
+       ``thought\\n`` while ``message.reasoning`` stays None.
+       Empirically verified against the live Modal Gemma 4 31B endpoint:
+       with the flag, content is the clean answer (e.g. ``"YES"``) and
+       reasoning is the full thinking trace; without it, content is the
+       polluted blob.
+
+    The flag is harmless when thinking is OFF (the model just doesn't
+    emit any special tokens to keep), so we set it whenever the
+    reasoning_effort knob is touched at all — including the explicit
+    "off" path, since some chat templates inject an empty
+    ``<|channel>thought\\n<channel|>`` placeholder there too.
+    """
     effort = (reasoning_effort or "").strip().lower()
     if not effort:
         return {}
+    extra_body = {
+        "chat_template_kwargs": {"enable_thinking": False},
+        # See docstring above — must be False to keep the channel markers
+        # visible in the response so the reasoning parser can split.
+        "skip_special_tokens": False,
+    }
     if effort in ("off", "none", "false", "disable", "disabled"):
-        return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+        return {"extra_body": extra_body}
+    extra_body["chat_template_kwargs"]["enable_thinking"] = True
     return {
         "reasoning_effort": effort,
-        "extra_body": {"chat_template_kwargs": {"enable_thinking": True}},
+        "extra_body": extra_body,
     }
 
 
@@ -224,9 +257,37 @@ class OpenAIClient:
                 reasoning_tokens=_extract_reasoning_tokens(usage),
             )
         text = resp.choices[0].message.content or ""
+        # PH-07: vLLM's reasoning parser exposes the thinking trace on
+        # the message under either ``reasoning`` (Gemma 4) or
+        # ``reasoning_content`` (Qwen3 / DeepSeek-R1) depending on the
+        # parser. Read both and surface whichever is non-empty so
+        # downstream callers can introspect the model's chain of
+        # thought without re-parsing the raw response. The presence of
+        # this field is the canonical signal that the parser worked
+        # and ``content`` is the clean answer.
+        reasoning_content = ""
+        msg = resp.choices[0].message
+        for attr in ("reasoning", "reasoning_content"):
+            val = getattr(msg, attr, None)
+            if isinstance(val, str) and val:
+                reasoning_content = val
+                break
         if self._is_custom:
+            # Defensive strip: when the parser worked, content is clean
+            # already. The strip is a no-op in that case but still
+            # protects against legacy ``<think>...</think>``-style
+            # content from older Qwen3 deploys that don't have the
+            # reasoning parser configured.
             text = _strip_think_tags(text)
         if with_logprobs and not self._is_reasoning:
             lp = resp.choices[0].logprobs
-            return LLMResponse(text=text, logprob_tokens=lp.content if lp else [])
-        return LLMResponse(text=text, logprob_tokens=[])
+            return LLMResponse(
+                text=text,
+                logprob_tokens=lp.content if lp else [],
+                reasoning_content=reasoning_content,
+            )
+        return LLMResponse(
+            text=text,
+            logprob_tokens=[],
+            reasoning_content=reasoning_content,
+        )
