@@ -122,17 +122,23 @@ rerank-then-forward while another sees the original input untouched.
 
 ### Pipeline steps
 
-| Step              | Purpose                                                                                              |
-| ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `LoadSeeds`       | Initialise `ctx.collection` from `seed_papers`. Emits the seeds as the first signal.                 |
-| `ExpandForward`   | For every paper in the signal, fetch citers, screen them, add the survivors to collection + signal.  |
-| `ExpandBackward`  | Same as ExpandForward but follows references instead of citers.                                       |
-| `Rerank`          | Score-based top-K (with optional cluster-aware diversity). Non-destructive — only filters the signal. |
-| `ReScreen`        | Apply a screener block to the entire `ctx.collection` (minus seeds), removing rejected papers.        |
-| `Cluster`         | Run a clusterer over the signal once, store the `ClusterResult` in `ctx.clusters[<store_as>]`.        |
-| `MergeDuplicates` | Detect and merge preprint↔published duplicates via DOI/ArXiv ID + title sim + SPECTER2 cosine.        |
-| `Parallel`        | Broadcast the signal to N branches, run each independently, union outputs by `paper_id`.             |
-| `Finalize`        | Write `literature_collection.json` / `.bib`, `citation_network.graphml`, `run_state.json`.            |
+| Step                | Purpose                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `LoadSeeds`         | Initialise `ctx.collection` from `seed_papers`. Emits the seeds as the first signal.                 |
+| `ResolveSeeds`      | Convert mixed `{title: ...}` / `{paper_id: ...}` seed entries to canonical S2 IDs via `search_match`; optionally pull preprint↔published siblings via `external_ids`. |
+| `ExpandForward`     | For every paper in the signal, fetch citers, screen them, add the survivors to collection + signal.  |
+| `ExpandBackward`    | Same as ExpandForward but follows references instead of citers.                                       |
+| `ExpandBySearch`    | **Expansion family**: iterative meta-LLM search agent designs targeted database queries from a topic + anchor papers, refines per turn, and screens the hits. |
+| `ExpandBySemantics` | **Expansion family**: anchor on the input signal, fetch SPECTER2 nearest neighbours via S2 Recommendations API, and screen the hits. |
+| `ExpandByAuthor`    | **Expansion family**: rank authors in the input signal by h-index / citation count / collab-graph degree, pull each top-K author's papers, and screen them. |
+| `Rerank`            | Score-based top-K (with optional cluster-aware diversity). Non-destructive — only filters the signal. |
+| `ReScreen`          | Apply a screener block to the entire `ctx.collection` (minus seeds), removing rejected papers.        |
+| `Cluster`           | Run a clusterer over the signal once, store the `ClusterResult` in `ctx.clusters[<store_as>]`.        |
+| `MergeDuplicates`   | Detect and merge preprint↔published duplicates via DOI/ArXiv ID + title sim + SPECTER2 cosine.        |
+| `Parallel`          | Broadcast the signal to N branches, run each independently, union outputs by `paper_id`.             |
+| `Finalize`          | Write `literature_collection.json` / `.bib`, `citation_network.graphml`, `run_state.json`.            |
+
+**Expansion family.** `ExpandBySearch`, `ExpandBySemantics`, and `ExpandByAuthor` compose at the same level as `ExpandForward` / `ExpandBackward` — users mix all five freely in YAML pipelines. Each ExpandBy* step is anchored on its input *signal* (not an upstream citation edge), so the source-less `FilterContext` they pass to the screener carries `source=None`. All built-in atoms and measures tolerate this case; insert a `Rerank` (with diversity) before any ExpandBy* step to control which papers the agent uses as anchors. See `config_bio_with_expansion.yaml` for a full demo that wires all five expand modes against the same screener blocks.
 
 ### Filter blocks
 
@@ -246,12 +252,15 @@ src/citeclaw/
   filters/             Filter Protocol, builder, runner, blocks, atoms, measures
   screening/           BooleanFormula DSL + batched concurrent LLM dispatch
   cluster/             walktrap / louvain / topic_model + representation
-  steps/               LoadSeeds, ExpandForward/Backward, Rerank, ReScreen,
-                       Cluster, MergeDuplicates, Parallel, Finalize, ...
+  search/              apply_local_query — pure regex + range predicate filter
+  agents/              iterative_search — meta-LLM agent for ExpandBySearch
+  steps/               LoadSeeds, ResolveSeeds, ExpandForward/Backward,
+                       ExpandBySearch/Semantics/Author, Rerank, ReScreen,
+                       Cluster, MergeDuplicates, Parallel, Finalize
   rerank/              metrics + cluster_diverse_top_k
   clients/             s2, llm (OpenAI / Gemini / Stub), embeddings
   output/              json / bibtex / graphml writers
-  prompts/             screening, annotation, topic_naming
+  prompts/             screening, annotation, topic_naming, search_refine
 ```
 
 ---
