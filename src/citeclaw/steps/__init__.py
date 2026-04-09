@@ -8,6 +8,7 @@ from citeclaw.steps.base import BaseStep, StepResult  # noqa: F401
 from citeclaw.steps.cluster import Cluster
 from citeclaw.steps.expand_backward import ExpandBackward
 from citeclaw.steps.expand_by_search import ExpandBySearch
+from citeclaw.steps.expand_by_semantics import ExpandBySemantics
 from citeclaw.steps.expand_forward import ExpandForward
 from citeclaw.steps.finalize import Finalize
 from citeclaw.steps.load_seeds import LoadSeeds
@@ -72,6 +73,16 @@ def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
     )
 
 
+def _build_expand_by_semantics(d: dict, blocks: dict) -> BaseStep:
+    """Build an ``ExpandBySemantics`` step from its YAML dict."""
+    return ExpandBySemantics(
+        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        max_anchor_papers=int(d.get("max_anchor_papers", 10)),
+        limit=int(d.get("limit", 100)),
+        use_rejected_as_negatives=bool(d.get("use_rejected_as_negatives", False)),
+    )
+
+
 def _build_rerank(d: dict, blocks: dict) -> BaseStep:
     return Rerank(
         metric=d.get("metric", "citation"),
@@ -115,16 +126,17 @@ def _build_cluster(d: dict, blocks: dict) -> BaseStep:
 
 
 STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
-    "LoadSeeds":       _build_load_seeds,
-    "ExpandForward":   _build_expand_forward,
-    "ExpandBackward":  _build_expand_backward,
-    "ExpandBySearch":  _build_expand_by_search,
-    "Rerank":          _build_rerank,
-    "ReScreen":        _build_rescreen,
-    "Finalize":        _build_finalize,
-    "Parallel":        _build_parallel,
-    "MergeDuplicates": _build_merge_duplicates,
-    "Cluster":         _build_cluster,
+    "LoadSeeds":        _build_load_seeds,
+    "ExpandForward":    _build_expand_forward,
+    "ExpandBackward":   _build_expand_backward,
+    "ExpandBySearch":   _build_expand_by_search,
+    "ExpandBySemantics": _build_expand_by_semantics,
+    "Rerank":           _build_rerank,
+    "ReScreen":         _build_rescreen,
+    "Finalize":         _build_finalize,
+    "Parallel":         _build_parallel,
+    "MergeDuplicates":  _build_merge_duplicates,
+    "Cluster":          _build_cluster,
 }
 
 
