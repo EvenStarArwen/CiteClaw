@@ -78,12 +78,20 @@ class AgentTurn:
     PB-04's transcript renderer can show the agent's later self what
     each prior query actually returned (year range, unique venues,
     sample titles) without re-quoting the full hit list.
+
+    PH-02: ``n_novel`` is the count of results from THIS turn that were
+    not already in the cumulative hit set before this turn ran. It is
+    the saturation signal — when ``n_novel`` drops to single digits the
+    agent is wasting iterations on dupes and should mark satisfied or
+    pivot to a substantively different query rather than broaden the
+    same query incrementally.
     """
 
     iteration: int
     thinking: str
     query: dict
     n_results: int
+    n_novel: int
     unique_venues: list[str]
     year_range: tuple[int | None, int | None]
     sample_titles: list[str]
@@ -169,7 +177,8 @@ def _render_transcript(turns: list[AgentTurn]) -> str:
             f"Turn {turn.iteration}:\n"
             f"  Thinking: {turn.thinking}\n"
             f"  Query: {query_envelope}\n"
-            f"  Observed: {turn.n_results} results, "
+            f"  Observed: {turn.n_results} total results "
+            f"({turn.n_novel} NEW since previous turns), "
             f"years {year_str}, venues {venues_str}\n"
             f"  Sample titles: {titles_str}\n"
             f"  Decision: {turn.decision} — {turn.reasoning}"
@@ -308,11 +317,13 @@ def run_iterative_search(
             if isinstance(data, list):
                 new_papers = [p for p in data if isinstance(p, dict)]
 
+        n_novel_this_turn = 0
         for paper in new_papers:
             pid = paper.get("paperId")
             if isinstance(pid, str) and pid and pid not in seen_ids:
                 seen_ids.add(pid)
                 cumulative_hits.append(paper)
+                n_novel_this_turn += 1
 
         unique_venues, year_range, sample_titles = _summarize_results(
             new_papers, ctx, config.summarize_sample,
@@ -324,6 +335,7 @@ def run_iterative_search(
                 thinking=thinking,
                 query=query,
                 n_results=len(new_papers),
+                n_novel=n_novel_this_turn,
                 unique_venues=unique_venues,
                 year_range=year_range,
                 sample_titles=sample_titles,

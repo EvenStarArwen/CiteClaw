@@ -343,6 +343,64 @@ class TestRunIterativeSearchIntegration:
         assert ymin == 2020 and ymax == 2022
         assert first_turn.sample_titles  # non-empty
 
+    def test_n_novel_tracks_dedup_across_turns(
+        self, ctx: Context, llm: StubClient,
+    ):
+        """PH-02: each AgentTurn carries n_novel — the count of NEW results
+        this turn that weren't already in the cumulative hit set.
+
+        n_novel is the saturation signal the agent reads in its next-turn
+        prompt to decide whether to keep refining or mark satisfied —
+        without it, the prompt only saw raw n_results which confused the
+        agent (n_results stays high even when nothing new is being added).
+
+        Contract:
+          - n_novel is always <= n_results
+          - On turn 1 (empty cumulative set), n_novel == n_results (every
+            paper is brand new)
+          - On later turns, n_novel ∈ [0, n_results] depending on overlap
+        """
+        config = AgentConfig(max_iterations=3)
+        result = run_iterative_search(
+            "topic", _five_anchors(), llm, ctx, config,
+        )
+        assert len(result.transcript) >= 2
+        # Turn 1 fills the cumulative set from empty → all results are novel.
+        assert result.transcript[0].n_novel == result.transcript[0].n_results
+        # Every later turn must satisfy 0 <= n_novel <= n_results.
+        for t in result.transcript[1:]:
+            assert 0 <= t.n_novel <= t.n_results
+        # The cumulative hit count must equal the sum of n_novel across turns.
+        assert len(result.hits) == sum(t.n_novel for t in result.transcript)
+
+    def test_n_novel_is_rendered_into_next_turn_prompt(
+        self, ctx: Context, llm: StubClient, monkeypatch,
+    ):
+        """The transcript renderer must include the NEW count in the
+        ``Observed:`` line so the agent's next iteration sees it. We
+        verify by spying on the LLM client's call() and checking the
+        user prompt sent to iteration 2 contains the literal substring."""
+        from citeclaw.clients.llm.base import LLMResponse
+
+        captured_prompts: list[str] = []
+
+        original_call = llm.call
+
+        def spy_call(system, user, **kwargs):
+            captured_prompts.append(user)
+            return original_call(system, user, **kwargs)
+
+        monkeypatch.setattr(llm, "call", spy_call)
+
+        config = AgentConfig(max_iterations=3)
+        run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        # Iteration 1's prompt has no transcript yet, but iteration 2's
+        # prompt should embed turn 1's observation line including ``NEW``.
+        assert len(captured_prompts) >= 2
+        iter2_prompt = captured_prompts[1]
+        assert "NEW since previous turns" in iter2_prompt
+
     def test_query_field_round_trips_into_agent_turn(
         self, ctx: Context, llm: StubClient,
     ):
