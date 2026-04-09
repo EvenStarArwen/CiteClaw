@@ -85,6 +85,14 @@ class AgentTurn:
     agent is wasting iterations on dupes and should mark satisfied or
     pivot to a substantively different query rather than broaden the
     same query incrementally.
+
+    PH-03: ``total_in_corpus`` is what S2 reports as the total matching
+    paper count for this query (vs ``n_results`` which is what we
+    actually fetched, capped by ``search_limit_per_iter``). When
+    ``total_in_corpus > n_results`` the agent is only seeing the first
+    page of a much larger result set and MUST narrow with filters
+    rather than synonyms — broadening into a 5000-paper corpus just
+    surfaces a different first-1000 page of mostly-noise.
     """
 
     iteration: int
@@ -92,6 +100,7 @@ class AgentTurn:
     query: dict
     n_results: int
     n_novel: int
+    total_in_corpus: int
     unique_venues: list[str]
     year_range: tuple[int | None, int | None]
     sample_titles: list[str]
@@ -173,12 +182,24 @@ def _render_transcript(turns: list[AgentTurn]) -> str:
             year_str = f"{ymin}-{ymax}"
         venues_str = ", ".join(turn.unique_venues[:5]) or "(none)"
         titles_str = "; ".join(turn.sample_titles[:5]) or "(none)"
+        # Compose the observation line. When the corpus has more papers
+        # than we fetched, surface that explicitly so the agent knows it's
+        # only seeing a page and must narrow with filters rather than
+        # broaden with synonyms.
+        if turn.total_in_corpus > turn.n_results:
+            count_phrase = (
+                f"{turn.n_results} fetched of {turn.total_in_corpus} "
+                f"matching in the S2 corpus (PARTIAL — narrow with "
+                f"filters to see the rest)"
+            )
+        else:
+            count_phrase = f"{turn.n_results} matching in the S2 corpus"
         block = (
             f"Turn {turn.iteration}:\n"
             f"  Thinking: {turn.thinking}\n"
             f"  Query: {query_envelope}\n"
-            f"  Observed: {turn.n_results} total results "
-            f"({turn.n_novel} NEW since previous turns), "
+            f"  Observed: {count_phrase}, "
+            f"{turn.n_novel} NEW since previous turns, "
             f"years {year_str}, venues {venues_str}\n"
             f"  Sample titles: {titles_str}\n"
             f"  Decision: {turn.decision} — {turn.reasoning}"
@@ -312,10 +333,24 @@ def run_iterative_search(
             limit=config.search_limit_per_iter,
         )
         new_papers: list[dict[str, Any]] = []
+        total_in_corpus = 0
         if isinstance(search_payload, dict):
             data = search_payload.get("data")
             if isinstance(data, list):
                 new_papers = [p for p in data if isinstance(p, dict)]
+            # ``total`` is S2's count of all matching papers in the corpus,
+            # not just the ones it returned. Surfacing this in the
+            # transcript lets the agent distinguish "we fetched all 30
+            # matches" from "we fetched the first 1000 of 5000 — narrow
+            # with filters now". When the field is missing or non-int we
+            # fall back to the actual returned count.
+            raw_total = search_payload.get("total")
+            if isinstance(raw_total, int) and raw_total >= 0:
+                total_in_corpus = raw_total
+            else:
+                total_in_corpus = len(new_papers)
+        else:
+            total_in_corpus = len(new_papers)
 
         n_novel_this_turn = 0
         for paper in new_papers:
@@ -336,6 +371,7 @@ def run_iterative_search(
                 query=query,
                 n_results=len(new_papers),
                 n_novel=n_novel_this_turn,
+                total_in_corpus=total_in_corpus,
                 unique_venues=unique_venues,
                 year_range=year_range,
                 sample_titles=sample_titles,

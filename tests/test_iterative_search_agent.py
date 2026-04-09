@@ -401,6 +401,62 @@ class TestRunIterativeSearchIntegration:
         iter2_prompt = captured_prompts[1]
         assert "NEW since previous turns" in iter2_prompt
 
+    def test_total_in_corpus_is_captured_from_search_payload(
+        self, ctx: Context, llm: StubClient, monkeypatch,
+    ):
+        """PH-03: each AgentTurn carries total_in_corpus — the ``total``
+        field S2 returned for this query. When total > n_results the
+        renderer must surface a PARTIAL warning so the agent knows it's
+        only seeing one page of a larger corpus and should narrow with
+        filters rather than synonyms."""
+        # Patch the fake S2's search_bulk to return a payload with a
+        # synthetic ``total`` larger than the data list to simulate a
+        # partial fetch.
+        def fake_search_bulk(query, *, filters=None, sort=None, token=None, limit=1000):
+            return {
+                "data": [
+                    {"paperId": "p1", "title": "Page-1 hit alpha"},
+                    {"paperId": "p2", "title": "Page-1 hit beta"},
+                ],
+                "total": 5000,
+            }
+
+        monkeypatch.setattr(ctx.s2, "search_bulk", fake_search_bulk)
+        config = AgentConfig(max_iterations=2)
+        result = run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        first = result.transcript[0]
+        assert first.n_results == 2
+        assert first.total_in_corpus == 5000
+
+    def test_partial_warning_in_next_turn_prompt(
+        self, ctx: Context, llm: StubClient, monkeypatch,
+    ):
+        """When the previous turn's S2 search was partial (n_results <
+        total_in_corpus), the next iteration's user prompt must contain
+        the PARTIAL warning so the agent knows to narrow with filters."""
+        def fake_search_bulk(query, *, filters=None, sort=None, token=None, limit=1000):
+            return {"data": [{"paperId": "p1", "title": "alpha"}], "total": 9999}
+
+        monkeypatch.setattr(ctx.s2, "search_bulk", fake_search_bulk)
+
+        captured_prompts: list[str] = []
+        original_call = llm.call
+
+        def spy_call(system, user, **kwargs):
+            captured_prompts.append(user)
+            return original_call(system, user, **kwargs)
+
+        monkeypatch.setattr(llm, "call", spy_call)
+
+        config = AgentConfig(max_iterations=2)
+        run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        assert len(captured_prompts) >= 2
+        iter2_prompt = captured_prompts[1]
+        assert "PARTIAL" in iter2_prompt
+        assert "9999" in iter2_prompt  # the total figure should be visible
+
     def test_query_field_round_trips_into_agent_turn(
         self, ctx: Context, llm: StubClient,
     ):

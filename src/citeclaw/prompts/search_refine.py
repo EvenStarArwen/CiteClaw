@@ -103,6 +103,19 @@ WHAT DOES NOT WORK
       → often intersect to ZERO results. Prefer ONE focused +AND of two
       groups, plus an optional NOT to remove a near-neighbour topic.
 
+OPERATOR PRECEDENCE — always parenthesise mixed operators
+
+``+`` binds TIGHTER than ``|``. Without explicit parentheses,
+``"A" | "B" + "C"`` parses as ``"A" | ("B" + "C")`` — almost never
+what you wanted. ALWAYS use explicit parentheses when you mix the
+two operators:
+
+  WRONG:  "ESM-2" | "ProtTrans" | "ProGen" + "UniRef"
+          → returns papers matching ProGen-AND-UniRef OR ESM-2 OR ProtTrans
+          → in practice almost always 0-5 results
+  RIGHT:  ("ESM-2" | "ProtTrans" | "ProGen") + "UniRef"
+          → returns papers matching (any of the three) AND UniRef
+
 QUERY DESIGN STRATEGY
 
 1. **Iter 1: name the topic.** Use the single most specific quoted
@@ -111,22 +124,36 @@ QUERY DESIGN STRATEGY
    ``"Bayesian hyperparameter optimization"``. Narrow first so you
    can see what the corpus actually contains.
 
-2. **If the narrow query returns <20 results**, broaden with ``|``
+2. **If iter 1 returns more than the per-iter fetch cap** (the
+   ``Observed:`` line will say ``PARTIAL — narrow with filters``),
+   the topic is broad enough that you're only seeing the first page.
+   Your iter 2 priority is to NARROW WITH FILTERS, not text
+   constraints:
+
+     filters: {year: "2023-2026", minCitationCount: 30,
+               publicationTypes: "JournalArticle"}
+
+   Filters are cheap and selective. Adding more ``+`` text clauses to
+   a broad-topic query usually over-restricts (16 results) or
+   under-restricts (still 1000+) — filters do the right thing every
+   time.
+
+3. **If the narrow query returns <20 results**, broaden with ``|``
    over semantically equivalent phrases:
    ``"RNA foundation model" | "RNA language model" | "RNA pretrained transformer"``
 
-3. **If the broadened query returns >300 noisy results**, restrict
-   with filters (year, fieldsOfStudy, minCitationCount) — NOT by
-   piling more ``+`` clauses into the text. Filters cost you nothing
-   and they're more reliable than text constraints.
+4. **If the broadened query returns >300 noisy results in a small
+   corpus** (total matches not much bigger than fetched), then the
+   text constraint is at the wrong level — try a more specific phrase,
+   not a longer OR list.
 
-4. **If a near-neighbour topic dominates the results** (e.g. protein
+5. **If a near-neighbour topic dominates the results** (e.g. protein
    work crowding out RNA work), exclude with ``-"protein language
    model"``.
 
-5. **If results saturate** across iterations (the new turn brings
-   mostly overlap with previous turns and no new relevant hits),
-   mark ``satisfied``.
+6. **If results saturate** across iterations (the new turn brings
+   mostly overlap with previous turns and no new relevant hits, i.e.
+   ``NEW`` count drops to single digits), mark ``satisfied``.
 
 FILTERS — narrow results without touching the query text
 
