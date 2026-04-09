@@ -43,12 +43,21 @@ pdf = [
     # is missing.
     "pypdf>=4.0,<6",
 ]
+browser = [
+    # pdfclaw — institutional-auth PDF fetcher driving a real Chrome
+    # via Playwright. Needs both the Python package AND the chromium
+    # binary, which is downloaded by ``python -m playwright install
+    # chromium`` after the pip install.
+    "playwright>=1.40,<2",
+    "pymupdf>=1.24,<2",
+]
 
 [project.scripts]
 citeclaw = "citeclaw.__main__:main"
+pdfclaw = "pdfclaw.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/citeclaw"]
+packages = ["src/citeclaw", "src/pdfclaw"]
 
 [tool.ruff]
 target-version = "py311"
