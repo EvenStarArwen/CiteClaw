@@ -10,6 +10,7 @@ from citeclaw.cache import Cache
 from citeclaw.clients.s2 import SemanticScholarClient
 from citeclaw.config import BudgetTracker, Settings
 from citeclaw.context import Context
+from citeclaw.event_sink import EventSink, NullEventSink
 from citeclaw.progress import (
     Dashboard,
     NullDashboard,
@@ -116,9 +117,23 @@ def _describe_step(step) -> str:
     return ""
 
 
-def run_pipeline(ctx: Context) -> dict:
+def run_pipeline(
+    ctx: Context,
+    *,
+    event_sink: EventSink | None = None,
+) -> dict:
+    """Run the configured pipeline against ``ctx``.
+
+    PE-03: an optional ``event_sink`` keyword consumes streaming run
+    events (``step_start`` / ``paper_added`` / ``step_end`` /
+    ``shape_table_update``). Defaults to :class:`NullEventSink` so the
+    legacy CLI behavior is unchanged when no caller provides a sink.
+    The web backend will pass in a fan-out sink that forwards events
+    to WebSocket subscribers.
+    """
     cfg = ctx.config
     pipeline = _ensure_merge_duplicates(cfg.pipeline_built or [])
+    sink: EventSink = event_sink if event_sink is not None else NullEventSink()
 
     dashboard = _build_dashboard(cfg, len(pipeline))
     ctx.dashboard = dashboard
@@ -137,9 +152,11 @@ def run_pipeline(ctx: Context) -> dict:
     shape = ShapeLog()
     try:
         for idx, step in enumerate(pipeline, start=1):
-            before_coll = len(ctx.collection)
+            before_coll_ids = set(ctx.collection.keys())
+            before_coll = len(before_coll_ids)
             desc = _describe_step(step)
 
+            sink.step_start(idx=idx, name=step.name, description=desc)
             dashboard.begin_step(idx, step.name, desc)
             log.debug("[%s] in=%d", step.name, len(signal))
             try:
@@ -147,8 +164,27 @@ def run_pipeline(ctx: Context) -> dict:
             finally:
                 dashboard.end_step()
 
-            delta = len(ctx.collection) - before_coll
+            # Synthesise per-paper paper_added events from the
+            # collection delta. Steps that want to emit paper_added in
+            # real-time can call into ctx.event_sink directly in v2;
+            # for v1 we just compare the keysets at step boundaries.
+            after_coll_ids = set(ctx.collection.keys())
+            new_ids = after_coll_ids - before_coll_ids
+            for pid in sorted(new_ids):
+                paper = ctx.collection.get(pid)
+                source = getattr(paper, "source", "") if paper is not None else ""
+                sink.paper_added(paper_id=pid, source=source)
+
+            delta = len(after_coll_ids) - before_coll
             shape.record(step.name, result.in_count, len(result.signal), delta, result.stats)
+            sink.step_end(
+                idx=idx,
+                name=step.name,
+                in_count=result.in_count,
+                out_count=len(result.signal),
+                delta_collection=delta,
+                stats=dict(result.stats),
+            )
             log.debug(
                 "[%s] in=%d out=%d Δcoll=%+d %s",
                 step.name, result.in_count, len(result.signal), delta,
@@ -166,6 +202,7 @@ def run_pipeline(ctx: Context) -> dict:
                 break
 
         rendered = shape.render()
+        sink.shape_table_update(rendered_shape=rendered)
         log.debug("\nPipeline shape summary:\n%s", rendered)
         try:
             cfg.data_dir.mkdir(parents=True, exist_ok=True)
