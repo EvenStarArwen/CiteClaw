@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_random_exponential,
 )
@@ -20,6 +20,29 @@ from tenacity import (
 from citeclaw.config import BudgetTracker, Settings
 
 log = logging.getLogger("citeclaw.s2.http")
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Decide whether an exception is worth a retry.
+
+    - Transport errors (connection reset, DNS, timeout) → retry.
+    - HTTP 5xx → retry (transient server problem).
+    - HTTP 429 → retry (rate limited; backoff handles the wait).
+    - HTTP 4xx other than 429 → DO NOT retry. These are permanent
+      client errors (bad sort key, bad params, missing auth) and
+      retrying wastes 6 requests against the 1-rps budget while the
+      caller waits for tenacity's exponential backoff to give up.
+    """
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code if exc.response is not None else 0
+        if status == 429:
+            return True
+        if 500 <= status < 600:
+            return True
+        return False
+    return False
 
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
 BATCH_URL = "https://api.semanticscholar.org/graph/v1/paper/batch"
@@ -93,7 +116,7 @@ class S2Http:
             pass
 
     @retry(
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
+        retry=retry_if_exception(_is_retryable),
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(6),
         before_sleep=lambda rs: _retry_message(rs, "request"),
@@ -107,7 +130,7 @@ class S2Http:
         return resp.json()
 
     @retry(
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
+        retry=retry_if_exception(_is_retryable),
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(6),
         before_sleep=lambda rs: _retry_message(rs, "request"),
@@ -126,7 +149,7 @@ class S2Http:
         return resp.json()
 
     @retry(
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
+        retry=retry_if_exception(_is_retryable),
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(6),
         before_sleep=lambda rs: _retry_message(rs, "batch"),

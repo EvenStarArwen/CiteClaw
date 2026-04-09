@@ -177,6 +177,48 @@ class TestSearchBulk:
         assert "sort" not in params
         assert "token" not in params
 
+    def test_sort_relevance_dropped_silently(self, client: SemanticScholarClient):
+        """``sort=relevance`` is the LLM agent's default guess but is invalid
+        for ``/paper/search/bulk`` (the bulk endpoint only supports paperId /
+        publicationDate / citationCount). The sanitiser drops it rather
+        than letting S2 400 the whole call."""
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", sort="relevance")
+
+        params = rec.last["params"]
+        assert "sort" not in params
+
+    def test_sort_invalid_field_dropped(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", sort="hIndex:desc")
+
+        params = rec.last["params"]
+        assert "sort" not in params
+
+    def test_sort_invalid_direction_keeps_field_only(self, client: SemanticScholarClient):
+        """Bad direction (e.g. ``citationCount:high``) is not worth a 400 —
+        keep the field, drop the direction so we still get a sorted result."""
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", sort="citationCount:high")
+
+        params = rec.last["params"]
+        assert params["sort"] == "citationCount"
+
+    def test_sort_valid_field_passes_through(self, client: SemanticScholarClient):
+        rec = _Recorder({"data": []})
+        rec.install(client)
+
+        client.search_bulk("q", sort="publicationDate:asc")
+
+        params = rec.last["params"]
+        assert params["sort"] == "publicationDate:asc"
+
     def test_no_filters_argument_works(self, client: SemanticScholarClient):
         rec = _Recorder({"data": []})
         rec.install(client)
@@ -744,3 +786,58 @@ class TestUncachedSurfaces:
         client.fetch_recommendations_for_paper("anchor")
 
         assert len(rec.calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# HTTP retry policy: _is_retryable
+# ---------------------------------------------------------------------------
+
+
+class TestHttpRetryPolicy:
+    """The S2 HTTP layer retries transient failures (5xx, 429, transport)
+    but must NOT retry permanent client errors (400, 401, 403, 404). Each
+    retry of a permanent failure wastes 6 requests against the 1-rps S2
+    budget while the caller waits 30+ seconds for backoff to give up.
+
+    Tests :func:`citeclaw.clients.s2.http._is_retryable` directly because
+    it's a pure function — exercising the full retry decorator would
+    pull in tenacity timing and add minutes to the test suite.
+    """
+
+    def _make_status_error(self, status: int) -> httpx.HTTPStatusError:
+        request = httpx.Request("GET", "https://api.semanticscholar.org/graph/v1/foo")
+        response = httpx.Response(status, request=request)
+        return httpx.HTTPStatusError(f"{status}", request=request, response=response)
+
+    def test_5xx_is_retryable(self):
+        from citeclaw.clients.s2.http import _is_retryable
+        assert _is_retryable(self._make_status_error(500)) is True
+        assert _is_retryable(self._make_status_error(502)) is True
+        assert _is_retryable(self._make_status_error(503)) is True
+        assert _is_retryable(self._make_status_error(504)) is True
+
+    def test_429_is_retryable(self):
+        """Rate-limit responses should retry — the backoff handles the wait."""
+        from citeclaw.clients.s2.http import _is_retryable
+        assert _is_retryable(self._make_status_error(429)) is True
+
+    def test_4xx_other_than_429_is_not_retryable(self):
+        """400 / 401 / 403 / 404 are permanent — retrying wastes our 1-rps
+        budget. The original 400 from a bad sort key was getting retried
+        6 times before tenacity gave up; that's the bug this test guards."""
+        from citeclaw.clients.s2.http import _is_retryable
+        assert _is_retryable(self._make_status_error(400)) is False
+        assert _is_retryable(self._make_status_error(401)) is False
+        assert _is_retryable(self._make_status_error(403)) is False
+        assert _is_retryable(self._make_status_error(404)) is False
+        assert _is_retryable(self._make_status_error(422)) is False
+
+    def test_transport_error_is_retryable(self):
+        from citeclaw.clients.s2.http import _is_retryable
+        assert _is_retryable(httpx.ConnectError("dns failed")) is True
+        assert _is_retryable(httpx.ReadTimeout("read timed out")) is True
+
+    def test_arbitrary_exceptions_are_not_retryable(self):
+        from citeclaw.clients.s2.http import _is_retryable
+        assert _is_retryable(ValueError("bad input")) is False
+        assert _is_retryable(KeyError("nope")) is False

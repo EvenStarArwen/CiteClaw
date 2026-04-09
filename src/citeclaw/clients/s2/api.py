@@ -94,6 +94,37 @@ class SemanticScholarClient:
         "openAccessPdf",
     )
 
+    # Per S2 docs, ``/paper/search/bulk`` only sorts by these keys; the
+    # default-sorted endpoint is ``/paper/search`` (relevance-ranked).
+    # Anything else returns 400 Bad Request. We canonicalise to the bare
+    # field name (allowing optional ``:asc`` / ``:desc`` suffixes) and drop
+    # any unrecognised value rather than letting the agent crash the
+    # request — invalid sort = no sort = stable result by paperId.
+    _SEARCH_BULK_SORT_FIELDS = frozenset({"paperId", "publicationDate", "citationCount"})
+
+    def _sanitize_bulk_sort(self, sort: str | None) -> str | None:
+        """Return a valid ``/paper/search/bulk`` sort string or ``None``.
+
+        Accepts ``"<field>"`` or ``"<field>:asc|desc"``. Strips invalid
+        values silently rather than 400ing the whole search call. Logs
+        the drop at INFO so a curious operator can spot bad agent
+        suggestions in their logs.
+        """
+        if not sort:
+            return None
+        s = sort.strip()
+        if not s:
+            return None
+        field, _, direction = s.partition(":")
+        if field not in self._SEARCH_BULK_SORT_FIELDS:
+            log.info("search_bulk: dropping invalid sort=%r (allowed: %s)",
+                     sort, sorted(self._SEARCH_BULK_SORT_FIELDS))
+            return None
+        if direction and direction.lower() not in ("asc", "desc"):
+            log.info("search_bulk: dropping invalid sort direction in %r", sort)
+            return field  # keep the field, drop the direction
+        return s if direction else field
+
     def search_bulk(
         self,
         query: str,
@@ -135,8 +166,9 @@ class SemanticScholarClient:
                 value = filters.get(key)
                 if value is not None:
                     params[key] = value
-        if sort is not None:
-            params["sort"] = sort
+        clean_sort = self._sanitize_bulk_sort(sort)
+        if clean_sort is not None:
+            params["sort"] = clean_sort
         if token is not None:
             params["token"] = token
         result = self._http.get("/paper/search/bulk", params, req_type="search")
