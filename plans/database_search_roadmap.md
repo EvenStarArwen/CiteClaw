@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 02:21 — completed PC-01 ✅ (flagship `ExpandBySearch` step in src/citeclaw/steps/expand_by_search.py; 13-step run() with sha256 fingerprint via ctx.searched_signals for idempotency, source-less FilterContext, agent bookkeeping in stats; registered in STEP_REGISTRY with _build_expand_by_search; 5 inline smoke tests covering registry membership, build_step, no-screener short-circuit, end-to-end satisfied run, and idempotent no-op re-run; full suite 629/6 zero regressions — **Phase C started**)
 - 2026-04-09 02:04 — completed PB-06 ✅ (new scratch/try_iterative_search.py with argparse CLI for manual validation against real S2 + LLM clients; loads config_bio.yaml, builds the agent context, hydrates DOI anchors via fetch_metadata, pretty-prints the transcript per turn; ast.parse + importlib sanity check both green; not committed — scratch/ is gitignored — **Phase B fully closed**)
 - 2026-04-09 01:53 — completed PB-05 ✅ (new tests/test_iterative_search_agent.py with 13 tests across 2 classes; in-test `_BudgetAwareFakeS2` subclass bumps budget.record_s2 per search_bulk so the per-iteration count assertion holds without touching tests/fakes.py; spy_call captures the user prompts to prove iteration N+1 contains iteration N's thinking; 13/13 green; full suite 629/6 zero regressions — **Phase B DONE**)
 - 2026-04-09 01:37 — completed PB-04 ✅ (implemented run_iterative_search loop body in agents/iterative_search.py with 3 private helpers; transcript renderer wraps each turn's query in `{"query": ...}` envelope so PB-02's stub iteration counter advances; lifecycle = satisfied/abort/budget/max_iterations via for-else; 4 inline smoke tests green; full suite 616/6 zero regressions)
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-04-09 00:26 — completed PA-10 ✅ (extended FakeS2Client with search_bulk/search_match/fetch_recommendations/fetch_author_papers as canned-response surfaces + register_* helpers; recs keyed on sorted tuple; deepcopy on the way out; 25 new tests in test_search_phase_a_e2e.py; 4-file verify 126/126 green; full suite 606/6 — **Phase A DONE**)
 - 2026-04-09 00:19 — completed PA-09 ✅ (new src/citeclaw/search/ package with apply_local_query — pure AND-ed predicate filter over PaperRecord lists; strict on missing metadata except abstract_regex which is lenient; 26 new tests in test_search_query_engine.py; full suite 581 passed/6 skipped)
 - 2026-04-09 00:13 — completed PA-08 ✅ (added rejection_ledger + searched_signals + reinforcement_log fields to Context; record_rejections now also appends to ledger using same category key as rejection_counts; 5 new tests in test_filters_runner.py; full suite 555 passed/6 skipped)
-- 2026-04-09 00:08 — completed PA-07 ✅ (replaced PaperSource str enum with constants namespace class adding SEARCH/SEMANTIC/AUTHOR/REINFORCED; PaperRecord.source is now plain str; production sites already used string literals so zero call-site changes; updated 3 test sites in test_models.py; full suite 550 passed/6 skipped)
 
 ---
 
@@ -299,7 +299,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
 
 ## Phase C — `ExpandBy*` family (integration)
 
-- [ ] **PC-01. `ExpandBySearch` step (FLAGSHIP — ship this first)**
+- [x] **PC-01. `ExpandBySearch` step (FLAGSHIP — ship this first)**
   - **What.** New `src/citeclaw/steps/expand_by_search.py`. Class:
     ```python
     class ExpandBySearch:
@@ -326,6 +326,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Why.** The flagship feature. Demonstrates the full agent loop end-to-end.
   - **Files touched.** New: `src/citeclaw/steps/expand_by_search.py`. Register in `src/citeclaw/steps/__init__.py` with `_build_expand_by_search(d, blocks)`.
   - **Verify done.** PC-08 e2e test covers it.
+  - ✅ 2026-04-09 — Implemented `ExpandBySearch` exactly per the 13-step run() recipe; registered in `STEP_REGISTRY` as `"ExpandBySearch"`. The fingerprint is `sha256(json.dumps({step, sorted_signal_ids, asdict(agent), max_anchor_papers, topic}, sort_keys=True))` so identical re-runs are no-ops via `ctx.searched_signals`. The LLM client cascade uses `getattr(ctx.config, "search_model", None)` so PC-01 doesn't hard-depend on PC-06 (which adds `Settings.search_model`); when PC-06 lands the getattr can become a plain attribute access. The `_build_expand_by_search(d, blocks)` builder forwards `d["agent"]` straight into `AgentConfig(**...)` so users override iteration cap / target / model / reasoning_effort uniformly via YAML. Source-less `FilterContext(source=None, source_refs=None, source_citers=None)` is built explicitly; PC-05 will audit every filter atom for None tolerance. Stats dict carries the agent's bookkeeping deltas (agent_iterations, agent_decision, raw_hits, hydrated, after_local_query, accepted, rejected, tokens_used, s2_requests_used) so the shape-summary table can show the full cost. Verified with 5 inline smoke tests: registry membership, build_step from dict, no-screener short-circuit, full end-to-end (3 iterations → satisfied → 3 hits → YearFilter → 3 accepted), and idempotent re-run (returns empty signal with reason="already_searched"). Full suite 629 passed/6 skipped, zero regressions. **Note for PC-05**: my source-less FilterContext path is the contract every atom must honor — when auditing `filters/atoms/*.py`, prefer constructor-time errors over runtime crashes per the spec. **Note for PC-08**: an end-to-end test for ExpandBySearch will need a budget-aware fake (PB-05's `_BudgetAwareFakeS2` pattern) since FakeS2Client.search_bulk doesn't bump `budget._s2_api["search"]`.
 
 - [ ] **PC-02. `ExpandBySemantics` step**
   - **What.** New `src/citeclaw/steps/expand_by_semantics.py`:

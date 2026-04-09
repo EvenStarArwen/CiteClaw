@@ -7,6 +7,7 @@ from typing import Any, Callable
 from citeclaw.steps.base import BaseStep, StepResult  # noqa: F401
 from citeclaw.steps.cluster import Cluster
 from citeclaw.steps.expand_backward import ExpandBackward
+from citeclaw.steps.expand_by_search import ExpandBySearch
 from citeclaw.steps.expand_forward import ExpandForward
 from citeclaw.steps.finalize import Finalize
 from citeclaw.steps.load_seeds import LoadSeeds
@@ -40,6 +41,34 @@ def _build_expand_forward(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_backward(d: dict, blocks: dict) -> BaseStep:
     return ExpandBackward(
         screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+    )
+
+
+def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
+    """Build an ``ExpandBySearch`` step from its YAML dict.
+
+    The ``agent:`` sub-dict is forwarded into ``AgentConfig`` kwargs
+    so users can override any combination of iteration cap, token cap,
+    target_count, model, reasoning_effort, etc. without learning a
+    second schema.
+    """
+    from citeclaw.agents.iterative_search import AgentConfig
+
+    agent_raw = d.get("agent") or {}
+    if isinstance(agent_raw, AgentConfig):
+        agent_cfg = agent_raw
+    elif isinstance(agent_raw, dict):
+        agent_cfg = AgentConfig(**agent_raw)
+    else:
+        raise ValueError(
+            "ExpandBySearch.agent must be a mapping (or omitted to use defaults)"
+        )
+    return ExpandBySearch(
+        agent=agent_cfg,
+        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        topic_description=d.get("topic_description"),
+        max_anchor_papers=int(d.get("max_anchor_papers", 20)),
+        apply_local_query_args=d.get("apply_local_query_args"),
     )
 
 
@@ -89,6 +118,7 @@ STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
     "LoadSeeds":       _build_load_seeds,
     "ExpandForward":   _build_expand_forward,
     "ExpandBackward":  _build_expand_backward,
+    "ExpandBySearch":  _build_expand_by_search,
     "Rerank":          _build_rerank,
     "ReScreen":        _build_rescreen,
     "Finalize":        _build_finalize,
