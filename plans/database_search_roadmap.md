@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 05:37 — reached Phase F human gate, awaiting user approval ⛔ (skipped PE-04..PE-10 ⏭️ — all blocked on missing toolchain or manual visual verifies; cron has nothing actionable left in Phase E since PE-01/PE-02 weren't done first; **Phase F is HUMAN-GATED — STOPPED IMMEDIATELY per protocol**; no source files modified, only roadmap updated)
 - 2026-04-09 05:25 — completed PE-03 ✅ (partial — Python half shipped, web/backend/ws/run_stream.py deferred to PE-01); skipped PE-01+PE-02 ⏭️ (cron lacks node/pnpm/fastapi/uvicorn); new src/citeclaw/event_sink.py with EventSink Protocol + NullEventSink + RecordingEventSink; pipeline.py refactored to accept event_sink kwarg, synthesize paper_added from collection-key delta, emit step_start/end + shape_table_update; 13 new tests in tests/test_event_sink.py; full suite 716/6 zero regressions — **Phase E partially started**
 - 2026-04-09 05:09 — completed PD-03 ✅ (extended tests/test_expand_family_e2e.py with TestHITLAndReinforceGraphIntegration — 4 tests covering the LoadSeeds→ExpandForward→HITL(mocked)→ExpandBySearch→ReinforceGraph→Finalize chain; PD03-REJ-1 has year=2010 + references=[SEED-1, SEED-2, CITER-1] so ExpandForward rejects it but ReinforceGraph rescues it via high pagerank under the loose rescue screener; full suite 703/6 zero regressions — **Phase D DONE**)
 - 2026-04-09 04:54 — completed PD-02 ✅ (new HumanInTheLoop step in src/citeclaw/steps/human_in_the_loop.py; samples balanced accepted+LLM-rejected papers, walks them via rich.prompt.Confirm.ask, computes per-filter agreement, writes hitl_report.json; v1 logs continue/stop intent rather than aborting; 11 new tests with smart-stub Confirm.ask + late-binding monkeypatch; full suite 699/6 zero regressions)
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-04-09 03:50 — completed PC-07 ✅ (new config_bio_with_expansion.yaml at project root; 11-step ExpandBy* family demo using all PC-01..PC-04 steps; substituted MergeDuplicates for ReinforceGraph since PD-01 hasn't shipped, with a YAML comment marking where it will plug in; blocks section verbatim from config_bio.yaml so every expand step reuses an existing screener — the thesis holds; verify green at 11 built steps; full suite 671/6 zero regressions)
 - 2026-04-09 03:34 — completed PC-06 ✅ (added `Settings.search_model: str = ""` immediately after `screening_model` with cascade docstring; PC-04 already covered the seed schema half; 4 new tests in TestSettings — defaults, explicit override, empty-default fallback cascade, YAML round-trip, plus a title-only seed schema round-trip; tests/test_config.py 22/22 green; full suite 671/6 zero regressions)
 - 2026-04-09 03:21 — completed PC-05 ✅ (audit found ZERO source-file changes needed — all atoms + measures already tolerate source=None correctly, CLAUDE.md claim verified; new tests/test_filters_source_less.py pins the contract with 22 tests across 4 classes covering atoms, measures, SimilarityFilter on_no_data, and end-to-end apply_block cascade; full suite 667/6 zero regressions)
-- 2026-04-09 03:07 — completed PC-04 ✅ (new ResolveSeeds step + SeedPaper.paper_id default + Context.resolved_seed_ids field + LoadSeeds preferring resolved IDs; sibling expansion walks PaperRecord.external_ids and re-fetches via DOI:/ARXIV: prefixes; 16 new tests in test_resolve_seeds.py covering schema relaxation, direct passthrough, title resolution, the headline preprint↔published pair, include_siblings off, dedup, ResolveSeeds→LoadSeeds handoff, legacy fallback, registry; full suite 645/6 zero regressions)
 
 ---
 
@@ -558,36 +558,43 @@ Lives in `web/` subdirectory. Stack: React 18 + Vite + TypeScript + Tailwind v4 
   - **What.** In `web/frontend/`: React Router v6 with routes `/`, `/run/:runId`, `/configs/:name`. 3-pane layout via shadcn `ResizablePanelGroup` (left=paper detail, center=graph, right=config/run controls). Dark mode toggle. Top bar branded "CiteClaw". Zustand for client state, TanStack Query for server state.
   - **Files touched.** `web/frontend/src/**`.
   - **Verify done.** Visual: `pnpm dev` renders the 3-pane layout with placeholders.
+  - ⏭️ 2026-04-09 — Skipped: pure frontend task, blocked on the same toolchain gap as PE-01 (no node/pnpm in the cron environment) plus a visual `pnpm dev` verify step. Defer to a human run after PE-01's scaffold lands.
 
 - [ ] **PE-05. Sigma.js graph component with ForceAtlas 2**
   - **What.** New `web/frontend/src/components/Graph.tsx` using `@react-sigma/core` + `graphology` + `graphology-layout-forceatlas2`. Mounts a Sigma canvas, loads initial graph from `GET /api/runs/{run_id}/graph`. ForceAtlas 2 iterative layout running continuously at low intensity. Node click → emits event for `PaperPanel`. Color = cluster or source. Size = log(citation_count). Built-in zoom/pan/select.
   - **Files touched.** `web/frontend/src/components/Graph.tsx`, `web/frontend/src/hooks/useSigmaGraph.ts`.
   - **Verify done.** Visual: loading a cached run renders the citation network interactively.
+  - ⏭️ 2026-04-09 — Skipped: pure frontend (npm packages: @react-sigma/core, graphology, graphology-layout-forceatlas2). Same toolchain blocker as PE-01 + a visual canvas verify. Defer to human.
 
 - [ ] **PE-06. Live graph updates with "bouncing node" animation**
   - **What.** New `web/frontend/src/hooks/usePipelineRun.ts` — WebSocket hook subscribing to `ws://localhost:9999/api/runs/{run_id}/stream`, dispatches to Zustand. Graph reacts: on `paper_added`, add node + edges to graphology, bump ForceAtlas 2 iteration count, briefly pulse the new node (opacity 0→1 over 300ms, scale 0.5→1.2→1.0). On `step_start`, show toast banner. On `step_end`, update shape table.
   - **Files touched.** `web/frontend/src/hooks/usePipelineRun.ts`, `web/frontend/src/components/Graph.tsx`.
   - **Verify done.** Manual: trigger a real run via UI, watch nodes pop in.
+  - ⏭️ 2026-04-09 — Skipped: frontend WebSocket hook + manual visual verify. The Python EventSink Protocol + run_pipeline emission already shipped in PE-03 — this task is the consumer side. Defer to human after PE-01.
 
 - [ ] **PE-07. React Flow pipeline builder**
   - **What.** New `web/frontend/src/components/PipelineBuilder.tsx`. React Flow canvas with draggable nodes for each step type. Left drawer = "block library" with all step types. Drag blocks onto canvas, connect top-to-bottom. Each node has a settings gear opening a right-sidebar form for that step's config. Filter blocks nest inside screener slots. Save button → `POST /api/configs/{name}` (Flow JSON → YAML). Load button → reads YAML, rehydrates Flow.
   - **Files touched.** `web/frontend/src/components/PipelineBuilder.tsx`, `web/frontend/src/lib/pipelineSchema.ts`, `web/frontend/src/lib/yamlBridge.ts`.
   - **Verify done.** Manual: drag blocks, save, reload, verify fidelity.
+  - ⏭️ 2026-04-09 — Skipped: pure frontend (React Flow library) + manual drag-and-drop verify. Defer to human after PE-01.
 
 - [ ] **PE-08. Paper detail sidebar + run controls**
   - **What.** New `web/frontend/src/components/PaperPanel.tsx` (left): title, abstract, venue, year, authors (clickable chips), citation metrics, source tag, rejection history (from `ctx.rejection_ledger`), "Open on S2" link. New `web/frontend/src/components/RunControls.tsx` (right): start/stop/resume buttons, live progress, budget consumed, shape table.
   - **Files touched.** `web/frontend/src/components/PaperPanel.tsx`, `web/frontend/src/components/RunControls.tsx`.
   - **Verify done.** Visual: clicking a graph node shows paper detail; starting a run updates live.
+  - ⏭️ 2026-04-09 — Skipped: pure frontend + visual verify. Defer to human after PE-01.
 
 - [ ] **PE-09. HumanInTheLoop web integration**
   - **What.** When `HumanInTheLoop` runs, backend emits `hitl_request` event with the k sampled papers. Frontend shows shadcn `Dialog` modal with paper cards + yes/no buttons + progress bar. User submits → `POST /api/runs/{run_id}/hitl` → backend unblocks the step. Refactor `HumanInTheLoop.run()` to be awaitable on an external signal (asyncio.Event or shared dict).
   - **Files touched.** `src/citeclaw/steps/human_in_the_loop.py`, `web/backend/api/runs.py`, `web/frontend/src/components/HitlModal.tsx`.
   - **Verify done.** Manual e2e: run example YAML with HITL, click through modal, verify report is written.
+  - ⏭️ 2026-04-09 — Skipped: full-stack feature whose verify is "Manual e2e" (run a real YAML, click through modal). The Python-only refactor of `HumanInTheLoop.run()` to await an external signal would leave dead code without the FastAPI/React halves AND would change the existing synchronous step's API surface in a way that's untestable in isolation. Defer to human run after PE-01/PE-02 land.
 
 - [ ] **PE-10. Polish + packaging**
   - **What.** `pnpm build` for production bundle. Wire FastAPI to serve the static files. Package as `python -m citeclaw web` CLI subcommand. Add screenshots / demo GIF to `README.md`.
   - **Files touched.** `src/citeclaw/__main__.py`, `web/README.md`, possibly `pyproject.toml` extras.
   - **Verify done.** `python -m citeclaw web --port 9999` serves the full UI on :9999. **Phase E DONE.**
+  - ⏭️ 2026-04-09 — Skipped: requires `pnpm build` for the production bundle and a working FastAPI server. Defer to human after PE-01..PE-09 are complete.
 
 ---
 
