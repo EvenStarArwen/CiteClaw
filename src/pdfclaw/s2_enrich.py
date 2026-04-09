@@ -103,6 +103,12 @@ def enrich_dois_from_s2(papers: list[Paper], *, timeout: float = 60.0) -> list[P
                     doi = ext.get("DOI") or ext.get("doi")
                     if doi:
                         enriched[paper_id] = doi.strip()
+                        continue
+                    # No DOI but maybe an ArXiv ID — convert to canonical
+                    # 10.48550/arXiv.<id> form so the ArxivRecipe picks it up.
+                    arxiv_id = ext.get("ArXiv") or ext.get("arxiv")
+                    if arxiv_id:
+                        enriched[paper_id] = f"10.48550/arXiv.{arxiv_id.strip()}"
                 break  # success
 
             if not api_key:

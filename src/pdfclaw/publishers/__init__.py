@@ -22,14 +22,18 @@ from __future__ import annotations
 
 from pdfclaw.publishers.acm import ACMRecipe
 from pdfclaw.publishers.acs import ACSRecipe
+from pdfclaw.publishers.aip import AIPRecipe
 from pdfclaw.publishers.arxiv import ArxivRecipe
 from pdfclaw.publishers.base import FetchResult, Recipe
 from pdfclaw.publishers.biorxiv import BiorxivRecipe
+from pdfclaw.publishers.cshl import CSHLRecipe
 from pdfclaw.publishers.elife import ELifeRecipe
 from pdfclaw.publishers.elsevier import ElsevierRecipe
 from pdfclaw.publishers.embo import EmboRecipe
 from pdfclaw.publishers.highwire_oa import HighwireOpenAccessRecipe
 from pdfclaw.publishers.ieee import IEEERecipe
+from pdfclaw.publishers.ijcai import IJCAIRecipe
+from pdfclaw.publishers.impact import ImpactJournalsRecipe
 from pdfclaw.publishers.iop import IOPRecipe
 from pdfclaw.publishers.mdpi import MDPIRecipe
 from pdfclaw.publishers.nature import NatureRecipe
@@ -38,20 +42,25 @@ from pdfclaw.publishers.pnas import PNASRecipe
 from pdfclaw.publishers.rsc import RSCRecipe
 from pdfclaw.publishers.science import ScienceRecipe
 from pdfclaw.publishers.springer import SpringerRecipe
+from pdfclaw.publishers.taylor_francis import TaylorFrancisRecipe
 from pdfclaw.publishers.wiley import WileyRecipe
 
 __all__ = [
     "ACMRecipe",
     "ACSRecipe",
+    "AIPRecipe",
     "ArxivRecipe",
     "BiorxivRecipe",
+    "CSHLRecipe",
     "ELifeRecipe",
     "ElsevierRecipe",
     "EmboRecipe",
     "FetchResult",
     "HighwireOpenAccessRecipe",
     "IEEERecipe",
+    "IJCAIRecipe",
     "IOPRecipe",
+    "ImpactJournalsRecipe",
     "MDPIRecipe",
     "NatureRecipe",
     "OxfordRecipe",
@@ -60,6 +69,7 @@ __all__ = [
     "Recipe",
     "ScienceRecipe",
     "SpringerRecipe",
+    "TaylorFrancisRecipe",
     "WileyRecipe",
     "build_default_registry",
     "find_recipe",
@@ -79,6 +89,8 @@ def build_default_registry() -> list[Recipe]:
         BiorxivRecipe(),                # 10.1101/   — Cloudflare cha­llenge zone
         MDPIRecipe(),                   # 10.3390/   — JS-rendered, CDN gates direct PDF URL
         ELifeRecipe(),                  # 10.7554/   — 406 on direct PDF URL
+        ImpactJournalsRecipe(),         # 10.18632/  — Oncotarget / Aging / etc., OA but page-gated
+        IJCAIRecipe(),                  # 10.24963/  — IJCAI proceedings, OA
         # Paywalled — need SSO profile
         NatureRecipe(),                 # 10.1038/   — Nature Portfolio (Springer Nature)
         ElsevierRecipe(),               # 10.1016/   — Elsevier ScienceDirect (incl. Cell Press)
@@ -91,7 +103,10 @@ def build_default_registry() -> list[Recipe]:
         ACMRecipe(),                    # 10.1145/   — ACM Digital Library
         SpringerRecipe(),               # 10.1007/   — Springer (non-Nature)
         IOPRecipe(),                    # 10.1088/   — IOP Publishing (Phys. Med. Biol., ...)
+        AIPRecipe(),                    # 10.1063/   — American Institute of Physics
         EmboRecipe(),                   # 10.15252/  — EMBO Press (now hosted on Wiley)
+        TaylorFrancisRecipe(),          # 10.1080/   — Taylor & Francis Online
+        CSHLRecipe(),                   # 10.1261/   — CSHL Press / RNA Society
         PNASRecipe(),                   # 10.1073/   — PNAS paywalled fallback (HighwireOA tries OA first)
     ]
 
