@@ -93,6 +93,15 @@ class AgentTurn:
     page of a much larger result set and MUST narrow with filters
     rather than synonyms — broadening into a 5000-paper corpus just
     surfaces a different first-1000 page of mostly-noise.
+
+    PH-08: ``raw_reasoning`` is the model's NATIVE reasoning trace from
+    the LLM client's reasoning_content field (vLLM gemma4 parser /
+    OpenAI o-series / Gemini thinking parts). This is separate from
+    ``thinking`` (which is the model's first-pass scratchpad that
+    lives INSIDE the structured JSON response). Captured for diagnosis
+    only — the prompt-design loop reads it to understand why the
+    agent made a particular query / decision. Empty string when the
+    provider doesn't expose native reasoning.
     """
 
     iteration: int
@@ -106,6 +115,7 @@ class AgentTurn:
     sample_titles: list[str]
     decision: str
     reasoning: str
+    raw_reasoning: str = ""
 
 
 @dataclass
@@ -294,13 +304,19 @@ def run_iterative_search(
 
     for iteration in range(1, config.max_iterations + 1):
         transcript_text = _render_transcript(transcript_turns)
+        # PH-08 v2: target_count is no longer surfaced to the model.
+        # The v1 prompt embedded it as "Target: {target_count} papers"
+        # and the model anchored on it as a hard requirement, refusing
+        # to mark satisfied even when the corpus was clearly saturated.
+        # AgentConfig.target_count still exists for callers that want
+        # to set it, but it now ONLY influences the abort safety net,
+        # not the LLM's stop decision.
         user_prompt = USER_TEMPLATE.format(
             topic_description=topic_description,
             anchor_papers_block=anchor_block,
             transcript=transcript_text,
             iteration=iteration,
             max_iterations=config.max_iterations,
-            target_count=config.target_count,
         )
         resp = llm_client.call(
             SYSTEM,
@@ -308,6 +324,12 @@ def run_iterative_search(
             category="meta_search_agent",
             response_schema=RESPONSE_SCHEMA,
         )
+        # PH-08: capture native reasoning_content (the gemma4 parser
+        # exposes this when the request set skip_special_tokens=False).
+        # Stored on the AgentTurn for diagnosis; not fed back into the
+        # next iteration's prompt (the in-JSON ``thinking`` field already
+        # serves that role).
+        raw_reasoning = getattr(resp, "reasoning_content", "") or ""
         try:
             decoded = json.loads(resp.text)
         except (json.JSONDecodeError, TypeError, ValueError):
@@ -315,11 +337,25 @@ def run_iterative_search(
         if not isinstance(decoded, dict):
             decoded = {}
 
-        thinking = str(decoded.get("thinking", ""))
+        # PH-08 v2 schema: ``evaluate`` replaces ``thinking`` (Reflexion-style
+        # explicit reflection on the prior turn) and ``should_stop: bool``
+        # replaces ``agent_decision: str``. Both old field names are still
+        # read for backward compat with the v1 stub responder + tests; the
+        # new fields take precedence when present.
+        thinking = str(decoded.get("evaluate") or decoded.get("thinking") or "")
         raw_query = decoded.get("query")
         query: dict[str, Any] = raw_query if isinstance(raw_query, dict) else {}
-        agent_decision = str(decoded.get("agent_decision", ""))
         reasoning = str(decoded.get("reasoning", ""))
+        # Stop signal: prefer the new ``should_stop: bool``; fall back to
+        # the v1 string ``agent_decision == "satisfied"`` so the stub
+        # responder + existing tests still terminate properly.
+        v2_should_stop = decoded.get("should_stop")
+        if isinstance(v2_should_stop, bool):
+            should_stop = v2_should_stop
+            agent_decision = "satisfied" if should_stop else "refine"
+        else:
+            agent_decision = str(decoded.get("agent_decision", ""))
+            should_stop = agent_decision == "satisfied"
 
         query_text = str(query.get("text", ""))
         query_filters = query.get("filters") if isinstance(query.get("filters"), dict) else None
@@ -377,10 +413,11 @@ def run_iterative_search(
                 sample_titles=sample_titles,
                 decision=agent_decision,
                 reasoning=reasoning,
+                raw_reasoning=raw_reasoning,
             )
         )
 
-        if agent_decision == "satisfied":
+        if should_stop:
             final_decision = "satisfied"
             break
         if agent_decision == "abort":

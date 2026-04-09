@@ -1405,11 +1405,16 @@ class TestStubAgentDecisionBranch:
     def test_bare_template_has_zero_query_keys(self):
         """The PB-01 template's static legend must NOT itself contain
         `"query":` — otherwise the iteration counter would start at 1
-        and the initial-state branch would be unreachable."""
+        and the initial-state branch would be unreachable.
+
+        PH-08: the branch detector token used to be ``"agent_decision"``;
+        the v2 schema uses ``"should_stop"``. The stub responder triggers
+        on EITHER substring (backward compat) so this test now checks
+        that at least one of them is present."""
         user = self._agent_user(transcript="(no prior turns)")
         assert user.count('"query":') == 0
         # Sanity: the branch detector token IS present.
-        assert '"agent_decision"' in user
+        assert '"should_stop"' in user or '"agent_decision"' in user
 
     def test_initial_state_when_no_prior_queries(self):
         user = self._agent_user(transcript="(no prior turns)")

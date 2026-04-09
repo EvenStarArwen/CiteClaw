@@ -43,7 +43,7 @@ def stub_respond(system: str, user: str) -> str:
     """Return a deterministic JSON / text response for the given prompt."""
     if '"topic_label"' in user:
         return json.dumps({"topic_label": "stub-topic", "summary": "stub summary"})
-    if '"agent_decision"' in user:
+    if '"agent_decision"' in user or '"should_stop"' in user:
         # Iterative search agent (citeclaw.agents.iterative_search). Each
         # iteration's user prompt embeds the prior turns' raw JSON in the
         # transcript section, so the count of ``"query":`` JSON keys grows
@@ -54,9 +54,14 @@ def stub_respond(system: str, user: str) -> str:
         #   1 prior query   → "refine"   (narrow after seeing first results)
         #  ≥2 prior queries → "satisfied" (terminate the loop)
         #
-        # Every response carries all four schema fields with ``thinking``
-        # first so PB-04's parser can lift the scratchpad straight into the
-        # AgentTurn dataclass and PB-05's tests can assert non-empty thinking.
+        # PH-08: the trigger now matches BOTH the v1 schema (which had
+        # ``agent_decision`` as a top-level field) and the v2 schema
+        # (which has ``should_stop`` as a top-level boolean). The
+        # response carries the v1 fields (thinking + agent_decision) so
+        # the existing test suite — which asserts on those exact field
+        # names — keeps passing. The agent code's backward-compat
+        # fallback in iterative_search.py reads agent_decision when
+        # should_stop is missing.
         n_prior_queries = user.count('"query":')
         if n_prior_queries == 0:
             return json.dumps({

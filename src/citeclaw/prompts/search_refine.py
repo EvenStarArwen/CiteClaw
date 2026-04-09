@@ -5,28 +5,46 @@ designs targeted literature-database queries from a topic description
 and a sample of papers already in the collection, then iteratively
 refines its query based on what each search returned.
 
-To force a per-call chain of thought *before* any structured decision,
-the response schema places a free-text ``thinking`` field FIRST. Capable
-models fill that field with their scratchpad before committing to a
-query, and each turn's thinking is forwarded into the next iteration's
-user prompt so the agent can see (and build on) its earlier reasoning.
-This is the "Level-1" inner reasoning loop; native reasoning tokens via
-``reasoning_effort="high"`` stack on top.
+PH-08 redesign rationale (the v1 → v2 changes):
 
-The SYSTEM prompt teaches the agent the EXACT query syntax that
-Semantic Scholar's ``/paper/search/bulk`` endpoint accepts. This was
-empirically verified against the live API in PH-02 — earlier prompt
-versions assumed standard boolean syntax, which led the agent to
-generate over-constrained queries that returned 0 results for the
-first 3 iterations of every run. The key insight: S2 only honours
-boolean operators *between quoted phrases*; bare keyword `AND` is
-treated as a literal keyword.
+The v1 prompt failed empirically on 9/10 diverse benchmark topics. Three
+failure modes dominated:
 
-The user prompt mentions the literal token ``"agent_decision"`` (with
-surrounding double quotes, exactly as it would appear in a JSON
-document) so the offline stub responder in
+  1. **Target-count anchoring** (8/9 runs). v1 embedded a
+     ``target_count`` figure in the user prompt, and the model anchored
+     on it as a HARD requirement. Even when the agent's own thinking
+     said "the corpus is saturated", it kept refining to chase the
+     number. v2 drops target_count from the prompt entirely. Quality
+     replaces quantity as the only signal.
+
+  2. **Saturation ignored** (2/9 explicit). v1 had a prose rule "mark
+     satisfied if NEW < 10 for two turns" but the model treated it as
+     guidance, not law. v2 promotes the stop decision to a structured
+     ``should_stop: bool`` field on the response schema, and the
+     SYSTEM prompt frames the rule as MANDATORY (not "should").
+
+  3. **First-turn over-broadening** (5/9). v1 said "start narrow with
+     a quoted phrase" but the model often used a 2-3 word generic
+     phrase that hit the page cap. v2 sharpens to "use the SHORTEST
+     multi-word phrase that uniquely identifies the topic in this
+     subfield".
+
+The v2 design also follows two patterns from the agent-design literature:
+  - **Reflexion** (Shinn et al., 2023): explicit per-turn EVALUATE
+    step before the action choice. v2 schema places ``evaluate`` first
+    so the model articulates what it learned from the previous turn
+    before designing the next query.
+  - **Anthropic "writing tools for agents"**: keep system prompts
+    domain-neutral and let the user message carry domain specifics.
+    v2 system prompt has ZERO domain-specific examples — every
+    illustrative phrase is abstract (``"phrase A"``, ``"phrase B"``).
+
+The user prompt mentions ``"should_stop"`` as the canonical search-agent
+trigger so the offline stub responder in
 :mod:`citeclaw.clients.llm.stub` can recognise the shape and return a
-deterministic sequence of canned responses for tests.
+deterministic sequence of canned responses for tests. The stub also
+keeps the legacy ``"agent_decision"`` field in its response so the
+code path that reads it during transition still works.
 """
 
 from __future__ import annotations
@@ -34,210 +52,38 @@ from __future__ import annotations
 from typing import Any
 
 SYSTEM = """\
-You are a search-query designer for the Semantic Scholar literature
-database. Given a topic description and a sample of anchor papers
-already in the collection, your job is to design targeted queries that
-SURFACE THE MISSING relevant work — papers like the anchors, plus
-methodologically adjacent ones, that the user has not yet found.
+You design one Semantic Scholar bulk-search query per turn to surface papers on a topic. The user gives you the topic, anchor papers, and prior turns with their signals. You emit one new query OR stop.
 
-QUERY SYNTAX — Semantic Scholar /paper/search/bulk uses Lucene-style
-operators (empirically verified against the live API):
+SYNTAX (Lucene; operators only between QUOTED phrases)
+  ""  phrase   "phrase A"
+  +   AND      "phrase A" +"phrase B"
+  |   OR       "phrase A" | "phrase B"
+  -   NOT      "phrase A" -"phrase B"
+  ()  group    ("A" | "B") +"C"
 
-  +   AND  (require this phrase)
-  |   OR   (either phrase)
-  -   NOT  (exclude this phrase)
-  ""  exact phrase
-  ()  grouping
-  *   prefix wildcard
-  ~N  fuzzy / proximity within N tokens
+Bare keywords → bag-of-words sorted by paperId (arbitrary). Single-word "phrases" match millions ("RNA" → all RNA-related; "transformer" → also genes). AND/OR/NOT keywords are literal tokens, not operators. + binds tighter than | — parenthesise mixed +/|. Over-constrained intersections (3+ "+" clauses) usually return 0; prefer one "+" of two grouped OR sets plus filters.
 
-CRITICAL: operators ONLY work BETWEEN quoted phrases. The keywords
-``AND``, ``OR``, ``NOT`` are NOT operators — they get tokenised as
-literal terms. Always wrap intent-bearing phrases in double quotes.
+FILTERS (narrow without changing text — preferred over more "+" clauses)
+  year ("2024" | "2020-2026" | "2022-" | "-2018"), fieldsOfStudy (CS, Biology, Medicine, Physics, Chemistry, Materials Science, Engineering, ...), venue, minCitationCount (int), publicationTypes (Review | JournalArticle | Conference | ...), publicationDateOrYear ("YYYY-MM-DD:YYYY-MM-DD"), openAccessPdf.
 
-A "phrase" is TWO OR MORE words. A single quoted token like ``"RNA"``
-or ``"transformer"`` is NOT a useful phrase: ``"RNA"`` matches every
-RNA-related paper in S2 (millions), and ``"transformer"`` matches
-biology genes literally named "transformer2" alongside ML papers.
-ALWAYS use multi-word phrases that name a concept the field uses
-verbatim, like ``"RNA language model"`` or ``"protein structure
-prediction"``.
+SORT — usually omit (default is arbitrary paperId order). Valid values only: paperId, publicationDate, citationCount.
 
-Bare unquoted text is treated as a bag of stemmed tokens, with default
-sort by paperId — that is essentially RANDOM ORDER for any large
-corpus. Bare-keyword queries like ``RNA language model`` return ~1200
-hits with "Preface" at the top. The same query as ``"RNA language
-model"`` returns ~30 highly relevant hits.
+PER-TURN SIGNALS (in transcript)
+  n_results = papers returned this turn
+  NEW       = papers not seen in earlier turns
+  PARTIAL   = corpus has more matches than were returned
 
-Examples (all verified):
+MANDATORY RULES (not heuristics)
+  A. Previous turn PARTIAL → next query MUST add a filter, NOT more "+" clauses.
+  B. Previous turn n_results < 10 → MUST broaden (add | alternatives or drop a "+" clause).
+  C. SATURATION STOP: NEW < 5 in BOTH the latest turn AND the turn before → MUST set should_stop=true. There is NO target count; quality beats quantity. 30 high-precision papers > 200 noisy ones.
+  D. Otherwise refine direction: new anchor concept, new filter, or "-" exclusion of a crowding near-neighbour.
 
-  "RNA language model"
-      → 33 results, all directly on-topic.
+FIRST TURN
+No transcript yet. Use the SHORTEST 2-3 word phrase that uniquely names the topic in this subfield, drawn verbatim from anchor titles. Add one or two obvious field-of-study filters.
 
-  "RNA language model" +"structure prediction"
-      → 19 results, every one is RNA LM applied to structure.
-
-  "RNA foundation model" | "RNA language model"
-      → 85 results, recall-broadened union.
-
-  ("RNA" | "ncRNA") +"language model"
-      → ~500 results — too broad because "RNA" alone matches anything
-      RNA-related; only use grouped OR when both alternatives are
-      themselves topic-specific phrases.
-
-  "protein language model" -"RNA"
-      → exclude RNA work from a protein LM search.
-
-WHAT DOES NOT WORK
-
-  RNA AND language model
-      → "AND" is treated as a literal token. Returns 1200+ random hits.
-
-  "foo bar" AND "baz qux"
-      → coincidentally yields the same result as "foo bar" "baz qux"
-      because AND tokenises to a stop word, but DON'T rely on it.
-      Use ``+`` instead.
-
-  Over-constrained intersections like
-    ("foo" | "bar") +("baz" | "qux") +("a" | "b") +("c" | "d")
-      → often intersect to ZERO results. Prefer ONE focused +AND of two
-      groups, plus an optional NOT to remove a near-neighbour topic.
-
-OPERATOR PRECEDENCE — always parenthesise mixed operators
-
-``+`` binds TIGHTER than ``|``. Without explicit parentheses,
-``"A" | "B" + "C"`` parses as ``"A" | ("B" + "C")`` — almost never
-what you wanted. ALWAYS use explicit parentheses when you mix the
-two operators:
-
-  WRONG:  "ESM-2" | "ProtTrans" | "ProGen" + "UniRef"
-          → returns papers matching ProGen-AND-UniRef OR ESM-2 OR ProtTrans
-          → in practice almost always 0-5 results
-  RIGHT:  ("ESM-2" | "ProtTrans" | "ProGen") + "UniRef"
-          → returns papers matching (any of the three) AND UniRef
-
-QUERY DESIGN STRATEGY
-
-1. **Iter 1: name the topic.** Use the single most specific quoted
-   phrase the field actually uses (look at anchor titles!). Examples:
-   ``"RNA foundation model"``, ``"protein language model"``,
-   ``"Bayesian hyperparameter optimization"``. Narrow first so you
-   can see what the corpus actually contains.
-
-2. **If iter 1 returns more than the per-iter fetch cap** (the
-   ``Observed:`` line will say ``PARTIAL — narrow with filters``),
-   the topic is broad enough that you're only seeing the first page.
-   Your iter 2 priority is to NARROW WITH FILTERS, not text
-   constraints:
-
-     filters: {year: "2023-2026", minCitationCount: 30,
-               publicationTypes: "JournalArticle"}
-
-   Filters are cheap and selective. Adding more ``+`` text clauses to
-   a broad-topic query usually over-restricts (16 results) or
-   under-restricts (still 1000+) — filters do the right thing every
-   time.
-
-3. **If the narrow query returns <20 results**, broaden with ``|``
-   over semantically equivalent phrases:
-   ``"RNA foundation model" | "RNA language model" | "RNA pretrained transformer"``
-
-4. **If the broadened query returns >300 noisy results in a small
-   corpus** (total matches not much bigger than fetched), then the
-   text constraint is at the wrong level — try a more specific phrase,
-   not a longer OR list.
-
-5. **If a near-neighbour topic dominates the results** (e.g. protein
-   work crowding out RNA work), exclude with ``-"protein language
-   model"``.
-
-6. **If results saturate** across iterations (the new turn brings
-   mostly overlap with previous turns and no new relevant hits, i.e.
-   ``NEW`` count drops to single digits), mark ``satisfied``.
-
-FILTERS — narrow results without touching the query text
-
-The ``filters`` object accepts these S2-recognised keys (verified
-from the official OpenAPI spec):
-
-  year                "2024" or "2020-2026" or "2022-" or "-2018"
-  publicationDateOrYear  "2020-01-01:2026-12-31" (precise date range)
-  fieldsOfStudy       comma-separated tags from S2's 23-field taxonomy:
-                      Computer Science, Biology, Medicine, Physics,
-                      Mathematics, Chemistry, Materials Science,
-                      Engineering, Environmental Science, Economics, etc.
-  venue               comma-separated venue names (Nature, Cell, NeurIPS, ...)
-  minCitationCount    integer floor — useful to skip preprints with no impact
-  publicationTypes    Review | JournalArticle | Conference | Dataset | ...
-  openAccessPdf       set this key (any non-null value) to require a public PDF
-
-SORT — usually omit it
-
-The default sort is ``paperId:asc``, which is essentially random
-order. There is NO relevance score in /paper/search/bulk — relevance
-is achieved by making the QUERY itself selective via quoted phrases.
-
-Valid sort values are exactly: ``paperId``, ``publicationDate``,
-``citationCount`` (each accepts ``:asc`` or ``:desc``). Use:
-
-  sort omitted             when you want to see what the corpus has
-                           after a selective quoted-phrase query.
-  sort: citationCount:desc only for well-established topics where you
-                           specifically want the most-cited works AND
-                           your query is selective enough that the
-                           top-cited papers will still be on-topic.
-                           Don't pair this with a broad query — you'll
-                           get unrelated 1000-citation papers that
-                           happen to share keywords.
-  sort: publicationDate:desc when surveying recent work (preprints, etc).
-
-REASONING DISCIPLINE
-
-Before committing to a query, fill the ``thinking`` field with:
-  - what the anchor papers tell you about the field's vocabulary,
-    especially the EXACT phrases the community uses,
-  - what query shape you're going to try this turn and why,
-  - how this turn differs from the previous one (if any), and what
-    you expect to learn from the result count.
-
-After each search, judge BOTH the total hit count AND the ``NEW``
-count for that turn (the transcript shows both as
-``Observed: N total results (M NEW since previous turns)``):
-
-  - total <10 → query was too narrow, broaden with ``|``
-  - total 20-300, mostly relevant → about right, refine direction
-  - total >300 with noise in the sample → too broad, add a ``+`` clause
-    or a filter, NEVER drop a phrase down to a single token
-
-The ``NEW`` count is the SATURATION SIGNAL:
-
-  - NEW < 10 for two consecutive turns → you have effectively saturated
-    the queries you can express. Mark ``satisfied`` even if total is
-    below the target — quality > quantity. Do NOT broaden into single
-    tokens trying to scrape more results; that explodes precision.
-  - NEW > 50 → the new phrasing is genuinely opening new corners of
-    the field. Keep refining in that direction.
-
-QUALITY OVER QUANTITY
-
-The target collection size is a HINT, not a hard requirement. If you
-have 80 highly relevant papers and 3 turns of broadening have only
-added <10 new papers each, the corpus genuinely contains ~80 relevant
-papers and you should mark ``satisfied``. Trying to artificially hit
-200 by broadening into single tokens or adding unrelated synonyms will
-make the COLLECTION worse, not better — every false positive added
-above the saturation point will need to be filtered out by downstream
-LLM screening.
-
-OUTPUT FORMAT
-
-Output ONLY valid JSON matching the supplied response schema. Field
-order: thinking, query, agent_decision, reasoning. Use:
-  - ``initial`` on the first turn
-  - ``refine`` while still iterating
-  - ``satisfied`` to break the loop with success
-  - ``abort`` to break with failure (only if the topic appears
-    unsearchable from this anchor set)
+OUTPUT
+JSON schema fields in order: evaluate, query, should_stop, reasoning. Fill evaluate BEFORE the query — each turn must explicitly reflect on the previous turn's signals.
 """
 
 USER_TEMPLATE = """\
@@ -247,35 +93,35 @@ Topic description:
 Anchor papers already in the collection:
 {anchor_papers_block}
 
-Iteration {iteration} of {max_iterations}. Target collection size: {target_count} papers.
+Iteration {iteration} of {max_iterations}.
 
 Transcript so far (most recent turn last):
 {transcript}
 
-Design the next literature-database query. Respond with valid JSON whose fields appear in this exact order:
-  1. "thinking": free-text scratchpad — fill this BEFORE deciding the query.
-  2. "query" — an object with:
-       "text" (required, use quoted phrases per the syntax rules above),
-       "filters" (optional dict of year / fieldsOfStudy / venue / minCitationCount / publicationTypes),
-       "sort" (optional — usually omit; default is relevance).
-  3. "agent_decision": one of "initial" / "refine" / "satisfied" / "abort".
-  4. "reasoning": one short sentence justifying the agent_decision.
-
-Use `initial` on the first turn, `refine` to narrow or broaden a previous query, `satisfied` when you have found enough relevant work, and `abort` if the topic is unsearchable from this anchor set.
+Design the next bulk-search query (or stop the loop). Respond with valid JSON whose fields appear in this exact order:
+  1. "evaluate"     — 1-2 sentences on what the previous turn's signals (n_results, NEW count, PARTIAL flag) told you. On the first turn, briefly state your initial strategy.
+  2. "query"        — object with "text" (required, use the Lucene syntax from the system prompt), "filters" (optional dict), "sort" (optional, usually omit).
+  3. "should_stop"  — boolean. Set TRUE per RULE C of the system prompt (saturation: NEW < 5 in last two turns) OR if the topic is genuinely unsearchable. Set FALSE otherwise.
+  4. "reasoning"    — one sentence justifying both the query and the should_stop value.
 """
 
 RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
-    # Property insertion order is meaningful here: capable LLM clients
-    # surface fields to the model in the order declared, and the agent's
-    # value comes from filling `thinking` BEFORE any structured field.
+    # Property insertion order is meaningful: capable LLM clients surface
+    # fields to the model in declaration order, and the v2 design wants
+    # the model to fill ``evaluate`` (Reflexion-style reflection on the
+    # previous turn) BEFORE designing the new query. ``should_stop``
+    # comes after the query because the stop decision can depend on
+    # whether the new query would even change anything.
     "properties": {
-        "thinking": {
+        "evaluate": {
             "type": "string",
             "description": (
-                "Free-text scratchpad. Fill this BEFORE deciding the "
-                "query so later iterations can see the chain of "
-                "reasoning."
+                "Reflexion-style 1-2 sentence evaluation of the previous "
+                "turn's signals (n_results, NEW count, PARTIAL flag). "
+                "On the first turn, state the initial strategy in one "
+                "sentence. Fill this BEFORE the query so the next "
+                "iteration sees the chain of reasoning."
             ),
         },
         "query": {
@@ -283,44 +129,54 @@ RESPONSE_SCHEMA: dict[str, Any] = {
             "properties": {
                 "text": {
                     "type": "string",
-                    "description": "Free-text database query string.",
+                    "description": (
+                        "Lucene-style bulk-search query. ALWAYS quote "
+                        "multi-word phrases. Operators (+ | -) only "
+                        "work between quoted phrases. Parenthesise "
+                        "mixed + and |."
+                    ),
                 },
                 "filters": {
                     "type": "object",
                     "description": (
-                        "Optional S2 search/bulk filter dict — keys "
-                        "like year / venue / fieldsOfStudy / "
-                        "minCitationCount / publicationTypes."
+                        "Optional S2 filter dict — keys: year, "
+                        "fieldsOfStudy, venue, minCitationCount, "
+                        "publicationTypes, publicationDateOrYear, "
+                        "openAccessPdf. Use filters to narrow a broad "
+                        "topic — they are cheap and selective."
                     ),
                 },
                 "sort": {
                     "type": "string",
                     "description": (
-                        "Optional sort key, e.g. citationCount:desc."
+                        "Usually omit (default = arbitrary paperId "
+                        "order). Valid values only: paperId, "
+                        "publicationDate, citationCount, each with "
+                        "optional :asc / :desc."
                     ),
                 },
             },
             "required": ["text"],
             "additionalProperties": False,
         },
-        "agent_decision": {
-            "type": "string",
-            "enum": ["initial", "refine", "satisfied", "abort"],
+        "should_stop": {
+            "type": "boolean",
             "description": (
-                "Lifecycle state for this turn. `initial` on the first "
-                "iteration, `refine` while still iterating, `satisfied` "
-                "to break the loop with success, `abort` to break with "
-                "failure."
+                "Mandatory saturation check. Set TRUE if NEW < 5 in "
+                "BOTH the latest turn and the one before — the corpus "
+                "is exhausted, more refining will not surface new "
+                "relevant work. Quality beats quantity; there is no "
+                "target count. Setting TRUE ends the loop."
             ),
         },
         "reasoning": {
             "type": "string",
             "description": (
-                "One-sentence justification for the agent_decision "
-                "value above."
+                "One-sentence justification for both the query and "
+                "the should_stop value."
             ),
         },
     },
-    "required": ["thinking", "query", "agent_decision", "reasoning"],
+    "required": ["evaluate", "query", "should_stop", "reasoning"],
     "additionalProperties": False,
 }
