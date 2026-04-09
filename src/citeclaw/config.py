@@ -323,6 +323,12 @@ class BudgetTracker:
         self._llm_output_tokens: dict[str, int] = {}     # output only (added for cost split)
         self._llm_calls: dict[str, int] = {}
         self._llm_reasoning_tokens: dict[str, int] = {}
+        # Per-category count of LLM responses served from the
+        # ``llm_response_cache`` table — bumped by
+        # :class:`citeclaw.clients.llm.caching.CachingLLMClient` on every
+        # cache hit. Hits are billed nothing (no record_llm call), so
+        # this counter is the only signal that the cache is working.
+        self._llm_cache_hits: dict[str, int] = {}
         self._s2_api: dict[str, int] = {}
         self._s2_cache: dict[str, int] = {}
 
@@ -353,6 +359,23 @@ class BudgetTracker:
     @property
     def s2_cache_hits(self) -> int:
         return sum(self._s2_cache.values())
+
+    @property
+    def llm_cache_hits(self) -> int:
+        return sum(self._llm_cache_hits.values())
+
+    def record_llm_cache_hit(self, category: str = "other") -> None:
+        """Record a cache hit on the LLM prompt cache.
+
+        Hits do NOT pay for any tokens (no ``record_llm`` call) — the
+        whole point of the cache is to skip the model entirely. This
+        counter is the only place the dashboard surfaces "you saved
+        a call" feedback.
+        """
+        with self._lock:
+            self._llm_cache_hits[category] = (
+                self._llm_cache_hits.get(category, 0) + 1
+            )
 
     def record_llm(self, input_tokens: int, output_tokens: int, category: str = "other", *, reasoning_tokens: int = 0) -> None:
         with self._lock:

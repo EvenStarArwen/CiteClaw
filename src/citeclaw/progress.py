@@ -406,11 +406,16 @@ class Dashboard(NullDashboard):
             hit_pct = (s2_cache / max(1, s2_api + s2_cache)) * 100
             cost = self._budget.cost_estimate(self._model)
 
+            llm_cache_hits = self._budget.llm_cache_hits
+            cache_suffix = (
+                f"  [metric.value]{llm_cache_hits}[/] cached"
+                if llm_cache_hits else ""
+            )
             self._console.print(
                 f"     llm  [metric.value]{tot_in / 1000:.1f}k[/] in  "
                 f"[metric.value]{tot_out / 1000:.1f}k[/] out  "
                 f"[metric.value]{tot_reason / 1000:.1f}k[/] reason  "
-                f"([metric.value]{n_calls}[/] calls)"
+                f"([metric.value]{n_calls}[/] calls{cache_suffix})"
             )
             self._console.print(
                 f"     s2   [metric.value]{s2_api}[/] api  "

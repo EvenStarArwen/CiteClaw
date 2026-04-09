@@ -673,7 +673,7 @@ class TestPerFilterOverrides:
             def call(self, *a, **kw): return LLMResponse("[]", [])
             supports_logprobs = False
 
-        def spy_build(config, budget, *, model=None, reasoning_effort=None):
+        def spy_build(config, budget, *, model=None, reasoning_effort=None, **_):
             build_calls.append((model, reasoning_effort))
             return FakeClient(model)
 
@@ -701,7 +701,7 @@ class TestPerFilterOverrides:
         class FakeClient:
             def __init__(self): pass
 
-        def spy_build(config, budget, *, model=None, reasoning_effort=None):
+        def spy_build(config, budget, *, model=None, reasoning_effort=None, **_):
             counts["built"] += 1
             return FakeClient()
 
@@ -787,7 +787,7 @@ class TestPerFilterOverrides:
         # Capture the build kwargs per filter.
         build_args: list[dict] = []
 
-        def spy_build(config, budget, *, model=None, reasoning_effort=None):
+        def spy_build(config, budget, *, model=None, reasoning_effort=None, **_):
             build_args.append({"model": model, "reasoning_effort": reasoning_effort})
             return FakeClient()
 
@@ -1119,7 +1119,7 @@ class TestStructuredOutput:
                     logprob_tokens=[],
                 )
 
-        def spy_build(config, budget, *, model=None, reasoning_effort=None):
+        def spy_build(config, budget, *, model=None, reasoning_effort=None, **_):
             return FakeClient()
 
         monkeypatch.setattr(llm_runner, "build_llm_client", spy_build)
@@ -1147,7 +1147,7 @@ class TestStructuredOutput:
                     logprob_tokens=[],
                 )
 
-        def spy_build(config, budget, *, model=None, reasoning_effort=None):
+        def spy_build(config, budget, *, model=None, reasoning_effort=None, **_):
             return LegacyClient()
 
         monkeypatch.setattr(llm_runner, "build_llm_client", spy_build)
@@ -1317,7 +1317,7 @@ class TestFormulaDispatch:
                     logprob_tokens=[],
                 )
 
-        def spy_build(config, budget, *, model=None, reasoning_effort=None):
+        def spy_build(config, budget, *, model=None, reasoning_effort=None, **_):
             builds.append((model, reasoning_effort))
             return FakeClient()
 

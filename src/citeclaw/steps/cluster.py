@@ -142,6 +142,7 @@ class Cluster:
                     ctx.config, ctx.budget,
                     model=model_override,
                     reasoning_effort=reasoning_override,
+                    cache=getattr(ctx, "cache", None),
                 )
                 dash.begin_phase("name topics · LLM", total=max(1, len(result.metadata)))
                 name_topics_via_llm(

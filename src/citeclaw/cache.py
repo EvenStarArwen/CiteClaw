@@ -63,6 +63,20 @@ CREATE TABLE IF NOT EXISTS paper_full_text (
     error      TEXT,
     fetched_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS llm_response_cache (
+    -- Content-addressable LLM prompt cache. ``cache_key`` is a sha256
+    -- hash over (model, reasoning_effort, system, user, response_schema,
+    -- with_logprobs) computed by ``citeclaw.clients.llm.caching.make_cache_key``.
+    -- Repeat calls with the same prompt skip the LLM entirely and serve
+    -- the response from this table — the chief savings on iterative
+    -- runs and on multi-pass screening.
+    cache_key         TEXT PRIMARY KEY,
+    model             TEXT NOT NULL,
+    response_text     TEXT NOT NULL,
+    reasoning_content TEXT,
+    logprob_tokens    TEXT,
+    fetched_at        TEXT NOT NULL
+);
 """
 
 
@@ -331,6 +345,70 @@ class Cache:
         log.debug(
             "Cache STORE [paper_full_text] %s (text=%d chars, error=%r)",
             paper_id, len(text or ""), error,
+        )
+
+    # --- LLM prompt cache ---
+
+    def get_llm_response(self, cache_key: str) -> dict[str, Any] | None:
+        """Return the cached LLM response for ``cache_key`` or ``None``.
+
+        Returns a dict with keys ``text`` (str), ``reasoning_content``
+        (str, may be empty), and ``logprob_tokens`` (list, may be
+        empty). The caller reconstructs an :class:`LLMResponse` from it.
+        """
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT response_text, reasoning_content, logprob_tokens "
+                "FROM llm_response_cache WHERE cache_key = ?",
+                (cache_key,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            log.debug("Cache MISS [llm_response_cache] %s", cache_key[:12])
+            return None
+        log.debug("Cache HIT [llm_response_cache] %s", cache_key[:12])
+        try:
+            logprobs = json.loads(row[2]) if row[2] else []
+        except (json.JSONDecodeError, TypeError):
+            logprobs = []
+        return {
+            "text": row[0],
+            "reasoning_content": row[1] or "",
+            "logprob_tokens": logprobs,
+        }
+
+    def put_llm_response(
+        self,
+        cache_key: str,
+        *,
+        model: str,
+        text: str,
+        reasoning_content: str = "",
+        logprob_tokens: list | None = None,
+    ) -> None:
+        """Persist a fresh LLM response under ``cache_key``.
+
+        ``logprob_tokens`` is JSON-serialised when present; pass ``None``
+        (or an empty list) when the call didn't request logprobs.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        logprob_blob = (
+            json.dumps(logprob_tokens) if logprob_tokens else None
+        )
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT OR REPLACE INTO llm_response_cache "
+                "(cache_key, model, response_text, reasoning_content, "
+                "logprob_tokens, fetched_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    cache_key, model, text,
+                    reasoning_content or None,
+                    logprob_blob, now,
+                ),
+            )
+        log.debug(
+            "Cache STORE [llm_response_cache] %s (%d chars)",
+            cache_key[:12], len(text or ""),
         )
 
     def close(self) -> None:

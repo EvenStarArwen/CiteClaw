@@ -94,6 +94,7 @@ def _client_for(ctx: "Context", llm_filter: "LLMFilter | None" = None):
     if c is None:
         c = build_llm_client(
             ctx.config, ctx.budget, model=model, reasoning_effort=reasoning,
+            cache=getattr(ctx, "cache", None),
         )
         cache[key] = c
     return c

@@ -252,6 +252,159 @@ class TestResolveSeedsPreprintPublishedPair:
 
 
 # ---------------------------------------------------------------------------
+# Title round-trip sibling lookup: feed the primary's title back into
+# search_match to find a sibling preprint↔published pair that S2 doesn't
+# cross-link via external_ids.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveSeedsTitleRoundtrip:
+    """``include_siblings=True`` should also do a title-based S2 round-trip
+    so that a primary record whose ``external_ids`` is empty (or whose
+    siblings aren't reachable via DOI/ARXIV) still gets paired with its
+    preprint↔published counterpart when one exists in S2 with the same
+    title and overlapping authors."""
+
+    def test_title_roundtrip_finds_sibling_with_shared_author(
+        self, tmp_path: Path,
+    ):
+        fs = FakeS2Client()
+        published = make_paper(
+            "PUB-1",
+            title="A Long Descriptive Title For The Paper Suitable For Matching",
+            authors=[
+                {"authorId": "A1", "name": "Alice"},
+                {"authorId": "A2", "name": "Bob"},
+            ],
+            external_ids={},  # no external_ids → ext-id walk finds nothing
+        )
+        preprint = make_paper(
+            "PRE-1",
+            title="A Long Descriptive Title For The Paper Suitable For Matching",
+            authors=[
+                {"authorId": "A1", "name": "Alice"},
+                {"authorId": "A2", "name": "Bob"},
+            ],
+            external_ids={},
+        )
+        fs.add(published)
+        fs.add(preprint)
+        # search_match returns the preprint when given the published title
+        fs.register_search_match(
+            "A Long Descriptive Title For The Paper Suitable For Matching",
+            preprint,
+        )
+
+        ctx = _build_ctx(
+            tmp_path, fs, [SeedPaper(paper_id="PUB-1")],
+        )
+        result = ResolveSeeds(include_siblings=True).run([], ctx)
+        assert "PUB-1" in ctx.resolved_seed_ids
+        assert "PRE-1" in ctx.resolved_seed_ids
+        assert ctx.resolved_seed_ids[0] == "PUB-1"  # primary first
+        assert result.stats["siblings_added"] == 1
+
+    def test_title_roundtrip_rejects_unrelated_author_match(
+        self, tmp_path: Path,
+    ):
+        """Author overlap is the anti-noise check — a different paper that
+        happens to share a similar title must NOT be picked up."""
+        fs = FakeS2Client()
+        primary = make_paper(
+            "PUB-2",
+            title="Yet Another Long Descriptive Title For The Paper Match",
+            authors=[
+                {"authorId": "A1", "name": "Alice"},
+                {"authorId": "A2", "name": "Bob"},
+            ],
+            external_ids={},
+        )
+        unrelated = make_paper(
+            "OTHER-1",
+            title="Yet Another Long Descriptive Title For The Paper Match",
+            authors=[
+                {"authorId": "Z1", "name": "Zoe"},
+                {"authorId": "Z2", "name": "Yves"},
+            ],
+            external_ids={},
+        )
+        fs.add(primary)
+        fs.add(unrelated)
+        fs.register_search_match(
+            "Yet Another Long Descriptive Title For The Paper Match",
+            unrelated,
+        )
+
+        ctx = _build_ctx(
+            tmp_path, fs, [SeedPaper(paper_id="PUB-2")],
+        )
+        result = ResolveSeeds(include_siblings=True).run([], ctx)
+        assert ctx.resolved_seed_ids == ["PUB-2"]
+        assert result.stats["siblings_added"] == 0
+
+    def test_title_roundtrip_skipped_for_short_titles(
+        self, tmp_path: Path,
+    ):
+        """Titles shorter than 30 chars are skipped — too generic to match
+        cleanly via search_match."""
+        fs = FakeS2Client()
+        primary = make_paper(
+            "PUB-3",
+            title="Short title",  # < 30 chars
+            authors=[{"authorId": "A1", "name": "Alice"}],
+            external_ids={},
+        )
+        also = make_paper(
+            "OTHER-2",
+            title="Short title",
+            authors=[{"authorId": "A1", "name": "Alice"}],
+            external_ids={},
+        )
+        fs.add(primary)
+        fs.add(also)
+        # Even though the match is registered, the short-title guard
+        # in _expand_via_title_roundtrip should skip the call entirely.
+        fs.register_search_match("Short title", also)
+
+        ctx = _build_ctx(
+            tmp_path, fs, [SeedPaper(paper_id="PUB-3")],
+        )
+        result = ResolveSeeds(include_siblings=True).run([], ctx)
+        assert ctx.resolved_seed_ids == ["PUB-3"]
+        assert result.stats["siblings_added"] == 0
+
+    def test_title_roundtrip_off_when_include_siblings_false(
+        self, tmp_path: Path,
+    ):
+        """No title round-trip should happen if include_siblings=False."""
+        fs = FakeS2Client()
+        published = make_paper(
+            "PUB-4",
+            title="A Long Descriptive Title That Is Not Short Enough To Skip",
+            authors=[{"authorId": "A1", "name": "Alice"}],
+            external_ids={},
+        )
+        preprint = make_paper(
+            "PRE-4",
+            title="A Long Descriptive Title That Is Not Short Enough To Skip",
+            authors=[{"authorId": "A1", "name": "Alice"}],
+            external_ids={},
+        )
+        fs.add(published)
+        fs.add(preprint)
+        fs.register_search_match(
+            "A Long Descriptive Title That Is Not Short Enough To Skip",
+            preprint,
+        )
+
+        ctx = _build_ctx(
+            tmp_path, fs, [SeedPaper(paper_id="PUB-4")],
+        )
+        ResolveSeeds(include_siblings=False).run([], ctx)
+        assert ctx.resolved_seed_ids == ["PUB-4"]
+
+
+# ---------------------------------------------------------------------------
 # Wiring with LoadSeeds: when ResolveSeeds runs first, LoadSeeds reads
 # its output instead of cfg.seed_papers.
 # ---------------------------------------------------------------------------
