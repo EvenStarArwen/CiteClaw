@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 01:37 — completed PB-04 ✅ (implemented run_iterative_search loop body in agents/iterative_search.py with 3 private helpers; transcript renderer wraps each turn's query in `{"query": ...}` envelope so PB-02's stub iteration counter advances; lifecycle = satisfied/abort/budget/max_iterations via for-else; 4 inline smoke tests green; full suite 616/6 zero regressions)
 - 2026-04-09 01:19 — completed PB-03 ✅ (new src/citeclaw/agents/ package with AgentConfig + AgentTurn + SearchAgentResult dataclasses; all defaults match the spec; SearchAgentResult uses default_factory so PB-04 can build it incrementally; convenience re-exports via `__init__.py`; verify + sanity checks green; full suite 616/6, zero regressions)
 - 2026-04-09 01:08 — completed PB-02 ✅ (added agent_decision branch to stub_respond with three-state lifecycle initial→refine→satisfied driven by `"query":` count; minor PB-01 tweak: changed `"query":` → `"query" —` in template legend so the initial branch is reachable; 10 new tests in TestStubAgentDecisionBranch; tests/test_llm.py 71/71 green; full suite 616/6, zero regressions)
 - 2026-04-09 00:34 — completed PB-01 ✅ (new src/citeclaw/prompts/search_refine.py with SYSTEM + USER_TEMPLATE + RESPONSE_SCHEMA; thinking field is FIRST in the schema's properties dict; literal `"agent_decision"` quoted in the user template for PB-02's stub; verify command + format() round-trip both green — **Phase B started**)
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-04-09 00:08 — completed PA-07 ✅ (replaced PaperSource str enum with constants namespace class adding SEARCH/SEMANTIC/AUTHOR/REINFORCED; PaperRecord.source is now plain str; production sites already used string literals so zero call-site changes; updated 3 test sites in test_models.py; full suite 550 passed/6 skipped)
 - 2026-04-09 00:03 — completed PA-06 ✅ (added fields_of_study + publication_types to PaperRecord, extended PAPER_FIELDS with fieldsOfStudy/s2FieldsOfStudy/publicationTypes, paper_to_record merges legacy + s2 lists with dedup; 9 new tests in test_models.py; full suite 550 passed/6 skipped)
 - 2026-04-08 23:58 — completed PA-05 ✅ (wired search_bulk through S2CacheLayer with sha256(q,filters,sort,token) hash; added get/put_search_results to cache layer; 10 new tests covering hit/miss + negative coverage for uncached search_match/recommendations; 48 total green)
-- 2026-04-08 23:54 — completed PA-03 ✅ (added fetch_author_papers to SemanticScholarClient with cache-first pagination capped at limit; added get/put_author_papers to S2CacheLayer; 11 new tests, 38 total green)
 
 ---
 
@@ -256,7 +256,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Verify done.** `python -c "from citeclaw.agents.iterative_search import AgentConfig, AgentTurn; c = AgentConfig(); assert c.max_iterations == 4 and c.reasoning_effort == 'high'"`.
   - ✅ 2026-04-09 — Created the `agents/` package with the three dataclasses exactly as spec'd. `iterative_search.py` defines all three; `__init__.py` re-exports them with `__all__` so callers can write `from citeclaw.agents import AgentConfig` (the verify command uses the explicit submodule path so both forms work). `SearchAgentResult` uses `field(default_factory=list)` and empty-string defaults so PB-04's loop can build one up incrementally without forcing the caller to construct a fully-populated instance up front. PB-03 ships ONLY the data shapes — `run_iterative_search` itself lands in PB-04, which will import these from this module. Verify command + a broader sanity check (every default value, convenience re-export, AgentTurn positional construction, SearchAgentResult empty defaults) all green; full suite 616 passed/6 skipped, zero regressions.
 
-- [ ] **PB-04. `run_iterative_search` loop**
+- [x] **PB-04. `run_iterative_search` loop**
   - **What.** Implement:
     ```python
     def run_iterative_search(
@@ -273,6 +273,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     When `anchor_papers` is empty, render the block as `"(No anchor papers — bootstrap from topic description alone.)"`.
   - **Files touched.** `src/citeclaw/agents/iterative_search.py`.
   - **Verify done.** Next task tests it.
+  - ✅ 2026-04-09 — Implemented `run_iterative_search` plus three private helpers (`_render_anchor_papers`, `_render_transcript`, `_summarize_results`) in the same module. The function does NOT build its own LLM client — callers pass one in (so `ctx.config.search_model`, which doesn't exist until PC-06, isn't a hard dependency yet). The transcript renderer is the **load-bearing piece** for PB-02's iteration counter: each prior turn's `Query:` line embeds `json.dumps({"query": turn.query})` so the literal substring `"query":` appears exactly once per turn — without that envelope wrap, the stub would never advance from `initial`. Confirmed end-to-end via 4 smoke tests covering max_iterations=3 (3 turns, satisfied), max_iterations=1 (single-shot), empty anchors (bootstrap-from-topic), and `budget._llm_tokens["meta_search_agent"]` accounting. JSON parse uses lenient try/except so a malformed LLM response yields an empty turn rather than crashing the pipeline. `final_decision` lifecycle: `satisfied` / `abort` / `budget` / `max_iterations` (the for-else picks up the no-break case). Full suite 616 passed/6 skipped, zero regressions. **Note for PB-05**: `FakeS2Client.search_bulk` does NOT call `budget.record_s2`, so PB-05's `budget._s2_api.get("search", 0) == iterations` assertion will need either a fake-side fix (preferred) or a wrapping client adapter. **Note for PC-06**: when adding `search_model` to `Settings`, `ExpandBySearch.run` will then build the LLM client via `build_llm_client(..., model=config.model or ctx.config.search_model or ctx.config.screening_model)` and pass it to `run_iterative_search`.
 
 - [ ] **PB-05. Unit tests for the agent**
   - **What.** New `tests/test_iterative_search_agent.py`. Drives `run_iterative_search` with `StubLLMClient` + `FakeS2Client.search_bulk`. Asserts:
