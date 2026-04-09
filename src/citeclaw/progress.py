@@ -70,6 +70,8 @@ _THEME = Theme(
         "paper.cit":     "bright_yellow",
         "paper.year":    "dim white",
         "paper.venue":   "magenta",
+        "paper.pdf_yes": "bright_green",
+        "paper.pdf_no":  "grey50",
         "panel.border":  "bright_cyan",
         "bar.back":      "grey23",
         "bar.complete":  "bright_cyan",
@@ -445,6 +447,21 @@ class Dashboard(NullDashboard):
                 f"[dim]  (mean across {self._sat_count} accepted papers)[/]"
             )
 
+        # Open-access PDF coverage. Computed from ``ctx.collection`` rather
+        # than a running counter so checkpoint-loaded and ReScreen-filtered
+        # collections report accurately. Skipped when no papers landed.
+        if self._collection:
+            n_total = len(self._collection)
+            n_pdf = sum(
+                1 for p in self._collection.values()
+                if getattr(p, "pdf_url", None)
+            )
+            pct = (n_pdf / n_total * 100) if n_total else 0.0
+            self._console.print(
+                f"     pdf  [metric.value]{n_pdf} / {n_total}[/] open-access "
+                f"[dim]({pct:.0f}%; run `citeclaw fetch-pdfs <data_dir>` to download)[/]"
+            )
+
         if self._rejection_counts:
             self._console.print()
             self._console.print(
@@ -507,11 +524,17 @@ class Dashboard(NullDashboard):
         cit = getattr(paper, "citation_count", None) or 0
         year = getattr(paper, "year", None) or "—"
         venue = (getattr(paper, "venue", None) or "")[:24] or "—"
+        # Open-access PDF marker — green dot if S2 reports an
+        # ``openAccessPdf.url``, dim dot otherwise. Sits between the year
+        # and venue so the eye can scan the column at a glance.
+        has_pdf = bool(getattr(paper, "pdf_url", None))
+        pdf_mark = "[paper.pdf_yes]●[/]" if has_pdf else "[paper.pdf_no]○[/]"
         sat_str = f"  [dim]sat={saturation:.2f}[/]" if saturation is not None else ""
         self._console.print(
             f"  [ok]✓[/]  {title}  "
             f"[paper.cit]{cit:>8,}[/] cit · "
             f"[paper.year]{year}[/] · "
+            f"{pdf_mark} · "
             f"[paper.venue]{venue}[/]"
             f"{sat_str}"
         )
