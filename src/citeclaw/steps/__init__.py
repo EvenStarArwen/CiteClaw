@@ -12,6 +12,7 @@ from citeclaw.steps.expand_by_search import ExpandBySearch
 from citeclaw.steps.expand_by_semantics import ExpandBySemantics
 from citeclaw.steps.expand_forward import ExpandForward
 from citeclaw.steps.finalize import Finalize
+from citeclaw.steps.human_in_the_loop import HumanInTheLoop
 from citeclaw.steps.load_seeds import LoadSeeds
 from citeclaw.steps.merge_duplicates import MergeDuplicates
 from citeclaw.steps.parallel import Parallel
@@ -112,6 +113,18 @@ def _build_reinforce_graph(d: dict, blocks: dict) -> BaseStep:
     )
 
 
+def _build_human_in_the_loop(d: dict, blocks: dict) -> BaseStep:
+    """Build a ``HumanInTheLoop`` step from its YAML dict."""
+    return HumanInTheLoop(
+        k=int(d.get("k", 10)),
+        timeout_sec=int(d.get("timeout_sec", 120)),
+        include_accepted=bool(d.get("include_accepted", True)),
+        include_rejected=bool(d.get("include_rejected", True)),
+        balance_by_filter=bool(d.get("balance_by_filter", True)),
+        seed=d.get("seed"),
+    )
+
+
 def _build_rerank(d: dict, blocks: dict) -> BaseStep:
     return Rerank(
         metric=d.get("metric", "citation"),
@@ -163,6 +176,7 @@ STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
     "ExpandBySemantics": _build_expand_by_semantics,
     "ExpandByAuthor":    _build_expand_by_author,
     "ReinforceGraph":    _build_reinforce_graph,
+    "HumanInTheLoop":    _build_human_in_the_loop,
     "Rerank":            _build_rerank,
     "ReScreen":          _build_rescreen,
     "Finalize":          _build_finalize,
