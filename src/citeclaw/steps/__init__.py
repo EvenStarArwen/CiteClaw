@@ -7,6 +7,7 @@ from typing import Any, Callable
 from citeclaw.steps.base import BaseStep, StepResult  # noqa: F401
 from citeclaw.steps.cluster import Cluster
 from citeclaw.steps.expand_backward import ExpandBackward
+from citeclaw.steps.expand_by_author import ExpandByAuthor
 from citeclaw.steps.expand_by_search import ExpandBySearch
 from citeclaw.steps.expand_by_semantics import ExpandBySemantics
 from citeclaw.steps.expand_forward import ExpandForward
@@ -83,6 +84,16 @@ def _build_expand_by_semantics(d: dict, blocks: dict) -> BaseStep:
     )
 
 
+def _build_expand_by_author(d: dict, blocks: dict) -> BaseStep:
+    """Build an ``ExpandByAuthor`` step from its YAML dict."""
+    return ExpandByAuthor(
+        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        top_k_authors=int(d.get("top_k_authors", 10)),
+        author_metric=str(d.get("author_metric", "h_index")),
+        papers_per_author=int(d.get("papers_per_author", 50)),
+    )
+
+
 def _build_rerank(d: dict, blocks: dict) -> BaseStep:
     return Rerank(
         metric=d.get("metric", "citation"),
@@ -126,17 +137,18 @@ def _build_cluster(d: dict, blocks: dict) -> BaseStep:
 
 
 STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
-    "LoadSeeds":        _build_load_seeds,
-    "ExpandForward":    _build_expand_forward,
-    "ExpandBackward":   _build_expand_backward,
-    "ExpandBySearch":   _build_expand_by_search,
+    "LoadSeeds":         _build_load_seeds,
+    "ExpandForward":     _build_expand_forward,
+    "ExpandBackward":    _build_expand_backward,
+    "ExpandBySearch":    _build_expand_by_search,
     "ExpandBySemantics": _build_expand_by_semantics,
-    "Rerank":           _build_rerank,
-    "ReScreen":         _build_rescreen,
-    "Finalize":         _build_finalize,
-    "Parallel":         _build_parallel,
-    "MergeDuplicates":  _build_merge_duplicates,
-    "Cluster":          _build_cluster,
+    "ExpandByAuthor":    _build_expand_by_author,
+    "Rerank":            _build_rerank,
+    "ReScreen":          _build_rescreen,
+    "Finalize":          _build_finalize,
+    "Parallel":          _build_parallel,
+    "MergeDuplicates":   _build_merge_duplicates,
+    "Cluster":           _build_cluster,
 }
 
 
