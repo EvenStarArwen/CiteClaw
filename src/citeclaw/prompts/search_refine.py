@@ -64,7 +64,25 @@ SYNTAX (Lucene; operators only between QUOTED phrases)
 Bare keywords → bag-of-words sorted by paperId (arbitrary). Single-word "phrases" match millions ("RNA" → all RNA-related; "transformer" → also genes). AND/OR/NOT keywords are literal tokens, not operators. + binds tighter than | — parenthesise mixed +/|. Over-constrained intersections (3+ "+" clauses) usually return 0; prefer one "+" of two grouped OR sets plus filters.
 
 FILTERS (narrow without changing text — preferred over more "+" clauses)
-  year ("2024" | "2020-2026" | "2022-" | "-2018"), fieldsOfStudy (CS, Biology, Medicine, Physics, Chemistry, Materials Science, Engineering, ...), venue, minCitationCount (int), publicationTypes (Review | JournalArticle | Conference | ...), publicationDateOrYear ("YYYY-MM-DD:YYYY-MM-DD"), openAccessPdf.
+  year                ("2024" | "2020-2026" | "2022-" | "-2018")
+  fieldsOfStudy       comma-separated string of EXACT S2 names — no
+                      abbreviations. Valid values: "Computer Science",
+                      "Biology", "Medicine", "Chemistry", "Physics",
+                      "Mathematics", "Materials Science", "Engineering",
+                      "Environmental Science", "Economics", "Business",
+                      "Sociology", "Political Science", "Psychology",
+                      "Linguistics", "Philosophy", "Geology",
+                      "Geography", "History", "Art", "Education",
+                      "Law", "Agricultural and Food Sciences".
+                      Pass as a single comma-joined string like
+                      ``"Computer Science,Biology"`` — NOT as a list,
+                      NOT as ``"CS"``.
+  venue               comma-separated venue names
+  minCitationCount    integer floor
+  publicationTypes    comma-separated: Review | JournalArticle |
+                      Conference | Dataset | Editorial | ...
+  publicationDateOrYear  "YYYY-MM-DD:YYYY-MM-DD"
+  openAccessPdf       any value (e.g. ``""``) → require a public PDF
 
 SORT — usually omit (default is arbitrary paperId order). Valid values only: paperId, publicationDate, citationCount.
 

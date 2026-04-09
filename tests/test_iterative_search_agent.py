@@ -19,6 +19,7 @@ Phase B is DONE when this file is green.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -456,6 +457,136 @@ class TestRunIterativeSearchIntegration:
         iter2_prompt = captured_prompts[1]
         assert "PARTIAL" in iter2_prompt
         assert "9999" in iter2_prompt  # the total figure should be visible
+
+    def test_saturation_guardrail_stops_at_two_zero_novel_turns(
+        self, ctx: Context, llm: StubClient, monkeypatch,
+    ):
+        """PH-08: a deterministic safety net for the prompt's MANDATORY
+        rule C. If the last two completed turns BOTH had n_results > 0
+        AND n_novel == 0, the next iteration's LLM call should be
+        skipped and the loop should break with
+        final_decision='saturated_guardrail'.
+
+        Mock the LLM with one that NEVER says satisfied (always returns
+        refine), so the guardrail is the only thing that can stop the
+        loop. Patch search_bulk to always return the SAME single paper:
+        T1 has n_novel=1 (fresh), T2 has n_novel=0 (dupe), T3 has
+        n_novel=0 (dupe). Without the guardrail the loop would run all
+        max_iterations turns; with it, the loop breaks at the start of
+        iter 4 with no LLM call for that iteration."""
+        from citeclaw.clients.llm.base import LLMResponse
+
+        def fake_search_bulk(query, *, filters=None, sort=None, token=None, limit=1000):
+            return {"data": [{"paperId": "fixed_p1", "title": "dupe paper"}], "total": 1}
+
+        monkeypatch.setattr(ctx.s2, "search_bulk", fake_search_bulk)
+
+        # Mock LLM that always returns refine (never satisfied), so the
+        # guardrail is the only termination path.
+        llm_call_count = [0]
+        def always_refine_call(system, user, *, with_logprobs=False, category="other", response_schema=None):
+            llm_call_count[0] += 1
+            ctx.budget.record_llm(10, 10, category)
+            return LLMResponse(
+                text=json.dumps({
+                    "evaluate": "stub forced refine",
+                    "query": {"text": "test query"},
+                    "should_stop": False,
+                    "reasoning": "always refine",
+                }),
+            )
+
+        monkeypatch.setattr(llm, "call", always_refine_call)
+
+        config = AgentConfig(max_iterations=10)
+        result = run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        # Guardrail must trigger before the full 10 iters complete.
+        assert result.final_decision == "saturated_guardrail"
+        # T1 has the only novel paper; T2/T3 are zero. Guardrail fires
+        # at the START of iter 4 (sees T2=0 and T3=0), so 3 LLM calls
+        # were issued, not 10.
+        assert llm_call_count[0] == 3
+        assert len(result.transcript) == 3
+
+    def test_guardrail_does_not_fire_when_one_turn_recovers(
+        self, ctx: Context, llm: StubClient, monkeypatch,
+    ):
+        """The guardrail must NOT fire if a single zero-novel turn is
+        followed by even one new paper. Otherwise legitimate pivots
+        that recover would be cut short."""
+        # Alternate: first call returns unique p1, second returns same p1
+        # (n_novel=0), third returns new p2 (n_novel=1).
+        responses = [
+            {"data": [{"paperId": "p1"}], "total": 1},
+            {"data": [{"paperId": "p1"}], "total": 1},  # 0 new
+            {"data": [{"paperId": "p2"}], "total": 1},  # 1 new
+            {"data": [{"paperId": "p2"}], "total": 1},  # 0 new
+        ]
+        call_idx = [0]
+        def fake_search_bulk(query, *, filters=None, sort=None, token=None, limit=1000):
+            r = responses[min(call_idx[0], len(responses) - 1)]
+            call_idx[0] += 1
+            return r
+
+        monkeypatch.setattr(ctx.s2, "search_bulk", fake_search_bulk)
+
+        config = AgentConfig(max_iterations=4)
+        result = run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        # The 0-new T2 was followed by a 1-new T3, so the rule
+        # ("BOTH last two turns == 0") does NOT trigger at iter 4.
+        # The loop runs all 4 iterations.
+        assert result.final_decision != "saturated_guardrail"
+
+    def test_guardrail_does_not_fire_on_two_broken_query_turns(
+        self, ctx: Context, llm: StubClient, monkeypatch,
+    ):
+        """PH-08: the guardrail must distinguish "saturated" (found the
+        same papers twice → n_results > 0 but n_novel == 0) from
+        "broken query" (got zero results because of bad syntax →
+        n_results == 0). Two consecutive broken-query turns must NOT
+        fire the guardrail; the agent needs the chance to fix its
+        query and recover.
+
+        Empirically observed during PH-08 testing: the agent used an
+        invalid fieldsOfStudy abbreviation and got 0 results for T1+T2.
+        Without this carve-out the guardrail killed the run before the
+        agent could fix the typo."""
+        from citeclaw.clients.llm.base import LLMResponse
+
+        # Always return ZERO results (simulating a broken filter that
+        # makes every search return nothing).
+        def fake_search_bulk(query, *, filters=None, sort=None, token=None, limit=1000):
+            return {"data": [], "total": 0}
+
+        monkeypatch.setattr(ctx.s2, "search_bulk", fake_search_bulk)
+
+        llm_call_count = [0]
+        def always_refine_call(system, user, *, with_logprobs=False, category="other", response_schema=None):
+            llm_call_count[0] += 1
+            ctx.budget.record_llm(10, 10, category)
+            return LLMResponse(
+                text=json.dumps({
+                    "evaluate": "broken query, retrying",
+                    "query": {"text": "test query"},
+                    "should_stop": False,
+                    "reasoning": "retry",
+                }),
+            )
+
+        monkeypatch.setattr(llm, "call", always_refine_call)
+
+        config = AgentConfig(max_iterations=4)
+        result = run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        # All 4 iterations should run — the guardrail must NOT fire
+        # because n_results == 0 in every turn (broken query, not
+        # saturation). The loop ends via max_iterations, not the
+        # guardrail.
+        assert result.final_decision != "saturated_guardrail"
+        assert llm_call_count[0] == 4
+        assert len(result.transcript) == 4
 
     def test_query_field_round_trips_into_agent_turn(
         self, ctx: Context, llm: StubClient,

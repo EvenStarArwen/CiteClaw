@@ -303,6 +303,49 @@ def run_iterative_search(
     final_decision = ""
 
     for iteration in range(1, config.max_iterations + 1):
+        # PH-08 v2 deterministic saturation guardrail (safety net for
+        # the prompt's MANDATORY rule C). The prompt tells the model to
+        # set should_stop=true when the corpus is exhausted (n_novel < 5
+        # in two turns), but the model's optimism sometimes overrides
+        # the rule and it tries one more pivot. The guardrail is a
+        # STRICTER deterministic backstop:
+        #
+        #   if the last two completed turns BOTH had n_results > 0
+        #   AND BOTH had n_novel == 0
+        #   → forced stop, no LLM call, no S2 call
+        #
+        # The ``n_results > 0`` clause is critical: it distinguishes
+        # genuine saturation (the agent found the same papers twice in a
+        # row) from a broken query (zero results from a syntax error or
+        # bad filter). PH-08 testing surfaced cases where the agent used
+        # an invalid fieldsOfStudy abbreviation and got 0 results for two
+        # turns straight; without this clause the guardrail fired and
+        # killed the run before the agent could correct the typo.
+        #
+        # The threshold uses ``n_novel == 0`` (not <5) because:
+        #   - The prompt's <5 rule is a soft signal the model should act
+        #     on; the guardrail catches only the unambiguous "literally
+        #     zero new papers for two turns straight" case.
+        #   - <5 would false-positive on small test corpora and on
+        #     legitimate niche topics where each turn finds 1-3 new
+        #     relevant papers — those are still valuable progress.
+        #
+        # The check needs at least 2 prior turns (no-op for iter 1 and
+        # iter 2). When the guardrail fires, ``final_decision`` records
+        # a distinct ``"saturated_guardrail"`` so callers can tell this
+        # apart from a model-driven satisfied stop.
+        if len(transcript_turns) >= 2:
+            last = transcript_turns[-1]
+            prev = transcript_turns[-2]
+            if (
+                last.n_results > 0
+                and prev.n_results > 0
+                and last.n_novel == 0
+                and prev.n_novel == 0
+            ):
+                final_decision = "saturated_guardrail"
+                break
+
         transcript_text = _render_transcript(transcript_turns)
         # PH-08 v2: target_count is no longer surfaced to the model.
         # The v1 prompt embedded it as "Target: {target_count} papers"
