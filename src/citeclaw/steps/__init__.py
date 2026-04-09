@@ -17,6 +17,7 @@ from citeclaw.steps.merge_duplicates import MergeDuplicates
 from citeclaw.steps.parallel import Parallel
 from citeclaw.steps.rerank import Rerank
 from citeclaw.steps.rescreen import ReScreen
+from citeclaw.steps.resolve_seeds import ResolveSeeds
 
 
 def _resolve(name_or_dict: Any, blocks: dict):
@@ -31,6 +32,12 @@ def _resolve(name_or_dict: Any, blocks: dict):
 
 def _build_load_seeds(d: dict, blocks: dict) -> BaseStep:
     return LoadSeeds(file=d.get("file"))
+
+
+def _build_resolve_seeds(d: dict, blocks: dict) -> BaseStep:
+    return ResolveSeeds(
+        include_siblings=bool(d.get("include_siblings", False)),
+    )
 
 
 def _build_expand_forward(d: dict, blocks: dict) -> BaseStep:
@@ -138,6 +145,7 @@ def _build_cluster(d: dict, blocks: dict) -> BaseStep:
 
 STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
     "LoadSeeds":         _build_load_seeds,
+    "ResolveSeeds":      _build_resolve_seeds,
     "ExpandForward":     _build_expand_forward,
     "ExpandBackward":    _build_expand_backward,
     "ExpandBySearch":    _build_expand_by_search,

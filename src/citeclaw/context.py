@@ -34,6 +34,14 @@ class Context:
 
     rejection_counts: Counter[str] = field(default_factory=Counter)
 
+    # PC-04: paper IDs produced by ``ResolveSeeds`` (resolves title-only
+    # YAML entries to S2 paper IDs and optionally pulls preprint /
+    # published siblings via ``external_ids``). When non-empty, ``LoadSeeds``
+    # consumes this list instead of ``cfg.seed_papers``; when empty, the
+    # legacy direct path applies. Order matches the original
+    # ``cfg.seed_papers`` order, with siblings appended after their primary.
+    resolved_seed_ids: list[str] = field(default_factory=list)
+
     # PA-08: per-paper rejection categories. Mirrors ``rejection_counts``
     # but keyed by paper id so ``HumanInTheLoop`` can sample papers
     # rejected by a specific filter and surface their full screening

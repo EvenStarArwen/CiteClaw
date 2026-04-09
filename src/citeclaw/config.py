@@ -13,7 +13,15 @@ from pydantic_settings import BaseSettings
 
 
 class SeedPaper(BaseModel):
-    paper_id: str
+    """One seed paper entry from YAML.
+
+    PC-04 made ``paper_id`` optional so YAML callers can write
+    ``{title: "..."}``-only entries that the ``ResolveSeeds`` step
+    will look up via ``s2.search_match`` before ``LoadSeeds`` runs.
+    Plain ``{paper_id: "..."}`` entries continue to work unchanged.
+    """
+
+    paper_id: str = ""
     title: str = ""
     abstract: str | None = None
 
