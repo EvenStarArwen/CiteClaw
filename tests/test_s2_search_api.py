@@ -789,6 +789,146 @@ class TestUncachedSurfaces:
 
 
 # ---------------------------------------------------------------------------
+# enrich_batch cache wiring (PH-09)
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichBatchCache:
+    """``enrich_batch`` is called from ExpandForward / ExpandBackward / the
+    expansion family on EVERY citer / reference / search hit. The original
+    implementation always called the network even when every id was already
+    cached, which made second-run wall time identical to first-run wall
+    time on a large pipeline. PH-09 added cache-first hydration; this
+    suite confirms it.
+    """
+
+    def _seed_metadata(self, client: SemanticScholarClient, paper_id: str) -> None:
+        """Plant a metadata row directly in the cache so subsequent
+        enrich_batch calls can read it without a network round-trip."""
+        client._cache.put_metadata(paper_id, {
+            "paperId": paper_id,
+            "title": f"Title of {paper_id}",
+            "abstract": f"Abstract of {paper_id}",
+            "year": 2024,
+            "venue": "Nature",
+            "citationCount": 42,
+        })
+
+    def test_fully_cached_batch_makes_zero_network_calls(
+        self, client: SemanticScholarClient,
+    ):
+        """When every id is already in the cache, enrich_batch must NOT
+        hit the network. This is the regression test for the bug where
+        a second run of the same pipeline re-fetched every paper."""
+        for pid in ["p1", "p2", "p3"]:
+            self._seed_metadata(client, pid)
+
+        rec = _Recorder([])  # would 'fail' if any network call happened
+        rec.install_post(client)
+
+        result = client.enrich_batch([
+            {"paper_id": "p1"},
+            {"paper_id": "p2"},
+            {"paper_id": "p3"},
+        ])
+
+        assert len(rec.calls) == 0  # zero network calls
+        assert len(result) == 3
+        assert {r.paper_id for r in result} == {"p1", "p2", "p3"}
+        assert all(r.title for r in result)
+        assert all(r.abstract for r in result)
+
+    def test_fully_cached_batch_records_cache_hits_in_budget(
+        self, client: SemanticScholarClient,
+    ):
+        """The cache layer's get_metadata bumps BudgetTracker.s2_cache;
+        confirm enrich_batch flows through that wrapper so the run-end
+        summary correctly attributes the saved calls."""
+        for pid in ["p1", "p2"]:
+            self._seed_metadata(client, pid)
+
+        before_hits = client._budget.s2_cache_hits
+        before_api = client._budget.s2_requests
+        client.enrich_batch([{"paper_id": "p1"}, {"paper_id": "p2"}])
+
+        # 2 cache hits, 0 API calls.
+        assert client._budget.s2_cache_hits == before_hits + 2
+        assert client._budget.s2_requests == before_api
+
+    def test_partially_cached_batch_only_fetches_misses(
+        self, client: SemanticScholarClient,
+    ):
+        """Mixed: 2 papers in cache, 1 missing. Only the 1 missing
+        should trigger a network call; the 2 cached should be served
+        locally."""
+        self._seed_metadata(client, "p1")
+        self._seed_metadata(client, "p2")
+        # p3 is NOT in the cache
+
+        rec = _Recorder([
+            {
+                "paperId": "p3",
+                "title": "Fetched p3",
+                "abstract": "from network",
+                "year": 2025,
+                "venue": "Cell",
+                "citationCount": 7,
+            },
+        ])
+        rec.install_post(client)
+
+        result = client.enrich_batch([
+            {"paper_id": "p1"},
+            {"paper_id": "p2"},
+            {"paper_id": "p3"},
+        ])
+
+        # Exactly one network call, and its body included only the
+        # missing id (not the two cached ones).
+        assert len(rec.calls) == 1
+        assert rec.last["json_body"]["ids"] == ["p3"]
+        assert {r.paper_id for r in result} == {"p1", "p2", "p3"}
+
+    def test_uncached_batch_falls_back_to_network(
+        self, client: SemanticScholarClient,
+    ):
+        """Cold cache: every paper is a miss → one batch network call
+        with all ids. The cache is then populated for next time."""
+        rec = _Recorder([
+            {"paperId": "p1", "title": "T1", "abstract": "A1"},
+            {"paperId": "p2", "title": "T2", "abstract": "A2"},
+        ])
+        rec.install_post(client)
+
+        client.enrich_batch([{"paper_id": "p1"}, {"paper_id": "p2"}])
+
+        assert len(rec.calls) == 1
+        assert sorted(rec.last["json_body"]["ids"]) == ["p1", "p2"]
+        # Cache was populated.
+        assert client._cache.get_metadata("p1") is not None
+        assert client._cache.get_metadata("p2") is not None
+
+    def test_second_call_after_first_is_zero_network(
+        self, client: SemanticScholarClient,
+    ):
+        """End-to-end: a second call to enrich_batch with the same ids
+        should be a no-op against the network because the first call
+        populated the cache. This is the regression for the original
+        complaint."""
+        rec = _Recorder([
+            {"paperId": "p1", "title": "T1", "abstract": "A1"},
+            {"paperId": "p2", "title": "T2", "abstract": "A2"},
+        ])
+        rec.install_post(client)
+
+        client.enrich_batch([{"paper_id": "p1"}, {"paper_id": "p2"}])
+        assert len(rec.calls) == 1  # first call hits the network
+
+        client.enrich_batch([{"paper_id": "p1"}, {"paper_id": "p2"}])
+        assert len(rec.calls) == 1  # second call is fully cached
+
+
+# ---------------------------------------------------------------------------
 # HTTP retry policy: _is_retryable
 # ---------------------------------------------------------------------------
 

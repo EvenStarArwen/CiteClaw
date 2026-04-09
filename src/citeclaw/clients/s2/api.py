@@ -466,11 +466,42 @@ class SemanticScholarClient:
         return records
 
     def enrich_batch(self, candidates: list[dict[str, Any]]) -> list[PaperRecord]:
+        """Hydrate ``candidates`` (list of ``{paper_id: ...}`` dicts) into
+        :class:`PaperRecord` objects, using ``paper_metadata`` cache where
+        available.
+
+        Cache-first behavior was added in PH-09 — the original
+        implementation always called ``_batch_fetch`` over the network for
+        every id, even when every id was already cached. ExpandForward and
+        ExpandBackward both call this method on EVERY citer / reference,
+        which meant a second run with the same seeds re-fetched the entire
+        candidate set from S2 (~1k requests against the 1 rps cap = many
+        minutes of pure rate-limit waiting). Now: papers already in
+        ``paper_metadata`` are served from cache; only the genuine misses
+        go over the wire.
+        """
         ids = [c.get("paper_id", "") for c in candidates if c.get("paper_id")]
         if not ids:
             return []
+
         records: list[PaperRecord] = []
-        for data in self._batch_fetch(ids, fields=PAPER_FIELDS):
+        missing_ids: list[str] = []
+
+        # 1) Try local metadata cache for every id first.
+        for pid in ids:
+            cached = self._cache.get_metadata(pid)
+            if cached and cached.get("paperId"):
+                rec = paper_to_record(cached)
+                if rec:
+                    records.append(rec)
+                    continue
+            missing_ids.append(pid)
+
+        if not missing_ids:
+            return records
+
+        # 2) Batch-fetch only the misses, then persist + materialise.
+        for data in self._batch_fetch(missing_ids, fields=PAPER_FIELDS):
             if not data or not data.get("paperId"):
                 continue
             rec = paper_to_record(data)
