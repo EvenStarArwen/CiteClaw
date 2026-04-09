@@ -206,6 +206,61 @@ def _describe_step(step) -> str:
     return ""
 
 
+def _run_injected_finalize(
+    idx: int,
+    signal: list,
+    ctx: Context,
+    sink: EventSink,
+    dashboard,
+    shape: ShapeLog,
+) -> None:
+    """Run an out-of-band ``Finalize`` step, mirroring the main loop's
+    sink + dashboard + shape bookkeeping.
+
+    Used by the ``stop_pipeline`` short-circuit and the budget/max_papers
+    cap-break path. Without this helper both paths would silently skip
+    the ``step_start`` / ``step_end`` / ``paper_added`` events that
+    normal steps emit, so any EventSink consumer (e.g. the web backend)
+    would never see that Finalize ran.
+
+    Collection delta is always recorded as 0 because Finalize never
+    adds to ``ctx.collection``; the paper_added loop is kept defensively
+    in case that ever changes.
+    """
+    name = "Finalize"
+    desc = _describe_step(Finalize())
+    before_ids = set(ctx.collection.keys())
+
+    sink.step_start(idx=idx, name=name, description=desc)
+    dashboard.begin_step(idx, name, desc)
+    try:
+        result = Finalize().run(signal, ctx)
+    finally:
+        dashboard.end_step()
+
+    after_ids = set(ctx.collection.keys())
+    for pid in sorted(after_ids - before_ids):
+        paper = ctx.collection.get(pid)
+        source = getattr(paper, "source", "") if paper is not None else ""
+        sink.paper_added(paper_id=pid, source=source)
+
+    shape.record(
+        name,
+        result.in_count,
+        len(result.signal),
+        0,  # Finalize never adds to the collection
+        result.stats,
+    )
+    sink.step_end(
+        idx=idx,
+        name=name,
+        in_count=result.in_count,
+        out_count=len(result.signal),
+        delta_collection=0,
+        stats=dict(result.stats),
+    )
+
+
 def run_pipeline(
     ctx: Context,
     *,
@@ -290,39 +345,21 @@ def run_pipeline(
                     f"{step.name} requested pipeline stop — short-circuiting to Finalize"
                 )
                 if step.name != "Finalize":
-                    dashboard.begin_step(idx + 1, "Finalize", _describe_step(Finalize()))
-                    try:
-                        finalize_result = Finalize().run(signal, ctx)
-                    finally:
-                        dashboard.end_step()
-                    shape.record(
-                        "Finalize",
-                        finalize_result.in_count,
-                        len(finalize_result.signal),
-                        0,
-                        finalize_result.stats,
+                    _run_injected_finalize(
+                        idx + 1, signal, ctx, sink, dashboard, shape
                     )
                 break
             if ctx.budget.is_exhausted(cfg) or len(ctx.collection) >= cfg.max_papers_total:
                 dashboard.warn("Budget/cap reached — stopping early")
                 if step.name != "Finalize":
-                    dashboard.begin_step(idx + 1, "Finalize", _describe_step(Finalize()))
-                    try:
-                        finalize_result = Finalize().run(signal, ctx)
-                    finally:
-                        dashboard.end_step()
                     # Record the bypass-Finalize in the shape table so the
                     # printed summary doesn't truncate at the cap-breaking
                     # step. Without this, runs that hit max_papers_total
                     # mid-pipeline silently drop the Finalize row from the
                     # summary even though Finalize did run and write the
                     # output files.
-                    shape.record(
-                        "Finalize",
-                        finalize_result.in_count,
-                        len(finalize_result.signal),
-                        0,  # Finalize never adds to the collection
-                        finalize_result.stats,
+                    _run_injected_finalize(
+                        idx + 1, signal, ctx, sink, dashboard, shape
                     )
                 break
 
