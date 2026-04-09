@@ -16,16 +16,30 @@ venv/
 # OS
 .DS_Store
 
-# Claude Code — local only, never push
+# Claude Code & internal docs — local only, never push
 CLAUDE.md
 BRAINSTORM.md
+HANDOVER.md
+plans/
 .claude/
 
-# Data & generated artifacts
-data/
-data_bio/
-data_rna/
+# Data & generated artifacts (broader globs)
+data*/
 test_data/
 scratch/
 *.db
-citeclaw.log
+*.log
+
+# Office and temp files
+*.pptx
+*.tmp
+~$*
+.~lock*
+
+# Notebook scratch (analysis notebooks etc.)
+*.ipynb
+
+# Personal configs — only sanitized config.yaml is public
+config_*.yaml
+*_config.yaml
+!config.yaml
