@@ -87,6 +87,11 @@ class PaperRecord(BaseModel):
     # cheap structured signal for distinguishing surveys / methods /
     # editorials.
     publication_types: list[str] = Field(default_factory=list)
+    # PH-06: parsed body text from the open-access PDF, populated by
+    # ``citeclaw.clients.pdf.PdfFetcher.prefetch`` for ``LLMFilter`` blocks
+    # whose scope is ``full_text``. Stays None for closed-access papers
+    # (the filter falls back to abstract content for them).
+    full_text: str | None = None
 
     model_config = {"use_enum_values": True}
 

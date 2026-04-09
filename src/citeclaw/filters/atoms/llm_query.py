@@ -69,8 +69,14 @@ class LLMFilter:
         queries: dict[str, str] | None = None,
     ) -> None:
         self.name = name
-        if scope not in ("title", "title_abstract", "venue"):
-            raise ValueError(f"LLMFilter.scope must be title|title_abstract|venue, got {scope!r}")
+        # PH-06: ``full_text`` reads the parsed PDF body when available,
+        # falling back to title+abstract for closed-access papers. Wire-up
+        # is in ``citeclaw.screening.llm_runner._dispatch_simple``.
+        if scope not in ("title", "title_abstract", "venue", "full_text"):
+            raise ValueError(
+                f"LLMFilter.scope must be title|title_abstract|venue|full_text, "
+                f"got {scope!r}"
+            )
         self.scope = scope
         self.model = model
         self.reasoning_effort = reasoning_effort
@@ -131,6 +137,19 @@ class LLMFilter:
             return paper.title or ""
         if self.scope == "venue":
             return paper.venue or ""
+        if self.scope == "full_text":
+            # PH-06: read the parsed PDF body when present (set by
+            # PdfFetcher.prefetch upstream of dispatch_batch). Closed-access
+            # papers have body=None and gracefully fall back to abstract
+            # so the filter still has SOMETHING to read for them.
+            body = getattr(paper, "full_text", None)
+            if body:
+                return (
+                    f"Title: {paper.title}\n"
+                    f"Abstract: {paper.abstract or '(no abstract)'}\n\n"
+                    f"Body:\n{body}"
+                )
+            return f"Title: {paper.title}\nAbstract: {paper.abstract or '(no abstract)'}"
         # title_abstract
         return f"Title: {paper.title}\nAbstract: {paper.abstract or '(no abstract)'}"
 

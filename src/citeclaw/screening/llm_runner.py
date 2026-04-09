@@ -257,6 +257,37 @@ def _dispatch_formula(
     return out
 
 
+def _prefetch_full_text_if_needed(
+    papers: list["PaperRecord"],
+    llm_filter: "LLMFilter",
+    ctx: "Context",
+) -> None:
+    """For ``scope: full_text`` filters, populate ``paper.full_text`` from
+    cached or freshly-fetched PDF bodies BEFORE the LLM dispatch loop.
+
+    The fetcher lives on the Context as a singleton (one per run) so
+    multiple full_text filters in the same pipeline share the same
+    httpx connection pool and the same in-process cache.
+    """
+    if llm_filter.scope != "full_text":
+        return
+    fetcher = ctx.__dict__.get("_pdf_fetcher")
+    if fetcher is None:
+        from citeclaw.clients.pdf import PdfFetcher
+        fetcher = PdfFetcher(ctx.cache)
+        ctx.__dict__["_pdf_fetcher"] = fetcher
+    # Only prefetch papers that haven't been hydrated yet — re-running
+    # the same filter on the same papers should be a no-op.
+    needs_fetch = [p for p in papers if getattr(p, "full_text", None) is None]
+    if not needs_fetch:
+        return
+    text_by_id = fetcher.prefetch(needs_fetch, max_workers=4)
+    for p in needs_fetch:
+        text = text_by_id.get(p.paper_id)
+        if text is not None:
+            p.full_text = text
+
+
 def _dispatch_simple(
     papers: list["PaperRecord"],
     llm_filter: "LLMFilter",
@@ -271,6 +302,9 @@ def _dispatch_simple(
     votes = max(1, llm_filter.votes)
     min_accepts = max(1, llm_filter.min_accepts)
     _warn_once_on_votes(ctx, llm_filter)
+    # PH-06: prefetch PDF bodies for full_text scope so content_for has
+    # something to read. No-op for every other scope.
+    _prefetch_full_text_if_needed(papers, llm_filter, ctx)
 
     # ------------------------------------------------------------------
     # Venue scope: dedup by venue string. Cache stores ``list[bool]`` of
@@ -331,7 +365,15 @@ def _dispatch_simple(
     # ------------------------------------------------------------------
     contents = [llm_filter.content_for(p) for p in papers]
     ids = [p.paper_id for p in papers]
-    batch_size = cfg.llm_batch_size
+    # PH-06: full_text scope packs ~25K tokens of body per paper, so
+    # the usual ``llm_batch_size`` (default 20) blows past every model's
+    # context window. Force batch_size=1 — each paper gets its own LLM
+    # call. Concurrency (``llm_concurrency``) still parallelises across
+    # papers, so throughput stays reasonable; only the per-call payload
+    # shrinks. All other scopes (title, title_abstract, venue) keep
+    # using the configured batch size since their per-paper payloads
+    # are tiny.
+    batch_size = 1 if llm_filter.scope == "full_text" else cfg.llm_batch_size
     batches = [
         (contents[i:i + batch_size], ids[i:i + batch_size])
         for i in range(0, len(papers), batch_size)

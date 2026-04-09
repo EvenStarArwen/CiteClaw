@@ -31,6 +31,13 @@ topic_model = [
     "scikit-learn>=1.3,<2",
     "numpy>=1.24,<3",
 ]
+pdf = [
+    # Pure-Python PDF parser used by citeclaw.clients.pdf for the
+    # full_text LLMFilter scope. Lazy-imported so installs without this
+    # extra still work for every other scope. ``pypdf`` is the
+    # actively-maintained successor of PyPDF2.
+    "pypdf>=4.0,<6",
+]
 
 [project.scripts]
 citeclaw = "citeclaw.__main__:main"

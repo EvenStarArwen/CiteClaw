@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS author_papers (
     data       TEXT NOT NULL,
     fetched_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS paper_full_text (
+    -- PH-06: cached full-text body for open-access PDFs.
+    -- ``text`` is NULL when fetch/parse failed; ``error`` describes why
+    -- ("no_pdf", "download_failed", "parse_failed", "too_large") so a
+    -- second pass doesn't redo a known-failing fetch.
+    paper_id   TEXT PRIMARY KEY,
+    text       TEXT,
+    error      TEXT,
+    fetched_at TEXT NOT NULL
+);
 """
 
 
@@ -272,6 +282,56 @@ class Cache:
                 (author_id, json.dumps(data), now),
             )
         log.debug("Cache STORE [author_papers] %s", author_id)
+
+    # --- full-text PDF body (PH-06) ---
+
+    def get_full_text(self, paper_id: str) -> dict[str, Any] | None:
+        """Return ``{"text": str | None, "error": str | None}`` for the
+        cached PDF parse, or ``None`` if we have never tried this paper.
+
+        A row exists for both successful and failed fetches: success
+        stores the parsed body in ``text`` (with ``error=None``);
+        failure stores the failure category in ``error`` (with
+        ``text=None``). The caller treats the row's presence as
+        "we already know the answer for this paper, don't refetch".
+        """
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT text, error FROM paper_full_text WHERE paper_id = ?",
+                (paper_id,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            log.debug("Cache MISS [paper_full_text] %s", paper_id)
+            return None
+        log.debug("Cache HIT [paper_full_text] %s", paper_id)
+        return {"text": row[0], "error": row[1]}
+
+    def put_full_text(
+        self,
+        paper_id: str,
+        *,
+        text: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Persist a full-text fetch outcome.
+
+        Pass ``text`` for a successful parse; pass ``error`` (one of
+        ``"no_pdf"``, ``"download_failed"``, ``"parse_failed"``,
+        ``"too_large"``) for a failure. Exactly one of the two should be
+        non-None — the caller decides which based on the fetch outcome.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT OR REPLACE INTO paper_full_text "
+                "(paper_id, text, error, fetched_at) VALUES (?, ?, ?, ?)",
+                (paper_id, text, error, now),
+            )
+        log.debug(
+            "Cache STORE [paper_full_text] %s (text=%d chars, error=%r)",
+            paper_id, len(text or ""), error,
+        )
 
     def close(self) -> None:
         self._conn.close()
