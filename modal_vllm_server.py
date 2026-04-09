@@ -225,12 +225,16 @@ else:
         )
     )
     if FORCE_TRANSFORMERS:
-        # Force-upgrade transformers AFTER vLLM. vLLM 0.19.0's wheel pins
-        # ``transformers<5`` but the runtime is compatible with 5.x; the
-        # pin only matters at install-time. Use --force-reinstall to
-        # override the metadata pin without uninstalling vLLM.
+        # Force-upgrade transformers (and its transitive deps) AFTER vLLM.
+        # vLLM 0.19.0's wheel pins ``transformers<5`` but the runtime is
+        # compatible with 5.x — the pin only matters at install-time.
+        #
+        # We do NOT use ``--no-deps``: a newer transformers needs a newer
+        # huggingface_hub (one with ``is_offline_mode`` etc), so pip needs
+        # to pull in the deps. Pip will warn about the vLLM metadata pin
+        # conflict but proceeds; the runtime works.
         _base_image = _base_image.run_commands(
-            f"pip install --upgrade --force-reinstall --no-deps {FORCE_TRANSFORMERS}",
+            f"pip install --upgrade --force-reinstall {FORCE_TRANSFORMERS}",
         )
 
 image = (
