@@ -15,6 +15,7 @@ from citeclaw.steps.finalize import Finalize
 from citeclaw.steps.load_seeds import LoadSeeds
 from citeclaw.steps.merge_duplicates import MergeDuplicates
 from citeclaw.steps.parallel import Parallel
+from citeclaw.steps.reinforce_graph import ReinforceGraph
 from citeclaw.steps.rerank import Rerank
 from citeclaw.steps.rescreen import ReScreen
 from citeclaw.steps.resolve_seeds import ResolveSeeds
@@ -101,6 +102,16 @@ def _build_expand_by_author(d: dict, blocks: dict) -> BaseStep:
     )
 
 
+def _build_reinforce_graph(d: dict, blocks: dict) -> BaseStep:
+    """Build a ``ReinforceGraph`` step from its YAML dict."""
+    return ReinforceGraph(
+        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        metric=str(d.get("metric", "pagerank")),
+        top_n=int(d.get("top_n", 30)),
+        percentile_floor=float(d.get("percentile_floor", 0.9)),
+    )
+
+
 def _build_rerank(d: dict, blocks: dict) -> BaseStep:
     return Rerank(
         metric=d.get("metric", "citation"),
@@ -151,6 +162,7 @@ STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
     "ExpandBySearch":    _build_expand_by_search,
     "ExpandBySemantics": _build_expand_by_semantics,
     "ExpandByAuthor":    _build_expand_by_author,
+    "ReinforceGraph":    _build_reinforce_graph,
     "Rerank":            _build_rerank,
     "ReScreen":          _build_rescreen,
     "Finalize":          _build_finalize,
