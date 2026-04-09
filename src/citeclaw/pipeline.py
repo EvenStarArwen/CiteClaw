@@ -196,9 +196,22 @@ def run_pipeline(
                 if step.name != "Finalize":
                     dashboard.begin_step(idx + 1, "Finalize", _describe_step(Finalize()))
                     try:
-                        Finalize().run(signal, ctx)
+                        finalize_result = Finalize().run(signal, ctx)
                     finally:
                         dashboard.end_step()
+                    # Record the bypass-Finalize in the shape table so the
+                    # printed summary doesn't truncate at the cap-breaking
+                    # step. Without this, runs that hit max_papers_total
+                    # mid-pipeline silently drop the Finalize row from the
+                    # summary even though Finalize did run and write the
+                    # output files.
+                    shape.record(
+                        "Finalize",
+                        finalize_result.in_count,
+                        len(finalize_result.signal),
+                        0,  # Finalize never adds to the collection
+                        finalize_result.stats,
+                    )
                 break
 
         rendered = shape.render()
