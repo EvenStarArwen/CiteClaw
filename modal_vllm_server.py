@@ -121,6 +121,16 @@ EXTRA_VLLM_ARGS: str = os.environ.get("CITECLAW_VLLM_EXTRA_ARGS", "")
 # expose ``HF_TOKEN``. Empty (the default) attaches no secret, which
 # preserves prior behavior for public models like Qwen3.5.
 HF_SECRET_NAME: str = os.environ.get("CITECLAW_VLLM_HF_SECRET", "")
+
+# Optional pre-built Docker image reference. When set, skip the
+# ``nvidia/cuda + pip install vllm`` build path and pull this image
+# directly. Use this for models whose vLLM support requires a transformers
+# version that conflicts with the current vLLM PyPI release — e.g. Gemma 4
+# 31B needs ``transformers>=5.5.0`` but vLLM 0.19.0 pins
+# ``transformers<5``, so the only working option is the official
+# ``vllm/vllm-openai:gemma4`` image. Empty (default) preserves the
+# build-from-source path used by Qwen3.5 et al.
+IMAGE_REF: str = os.environ.get("CITECLAW_VLLM_IMAGE_REF", "")
 # vLLM version.
 #
 # 0.19.0 is the first stable release with Qwen3.5-122B-A10B support (added in
@@ -159,26 +169,46 @@ app = modal.App(APP_NAME)
 # Persistent HF cache so we don't re-download 100GB+ weights on every cold start.
 hf_cache_vol = modal.Volume.from_name("citeclaw-hf-cache", create_if_missing=True)
 
+# Build the base image. Two paths:
+#
+# 1. ``IMAGE_REF`` set → pull a pre-built image directly. The vLLM team
+#    publishes ``vllm/vllm-openai:<tag>`` images that already contain a
+#    working vllm + transformers + torch combo for specific models. Use
+#    this for Gemma 4 (``vllm/vllm-openai:gemma4``) and any other model
+#    whose dependency story is too messy to reproduce via pip.
+#
+# 2. ``IMAGE_REF`` empty (default) → build from nvidia/cuda + pip install
+#    a pinned vLLM version. Used by Qwen3.5-122B and the legacy path.
+if IMAGE_REF:
+    # Prebuilt vllm/vllm-openai images already ship Python + vllm — do
+    # NOT add a second Python. Modal handles registry images that have
+    # python on PATH directly.
+    _base_image = modal.Image.from_registry(IMAGE_REF)
+else:
+    _base_image = (
+        # CUDA devel image gives us `nvcc` under /usr/local/cuda, which FlashInfer
+        # needs to JIT-compile its top-k sampling kernel at first use. The plain
+        # `debian_slim` image only ships CUDA runtime libraries (via pip wheels),
+        # not the toolkit, so flashinfer bails with
+        #   RuntimeError: Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist
+        # Matching CUDA 12.8 aligns with the torch 2.8 wheel vLLM 0.11.0 depends on.
+        modal.Image.from_registry(
+            "nvidia/cuda:12.8.0-devel-ubuntu22.04",
+            add_python="3.12",
+        )
+        .apt_install("git")
+        .pip_install(
+            f"vllm=={VLLM_VERSION}",
+            # NOTE: vLLM 0.19 pins its own compatible transformers range in its
+            # wheel requirements — we no longer pin it here. (The old 4.56.x pin
+            # was a workaround for a vLLM 0.11 × transformers 4.57 tokenizer bug.)
+            "huggingface_hub[hf_transfer]",
+            "flashinfer-python",
+        )
+    )
+
 image = (
-    # CUDA devel image gives us `nvcc` under /usr/local/cuda, which FlashInfer
-    # needs to JIT-compile its top-k sampling kernel at first use. The plain
-    # `debian_slim` image only ships CUDA runtime libraries (via pip wheels),
-    # not the toolkit, so flashinfer bails with
-    #   RuntimeError: Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist
-    # Matching CUDA 12.8 aligns with the torch 2.8 wheel vLLM 0.11.0 depends on.
-    modal.Image.from_registry(
-        "nvidia/cuda:12.8.0-devel-ubuntu22.04",
-        add_python="3.12",
-    )
-    .apt_install("git")
-    .pip_install(
-        f"vllm=={VLLM_VERSION}",
-        # NOTE: vLLM 0.19 pins its own compatible transformers range in its
-        # wheel requirements — we no longer pin it here. (The old 4.56.x pin
-        # was a workaround for a vLLM 0.11 × transformers 4.57 tokenizer bug.)
-        "huggingface_hub[hf_transfer]",
-        "flashinfer-python",
-    )
+    _base_image
     .env(
         {
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
@@ -221,6 +251,7 @@ image = (
             # volume, secret), and Modal raises
             # ``Function has 2 dependencies but container got 3 object ids``.
             "CITECLAW_VLLM_HF_SECRET": HF_SECRET_NAME,
+            "CITECLAW_VLLM_IMAGE_REF": IMAGE_REF,
         }
     )
 )
