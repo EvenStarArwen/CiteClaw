@@ -18,11 +18,66 @@ class TestSettings:
     def test_defaults(self, tmp_path):
         s = Settings(data_dir=tmp_path)
         assert s.screening_model == "stub"
+        assert s.search_model == ""
         assert s.seed_papers == []
         assert s.pipeline == []
         assert s.blocks == {}
         assert s.blocks_built == {}
         assert s.pipeline_built == []
+
+    def test_search_model_explicit_override(self, tmp_path):
+        """PC-06: search_model can be set independently of screening_model
+        so the iterative search agent uses a more capable model than the
+        per-paper screener."""
+        s = Settings(
+            data_dir=tmp_path,
+            screening_model="gemini-3-flash-lite",
+            search_model="gemini-3-pro",
+        )
+        assert s.screening_model == "gemini-3-flash-lite"
+        assert s.search_model == "gemini-3-pro"
+
+    def test_search_model_empty_default_signals_fallback(self, tmp_path):
+        """An empty search_model is the documented signal for callers to
+        fall back to screening_model. ExpandBySearch consumes this via
+        ``self.agent.model or ctx.config.search_model or ctx.config.screening_model``."""
+        s = Settings(data_dir=tmp_path, screening_model="gpt-4o-mini")
+        assert s.search_model == ""
+        # The cascade callers use to resolve the effective model.
+        effective = s.search_model or s.screening_model
+        assert effective == "gpt-4o-mini"
+
+    def test_search_model_loaded_from_yaml(self, tmp_path):
+        """search_model round-trips through load_settings just like any
+        other top-level YAML field."""
+        cfg_path = tmp_path / "cfg.yaml"
+        cfg_path.write_text(
+            "screening_model: gpt-4o-mini\nsearch_model: gemini-3-pro\n"
+        )
+        s = load_settings(cfg_path)
+        assert s.screening_model == "gpt-4o-mini"
+        assert s.search_model == "gemini-3-pro"
+
+    def test_seed_schema_accepts_title_only_entry(self, tmp_path):
+        """PC-04 + PC-06: SeedPaper.paper_id is optional so YAML callers
+        can write ``{title: ...}``-only entries that ResolveSeeds will
+        resolve via search_match. Verify the parsing path."""
+        cfg_path = tmp_path / "cfg.yaml"
+        cfg_path.write_text(
+            "seed_papers:\n"
+            "  - title: 'Highly Accurate Protein Structure Prediction'\n"
+            "  - paper_id: 'DOI:10.1/abc'\n"
+            "  - paper_id: 'DOI:10.2/def'\n"
+            "    title: 'Both fields set'\n"
+        )
+        s = load_settings(cfg_path)
+        assert len(s.seed_papers) == 3
+        assert s.seed_papers[0].paper_id == ""
+        assert s.seed_papers[0].title == "Highly Accurate Protein Structure Prediction"
+        assert s.seed_papers[1].paper_id == "DOI:10.1/abc"
+        assert s.seed_papers[1].title == ""
+        assert s.seed_papers[2].paper_id == "DOI:10.2/def"
+        assert s.seed_papers[2].title == "Both fields set"
 
     def test_blocks_are_built_lazily(self, tmp_path):
         s = Settings(

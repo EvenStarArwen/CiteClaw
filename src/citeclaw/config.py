@@ -34,6 +34,13 @@ class Settings(BaseSettings):
 
     # LLM
     screening_model: str = "stub"
+    # PC-06: dedicated model override for the iterative meta-LLM search
+    # agent (citeclaw.agents.iterative_search). Empty (the default) means
+    # the agent inherits ``screening_model``; set this to a more capable
+    # model when you want screening to stay cheap but the search agent
+    # to think harder. ``ExpandBySearch`` reads it via the cascade
+    # ``self.agent.model or ctx.config.search_model or ctx.config.screening_model``.
+    search_model: str = ""
     reasoning_effort: str = ""
     llm_base_url: str = ""
     llm_api_key: str = ""
