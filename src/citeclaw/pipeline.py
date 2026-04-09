@@ -20,9 +20,20 @@ from citeclaw.progress import (
 )
 from citeclaw.steps.finalize import Finalize
 from citeclaw.steps.merge_duplicates import MergeDuplicates
+from citeclaw.steps.parallel import Parallel
 from citeclaw.steps.shape_log import ShapeLog
 
 log = logging.getLogger("citeclaw.pipeline")
+
+
+# Step name set used by :func:`_warn_similarity_in_sourceless_steps`. These
+# are the steps whose ``FilterContext`` carries ``source=None`` (no upstream
+# paper for similarity measures to compare against), so any
+# ``SimilarityFilter`` in their screener block silently degrades to its
+# ``on_no_data`` behaviour.
+_SOURCELESS_STEP_NAMES = frozenset({
+    "ExpandBySearch", "ExpandBySemantics", "ExpandByAuthor",
+})
 
 
 def build_context(config: Settings) -> tuple[Context, SemanticScholarClient, Cache]:
@@ -31,6 +42,83 @@ def build_context(config: Settings) -> tuple[Context, SemanticScholarClient, Cac
     s2 = SemanticScholarClient(config, cache, budget)
     ctx = Context(config=config, s2=s2, cache=cache, budget=budget)
     return ctx, s2, cache
+
+
+def _block_contains_similarity_filter(block) -> bool:
+    """Recursive walk over a filter block looking for ``SimilarityFilter``.
+
+    Knows how every block compositor stores its children:
+
+      - ``Sequential`` / ``Any_`` use ``layers`` (plural list).
+      - ``Not_`` uses ``layer`` (singular).
+      - ``Route`` uses ``cases`` (a list of ``RouteCase`` with
+        ``predicate`` + ``target`` fields).
+
+    Atom blocks (the leaves) carry no nested filters; the only one we
+    care about is ``SimilarityFilter`` itself.
+    """
+    from citeclaw.filters.blocks.similarity import SimilarityFilter
+
+    if block is None:
+        return False
+    if isinstance(block, SimilarityFilter):
+        return True
+    layers = getattr(block, "layers", None)
+    if isinstance(layers, list):
+        return any(_block_contains_similarity_filter(layer) for layer in layers)
+    inner = getattr(block, "layer", None)
+    if inner is not None:
+        return _block_contains_similarity_filter(inner)
+    cases = getattr(block, "cases", None)
+    if isinstance(cases, list):
+        for case in cases:
+            target = getattr(case, "target", None)
+            predicate = getattr(case, "predicate", None)
+            if _block_contains_similarity_filter(target):
+                return True
+            if _block_contains_similarity_filter(predicate):
+                return True
+    return False
+
+
+def _warn_similarity_in_sourceless_steps(pipeline: list) -> None:
+    """Walk the pipeline and warn for every source-less ExpandBy* step
+    whose screener contains a ``SimilarityFilter``.
+
+    Source-less steps run the screener with ``fctx.source=None``, so
+    every similarity measure (RefSim / CitSim / SemanticSim) returns
+    ``None`` and the filter collapses to its ``on_no_data`` behaviour.
+    A user reusing a screener block originally written for
+    ``ExpandForward`` (with ``on_no_data: reject``) will silently see
+    every candidate from every ExpandBy* step rejected. The startup
+    warning makes that surprise visible the first time the pipeline runs.
+
+    Recursively descends into ``Parallel`` branches.
+    """
+    def _walk(steps: list) -> None:
+        for step in steps:
+            if isinstance(step, Parallel):
+                for branch in getattr(step, "branches", []) or []:
+                    _walk(branch)
+                continue
+            if step.name not in _SOURCELESS_STEP_NAMES:
+                continue
+            screener = getattr(step, "screener", None)
+            if screener is None:
+                continue
+            if _block_contains_similarity_filter(screener):
+                log.warning(
+                    "%s screener contains a SimilarityFilter. Source-less "
+                    "expansion steps have no upstream paper, so RefSim / "
+                    "CitSim / SemanticSim all return None and the filter "
+                    "collapses to its on_no_data behaviour. If you wrote "
+                    "this screener for ExpandForward / ExpandBackward, "
+                    "verify the on_no_data setting (default 'pass') is "
+                    "still what you want here.",
+                    step.name,
+                )
+
+    _walk(pipeline)
 
 
 def _ensure_merge_duplicates(pipeline: list) -> list:
@@ -133,6 +221,7 @@ def run_pipeline(
     """
     cfg = ctx.config
     pipeline = _ensure_merge_duplicates(cfg.pipeline_built or [])
+    _warn_similarity_in_sourceless_steps(pipeline)
     sink: EventSink = event_sink if event_sink is not None else NullEventSink()
 
     dashboard = _build_dashboard(cfg, len(pipeline))

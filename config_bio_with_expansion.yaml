@@ -154,15 +154,9 @@ pipeline:
   # recent papers funnelled through the loose backward screener.
   - step: ExpandByAuthor
     top_k_authors: 10
-    author_metric: h_index
+    author_metric: degree_in_collab_graph
     papers_per_author: 30
     screener: backward_loose
-
-  # PD-01: ReinforceGraph lands here when implemented. Suggested shape:
-  #   - step: ReinforceGraph
-  #       metric: pagerank
-  #       top_n: 30
-  #       screener: backward_loose
 
   # Collapse preprint↔published pairs introduced by ResolveSeeds
   # (and any duplicates the agent surfaced).

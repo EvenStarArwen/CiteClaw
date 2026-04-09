@@ -37,18 +37,19 @@ Run loop (matches the roadmap spec line by line):
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 from dataclasses import asdict
 from typing import Any
 
 from citeclaw.agents.iterative_search import AgentConfig, run_iterative_search
 from citeclaw.clients.llm.factory import build_llm_client
-from citeclaw.filters.base import FilterContext
-from citeclaw.filters.runner import apply_block, record_rejections
 from citeclaw.models import PaperRecord
 from citeclaw.search.query_engine import apply_local_query
+from citeclaw.steps._expand_helpers import (
+    check_already_searched,
+    fingerprint_signal,
+    screen_expand_candidates,
+)
 from citeclaw.steps.base import StepResult
 
 log = logging.getLogger("citeclaw.steps.expand_by_search")
@@ -78,23 +79,6 @@ class ExpandBySearch:
         self.max_anchor_papers = max_anchor_papers
         self.apply_local_query_args = apply_local_query_args or None
 
-    def _fingerprint(self, signal: list[PaperRecord]) -> str:
-        """Stable hash over (step name, sorted signal IDs, agent config,
-        topic, anchor cap). Used as the idempotency key in
-        ``ctx.searched_signals`` so re-running the step on the same
-        input is a true no-op."""
-        signal_ids = sorted(p.paper_id for p in signal if p.paper_id)
-        payload = {
-            "step": self.name,
-            "signal_ids": signal_ids,
-            "agent": asdict(self.agent),
-            "max_anchor_papers": self.max_anchor_papers,
-            "topic": self.topic_description or "",
-        }
-        return hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode("utf-8")
-        ).hexdigest()
-
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
         if self.screener is None:
             return StepResult(
@@ -103,18 +87,15 @@ class ExpandBySearch:
                 stats={"reason": "no screener"},
             )
 
-        # 1. Idempotency
-        fingerprint = self._fingerprint(signal)
-        if fingerprint in ctx.searched_signals:
-            log.info(
-                "ExpandBySearch: signal fingerprint already searched, "
-                "skipping (no-op)",
-            )
-            return StepResult(
-                signal=[],
-                in_count=len(signal),
-                stats={"reason": "already_searched", "fingerprint": fingerprint[:12]},
-            )
+        # 1. Idempotency.
+        fp = fingerprint_signal(
+            self.name, signal,
+            agent=asdict(self.agent),
+            max_anchor_papers=self.max_anchor_papers,
+            topic=self.topic_description or "",
+        )
+        if (skip := check_already_searched(self.name, fp, ctx, len(signal))):
+            return skip
 
         # 2. Anchor papers — callers control the order via an upstream Rerank.
         anchor_papers = signal[: self.max_anchor_papers]
@@ -137,72 +118,59 @@ class ExpandBySearch:
                 or ctx.config.screening_model
             ),
             reasoning_effort=self.agent.reasoning_effort,
+            cache=getattr(ctx, "cache", None),
         )
-        result = run_iterative_search(topic, anchor_papers, llm, ctx, self.agent)
+        # Wrap the agent run so that LLM API outages, malformed
+        # structured-output responses, schema-validation crashes etc.
+        # don't kill the entire pipeline. ExpandBySemantics already does
+        # this around its fetch_recommendations call; this brings
+        # ExpandBySearch in line with that crash-isolation contract.
+        try:
+            result = run_iterative_search(
+                topic, anchor_papers, llm, ctx, self.agent,
+            )
+        except Exception as exc:  # noqa: BLE001 — agent crash safety net
+            log.warning(
+                "ExpandBySearch: iterative search agent crashed (%s); "
+                "returning empty signal so the pipeline can continue.",
+                exc,
+            )
+            return StepResult(
+                signal=[],
+                in_count=len(signal),
+                stats={
+                    "reason": "agent_failed",
+                    "error": str(exc)[:160],
+                    "anchor_papers": len(anchor_papers),
+                },
+            )
 
-        # 5. Hydrate the agent's raw hits into PaperRecord instances.
-        candidates: list[dict[str, Any]] = []
-        for hit in result.hits:
-            if not isinstance(hit, dict):
-                continue
-            pid = hit.get("paperId")
-            if isinstance(pid, str) and pid:
-                candidates.append({"paper_id": pid})
-        hydrated: list[PaperRecord] = (
-            ctx.s2.enrich_batch(candidates) if candidates else []
+        # 5. Shared screening pipeline. ``apply_local_query`` runs as
+        # the post-hydrate trim so the screener only sees post-trim
+        # candidates (matches the previous behaviour).
+        post_trim = (
+            (lambda recs: apply_local_query(recs, **self.apply_local_query_args))
+            if self.apply_local_query_args
+            else None
+        )
+        screened = screen_expand_candidates(
+            raw_hits=result.hits,
+            source_label="search",
+            screener=self.screener,
+            ctx=ctx,
+            post_hydrate_fn=post_trim,
         )
 
-        # 6. Fill in abstracts so any ``title_abstract`` LLMFilter in the
-        # screener has something to read.
-        if hydrated:
-            ctx.s2.enrich_with_abstracts(hydrated)
+        # 6. Mark the fingerprint so re-runs are no-ops.
+        ctx.searched_signals.add(fp)
 
-        # 7. Optional post-fetch trim via apply_local_query for predicates
-        # the S2 API can't express (regex on title/abstract, etc.).
-        if self.apply_local_query_args and hydrated:
-            hydrated = apply_local_query(hydrated, **self.apply_local_query_args)
-
-        # 8. Dedup against ctx.seen + stamp the source label.
-        new_records: list[PaperRecord] = []
-        for rec in hydrated:
-            if not rec.paper_id:
-                continue
-            if rec.paper_id in ctx.seen:
-                continue
-            rec.source = "search"
-            new_records.append(rec)
-            ctx.seen.add(rec.paper_id)
-
-        # 9. Source-less filter context — every screener atom in PC-05's
-        # audit must handle this case.
-        fctx = FilterContext(
-            ctx=ctx, source=None, source_refs=None, source_citers=None,
-        )
-
-        # 10. Apply the screener cascade and record per-paper rejections.
-        passed, rejected = apply_block(new_records, self.screener, fctx)
-        record_rejections(rejected, fctx)
-
-        # 11. Add survivors to the collection.
-        for p in passed:
-            p.llm_verdict = "accept"
-            ctx.collection[p.paper_id] = p
-
-        # 12. Mark the fingerprint so re-runs are no-ops.
-        ctx.searched_signals.add(fingerprint)
-
-        # 13. Return the StepResult with the agent's bookkeeping in stats.
         return StepResult(
-            signal=passed,
-            in_count=len(hydrated),
+            signal=screened.passed,
+            in_count=len(screened.hydrated),
             stats={
+                **screened.base_stats,
                 "agent_iterations": len(result.transcript),
                 "agent_decision": result.final_decision,
-                "raw_hits": len(result.hits),
-                "hydrated": len(hydrated),
-                "after_local_query": len(new_records),
-                "accepted": len(passed),
-                "rejected": len(rejected),
                 "tokens_used": result.tokens_used,
                 "s2_requests_used": result.s2_requests_used,
             },

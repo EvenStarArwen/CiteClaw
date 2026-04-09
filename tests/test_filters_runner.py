@@ -281,8 +281,7 @@ class TestRecordRejections:
         assert ctx.rejection_counts["unknown"] == 1
 
     def test_ledger_starts_empty(self, ctx):
-        """A fresh Context should have an empty ledger and the new
-        searched_signals + reinforcement_log fields too."""
+        """A fresh Context should have an empty ledger and the
+        searched_signals field too."""
         assert ctx.rejection_ledger == {}
         assert ctx.searched_signals == set()
-        assert ctx.reinforcement_log == []

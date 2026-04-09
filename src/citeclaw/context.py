@@ -55,13 +55,6 @@ class Context:
     # duplicating work / spending budget.
     searched_signals: set[str] = field(default_factory=set)
 
-    # PA-08: append-only audit log for ``ReinforceGraph`` decisions.
-    # Each entry is a dict in the shape
-    # ``{"paper_id": str, "metric": str, "score": float, "reason": str}``
-    # but the schema is intentionally loose so future versions of the
-    # step can extend it without a migration.
-    reinforcement_log: list[dict] = field(default_factory=list)
-
     # Per-edge metadata indexed by (src_paper_id, dst_paper_id) where src
     # is the cited paper and dst is the citing paper. Each value is
     # ``{contexts: list[str], intents: list[str], is_influential: bool}``.
