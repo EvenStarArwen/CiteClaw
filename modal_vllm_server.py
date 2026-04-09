@@ -214,6 +214,13 @@ image = (
             "CITECLAW_VLLM_REASONING_PARSER": REASONING_PARSER,
             "CITECLAW_VLLM_APP_NAME": APP_NAME,
             "CITECLAW_VLLM_EXTRA_ARGS": EXTRA_VLLM_ARGS,
+            # CRITICAL: must be propagated so the remote module re-import
+            # sees the same value as the local deploy. Otherwise the
+            # conditional ``_FUNCTION_SECRETS`` evaluates to ``[]`` in the
+            # container while the deploy submitted 3 object ids (image,
+            # volume, secret), and Modal raises
+            # ``Function has 2 dependencies but container got 3 object ids``.
+            "CITECLAW_VLLM_HF_SECRET": HF_SECRET_NAME,
         }
     )
 )
