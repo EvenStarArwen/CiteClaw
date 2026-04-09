@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-04-09 01:19 — completed PB-03 ✅ (new src/citeclaw/agents/ package with AgentConfig + AgentTurn + SearchAgentResult dataclasses; all defaults match the spec; SearchAgentResult uses default_factory so PB-04 can build it incrementally; convenience re-exports via `__init__.py`; verify + sanity checks green; full suite 616/6, zero regressions)
 - 2026-04-09 01:08 — completed PB-02 ✅ (added agent_decision branch to stub_respond with three-state lifecycle initial→refine→satisfied driven by `"query":` count; minor PB-01 tweak: changed `"query":` → `"query" —` in template legend so the initial branch is reachable; 10 new tests in TestStubAgentDecisionBranch; tests/test_llm.py 71/71 green; full suite 616/6, zero regressions)
 - 2026-04-09 00:34 — completed PB-01 ✅ (new src/citeclaw/prompts/search_refine.py with SYSTEM + USER_TEMPLATE + RESPONSE_SCHEMA; thinking field is FIRST in the schema's properties dict; literal `"agent_decision"` quoted in the user template for PB-02's stub; verify command + format() round-trip both green — **Phase B started**)
 - 2026-04-09 00:26 — completed PA-10 ✅ (extended FakeS2Client with search_bulk/search_match/fetch_recommendations/fetch_author_papers as canned-response surfaces + register_* helpers; recs keyed on sorted tuple; deepcopy on the way out; 25 new tests in test_search_phase_a_e2e.py; 4-file verify 126/126 green; full suite 606/6 — **Phase A DONE**)
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-04-09 00:03 — completed PA-06 ✅ (added fields_of_study + publication_types to PaperRecord, extended PAPER_FIELDS with fieldsOfStudy/s2FieldsOfStudy/publicationTypes, paper_to_record merges legacy + s2 lists with dedup; 9 new tests in test_models.py; full suite 550 passed/6 skipped)
 - 2026-04-08 23:58 — completed PA-05 ✅ (wired search_bulk through S2CacheLayer with sha256(q,filters,sort,token) hash; added get/put_search_results to cache layer; 10 new tests covering hit/miss + negative coverage for uncached search_match/recommendations; 48 total green)
 - 2026-04-08 23:54 — completed PA-03 ✅ (added fetch_author_papers to SemanticScholarClient with cache-first pagination capped at limit; added get/put_author_papers to S2CacheLayer; 11 new tests, 38 total green)
-- 2026-04-08 23:47 — completed PA-04 ✅ (added search_queries + author_papers cache tables, 5 new methods, _SEARCH_TTL_DAYS_DEFAULT=30 constant, 14 new test_cache.py tests; PA-03 skipped ⏭️ since it depends on PA-04's methods which now exist — PA-03 unblocked for next run)
 
 ---
 
@@ -219,7 +219,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
   - **Verify done.** `pytest tests/test_llm.py -x`. Tests assert `thinking` field non-empty.
   - ✅ 2026-04-09 — Added the agent_decision branch to `stub_respond` (placed right after the topic_label branch so it short-circuits all screening branches). All three responses use Python dict literals so json.dumps preserves the schema's `thinking → query → agent_decision → reasoning` insertion order. **One follow-up tweak to PB-01 was required:** PB-01's USER_TEMPLATE legend originally contained the literal substring `"query":` (in the field-order numbered list), which would have made the iteration counter start at 1 — meaning the `initial` branch was unreachable. Fix was minimal: changed `2. "query": object with...` to `2. "query" — an object with...` (em-dash instead of colon). PB-01's verify command (`'agent_decision' in USER_TEMPLATE` + thinking type check) still passes after the tweak. 10 new tests in `TestStubAgentDecisionBranch` (test_llm.py) covering: (a) all three lifecycle states triggered by 0/1/2 prior `"query":` keys, (b) ≥2 stays satisfied for higher counts, (c) every state has non-empty thinking and all four fields, (d) JSON serialization preserves thinking-first order, (e) end-to-end through StubClient with category="meta_search_agent" bumps `budget._llm_tokens["meta_search_agent"]`, (f) bare template has zero `"query":` so the initial branch is reachable, (g) branch detector doesn't steal unrelated prompts. `pytest tests/test_llm.py -x` 71/71 green; full suite 616 passed/6 skipped (+10 from this task) with zero regressions. **Note for PB-04**: the transcript-rendering for prior turns MUST embed the literal `"query":` JSON key once per turn (e.g., serialize each prior AgentTurn as JSON inside the transcript block) so the iteration counter advances naturally as the agent loops.
 
-- [ ] **PB-03. Agent module + dataclasses**
+- [x] **PB-03. Agent module + dataclasses**
   - **What.** New `src/citeclaw/agents/__init__.py` + `src/citeclaw/agents/iterative_search.py`:
     ```python
     @dataclass
@@ -254,6 +254,7 @@ Goal: every Phase A module is unit-testable with zero pipeline touch.
     ```
   - **Files touched.** New: `src/citeclaw/agents/__init__.py`, `src/citeclaw/agents/iterative_search.py`.
   - **Verify done.** `python -c "from citeclaw.agents.iterative_search import AgentConfig, AgentTurn; c = AgentConfig(); assert c.max_iterations == 4 and c.reasoning_effort == 'high'"`.
+  - ✅ 2026-04-09 — Created the `agents/` package with the three dataclasses exactly as spec'd. `iterative_search.py` defines all three; `__init__.py` re-exports them with `__all__` so callers can write `from citeclaw.agents import AgentConfig` (the verify command uses the explicit submodule path so both forms work). `SearchAgentResult` uses `field(default_factory=list)` and empty-string defaults so PB-04's loop can build one up incrementally without forcing the caller to construct a fully-populated instance up front. PB-03 ships ONLY the data shapes — `run_iterative_search` itself lands in PB-04, which will import these from this module. Verify command + a broader sanity check (every default value, convenience re-export, AgentTurn positional construction, SearchAgentResult empty defaults) all green; full suite 616 passed/6 skipped, zero regressions.
 
 - [ ] **PB-04. `run_iterative_search` loop**
   - **What.** Implement:
