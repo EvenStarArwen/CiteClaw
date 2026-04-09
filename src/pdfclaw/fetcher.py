@@ -105,17 +105,27 @@ class Fetcher:
         except Exception:  # noqa: BLE001
             return False
 
-    def _plan(self, papers: list[Paper]) -> tuple[list[tuple[Paper, list[Recipe]]], FetchStats]:
+    def _plan(
+        self,
+        papers: list[Paper],
+        *,
+        filter_recipe: str | None = None,
+        filter_doi_prefix: str | None = None,
+    ) -> tuple[list[tuple[Paper, list[Recipe]]], FetchStats]:
         stats = FetchStats(total=len(papers))
         plan: list[tuple[Paper, list[Recipe]]] = []
         for paper in papers:
             if paper.doi is None:
                 stats.skipped_no_doi += 1
                 continue
+            if filter_doi_prefix and not paper.doi.lower().startswith(filter_doi_prefix.lower()):
+                continue
             if self.already_done(paper.paper_id):
                 stats.skipped_existing += 1
                 continue
             chain = find_recipes(paper.doi, self.recipes)
+            if filter_recipe is not None:
+                chain = [r for r in chain if r.name == filter_recipe]
             if not chain:
                 stats.skipped_no_recipe += 1
                 continue
@@ -127,8 +137,12 @@ class Fetcher:
         papers: list[Paper],
         *,
         max_papers: int | None = None,
+        filter_recipe: str | None = None,
+        filter_doi_prefix: str | None = None,
     ) -> FetchStats:
-        plan, stats = self._plan(papers)
+        plan, stats = self._plan(
+            papers, filter_recipe=filter_recipe, filter_doi_prefix=filter_doi_prefix,
+        )
 
         if max_papers is not None and max_papers > 0:
             plan = plan[:max_papers]

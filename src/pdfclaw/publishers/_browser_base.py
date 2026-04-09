@@ -64,6 +64,29 @@ DEFAULT_SSO_HOSTS: tuple[str, ...] = (
 )
 
 
+# Generic last-resort selectors appended to every recipe's DOWNLOAD_SELECTORS
+# automatically. These catch publishers that have unusual or rebranded PDF
+# anchors as long as some accessible attribute (text / aria-label / title /
+# href) contains "PDF" or "Download". They run AFTER the publisher-specific
+# selectors so the specific ones still take priority when present.
+GENERIC_FALLBACK_SELECTORS: tuple[str, ...] = (
+    'a[aria-label*="download pdf" i]',
+    'a[aria-label*="full text pdf" i]',
+    'a[aria-label*="pdf" i]',
+    'a[title*="download pdf" i]',
+    'a[title*="pdf" i]',
+    'a[data-track-action*="pdf" i]',
+    'a[data-test*="pdf" i]',
+    'a[href*="/pdf"][href*="download"]',
+    'a[href*=".pdf"]:not([href*=".pdfx"])',
+    'a:has-text("Download PDF")',
+    'a:has-text("Full Text PDF")',
+    'a:has-text("View PDF")',
+    'a:has-text("PDF Download")',
+    'button[aria-label*="pdf" i]',
+)
+
+
 class BrowserRecipeBase:
     """Mix-in implementing the standard navigate -> click -> download flow."""
 
@@ -84,6 +107,16 @@ class BrowserRecipeBase:
         if isinstance(self.DOI_PREFIX, str):
             return d.startswith(self.DOI_PREFIX)
         return any(d.startswith(p) for p in self.DOI_PREFIX)
+
+    def _all_selectors(self) -> list[str]:
+        """Recipe-specific selectors followed by the generic fallbacks."""
+        seen: set[str] = set()
+        out: list[str] = []
+        for s in list(self.DOWNLOAD_SELECTORS) + list(GENERIC_FALLBACK_SELECTORS):
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
 
     def _build_url(self, doi: str) -> str:
         if self.URL_BUILDER is not None:
@@ -142,9 +175,9 @@ class BrowserRecipeBase:
         if self.EXTRA_WAIT_MS > 0:
             page.wait_for_timeout(self.EXTRA_WAIT_MS)
 
-        # Step 4: try each download selector in order
+        # Step 4: try each download selector in order (specific then generic)
         last_err: str | None = None
-        for selector in self.DOWNLOAD_SELECTORS:
+        for selector in self._all_selectors():
             try:
                 if page.locator(selector).count() == 0:
                     last_err = f"selector not present: {selector}"

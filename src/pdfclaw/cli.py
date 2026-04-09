@@ -126,15 +126,22 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     )
 
     print(
-        f"[pdfclaw] checkpoint:  {args.checkpoint}\n"
-        f"[pdfclaw] parsed_dir:  {parsed_dir}\n"
-        f"[pdfclaw] pdf_dir:     {pdf_dir}\n"
-        f"[pdfclaw] profile:     {args.profile}\n"
-        f"[pdfclaw] max_papers:  {args.max if args.max else '(no limit)'}\n"
-        f"[pdfclaw] headless:    {args.headless}\n"
+        f"[pdfclaw] checkpoint:    {args.checkpoint}\n"
+        f"[pdfclaw] parsed_dir:    {parsed_dir}\n"
+        f"[pdfclaw] pdf_dir:       {pdf_dir}\n"
+        f"[pdfclaw] profile:       {args.profile}\n"
+        f"[pdfclaw] max_papers:    {args.max if args.max else '(no limit)'}\n"
+        f"[pdfclaw] filter_recipe: {args.filter_recipe or '(none)'}\n"
+        f"[pdfclaw] filter_doi:    {args.filter_doi or '(none)'}\n"
+        f"[pdfclaw] headless:      {args.headless}\n"
     )
 
-    stats = fetcher.run(papers, max_papers=args.max)
+    stats = fetcher.run(
+        papers,
+        max_papers=args.max,
+        filter_recipe=args.filter_recipe,
+        filter_doi_prefix=args.filter_doi,
+    )
 
     print()
     print("=== fetch summary ===")
@@ -211,7 +218,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_fetch.add_argument(
         "--headless",
         action="store_true",
-        help="Run Chromium headless (NOT recommended — easier for publishers to detect)",
+        help="Run Chromium headless (NOT recommended — Cloudflare/Akamai sites detect this)",
+    )
+    p_fetch.add_argument(
+        "--filter-recipe",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="Only run papers handled by this recipe name (e.g. nature_browser)",
+    )
+    p_fetch.add_argument(
+        "--filter-doi",
+        type=str,
+        default=None,
+        metavar="PREFIX",
+        help="Only run papers whose DOI starts with this prefix (e.g. 10.1038/)",
     )
     p_fetch.set_defaults(func=cmd_fetch)
 
