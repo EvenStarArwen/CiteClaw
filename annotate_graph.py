@@ -571,6 +571,29 @@ def main():
         default=None,
         help="CiteClaw data_dir (used to locate cache.db for full-text). Defaults to the graph file's parent.",
     )
+    parser.add_argument(
+        "--base-url",
+        dest="base_url",
+        type=str,
+        default=None,
+        help=(
+            "OpenAI-compatible endpoint for the annotator (e.g. a Modal vLLM "
+            "URL ending in /v1). Overrides graph_label_base_url / llm_base_url "
+            "in the YAML. Self-hosted endpoints default their API key to "
+            "CITECLAW_VLLM_API_KEY (or 'none' if unset)."
+        ),
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        dest="reasoning_effort",
+        type=str,
+        default=None,
+        help=(
+            "Reasoning effort for the annotator LLM "
+            "(low | medium | high | minimal | off). Overrides "
+            "graph_label_reasoning_effort / reasoning_effort in the YAML."
+        ),
+    )
     args = parser.parse_args()
 
     # Resolve API key, model, and reasoning effort
@@ -609,13 +632,24 @@ def main():
                 "GEMINI_API_KEY, S2_API_KEY)."
             )
             sys.exit(1)
+        # Annotator-specific overrides win over the pipeline-wide fields.
+        # This is what lets config_rna.yaml keep screening_model on Gemini
+        # for the pipeline while pointing the annotator at Gemma on Modal.
         if not args.model:
-            model = cfg.get("screening_model", model)
-        base_url = cfg.get("llm_base_url", "") or ""
+            model = cfg.get("graph_label_model") or cfg.get("screening_model", model)
+        base_url = (
+            cfg.get("graph_label_base_url")
+            or cfg.get("llm_base_url", "")
+            or ""
+        )
         request_timeout = float(cfg.get("llm_request_timeout", 60.0))
         if not instruction:
             instruction = cfg.get("graph_label_instruction", "")
-        reasoning_effort = cfg.get("reasoning_effort", "")
+        reasoning_effort = (
+            cfg.get("graph_label_reasoning_effort")
+            or cfg.get("reasoning_effort", "")
+            or ""
+        )
         # Annotator field toggles from YAML (None means "unset, use default").
         if "graph_label_use_title" in cfg:
             cfg_use_title = bool(cfg.get("graph_label_use_title"))
@@ -627,6 +661,12 @@ def main():
             cfg_full_text_max_chars = int(cfg.get("graph_label_full_text_max_chars"))
         if cfg.get("data_dir"):
             cfg_data_dir = Path(cfg["data_dir"])
+
+    # CLI beats YAML for endpoint + reasoning effort.
+    if args.base_url is not None:
+        base_url = args.base_url
+    if args.reasoning_effort is not None:
+        reasoning_effort = args.reasoning_effort
 
     # CLI overrides YAML; YAML overrides defaults.
     use_title = (
@@ -657,7 +697,15 @@ def main():
     # API keys come from env vars only.
     if not api_key:
         if base_url:
-            api_key = "none"  # most self-hosted servers accept any token
+            # Self-hosted vLLM endpoints (Modal, etc.) usually need a bearer
+            # token. Honour CITECLAW_VLLM_API_KEY (the project's canonical
+            # variable, matching config.ModelEndpoint.resolved_api_key) and
+            # fall back to "none" for servers that accept any string.
+            api_key = (
+                os.environ.get("CITECLAW_VLLM_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or "none"
+            )
         elif model.startswith("gemini-"):
             api_key = os.environ.get("GEMINI_API_KEY", "")
         else:
