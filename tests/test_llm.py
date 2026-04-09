@@ -111,6 +111,301 @@ class TestLLMClientFactory:
 
 
 # ---------------------------------------------------------------------------
+# Per-model endpoint registry (Settings.models) — PG-01 routing
+# ---------------------------------------------------------------------------
+
+
+class TestModelEndpointRegistry:
+    """The ``models:`` registry lets one YAML config mix Gemini, OpenAI, and
+    N self-hosted vLLM endpoints. Each block's ``model:`` field is a YAML
+    alias; the factory looks the alias up in ``Settings.models`` and builds
+    an OpenAIClient pointed at the alias's own endpoint with the configured
+    ``served_model_name`` over the wire."""
+
+    def _captured_sdk(self, monkeypatch):
+        """Replace ``_build_openai_sdk`` with a fake that records its kwargs.
+
+        Returns ``(captured, fake_factory_setter)``. ``captured`` is a
+        dict that the test can assert against after constructing the
+        client; the fake SDK doesn't make real network calls.
+        """
+        captured: dict = {}
+        # Minimal SDK shape — only the chat-completions surface CiteClaw uses.
+        class FakeUsage:
+            prompt_tokens = 1
+            completion_tokens = 1
+            completion_tokens_details = None
+
+        class FakeMessage:
+            content = '{"results":[{"index":1,"match":true}]}'
+
+        class FakeChoice:
+            message = FakeMessage()
+            logprobs = None
+
+        class FakeResp:
+            choices = [FakeChoice()]
+            usage = FakeUsage()
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.setdefault("create_calls", []).append(kwargs)
+                return FakeResp()
+
+        class FakeSDK:
+            chat = type("C", (), {"completions": FakeCompletions()})()
+
+        def fake_build(cfg, **kwargs):
+            captured["sdk_kwargs"] = kwargs
+            return FakeSDK()
+
+        monkeypatch.setattr(
+            "citeclaw.clients.llm.openai_client._build_openai_sdk",
+            fake_build,
+        )
+        return captured
+
+    def test_registry_alias_routes_to_openai_client_with_endpoint(self, tmp_path, monkeypatch):
+        """A registry hit constructs an OpenAIClient pointed at the alias's
+        own ``base_url`` + ``api_key`` (resolved from the env var) — not the
+        global ``llm_base_url``."""
+        from citeclaw.clients.llm.openai_client import OpenAIClient
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        monkeypatch.setenv("MY_GEMMA_KEY", "secret-bearer-token")
+
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                    api_key_env="MY_GEMMA_KEY",
+                    reasoning_parser="gemma4",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker())
+        assert isinstance(client, OpenAIClient)
+        # SDK was constructed with the alias's endpoint, not the global one.
+        assert captured["sdk_kwargs"]["endpoint_base_url"] == "https://example.modal.run/v1"
+        assert captured["sdk_kwargs"]["endpoint_api_key"] == "secret-bearer-token"
+
+    def test_registry_alias_sends_served_model_name_over_wire(self, tmp_path, monkeypatch):
+        """The chat-completions ``model`` field carries ``served_model_name``,
+        not the YAML alias — vLLM only knows about the HF ID it was started
+        with, so the alias must be translated."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker())
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        # Wire format uses the served name; alias stays in the client only.
+        assert create_call["model"] == "google/gemma-4-31B-it"
+
+    def test_registry_alias_records_budget_under_alias(self, tmp_path, monkeypatch):
+        """Budget tracker keys on the YAML alias, not the served name. This
+        keeps cost reporting stable across runs even if the user later
+        repoints ``served_model_name`` to a different fine-tune."""
+        from citeclaw.config import ModelEndpoint
+
+        self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        budget = BudgetTracker()
+        client = build_llm_client(cfg, budget)
+        client.call("sys", "usr", category="screening")
+        # The alias is what shows up in pricing lookup. The cost-estimate
+        # path falls back to GENERIC for an unknown name, which is the
+        # documented behavior — what matters is that the alias is preserved.
+        assert client._model == "gemma-4-31b"
+
+    def test_registry_alias_short_circuits_global_llm_base_url(self, tmp_path, monkeypatch):
+        """If both the registry AND the legacy global ``llm_base_url`` are
+        set, the registry wins. This prevents accidental cross-talk when
+        a user is migrating from the legacy single-endpoint setup."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            llm_base_url="https://global-fallback.example/v1",  # legacy
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://gemma-specific.example/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        build_llm_client(cfg, BudgetTracker())
+        # Registry wins.
+        assert captured["sdk_kwargs"]["endpoint_base_url"] == "https://gemma-specific.example/v1"
+
+    def test_registry_miss_falls_back_to_legacy_routing(self, tmp_path, monkeypatch):
+        """A model name that is NOT in the registry takes the legacy path
+        (Gemini detection / global llm_base_url / OpenAI SaaS), so existing
+        configs that don't use ``models:`` keep working."""
+        from citeclaw.clients.llm.gemini import GeminiClient
+        from citeclaw.config import ModelEndpoint
+
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemini-3-flash",  # not in registry
+            gemini_api_key="fake",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker())
+        assert isinstance(client, GeminiClient)
+
+    def test_per_block_model_override_picks_registry_alias(self, tmp_path, monkeypatch):
+        """A filter-level ``model: gemma-4-31b`` override routes to the
+        registry even when the global ``screening_model`` is a Gemini model.
+        This is the *cross-provider mixing* use case the registry exists for."""
+        from citeclaw.clients.llm.openai_client import OpenAIClient
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemini-3-flash",  # global default = gemini
+            gemini_api_key="fake",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        # Per-filter override: this block uses gemma instead of gemini.
+        client = build_llm_client(cfg, BudgetTracker(), model="gemma-4-31b")
+        assert isinstance(client, OpenAIClient)
+        assert captured["sdk_kwargs"]["endpoint_base_url"] == "https://example.modal.run/v1"
+
+    def test_yaml_loading_round_trips_models_block(self, tmp_path):
+        """Settings loaded from a real YAML file parses the ``models:`` block
+        into ``ModelEndpoint`` objects with the right field values."""
+        import yaml
+        from citeclaw.config import load_settings
+
+        cfg_path = tmp_path / "cfg.yaml"
+        cfg_path.write_text(yaml.safe_dump({
+            "screening_model": "gemma-4-31b",
+            "data_dir": str(tmp_path),
+            "models": {
+                "gemma-4-31b": {
+                    "base_url": "https://example.modal.run/v1",
+                    "served_model_name": "google/gemma-4-31B-it",
+                    "api_key_env": "MY_GEMMA_KEY",
+                    "reasoning_parser": "gemma4",
+                },
+                "qwen3.5-122b": {
+                    "base_url": "https://other.modal.run/v1",
+                    "served_model_name": "Qwen/Qwen3.5-122B-A10B-FP8",
+                    "reasoning_parser": "qwen3",
+                },
+            },
+        }))
+        s = load_settings(cfg_path)
+        assert set(s.models.keys()) == {"gemma-4-31b", "qwen3.5-122b"}
+        assert s.models["gemma-4-31b"].base_url == "https://example.modal.run/v1"
+        assert s.models["gemma-4-31b"].served_model_name == "google/gemma-4-31B-it"
+        assert s.models["gemma-4-31b"].api_key_env == "MY_GEMMA_KEY"
+        assert s.models["gemma-4-31b"].reasoning_parser == "gemma4"
+        assert s.models["qwen3.5-122b"].served_model_name == "Qwen/Qwen3.5-122B-A10B-FP8"
+
+    def test_resolved_api_key_falls_back_to_citeclaw_vllm_key(self, tmp_path, monkeypatch):
+        """``ModelEndpoint.resolved_api_key`` checks the named env var first,
+        then falls back to ``CITECLAW_VLLM_API_KEY`` so a single shared key
+        works across all registry entries without per-entry config."""
+        from citeclaw.config import ModelEndpoint
+
+        ep = ModelEndpoint(base_url="https://x/v1", served_model_name="m")
+        monkeypatch.delenv("CITECLAW_VLLM_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        assert ep.resolved_api_key == ""
+        monkeypatch.setenv("CITECLAW_VLLM_API_KEY", "shared-key")
+        assert ep.resolved_api_key == "shared-key"
+
+    def test_reasoning_effort_threads_through_registry_path(self, tmp_path, monkeypatch):
+        """A per-block ``reasoning_effort`` override survives the registry
+        path: the OpenAIClient picks up the OSS chat-template kwarg shape
+        (``chat_template_kwargs={"enable_thinking": ...}``) because the
+        registry path counts as a custom endpoint."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="high")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        # Custom-endpoint path uses chat_template_kwargs, not OpenAI's
+        # native reasoning_effort knob. Both are present so vLLM can pick
+        # whichever it understands.
+        assert "extra_body" in create_call
+        assert create_call["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
+        assert create_call.get("reasoning_effort") == "high"
+
+    def test_reasoning_effort_off_disables_thinking_via_registry(self, tmp_path, monkeypatch):
+        """``reasoning_effort: off`` disables thinking on the registry
+        endpoint without sending a positive reasoning_effort value."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="off")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        assert create_call["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
+        # No positive reasoning_effort field when disabled.
+        assert "reasoning_effort" not in create_call
+
+
+# ---------------------------------------------------------------------------
 # llm_runner._parse and _parse_matches
 # ---------------------------------------------------------------------------
 
