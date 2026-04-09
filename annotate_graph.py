@@ -79,12 +79,43 @@ _SYSTEM = (
     "Reply with ONLY the label text, nothing else — no quotes, no explanation."
 )
 
-_USER = (
-    "Instruction: {instruction}\n\n"
-    "Title: {title}\n"
-    "Abstract: {abstract}\n\n"
-    "Label:"
-)
+
+def _build_user_message(
+    *,
+    instruction: str,
+    title: str,
+    abstract: str,
+    full_text: str | None,
+    use_title: bool,
+    use_abstract: bool,
+    use_full_text: bool,
+    full_text_max_chars: int,
+) -> str:
+    """Assemble the user-message for the annotator LLM from the enabled fields.
+
+    Any of ``use_title`` / ``use_abstract`` / ``use_full_text`` can be toggled
+    independently. A "missing" source (e.g. ``use_full_text=True`` but the PDF
+    failed to download) is silently skipped — the LLM still sees whichever
+    fields did resolve. If every source is disabled or missing the function
+    still produces a prompt header, so the caller never has to special-case it.
+    """
+    parts: list[str] = [f"Instruction: {instruction}", ""]
+    if use_title:
+        parts.append(f"Title: {title or '(no title)'}")
+    if use_abstract:
+        parts.append(f"Abstract: {abstract or '(no abstract)'}")
+    if use_full_text:
+        if full_text:
+            body = full_text[:full_text_max_chars]
+            if len(full_text) > full_text_max_chars:
+                body = body + "\n[...truncated...]"
+            parts.append("Full text:")
+            parts.append(body)
+        else:
+            parts.append("Full text: (unavailable — no open-access PDF)")
+    parts.append("")
+    parts.append("Label:")
+    return "\n".join(parts)
 
 
 import threading
@@ -219,16 +250,32 @@ def label_paper(
     instruction: str,
     title: str,
     abstract: str,
+    full_text: str | None,
+    use_title: bool,
+    use_abstract: bool,
+    use_full_text: bool,
+    full_text_max_chars: int,
     api_key: str,
     reasoning_effort: str = "",
     openai_client: openai.OpenAI | None = None,
     is_custom: bool = False,
 ) -> str:
-    """Generate a concise label for one paper."""
-    user_msg = _USER.format(
+    """Generate a concise label for one paper.
+
+    ``use_title`` / ``use_abstract`` / ``use_full_text`` control which
+    fields are shown to the LLM. ``full_text`` may be None — set it when
+    the paper has no open-access PDF or the parse failed. See
+    :func:`_build_user_message` for prompt assembly rules.
+    """
+    user_msg = _build_user_message(
         instruction=instruction,
         title=title,
-        abstract=abstract or "(no abstract)",
+        abstract=abstract,
+        full_text=full_text,
+        use_title=use_title,
+        use_abstract=use_abstract,
+        use_full_text=use_full_text,
+        full_text_max_chars=full_text_max_chars,
     )
     # Custom endpoints (vLLM, Modal, etc.) go through the OpenAI SDK path
     # even if the model name happens to start with "gemini-".
@@ -263,6 +310,12 @@ def annotate(
     base_url: str = "",
     request_timeout: float = 60.0,
     limit: int | None = None,
+    *,
+    use_title: bool = True,
+    use_abstract: bool = True,
+    use_full_text: bool = False,
+    full_text_max_chars: int = 30_000,
+    data_dir: Path | None = None,
 ) -> None:
     console.print(f"[bold]Loading graph:[/] {graph_path}")
     g = ig.Graph.Read_GraphML(str(graph_path))
@@ -308,15 +361,67 @@ def annotate(
         console.print(f"[bold]Labelling {total} papers[/] (instruction: {instruction[:60]})")
     if reasoning_effort:
         console.print(f"[dim]  reasoning_effort = {reasoning_effort}[/]")
+    enabled = [
+        name for name, on in (
+            ("title", use_title),
+            ("abstract", use_abstract),
+            ("full-text", use_full_text),
+        ) if on
+    ]
+    console.print(
+        f"[dim]  fields shown to LLM: {', '.join(enabled) if enabled else '(none — instruction only)'}[/]"
+    )
 
-    # Pre-extract (title, abstract) for every node so the worker threads
-    # don't touch igraph vertex objects concurrently (igraph isn't thread-safe
-    # for reads during this kind of access pattern).
-    nodes = []
+    # Pre-extract (paper_id, pdf_url, title, abstract) for every node so the
+    # worker threads don't touch igraph vertex objects concurrently (igraph
+    # isn't thread-safe for reads during this kind of access pattern).
+    nodes: list[tuple[str, str, str, str]] = []
     for v in g.vs:
+        paper_id = v["paper_id"] if "paper_id" in v.attributes() else ""
+        pdf_url = v["pdf_url"] if "pdf_url" in v.attributes() else ""
         title = v["title"] if "title" in v.attributes() else v.get("label", "")
         abstract = v["abstract"] if "abstract" in v.attributes() else ""
-        nodes.append((title, abstract))
+        nodes.append((paper_id, pdf_url or "", title, abstract))
+
+    # Optionally prefetch full-text PDFs for every node so workers can read
+    # body text locally from the cache. The PdfFetcher is cache-aware: if the
+    # upstream pipeline already populated ``paper_full_text`` (or if
+    # ``use_full_text`` was enabled on a previous run), this call is a no-op.
+    full_text_by_id: dict[str, str | None] = {}
+    if use_full_text:
+        # Lazy imports so a user who only labels titles+abstracts doesn't
+        # need the CiteClaw package on PYTHONPATH at annotate time.
+        from citeclaw.cache import Cache
+        from citeclaw.clients.pdf import PdfFetcher
+        from citeclaw.models import PaperRecord
+
+        resolved_dir = (data_dir or graph_path.parent).resolve()
+        cache_path = resolved_dir / "cache.db"
+        console.print(
+            f"[dim]  Full-text enabled — using cache at {cache_path}[/]"
+        )
+        cache = Cache(cache_path)
+        fetcher = PdfFetcher(cache)
+        stub_records = [
+            PaperRecord(paper_id=pid, title=title, pdf_url=(purl or None))
+            for (pid, purl, title, _abs) in nodes
+            if pid
+        ]
+        try:
+            full_text_by_id = fetcher.prefetch(stub_records, max_workers=4)
+        except Exception as exc:
+            console.print(
+                f"[yellow]  PDF prefetch failed: {type(exc).__name__}: {exc} — "
+                f"full-text will be skipped for every node[/]"
+            )
+            full_text_by_id = {}
+        finally:
+            fetcher.close()
+        n_with_text = sum(1 for v in full_text_by_id.values() if v)
+        console.print(
+            f"[dim]  Full-text ready for {n_with_text}/{len(stub_records)} papers"
+            f" (cache + fresh downloads combined)[/]"
+        )
 
     # Results indexed by vertex id so we can write them back in order at
     # the end. Pre-populate with fallback labels for nodes past the limit.
@@ -333,12 +438,18 @@ def annotate(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def _label_one(idx: int) -> tuple[int, str]:
-        title, abstract = nodes[idx]
+        paper_id, _purl, title, abstract = nodes[idx]
+        ftext = full_text_by_id.get(paper_id) if use_full_text else None
         lbl = label_paper(
             model=model,
             instruction=instruction,
             title=title,
             abstract=abstract,
+            full_text=ftext,
+            use_title=use_title,
+            use_abstract=use_abstract,
+            use_full_text=use_full_text,
+            full_text_max_chars=full_text_max_chars,
             api_key=api_key,
             reasoning_effort=reasoning_effort,
             openai_client=openai_client,
@@ -407,6 +518,59 @@ def main():
         default=None,
         help="Only label the first N nodes (for testing). Remaining nodes keep their titles as labels.",
     )
+    # ------------------------------------------------------------------
+    # Annotator input toggles: choose which fields the LLM sees.
+    #
+    # Defaults preserve the pre-existing behaviour (title+abstract on,
+    # full-text off). The BooleanOptionalAction flavour gives every flag
+    # a matching ``--no-...`` negation so the CLI overrides YAML cleanly.
+    # YAML equivalents (read via ``graph_label_use_*`` / ``graph_label_full_text_max_chars``):
+    #   graph_label_use_title:  true
+    #   graph_label_use_abstract: true
+    #   graph_label_use_full_text: false
+    #   graph_label_full_text_max_chars: 30000
+    # ``--data-dir`` points the full-text PDF cache at a specific folder
+    # (defaults to the graph file's parent, which matches Finalize).
+    # ------------------------------------------------------------------
+    parser.add_argument(
+        "--use-title",
+        dest="use_title",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Show the paper title to the annotator LLM (default: on).",
+    )
+    parser.add_argument(
+        "--use-abstract",
+        dest="use_abstract",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Show the abstract to the annotator LLM (default: on).",
+    )
+    parser.add_argument(
+        "--use-full-text",
+        dest="use_full_text",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Show the parsed PDF body to the annotator LLM (default: off). "
+            "Uses citeclaw.clients.pdf.PdfFetcher + the cache.db in --data-dir "
+            "to fetch / parse / cache open-access PDFs."
+        ),
+    )
+    parser.add_argument(
+        "--full-text-max-chars",
+        dest="full_text_max_chars",
+        type=int,
+        default=None,
+        help="Character cap for the full-text section in each prompt (default: 30000).",
+    )
+    parser.add_argument(
+        "--data-dir",
+        dest="data_dir",
+        type=Path,
+        default=None,
+        help="CiteClaw data_dir (used to locate cache.db for full-text). Defaults to the graph file's parent.",
+    )
     args = parser.parse_args()
 
     # Resolve API key, model, and reasoning effort
@@ -417,6 +581,13 @@ def main():
     request_timeout = 60.0
 
     instruction = args.instruction
+
+    # Annotator field toggles — YAML defaults, CLI overrides below.
+    cfg_use_title: bool | None = None
+    cfg_use_abstract: bool | None = None
+    cfg_use_full_text: bool | None = None
+    cfg_full_text_max_chars: int | None = None
+    cfg_data_dir: Path | None = None
 
     if args.config and args.config.exists():
         import yaml
@@ -445,6 +616,43 @@ def main():
         if not instruction:
             instruction = cfg.get("graph_label_instruction", "")
         reasoning_effort = cfg.get("reasoning_effort", "")
+        # Annotator field toggles from YAML (None means "unset, use default").
+        if "graph_label_use_title" in cfg:
+            cfg_use_title = bool(cfg.get("graph_label_use_title"))
+        if "graph_label_use_abstract" in cfg:
+            cfg_use_abstract = bool(cfg.get("graph_label_use_abstract"))
+        if "graph_label_use_full_text" in cfg:
+            cfg_use_full_text = bool(cfg.get("graph_label_use_full_text"))
+        if "graph_label_full_text_max_chars" in cfg:
+            cfg_full_text_max_chars = int(cfg.get("graph_label_full_text_max_chars"))
+        if cfg.get("data_dir"):
+            cfg_data_dir = Path(cfg["data_dir"])
+
+    # CLI overrides YAML; YAML overrides defaults.
+    use_title = (
+        args.use_title if args.use_title is not None
+        else (cfg_use_title if cfg_use_title is not None else True)
+    )
+    use_abstract = (
+        args.use_abstract if args.use_abstract is not None
+        else (cfg_use_abstract if cfg_use_abstract is not None else True)
+    )
+    use_full_text = (
+        args.use_full_text if args.use_full_text is not None
+        else (cfg_use_full_text if cfg_use_full_text is not None else False)
+    )
+    full_text_max_chars = (
+        args.full_text_max_chars if args.full_text_max_chars is not None
+        else (cfg_full_text_max_chars if cfg_full_text_max_chars is not None else 30_000)
+    )
+    data_dir = args.data_dir or cfg_data_dir
+
+    if not (use_title or use_abstract or use_full_text):
+        console.print(
+            "[yellow]Warning:[/] all annotator field toggles are disabled — "
+            "the LLM will see only the instruction. Enable at least one of "
+            "--use-title / --use-abstract / --use-full-text."
+        )
 
     # API keys come from env vars only.
     if not api_key:
@@ -473,6 +681,11 @@ def main():
         base_url=base_url,
         request_timeout=request_timeout,
         limit=args.limit,
+        use_title=use_title,
+        use_abstract=use_abstract,
+        use_full_text=use_full_text,
+        full_text_max_chars=full_text_max_chars,
+        data_dir=data_dir,
     )
 
 
