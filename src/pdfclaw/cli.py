@@ -151,22 +151,30 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        prog="python -m pdfclaw",
-        description="Institutional-auth PDF fetcher for CiteClaw checkpoints",
-    )
-    p.add_argument("--version", action="version", version=f"pdfclaw {__version__}")
-    p.add_argument("-v", "--verbose", action="store_true")
-    p.add_argument(
+    # Use parents= so each subcommand inherits the global flags. This
+    # lets the user write `pdfclaw fetch data/ -v` (verbose AFTER the
+    # subcommand) which is what every other CLI tool accepts.
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument("-v", "--verbose", action="store_true")
+    parent.add_argument(
         "--profile",
         type=Path,
         default=DEFAULT_PROFILE,
         help=f"Chrome user-data-dir for the persistent SSO profile (default: {DEFAULT_PROFILE})",
     )
 
+    p = argparse.ArgumentParser(
+        prog="python -m pdfclaw",
+        description="Institutional-auth PDF fetcher for CiteClaw checkpoints",
+        parents=[parent],
+    )
+    p.add_argument("--version", action="version", version=f"pdfclaw {__version__}")
+
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_list = sub.add_parser("list", help="Show DOI coverage of a checkpoint")
+    p_list = sub.add_parser(
+        "list", help="Show DOI coverage of a checkpoint", parents=[parent],
+    )
     p_list.add_argument("checkpoint", type=Path)
     p_list.add_argument(
         "--no-enrich",
@@ -184,10 +192,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_login = sub.add_parser(
         "login",
         help="Open Chromium with the dedicated profile so you can sign in to your institution",
+        parents=[parent],
     )
     p_login.set_defaults(func=cmd_login)
 
-    p_fetch = sub.add_parser("fetch", help="Download + parse PDFs from a checkpoint")
+    p_fetch = sub.add_parser(
+        "fetch", help="Download + parse PDFs from a checkpoint", parents=[parent],
+    )
     p_fetch.add_argument("checkpoint", type=Path)
     p_fetch.add_argument(
         "--no-enrich",

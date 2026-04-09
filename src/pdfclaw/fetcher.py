@@ -166,6 +166,12 @@ class Fetcher:
         # Tracks publishers that have already returned AUTH so we can
         # skip them quickly without re-launching the browser flow.
         auth_failed_recipes: set[str] = set()
+        # Per-recipe consecutive failure count. After N failures in a
+        # row from the same recipe, we suppress it for the rest of the
+        # run — this catches CF/Akamai blocks (where every fetch fails
+        # the same way) without grinding through all 57 bioRxiv papers.
+        consecutive_failures: dict[str, int] = {}
+        FAILURE_THRESHOLD = 3
 
         with httpx.Client(
             headers={"User-Agent": self.http_user_agent},
@@ -190,6 +196,25 @@ class Fetcher:
                         paper, chain, http, page, auth_failed_recipes,
                     )
                     self._handle_result(paper, result, stats)
+                    # Track consecutive failures per recipe; after
+                    # FAILURE_THRESHOLD, treat as auth-suppressed.
+                    rname = result.fetched_via
+                    if rname and rname != "(none)":
+                        if result.ok:
+                            consecutive_failures[rname] = 0
+                        else:
+                            consecutive_failures[rname] = consecutive_failures.get(rname, 0) + 1
+                            if (
+                                consecutive_failures[rname] >= FAILURE_THRESHOLD
+                                and rname not in auth_failed_recipes
+                            ):
+                                auth_failed_recipes.add(rname)
+                                log.warning(
+                                    "Recipe %s hit %d consecutive failures; suppressing for the rest of the run "
+                                    "(CF/Akamai/JS-rendering hostile in headless? or selectors broken?). "
+                                    "See /tmp/pdfclaw_failures/ for snapshots.",
+                                    rname, consecutive_failures[rname],
+                                )
                     self._sleep_a_bit()
             finally:
                 if ctx_manager is not None:

@@ -98,8 +98,11 @@ class BrowserRecipeBase:
     EXTRA_WAIT_MS: int = 0
     URL_BUILDER: Callable[[str], str] | None = None
     GOTO_TIMEOUT_MS: int = 45_000
-    NETWORKIDLE_TIMEOUT_MS: int = 20_000
-    DOWNLOAD_TIMEOUT_MS: int = 60_000
+    NETWORKIDLE_TIMEOUT_MS: int = 15_000
+    # Tightened from 60s to 20s — paywalled publishers without auth don't
+    # trigger a download on click; they navigate to SSO. Waiting 60s for
+    # something that's never coming kills throughput on a missing-auth run.
+    DOWNLOAD_TIMEOUT_MS: int = 20_000
     CLICK_TIMEOUT_MS: int = 10_000
 
     def matches(self, doi: str) -> bool:
@@ -182,9 +185,29 @@ class BrowserRecipeBase:
                 if page.locator(selector).count() == 0:
                     last_err = f"selector not present: {selector}"
                     continue
-                with page.expect_download(timeout=self.DOWNLOAD_TIMEOUT_MS) as dl_info:
-                    page.locator(selector).first.click(timeout=self.CLICK_TIMEOUT_MS)
-                download = dl_info.value
+                try:
+                    with page.expect_download(timeout=self.DOWNLOAD_TIMEOUT_MS) as dl_info:
+                        page.locator(selector).first.click(timeout=self.CLICK_TIMEOUT_MS)
+                    download = dl_info.value
+                except Exception as click_exc:  # noqa: BLE001
+                    # Click happened but no download fired. Common cause:
+                    # the click navigated to an SSO / login wall. If the
+                    # current URL now matches an SSO host, surface AUTH
+                    # so the orchestrator skips subsequent papers from
+                    # this publisher instead of grinding through 100 60s
+                    # timeouts.
+                    new_url = page.url.lower()
+                    if any(host in new_url for host in self.SSO_HOSTS):
+                        return FetchResult(
+                            paper_id=paper_id, doi=doi, status=STATUS_AUTH,
+                            fetched_via=self.name,
+                            error=(
+                                f"Click navigated to SSO at {page.url}. Run "
+                                "`python -m pdfclaw login` and sign in via your "
+                                "institution, then re-run this fetch."
+                            ),
+                        )
+                    raise click_exc
 
                 tmpdir = Path(tempfile.mkdtemp(prefix=f"pdfclaw_{self.name}_"))
                 tmp_pdf = tmpdir / "tmp.pdf"
