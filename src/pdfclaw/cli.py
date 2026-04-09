@@ -29,6 +29,7 @@ from pdfclaw.collection import load_papers
 from pdfclaw.fetcher import Fetcher, _stats_to_dict
 from pdfclaw.publishers import build_default_registry, find_recipe
 from pdfclaw.s2_enrich import enrich_dois_from_s2
+from pdfclaw.title_search import enrich_dois_via_arxiv_title_search
 
 log = logging.getLogger("pdfclaw")
 
@@ -44,15 +45,23 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
-def _load_and_enrich(checkpoint: Path, *, enrich: bool) -> list:
+def _load_and_enrich(
+    checkpoint: Path, *, enrich: bool, title_search: bool = False,
+) -> list:
     papers = load_papers(checkpoint)
     if enrich:
         papers = enrich_dois_from_s2(papers)
+    if title_search:
+        papers = enrich_dois_via_arxiv_title_search(papers)
     return papers
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    papers = _load_and_enrich(args.checkpoint, enrich=not args.no_enrich)
+    papers = _load_and_enrich(
+        args.checkpoint,
+        enrich=not args.no_enrich,
+        title_search=args.title_search,
+    )
     total = len(papers)
     with_doi = [p for p in papers if p.doi]
     no_doi = [p for p in papers if p.doi is None]
@@ -100,7 +109,11 @@ def cmd_login(args: argparse.Namespace) -> int:
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
-    papers = _load_and_enrich(args.checkpoint, enrich=not args.no_enrich)
+    papers = _load_and_enrich(
+        args.checkpoint,
+        enrich=not args.no_enrich,
+        title_search=args.title_search,
+    )
     parsed_dir = args.parsed_dir or (args.checkpoint / "parsed")
     pdf_dir = args.pdf_dir or (args.checkpoint / "pdfs")
 
@@ -153,6 +166,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip S2 batch enrichment of missing DOIs (faster, less coverage)",
     )
+    p_list.add_argument(
+        "--title-search",
+        action="store_true",
+        help="After S2 enrichment, fall back to arXiv title search for "
+             "still-missing DOIs (rate-limited, slow — recovers ML conference papers)",
+    )
     p_list.set_defaults(func=cmd_list)
 
     p_login = sub.add_parser(
@@ -167,6 +186,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-enrich",
         action="store_true",
         help="Skip S2 batch enrichment of missing DOIs (faster, less coverage)",
+    )
+    p_fetch.add_argument(
+        "--title-search",
+        action="store_true",
+        help="After S2 enrichment, fall back to arXiv title search for "
+             "still-missing DOIs (rate-limited, slow)",
     )
     p_fetch.add_argument(
         "--parsed-dir",

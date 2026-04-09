@@ -24,6 +24,11 @@ Subclasses set ONLY these class attributes:
   * (optional) ``EXTRA_WAIT_MS`` — extra wait after page settle
   * (optional) ``URL_BUILDER`` — callable taking ``doi`` and returning
     the navigation URL (default: ``https://doi.org/<doi>``)
+
+When ALL selectors fail, the recipe writes a snapshot of the failed
+page (HTML + a list of all anchor candidates with ``pdf`` in their
+href or visible text) to ``/tmp/pdfclaw_failures/<recipe>_<paper_id>.{html,txt}``
+so you can grep for the right selector after the run.
 """
 
 from __future__ import annotations
@@ -178,12 +183,71 @@ class BrowserRecipeBase:
                 last_err = f"{selector}: {exc}"
                 continue
 
+        snapshot = self._dump_failure(page, paper_id)
         return FetchResult(
             paper_id=paper_id, doi=doi, status=STATUS_ERROR,
             fetched_via=self.name,
             error=(
                 f"All download selectors failed for {self.name}; "
-                f"last error: {last_err}. The publisher's page structure "
-                "may have changed — update DOWNLOAD_SELECTORS."
+                f"last error: {last_err}. Page snapshot saved to {snapshot}. "
+                "Inspect the .txt for candidate anchors and update "
+                "DOWNLOAD_SELECTORS in the recipe."
             ),
+            extra={"failure_snapshot": snapshot, "final_url": page.url},
         )
+
+    def _dump_failure(self, page: "Page", paper_id: str) -> str:
+        """Save HTML + a list of pdf-ish anchors so the next iteration
+        of the selector list can be informed."""
+        from pathlib import Path
+        out_dir = Path("/tmp/pdfclaw_failures")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            html = page.content()
+            (out_dir / f"{self.name}_{paper_id}.html").write_text(
+                html, encoding="utf-8", errors="ignore",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Extract all anchors that look PDF-related
+        try:
+            anchors = page.evaluate(
+                """() => Array.from(document.querySelectorAll('a')).map(a => ({
+                    href: a.getAttribute('href') || '',
+                    text: (a.innerText || '').trim().slice(0, 100),
+                    cls: a.getAttribute('class') || '',
+                    aria: a.getAttribute('aria-label') || '',
+                    title: a.getAttribute('title') || '',
+                    data_track: a.getAttribute('data-track-action') || '',
+                })).filter(a =>
+                    /pdf/i.test(a.href) || /pdf/i.test(a.text) ||
+                    /pdf/i.test(a.aria) || /pdf/i.test(a.title) ||
+                    /download/i.test(a.text) || /download/i.test(a.aria)
+                )"""
+            )
+        except Exception:  # noqa: BLE001
+            anchors = []
+
+        try:
+            lines = [f"# Snapshot for {self.name} / {paper_id}",
+                     f"# Final URL: {page.url}",
+                     f"# Title: {page.title()}",
+                     f"# {len(anchors)} candidate anchors found:",
+                     ""]
+            for a in anchors:
+                lines.append(
+                    f"href: {a.get('href','')[:120]}\n"
+                    f"  text: {a.get('text','')[:80]}\n"
+                    f"  class: {a.get('cls','')[:60]}\n"
+                    f"  aria: {a.get('aria','')[:60]}\n"
+                    f"  title: {a.get('title','')[:60]}\n"
+                    f"  data-track-action: {a.get('data_track','')[:60]}\n"
+                )
+            (out_dir / f"{self.name}_{paper_id}.txt").write_text(
+                "\n".join(lines), encoding="utf-8",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+        return str(out_dir / f"{self.name}_{paper_id}.txt")
