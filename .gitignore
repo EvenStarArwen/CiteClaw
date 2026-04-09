@@ -24,6 +24,7 @@ BRAINSTORM.md
 # Data & generated artifacts
 data/
 data_bio/
+data_rna/
 test_data/
 scratch/
 *.db

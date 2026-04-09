@@ -57,6 +57,34 @@ def _build_rebuild_graph_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _build_fetch_pdfs_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="citeclaw fetch-pdfs")
+    p.add_argument(
+        "data_dir", type=Path,
+        help="CiteClaw data directory containing literature_collection.json",
+    )
+    p.add_argument(
+        "--workers", type=int, default=4,
+        help="Concurrent download workers (default: 4)",
+    )
+    p.add_argument(
+        "--overwrite", action="store_true",
+        help="Re-download and re-parse PDFs even if they already exist on disk.",
+    )
+    p.add_argument(
+        "--no-refresh-cache", action="store_true",
+        help="Skip the refresh of pdf_url from the local S2 cache.db. "
+             "By default, papers missing pdf_url in the JSON get rechecked "
+             "against cache.db's paper_metadata table.",
+    )
+    p.add_argument(
+        "--no-update-cache", action="store_true",
+        help="Skip writing parse outcomes back into cache.db's "
+             "paper_full_text table.",
+    )
+    return p
+
+
 def _validate_config(config) -> None:
     errors: list[str] = []
     if not config.seed_papers:
@@ -193,6 +221,43 @@ def _run_rebuild_graph(argv: list[str]) -> None:
         cache.close()
 
 
+def _run_fetch_pdfs(argv: list[str]) -> None:
+    """Bulk-download open-access PDFs for a finished CiteClaw run.
+
+    Loads ``literature_collection.json`` from the given data directory
+    and writes ``<data_dir>/PDFs/<paper_id>.pdf`` (raw) and
+    ``<paper_id>.txt`` (parsed body) for every accepted paper that has
+    an ``openAccessPdf.url`` in S2. See :mod:`citeclaw.fetch_pdfs` for
+    the implementation.
+    """
+    from citeclaw.fetch_pdfs import run_fetch_pdfs
+
+    parser = _build_fetch_pdfs_parser()
+    args = parser.parse_args(argv)
+
+    setup_logging(log_dir=None, level=logging.INFO)
+
+    data_dir: Path = args.data_dir
+    if not data_dir.exists():
+        log.error("Data directory not found: %s", data_dir)
+        sys.exit(1)
+
+    try:
+        run_fetch_pdfs(
+            data_dir,
+            max_workers=args.workers,
+            overwrite=args.overwrite,
+            refresh_from_cache=not args.no_refresh_cache,
+            update_cache=not args.no_update_cache,
+        )
+    except FileNotFoundError as exc:
+        log.error("fetch-pdfs failed: %s", exc)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        log.warning("Interrupted by user")
+        sys.exit(130)
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "annotate":
@@ -200,6 +265,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if argv and argv[0] == "rebuild-graph":
         _run_rebuild_graph(argv[1:])
+        return
+    if argv and argv[0] == "fetch-pdfs":
+        _run_fetch_pdfs(argv[1:])
         return
     _run_snowball(argv)
 
