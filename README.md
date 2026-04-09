@@ -71,26 +71,27 @@ SEMANTIC_SCHOLAR_API_KEY=...   # optional, improves S2 rate limits
 ## Quick start
 
 1. Write a `config.yaml` describing reusable filter blocks and a linear list of
-   pipeline steps. See `config_bio.yaml` for a full biology example, or
-   `test_config.yaml` for a minimal one.
+   pipeline steps. The repository ships with a worked biology / ML example at
+   `config.yaml` — copy it and adapt the topic description, seed papers, and
+   screening prompts to your own domain.
 
 2. Run CiteClaw:
 
 ```bash
-python -m citeclaw -c config_bio.yaml
+python -m citeclaw -c config.yaml
 ```
 
 3. Continue a prior run (adds another expansion generation on top of the existing
    collection):
 
 ```bash
-python -m citeclaw -c config_bio.yaml --continue-from data_bio/
+python -m citeclaw -c config.yaml --continue-from data/
 ```
 
 4. Annotate the resulting citation graph with LLM-generated node summaries:
 
 ```bash
-python -m citeclaw annotate data_bio/citation_network.graphml -c config_bio.yaml
+python -m citeclaw annotate data/citation_network.graphml -c config.yaml
 ```
 
 CLI flags: `--topic`, `--seed`, `--data-dir`, `--max-papers`, `--model`, `-v`,
@@ -138,7 +139,7 @@ rerank-then-forward while another sees the original input untouched.
 | `Parallel`          | Broadcast the signal to N branches, run each independently, union outputs by `paper_id`.             |
 | `Finalize`          | Write `literature_collection.json` / `.bib`, `citation_network.graphml`, `run_state.json`.            |
 
-**Expansion family.** `ExpandBySearch`, `ExpandBySemantics`, and `ExpandByAuthor` compose at the same level as `ExpandForward` / `ExpandBackward` — users mix all five freely in YAML pipelines. Each ExpandBy* step is anchored on its input *signal* (not an upstream citation edge), so the source-less `FilterContext` they pass to the screener carries `source=None`. All built-in atoms and measures tolerate this case; insert a `Rerank` (with diversity) before any ExpandBy* step to control which papers the agent uses as anchors. See `config_bio_with_expansion.yaml` for a full demo that wires all five expand modes against the same screener blocks.
+**Expansion family.** `ExpandBySearch`, `ExpandBySemantics`, and `ExpandByAuthor` compose at the same level as `ExpandForward` / `ExpandBackward` — users mix all five freely in YAML pipelines. Each ExpandBy* step is anchored on its input *signal* (not an upstream citation edge), so the source-less `FilterContext` they pass to the screener carries `source=None`. All built-in atoms and measures tolerate this case; insert a `Rerank` (with diversity) before any ExpandBy* step to control which papers the agent uses as anchors.
 
 ### Filter blocks
 
@@ -220,8 +221,8 @@ pipeline:
   - step: Finalize
 ```
 
-See `config_bio.yaml` for a full production configuration with `Route`, `Parallel`,
-`Not`, and `ReScreen` in use.
+See `config.yaml` for a full production configuration with `Route`, `Parallel`,
+and `Not` in use.
 
 ---
 

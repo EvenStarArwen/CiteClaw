@@ -1,29 +1,30 @@
-# CiteClaw configuration — ML/DL/LM/FM for DNA/RNA/Protein survey
-# Run: python -m citeclaw -c config_bio.yaml
+# CiteClaw configuration — public template
+# Run: python -m citeclaw -c config.yaml
 #
 # API keys are NOT read from this file. Export them as environment variables:
 #   export OPENAI_API_KEY=...
 #   export GEMINI_API_KEY=...
 #   export S2_API_KEY=...          # or SEMANTIC_SCHOLAR_API_KEY
+#
+# This is a worked example for a biology / ML survey. Replace the topic
+# description, seed papers, and screening prompts with your own to
+# adapt CiteClaw to a different domain.
 
 screening_model: "gemini-3.1-flash-lite-preview"
 reasoning_effort: "minimal"
 
-data_dir: "data_bio"
+data_dir: "data"
 topic_description: >
-  Machine learning, deep learning, language models, and foundation models developed specifically for biology 
+  Machine learning, deep learning, language models, and foundation models developed specifically for biology
   (e.g., DNA, RNA/protein sequence/structure data, as well as genomic, transcriptomic, or single-cell omics data),
   or benchmark/survey papers on these topics.
 
+# Seed papers can be specified as DOIs (resolved via S2) or as titles
+# (resolved via S2 search_match by the ResolveSeeds step).
 seed_papers:
-  # - paper_id: "DOI:10.1038/s41586-026-10176-5"        # Evo2
-  # - paper_id: "DOI:10.1038/s41592-024-02523-z"        # NT
   - paper_id: "DOI:10.48550/arXiv.2306.15794"         # HyenaDNA
   - paper_id: "DOI:10.48550/arXiv.2206.13517"         # ProGen2
-  # - paper_id: "DOI:10.1038/s42256-024-00836-4"        # RNAErine
-  # - paper_id: "DOI:10.1126/science.ade2574"           # ESM
   - paper_id: "DOI:10.1101/2023.12.07.570727"         # ProteinGym
-  # - paper_id: "DOI:10.1101/2025.06.16.660049"         # RNAGym
 
 max_papers_total: 2000
 llm_batch_size: 10
@@ -121,7 +122,7 @@ pipeline:
           metric: pagerank
           k: 10
           diversity:
-            type: walktrap     
+            type: walktrap
             n_communities: 3
         - step: ExpandForward
           max_citations: 200
