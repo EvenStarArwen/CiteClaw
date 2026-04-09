@@ -108,13 +108,13 @@ class ExpandBySearch:
         )
 
         # 4. Build the LLM client once and run the agent.
-        # Cascade: per-step model > Settings.search_model (PC-06) > screening_model.
+        # Cascade: per-step model > Settings.search_model > screening_model.
         llm = build_llm_client(
             ctx.config,
             ctx.budget,
             model=(
                 self.agent.model
-                or getattr(ctx.config, "search_model", None)
+                or ctx.config.search_model
                 or ctx.config.screening_model
             ),
             reasoning_effort=self.agent.reasoning_effort,
