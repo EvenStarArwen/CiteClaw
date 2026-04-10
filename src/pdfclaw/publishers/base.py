@@ -38,19 +38,31 @@ STATUS_ERROR = "error"                 # Anything else (timeout, transport, JS c
 
 @dataclass
 class FetchResult:
-    """Result of one recipe fetch attempt."""
+    """Result of one recipe fetch attempt.
+
+    Recipes return EITHER ``pdf_bytes`` (binary PDF, will be parsed
+    via PyMuPDF) OR ``body_text`` (already-extracted plain text from
+    XML/HTML/JSON sources). Some fallback recipes (BioC-PMC,
+    Elsevier TDM XML, Unpaywall HTML) return text directly because
+    that's what the API gives us — converting back to PDF would be
+    silly. The fetcher handles both formats and writes them to the
+    same parsed JSON shape downstream.
+    """
 
     paper_id: str
     doi: str
-    status: str                # one of STATUS_*
-    pdf_bytes: bytes | None = None
-    fetched_via: str = ""      # recipe name, e.g. "nature_recipe"
+    status: str                       # one of STATUS_*
+    pdf_bytes: bytes | None = None    # binary PDF
+    body_text: str | None = None      # already-extracted plain text
+    fetched_via: str = ""             # recipe name, e.g. "nature_browser"
     error: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
-        return self.status == STATUS_OK and self.pdf_bytes is not None
+        if self.status != STATUS_OK:
+            return False
+        return self.pdf_bytes is not None or bool(self.body_text)
 
 
 class Recipe(Protocol):

@@ -302,11 +302,27 @@ class Fetcher:
             )
 
     def _save_pdf(self, paper: Paper, result: FetchResult) -> None:
+        if not result.pdf_bytes:
+            return
         path = self.pdf_path(paper.paper_id)
-        path.write_bytes(result.pdf_bytes or b"")
+        path.write_bytes(result.pdf_bytes)
 
     def _save_parsed(self, paper: Paper, result: FetchResult) -> None:
-        parsed = parse_pdf_bytes(result.pdf_bytes or b"")
+        if result.pdf_bytes:
+            parsed = parse_pdf_bytes(result.pdf_bytes)
+            pdf_size = len(result.pdf_bytes)
+            pdf_path_str = str(self.pdf_path(paper.paper_id))
+        else:
+            # Already-extracted text (BioC PMC, Elsevier TDM XML, etc.)
+            text = result.body_text or ""
+            parsed = {
+                "n_pages": 0,
+                "n_chars": len(text),
+                "body_text": text,
+                "meta": {},
+            }
+            pdf_size = 0
+            pdf_path_str = ""
         record = {
             "paper_id": paper.paper_id,
             "doi": paper.doi,
@@ -316,8 +332,8 @@ class Fetcher:
             "venue": paper.venue,
             "fetched_via": result.fetched_via,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "pdf_path": str(self.pdf_path(paper.paper_id)),
-            "pdf_size_bytes": len(result.pdf_bytes or b""),
+            "pdf_path": pdf_path_str,
+            "pdf_size_bytes": pdf_size,
             **parsed,
             "fetch_extra": result.extra,
         }

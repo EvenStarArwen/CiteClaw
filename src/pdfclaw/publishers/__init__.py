@@ -28,8 +28,11 @@ from pdfclaw.publishers.base import FetchResult, Recipe
 from pdfclaw.publishers.biorxiv import BiorxivRecipe
 from pdfclaw.publishers.cshl import CSHLRecipe
 from pdfclaw.publishers.elife import ELifeRecipe
+from pdfclaw.publishers.elife_xml import ELifeXMLRecipe
 from pdfclaw.publishers.elsevier import ElsevierRecipe
+from pdfclaw.publishers.elsevier_tdm import ElsevierTDMRecipe
 from pdfclaw.publishers.embo import EmboRecipe
+from pdfclaw.publishers.europepmc import EuropePMCRecipe
 from pdfclaw.publishers.highwire_oa import HighwireOpenAccessRecipe
 from pdfclaw.publishers.ieee import IEEERecipe
 from pdfclaw.publishers.ijcai import IJCAIRecipe
@@ -43,7 +46,9 @@ from pdfclaw.publishers.rsc import RSCRecipe
 from pdfclaw.publishers.science import ScienceRecipe
 from pdfclaw.publishers.springer import SpringerRecipe
 from pdfclaw.publishers.taylor_francis import TaylorFrancisRecipe
+from pdfclaw.publishers.unpaywall import UnpaywallRecipe
 from pdfclaw.publishers.wiley import WileyRecipe
+from pdfclaw.publishers.wiley_tdm import WileyTDMRecipe
 
 __all__ = [
     "ACMRecipe",
@@ -53,8 +58,11 @@ __all__ = [
     "BiorxivRecipe",
     "CSHLRecipe",
     "ELifeRecipe",
+    "ELifeXMLRecipe",
     "ElsevierRecipe",
+    "ElsevierTDMRecipe",
     "EmboRecipe",
+    "EuropePMCRecipe",
     "FetchResult",
     "HighwireOpenAccessRecipe",
     "IEEERecipe",
@@ -70,7 +78,9 @@ __all__ = [
     "ScienceRecipe",
     "SpringerRecipe",
     "TaylorFrancisRecipe",
+    "UnpaywallRecipe",
     "WileyRecipe",
+    "WileyTDMRecipe",
     "build_default_registry",
     "find_recipe",
     "find_recipes",
@@ -82,7 +92,12 @@ def build_default_registry() -> list[Recipe]:
     return [
         # === HTTP-only recipes (free, fast, no browser) ===
         ArxivRecipe(),                  # 10.48550/  — arXiv direct PDF URL
-        HighwireOpenAccessRecipe(),     # 10.1186, 10.3389, 10.1371, 10.3390, 10.7554, 10.1073 (OA window)
+        HighwireOpenAccessRecipe(),     # 10.1186, 10.3389, 10.1371, 10.1073 (OA window)
+        ELifeXMLRecipe(),               # 10.7554/   — eLife GitHub mirror
+        WileyTDMRecipe(),               # 10.1002, 10.15252 — Wiley TDM API (gated on env var)
+        ElsevierTDMRecipe(),            # 10.1016/   — Elsevier TDM API (gated on env var)
+        UnpaywallRecipe(),              # ANY DOI    — universal OA-copy lookup
+        EuropePMCRecipe(),              # ANY DOI    — biomedical fulltext via JATS XML
 
         # === Browser recipes (need Chromium; some need SSO profile) ===
         # Open access but JS / Cloudflare / Accept-header blocked from httpx
