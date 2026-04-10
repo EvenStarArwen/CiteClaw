@@ -192,13 +192,20 @@ class Fetcher:
                     )
                     _ctx, page = ctx_manager.__enter__()
 
-                for paper, chain in plan:
+                total_plan = len(plan)
+                for i, (paper, chain) in enumerate(plan, 1):
                     result = self._try_chain(
                         paper, chain, http, page,
                         auth_failed_recipes=auth_failed_recipes,
                         consecutive_failures=consecutive_failures,
                     )
                     self._handle_result(paper, result, stats)
+                    remaining = total_plan - i
+                    log.info(
+                        "[%d/%d] ok=%d fail=%d remaining=%d",
+                        i, total_plan, stats.ok, stats.failed + stats.auth_required,
+                        remaining,
+                    )
                     self._sleep_a_bit()
             finally:
                 if ctx_manager is not None:
