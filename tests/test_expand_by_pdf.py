@@ -404,6 +404,97 @@ class TestExtractAllRefTitles:
         assert titles == []
 
 
+class TestExpandByPDFWithScreener:
+    """Test ExpandByPDF with a screener that filters candidates."""
+
+    def test_screener_rejects_some(self, tmp_path):
+        """Screener filters out candidates that don't pass."""
+        s2 = FakeS2Client()
+        source = make_paper("src1", title="Source")
+        good = make_paper("good1", title="Good Paper", year=2022, citation_count=100)
+        bad = make_paper("bad1", title="Bad Paper", year=2022, citation_count=100)
+        s2.add(source)
+        s2.add(good)
+        s2.add(bad)
+        s2.register_search_match("Good Paper", good)
+        s2.register_search_match("Bad Paper", bad)
+
+        ctx = _make_ctx(s2, tmp_path)
+        ctx.seen.add("src1")
+        source_rec = PaperRecord(paper_id="src1", title="Source")
+
+        # Build a simple year filter as screener (accept year >= 2023).
+        from citeclaw.filters.builder import build_blocks
+        screener_block = build_blocks({
+            "yr": {"type": "YearFilter", "min": 2023, "max": 2030}
+        })["yr"]
+
+        step = ExpandByPDF(screener=screener_block)
+
+        with patch(
+            "citeclaw.steps.expand_by_pdf.PdfClawBridge"
+        ) as MockBridge, patch(
+            "citeclaw.steps.expand_by_pdf.extract_pdf_references"
+        ) as mock_extract, patch(
+            "citeclaw.steps.expand_by_pdf.build_llm_client"
+        ):
+            MockBridge.return_value = MagicMock(
+                fetch_text=MagicMock(return_value="text")
+            )
+            mock_extract.return_value = _fake_extraction_result(
+                "Good Paper", "Bad Paper"
+            )
+            result = step.run([source_rec], ctx)
+
+        # Both papers are year=2022, which is < 2023 min, so both rejected
+        assert len(result.signal) == 0
+        assert result.stats["rejected"] == 2
+
+
+class TestExpandByPDFStubPipeline:
+    """Exercise ExpandByPDF through build_step (YAML config parsing)."""
+
+    def test_build_step_minimal(self):
+        from citeclaw.steps import build_step
+        step = build_step({"step": "ExpandByPDF"})
+        assert step.name == "ExpandByPDF"
+        assert step.screener is None
+        assert step.reasoning_effort == "high"
+
+    def test_build_step_with_options(self):
+        from citeclaw.steps import build_step
+        blocks = {}
+        step = build_step({
+            "step": "ExpandByPDF",
+            "model": "gemma-4-31b",
+            "reasoning_effort": "medium",
+            "max_papers": 5,
+            "max_input_chars": 16000,
+            "headless": False,
+        }, blocks)
+        assert step.model == "gemma-4-31b"
+        assert step.max_papers == 5
+        assert step.max_input_chars == 16000
+        assert step.headless is False
+
+    def test_build_step_with_inline_screener(self):
+        from citeclaw.steps import build_step
+        step = build_step({
+            "step": "ExpandByPDF",
+            "screener": {"type": "YearFilter", "min": 2020, "max": 2025},
+        })
+        assert step.screener is not None
+
+    def test_build_expand_backward_with_pdf_references(self):
+        from citeclaw.steps import build_step
+        step = build_step({
+            "step": "ExpandBackward",
+            "screener": {"type": "YearFilter", "min": 2020, "max": 2025},
+            "pdf_references": True,
+        })
+        assert step.pdf_references is True
+
+
 class TestExpandBackwardPdfFallback:
     def test_pdf_references_disabled_by_default(self, tmp_path):
         """Default ExpandBackward doesn't use PDF fallback."""
