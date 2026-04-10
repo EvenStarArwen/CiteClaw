@@ -54,17 +54,19 @@ SYSTEM_PROMPT = """\
 You are an agent that downloads PDFs of academic papers from publisher websites. Your ONLY goal is to get the main article PDF. Everything else (cookie banners, login prompts, subscription nags, navigation menus) is an obstacle to dismiss or ignore.
 
 You can take ONE action per turn:
-- {"action": "fetch", "target": N, "reasoning": "..."} — HTTP GET link N's URL to download the PDF
+- {"action": "click", "target": N, "reasoning": "..."} — CLICK link/button N in the browser (triggers JavaScript, best for download buttons)
+- {"action": "fetch", "target": N, "reasoning": "..."} — HTTP GET link N's URL directly (fast, but no JavaScript)
 - {"action": "navigate", "target": N, "reasoning": "..."} — open link N's page in the browser to see new links
 - {"action": "give_up", "reasoning": "..."} — the PDF is genuinely unavailable
 
 Decision rules:
-- Links with .pdf or /pdf/ or /pdfdirect/ in the href → try FETCH first
-- Links to /reader/ or /view/ or stamp.jsp → NAVIGATE (these are PDF viewers with a download button inside)
-- If FETCH returns 403: the publisher may block direct API access. Try NAVIGATE to the same or similar URL instead — the browser has authentication cookies that direct HTTP doesn't.
-- If FETCH returns 404 or 500 or "Failed to load PDF": the server is broken. GIVE UP.
-- Ignore cookie consent links, privacy policy links, advertisement links, social media links, reference links.
-- Pick the MAIN article PDF, not supplementary material or figures.
+- For download buttons/icons → use CLICK (it triggers the publisher's JavaScript download handler)
+- For direct PDF URLs (.pdf in href) → use FETCH (faster than click)
+- For reader/viewer pages (/reader/, /view/, /epdf/) → use NAVIGATE to see the page, then CLICK the download button inside
+- If FETCH returns 403 → try CLICK on the same link instead (the browser has cookies that direct HTTP doesn't)
+- If CLICK or FETCH returns 404/500 or "Failed to load" → GIVE UP
+- Ignore cookie consent, privacy policy, ads, social media, reference links
+- Pick the MAIN article PDF, not supplementary material or figures
 
 Respond with ONLY a JSON object."""
 
@@ -350,6 +352,50 @@ class LLMPdfFinderRecipe:
                 href = f"{parts.scheme}://{parts.netloc}{href}"
             elif not href.startswith("http"):
                 href = f"https://{href}"
+
+            if action == "click":
+                # Actually CLICK the element in the browser — triggers JS
+                history_lines.append(
+                    f'- Turn {turn}: CLICKED [{target}] (text={chosen.get("text", "")[:40]})'
+                )
+                try:
+                    # Build a selector that matches this specific element
+                    click_sel = None
+                    if chosen.get("href"):
+                        click_sel = f'{chosen["tag"]}[href="{chosen["href"]}"]'
+                    elif chosen.get("text"):
+                        click_sel = f'{chosen["tag"]}:has-text("{chosen["text"][:30]}")'
+
+                    if click_sel and page.locator(click_sel).count() > 0:
+                        import tempfile  # noqa: PLC0415
+                        with page.expect_download(timeout=20_000) as dl_info:
+                            page.locator(click_sel).first.click(timeout=5_000)
+                        download = dl_info.value
+                        tmpdir = Path(tempfile.mkdtemp(prefix="pdfclaw_llm_"))
+                        tmp_pdf = tmpdir / "tmp.pdf"
+                        try:
+                            download.save_as(str(tmp_pdf))
+                            body = tmp_pdf.read_bytes()
+                        finally:
+                            if tmp_pdf.exists():
+                                tmp_pdf.unlink()
+                            tmpdir.rmdir()
+
+                        if b"%PDF-" in body[:1024]:
+                            pdf_start = body.index(b"%PDF-")
+                            body = body[pdf_start:] if pdf_start > 0 else body
+                            return FetchResult(
+                                paper_id=paper_id, doi=doi, status=STATUS_OK,
+                                pdf_bytes=body, fetched_via=self.name,
+                                extra={"method": "click", "llm_turns": turn + 1,
+                                       "n_bytes": len(body)},
+                            )
+                        history_lines[-1] += f" → download captured but not PDF ({body[:16]!r})"
+                    else:
+                        history_lines[-1] += " → selector not found on page"
+                except Exception as exc:  # noqa: BLE001
+                    history_lines[-1] += f" → click/download failed: {exc}"
+                continue
 
             if action == "navigate":
                 history_lines.append(
