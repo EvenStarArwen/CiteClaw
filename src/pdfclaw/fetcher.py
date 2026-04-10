@@ -197,12 +197,19 @@ class Fetcher:
                     )
                     self._handle_result(paper, result, stats)
                     # Track consecutive failures per recipe; after
-                    # FAILURE_THRESHOLD, treat as auth-suppressed.
+                    # FAILURE_THRESHOLD hard-failures, treat as
+                    # auth-suppressed. NOT_FOUND results are NOT
+                    # counted — those are the recipe correctly
+                    # reporting "I checked, this paper isn't here".
+                    # Only STATUS_ERROR / STATUS_NOT_PDF / STATUS_BLOCKED
+                    # are real failures that suggest the recipe is
+                    # broken in this environment.
                     rname = result.fetched_via
+                    HARD_FAIL_STATUSES = {"error", "not_pdf", "blocked"}
                     if rname and rname != "(none)":
                         if result.ok:
                             consecutive_failures[rname] = 0
-                        else:
+                        elif result.status in HARD_FAIL_STATUSES:
                             consecutive_failures[rname] = consecutive_failures.get(rname, 0) + 1
                             if (
                                 consecutive_failures[rname] >= FAILURE_THRESHOLD
@@ -210,11 +217,12 @@ class Fetcher:
                             ):
                                 auth_failed_recipes.add(rname)
                                 log.warning(
-                                    "Recipe %s hit %d consecutive failures; suppressing for the rest of the run "
+                                    "Recipe %s hit %d consecutive hard failures; suppressing for the rest of the run "
                                     "(CF/Akamai/JS-rendering hostile in headless? or selectors broken?). "
                                     "See /tmp/pdfclaw_failures/ for snapshots.",
                                     rname, consecutive_failures[rname],
                                 )
+                        # NOT_FOUND / AUTH don't increment the counter
                     self._sleep_a_bit()
             finally:
                 if ctx_manager is not None:
