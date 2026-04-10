@@ -43,6 +43,10 @@ pdf = [
     # is missing.
     "pypdf>=4.0,<6",
 ]
+web = [
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.27,<1",
+]
 browser = [
     # pdfclaw — institutional-auth PDF fetcher driving a real Chrome
     # via Playwright. Needs both the Python package AND the chromium

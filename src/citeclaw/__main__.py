@@ -258,6 +258,29 @@ def _run_fetch_pdfs(argv: list[str]) -> None:
         sys.exit(130)
 
 
+def _build_web_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="citeclaw web")
+    p.add_argument(
+        "--host", type=str, default="0.0.0.0",
+        help="Bind address (default: 0.0.0.0)",
+    )
+    p.add_argument(
+        "--port", type=int, default=9999,
+        help="Port to listen on (default: 9999)",
+    )
+    return p
+
+
+def _run_web(argv: list[str]) -> None:
+    """Launch the CiteClaw web UI (FastAPI + React frontend)."""
+    from citeclaw.web_server import serve
+
+    parser = _build_web_parser()
+    args = parser.parse_args(argv)
+    setup_logging(log_dir=None, level=logging.INFO)
+    serve(host=args.host, port=args.port)
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "annotate":
@@ -268,6 +291,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if argv and argv[0] == "fetch-pdfs":
         _run_fetch_pdfs(argv[1:])
+        return
+    if argv and argv[0] == "web":
+        _run_web(argv[1:])
         return
     _run_snowball(argv)
 
