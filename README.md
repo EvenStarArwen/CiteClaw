@@ -94,8 +94,21 @@ python -m citeclaw -c config.yaml --continue-from data/
 python -m citeclaw annotate data/citation_network.graphml -c config.yaml
 ```
 
+5. Bulk-download open-access PDFs for a finished run:
+
+```bash
+python -m citeclaw fetch-pdfs data/
+```
+
+6. Rebuild the citation/collaboration graphs from an existing collection:
+
+```bash
+python -m citeclaw rebuild-graph data/
+```
+
 CLI flags: `--topic`, `--seed`, `--data-dir`, `--max-papers`, `--model`, `-v`,
-`--continue-from`.
+`--continue-from`. `fetch-pdfs` flags: `--workers`, `--overwrite`,
+`--no-refresh-cache`, `--no-update-cache`.
 
 ---
 
@@ -136,6 +149,7 @@ rerank-then-forward while another sees the original input untouched.
 | `ReScreen`          | Apply a screener block to the entire `ctx.collection` (minus seeds), removing rejected papers.        |
 | `Cluster`           | Run a clusterer over the signal once, store the `ClusterResult` in `ctx.clusters[<store_as>]`.        |
 | `MergeDuplicates`   | Detect and merge preprint↔published duplicates via DOI/ArXiv ID + title sim + SPECTER2 cosine.        |
+| `HumanInTheLoop`    | Opt-in interactive screener-quality check: balanced sample by rejection category, per-filter agreement report, can `stop_pipeline`. |
 | `Parallel`          | Broadcast the signal to N branches, run each independently, union outputs by `paper_id`.             |
 | `Finalize`          | Write `literature_collection.json` / `.bib`, `citation_network.graphml`, `run_state.json`.            |
 
@@ -152,7 +166,7 @@ rerank-then-forward while another sees the original input untouched.
 | `SimilarityFilter`  | Max of normalized scores from `measures:` list (RefSim / CitSim / SemanticSim).        |
 | `YearFilter`        | Pass if `year` is in `[min, max]`.                                                     |
 | `CitationFilter`    | Pass if citation count is high enough relative to `beta` and paper age.                |
-| `LLMFilter`         | Batched LLM screening; `scope:` is `title` / `title_abstract` / `venue`. Single-prompt or Boolean formula mode. |
+| `LLMFilter`         | Batched LLM screening; `scope:` is `title` / `title_abstract` / `venue` / `full_text`. Single-prompt or Boolean formula mode. `full_text` reads parsed PDFs from the `paper_full_text` cache. |
 
 ### Clusterers
 
@@ -172,6 +186,17 @@ a walktrap community and a topic_model topic identically.
 
 ```yaml
 screening_model: "gemini-2.5-flash-lite"
+search_model: "gemini-3-pro"            # optional override for ExpandBySearch agent
+
+# Per-model registry — aliases not in the registry fall through to
+# Gemini detection / global llm_base_url / OpenAI SaaS.
+models:
+  gemma-4-31b:
+    base_url: "https://you--citeclaw-vllm-gemma-serve.modal.run/v1"
+    served_model_name: "google/gemma-4-31B-it"
+    api_key_env: "CITECLAW_VLLM_API_KEY"
+    reasoning_parser: "gemma4"
+
 data_dir: "data_bio"
 topic_description: "..."
 max_papers_total: 500
@@ -245,23 +270,61 @@ Every run writes into `data_dir/`:
 
 ```
 src/citeclaw/
-  config.py            globals + raw blocks/pipeline + lazy build
-  context.py           Context dataclass
-  pipeline.py          run_pipeline(ctx) — iterates the built Step list
-  __main__.py          CLI entry: `python -m citeclaw [-c …] [annotate …]`
-  cache.py             SQLite read-through cache for S2 metadata
-  filters/             Filter Protocol, builder, runner, blocks, atoms, measures
-  screening/           BooleanFormula DSL + batched concurrent LLM dispatch
-  cluster/             walktrap / louvain / topic_model + representation
-  search/              apply_local_query — pure regex + range predicate filter
-  agents/              iterative_search — meta-LLM agent for ExpandBySearch
-  steps/               LoadSeeds, ResolveSeeds, ExpandForward/Backward,
-                       ExpandBySearch/Semantics/Author, Rerank, ReScreen,
-                       Cluster, MergeDuplicates, Parallel, Finalize
-  rerank/              metrics + cluster_diverse_top_k
-  clients/             s2, llm (OpenAI / Gemini / Stub), embeddings
+  config.py            Settings, SeedPaper, ModelEndpoint, BudgetTracker
+  context.py           Context — collection / seen / rejected / expanded_* / clusters / rejection_ledger
+  pipeline.py          run_pipeline(ctx, *, event_sink=None)
+  event_sink.py        EventSink Protocol + NullEventSink + RecordingEventSink
+  cache.py             SQLite read-through cache (paper_metadata, paper_references, paper_citations,
+                       paper_embeddings, author_metadata, author_papers, search_queries,
+                       paper_full_text, llm_response_cache)
+  models.py            PaperRecord (with external_ids, source, fields_of_study, ...) + exceptions
+  network.py           igraph wrappers (build_citation_graph, compute_pagerank)
+  author_graph.py      build_author_graph + export_author_graphml
+  dedup.py             detect_duplicate_clusters + merge_cluster
+  fetch_pdfs.py        bulk PDF fetcher CLI
+  annotate.py          LLM graph annotation driver
+  progress.py          live Rich mission-control dashboard
+  logging_config.py    structured console + file logging setup
+  search/query_engine.py    apply_local_query — pure regex/range filter over PaperRecord lists
+  agents/iterative_search.py    AgentConfig + AgentTurn + run_iterative_search (ExpandBySearch core)
+  prompts/             screening / annotation / topic_naming / search_refine prompt templates
+  filters/
+    base.py            Filter Protocol, FilterContext, FilterOutcome
+    builder.py         block dict → Filter (+ predicate registry: venue_in, cit_at_least, year_at_least)
+    runner.py          apply_block(papers, block, fctx) → (passed, rejected); record_rejections → ledger
+    blocks/            sequential, any_block, not_block, route, similarity
+    atoms/             year, citation, llm_query, predicates
+    measures/          ref_sim, cit_sim, semantic_sim + MEASURE_TYPES
+  screening/
+    formula.py         BooleanFormula DSL
+    llm_runner.py      batched concurrent LLM dispatch
+    schemas.py         screening_json_schema + openai_response_format
+  cluster/
+    base.py            Clusterer Protocol + ClusterResult + ClusterMetadata
+    walktrap.py / louvain.py / topic_model.py
+    representation.py  c-TF-IDF + select_representative_papers + name_topics_via_llm
+  steps/
+    base.py            BaseStep + StepResult
+    __init__.py        STEP_REGISTRY + build_step()
+    _expand_helpers.py shared ExpandBy* pipeline helpers
+    load_seeds / resolve_seeds / expand_forward / expand_backward
+    expand_by_search / expand_by_semantics / expand_by_author
+    rerank / rescreen / cluster / merge_duplicates / human_in_the_loop / parallel / finalize
+    shape_log.py       PyTorch-summary-style table
+    checkpoint.py      --continue-from loader
+  rerank/
+    metrics.py         compute_metric(name, signal, ctx)
+    diversity.py       cluster_diverse_top_k (floor-then-proportional)
+  clients/
+    s2/                SemanticScholarClient — search_bulk / search_match / search_relevance /
+                       fetch_recommendations / fetch_author_papers;
+                       split: api.py / http.py / cache_layer.py / converters.py
+    llm/               base.py (LLMClient Protocol + LLMResponse), caching.py (CachingLLMClient),
+                       factory.py (build_llm_client), openai_client.py, gemini.py, stub.py
+    embeddings/        base.py (EmbeddingClient Protocol), factory.py (build_embedder),
+                       voyage.py, local.py
+    pdf.py             PdfFetcher — download + parse PDFs for full_text screening
   output/              json / bibtex / graphml writers
-  prompts/             screening, annotation, topic_naming, search_refine
 ```
 
 ---
@@ -276,3 +339,66 @@ mypy src               # type-check
 
 Tests that exercise optional `topic_model` extras are skipped if the extras aren't
 installed.
+
+---
+
+## pdfclaw — standalone PDF fetcher
+
+Sister package at `src/pdfclaw/`. Downloads and parses PDFs for any CiteClaw
+checkpoint directory. Communicates via `literature_collection.json` + `cache.db`
+— never imports from `citeclaw`.
+
+```bash
+python -m pdfclaw list  <checkpoint>              # DOI coverage + fetch progress
+python -m pdfclaw login                            # one-time SSO (opens Chrome)
+python -m pdfclaw fetch <checkpoint>               # download + parse PDFs
+python -m pdfclaw fetch <checkpoint> --filter-doi 10.1038/  # only Nature
+python -m pdfclaw fetch <checkpoint> --filter-recipe nature_browser --max 5
+```
+
+### 5-layer fallback chain (per paper)
+
+| Layer | Recipes | Cost |
+|---|---|---|
+| HTTP API | Unpaywall, OpenAlex, EuropePMC, arXiv direct, eLife XML, Wiley TDM, Elsevier TDM | free, fast, no browser |
+| PDF URL template | ACS `/doi/pdf/`, Science `/doi/pdf/`, Wiley `/doi/pdfdirect/`, Springer, PNAS | free, fast, uses SSO cookies |
+| Browser selectors | Nature, Elsevier, Oxford, RSC, IEEE, ACM, Springer, IOP, EMBO, bioRxiv, MDPI, etc. | needs Chrome + SSO profile |
+| LLM finder | Gemini Flash Lite or Modal Gemma. Multi-turn reasoning agent. | ~600 tokens/paper |
+| Sci-Hub | Opt-in via `PDFCLAW_ENABLE_SCIHUB=1`. | grey area |
+
+ArXiv fallback: if primary DOI chain fails and paper has an arXiv ID in S2's
+`externalIds`, automatically retries with the arXiv DOI.
+
+---
+
+## Self-hosted LLM (Modal vLLM)
+
+`modal_vllm_server.py` (project root) wraps `vllm serve` with an
+OpenAI-compatible endpoint on Modal. Wire it via the YAML `models:` registry:
+
+```bash
+pip install modal && modal setup
+CITECLAW_VLLM_APP_NAME=citeclaw-vllm-gemma \
+CITECLAW_VLLM_MODEL=google/gemma-4-31B-it \
+CITECLAW_VLLM_GPU=B200 CITECLAW_VLLM_GPU_COUNT=1 \
+CITECLAW_VLLM_API_KEY=<bearer> \
+modal deploy modal_vllm_server.py
+```
+
+Then reference the alias in any filter block with `model: gemma-4-31b`.
+
+---
+
+## Web UI
+
+A lightweight FastAPI + React (Vite + TypeScript + Tailwind) dashboard lives in
+`web/`. It provides config browsing, run monitoring, and citation graph
+visualization (sigma.js / graphology).
+
+```bash
+# backend
+cd web/backend && uvicorn main:app --port 9999
+
+# frontend
+cd web/frontend && pnpm dev
+```
