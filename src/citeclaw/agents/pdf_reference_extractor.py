@@ -36,9 +36,21 @@ log = logging.getLogger("citeclaw.agents.pdf_reference_extractor")
 # ---------------------------------------------------------------------------
 
 _REF_HEADING_RE = re.compile(
-    r"^\s*(?:References|Bibliography|Works\s+Cited|Literature\s+Cited)\s*$",
+    r"^\s*(?:"
+    r"References?(?:\s+(?:and\s+Notes|Cited))?"
+    r"|Bibliography"
+    r"|Works\s+Cited"
+    r"|Literature\s+Cited"
+    r")\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+
+# Fallback: detect numbered bibliography entries (e.g. "1. Author, ...")
+# near the end of a document when no heading is found.
+_NUMBERED_BIB_RE = re.compile(
+    r"(?:^|\n)\s*(?:\d{1,3}[\.\)]\s+[A-Z]|\[\d{1,3}\]\s+[A-Z])",
+)
+_MIN_BIB_ENTRIES = 5  # need at least this many numbered entries to trust the heuristic
 
 
 def _try_salvage_json(text: str) -> dict | None:
@@ -71,29 +83,52 @@ def _try_salvage_json(text: str) -> dict | None:
     return None
 
 
+def _find_numbered_bib_start(text: str) -> int | None:
+    """Find the start of a numbered bibliography in the tail of *text*.
+
+    Looks for a cluster of consecutive numbered entries (``1. Author``,
+    ``[1] Author``) in the latter 45 % of the document.  Returns the
+    character offset of the first entry, or ``None`` if fewer than
+    :data:`_MIN_BIB_ENTRIES` are found.
+    """
+    threshold = int(len(text) * 0.55)
+    tail = text[threshold:]
+    hits = list(_NUMBERED_BIB_RE.finditer(tail))
+    if len(hits) < _MIN_BIB_ENTRIES:
+        return None
+    return threshold + hits[0].start()
+
+
 def split_references(text: str) -> tuple[str, str]:
     """Split paper text into ``(body, reference_list)``.
 
-    Finds the **last** occurrence of a references-section heading and
-    splits there.  Only trusts the heading if it appears in the latter
-    half of the document (avoids false positives from an abstract that
-    mentions the word "References").
+    **Strategy 1** — heading match: finds the *last* occurrence of a
+    references-section heading (``References``, ``References and Notes``,
+    ``Bibliography``, …) in the latter 60 % of the document.
 
-    Returns ``(full_text, "")`` when no heading is found — the LLM
-    then works with inline citations only.
+    **Strategy 2** — numbered-entry fallback: if no heading is found,
+    detects a cluster of numbered bibliography entries (``1. Author``,
+    ``[1] Author``) near the end.
+
+    Returns ``(full_text, "")`` only when both strategies fail.
     """
     matches = list(_REF_HEADING_RE.finditer(text))
-    if not matches:
-        return text, ""
-    last = matches[-1]
-    # Only trust a heading in the latter 60% of the document.
-    # Some papers (e.g. those with long appendices) have the reference
-    # section as early as 40% of the total text.
-    if last.start() < len(text) * 0.4:
-        return text, ""
-    body = text[: last.start()].rstrip()
-    refs = text[last.end() :].lstrip()
-    return body, refs
+    # Accept the last match that sits past the 40 % mark.
+    for last in reversed(matches):
+        if last.start() >= len(text) * 0.4:
+            body = text[: last.start()].rstrip()
+            refs = text[last.end() :].lstrip()
+            return body, refs
+
+    # Fallback: detect numbered bibliography entries near the end.
+    bib_start = _find_numbered_bib_start(text)
+    if bib_start is not None:
+        body = text[:bib_start].rstrip()
+        refs = text[bib_start:].lstrip()
+        log.debug("split_references: no heading found, used numbered-entry fallback at char %d", bib_start)
+        return body, refs
+
+    return text, ""
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +177,32 @@ class PdfExtractionResult:
 _DEFAULT_MAX_INPUT_CHARS = 40_000
 
 
+def _truncate_body_middle_out(body: str, budget: int) -> str:
+    """Truncate *body* from the middle, keeping head and tail.
+
+    For reference extraction the most valuable regions are:
+
+    * **Head** — introduction and related-work sections contain the
+      densest citation context.
+    * **Tail** — often contains the reference list when heading
+      detection failed, plus late-paper discussion that references
+      prior work.
+
+    The middle (methods, detailed results) is the least important for
+    identifying which references exist and why they were cited.
+    """
+    if len(body) <= budget:
+        return body
+    # 60 % head, 40 % tail (intro + related-work tend to be longer
+    # than the trailing discussion/references).
+    head_budget = int(budget * 0.6)
+    tail_budget = budget - head_budget
+    marker = "\n\n[... middle of paper truncated ...]\n\n"
+    head_budget -= len(marker) // 2
+    tail_budget -= len(marker) // 2
+    return body[:head_budget] + marker + body[-tail_budget:]
+
+
 def _truncate_for_context(
     body: str,
     refs: str,
@@ -149,13 +210,17 @@ def _truncate_for_context(
 ) -> tuple[str, str]:
     """Ensure ``body + refs`` fits within *max_chars*.
 
-    The reference list is critical for citation-marker resolution, so
-    it gets priority: up to 40% of the budget or the full list,
-    whichever is smaller.  Huge appendix-polluted reference sections
-    (> 40% of budget) are capped to leave room for body text.  The
-    body is truncated from the end — the introduction and related-work
-    sections at the beginning carry the most citation context.
+    When a reference section was successfully split off, it gets
+    priority: up to 40 % of the budget.  The body is truncated from
+    the end — the introduction and related-work at the top carry the
+    most citation context.
+
+    When ``refs`` is empty or just a placeholder (split failed), the
+    body is truncated from the **middle** instead, preserving both
+    the head (intro / related work) and the tail (likely containing
+    the unsplit reference list).
     """
+    refs_is_placeholder = not refs or refs.startswith("(")
     ref_cap = max_chars * 2 // 5  # 40% of total budget
     ref_budget = min(len(refs), ref_cap)
     refs_out = refs[:ref_budget]
@@ -163,10 +228,16 @@ def _truncate_for_context(
         refs_out += "\n\n[... reference list truncated ...]"
 
     body_budget = max_chars - len(refs_out)
-    if len(body) > body_budget:
-        body_out = body[:body_budget] + "\n\n[... body text truncated ...]"
+    if len(body) <= body_budget:
+        return body, refs_out
+
+    if refs_is_placeholder:
+        # Split failed — the reference list is buried at the end of body.
+        # Truncate from the middle to preserve both head and tail.
+        body_out = _truncate_body_middle_out(body, body_budget)
     else:
-        body_out = body
+        # Normal case — refs split succeeded; trim body from the end.
+        body_out = body[:body_budget] + "\n\n[... body text truncated ...]"
     return body_out, refs_out
 
 
