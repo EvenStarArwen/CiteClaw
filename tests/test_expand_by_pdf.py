@@ -523,6 +523,66 @@ class TestExpandByPDFStubPipeline:
         assert step.pdf_references is True
 
 
+class TestExpandByPDFPipelineIntegration:
+    """Exercise ExpandByPDF through run_pipeline in stub mode."""
+
+    def test_stub_pipeline_with_expand_by_pdf(self, tmp_path):
+        """Full pipeline: LoadSeeds → ExpandByPDF → Finalize in stub mode.
+
+        Uses the stub LLM which returns one reference titled
+        'Stub Reference Title'. We register that title in the fake S2
+        client so resolution succeeds and the collection grows.
+        """
+        from citeclaw.config import SeedPaper
+        from citeclaw.pipeline import run_pipeline
+
+        # Build corpus
+        s2 = FakeS2Client()
+        seed = make_paper("SEED-1", title="My Seed Paper", year=2022)
+        stub_ref = make_paper("STUBREF-1", title="Stub Reference Title", year=2023)
+        s2.add(seed)
+        s2.add(stub_ref)
+        s2.register_search_match("Stub Reference Title", stub_ref)
+
+        cfg = Settings(
+            screening_model="stub",
+            data_dir=str(tmp_path),
+            topic_description="RNA foundation models",
+            seed_papers=[SeedPaper(paper_id="SEED-1")],
+            pipeline=[
+                {"step": "LoadSeeds"},
+                {"step": "ExpandByPDF"},
+                {"step": "Finalize"},
+            ],
+        )
+        cache = Cache(tmp_path / "cache.db")
+        budget = BudgetTracker()
+        ctx = Context(config=cfg, s2=s2, cache=cache, budget=budget)
+
+        # Mock the PDF bridge to return text, since we're in stub mode
+        with patch(
+            "citeclaw.steps.expand_by_pdf.PdfClawBridge"
+        ) as MockBridge:
+            bridge_instance = MagicMock()
+            bridge_instance.fetch_text.return_value = (
+                "Body text with [1] reference.\n\n"
+                "References\n"
+                "[1] Stub Author. Stub Reference Title. Journal 2023."
+            )
+            MockBridge.return_value = bridge_instance
+
+            run_pipeline(ctx)
+
+        # LoadSeeds adds 1 seed; ExpandByPDF should add STUBREF-1
+        assert "SEED-1" in ctx.collection
+        assert "STUBREF-1" in ctx.collection
+        assert len(ctx.collection) == 2
+        assert ctx.collection["STUBREF-1"].source == "pdf"
+
+        # Verify finalize wrote output files
+        assert (tmp_path / "literature_collection.json").exists()
+
+
 class TestExpandBackwardPdfFallback:
     def test_pdf_references_disabled_by_default(self, tmp_path):
         """Default ExpandBackward doesn't use PDF fallback."""

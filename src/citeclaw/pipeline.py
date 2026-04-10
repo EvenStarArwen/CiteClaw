@@ -33,7 +33,7 @@ log = logging.getLogger("citeclaw.pipeline")
 # ``SimilarityFilter`` in their screener block silently degrades to its
 # ``on_no_data`` behaviour.
 _SOURCELESS_STEP_NAMES = frozenset({
-    "ExpandBySearch", "ExpandBySemantics", "ExpandByAuthor",
+    "ExpandByPDF", "ExpandBySearch", "ExpandBySemantics", "ExpandByAuthor",
 })
 
 
