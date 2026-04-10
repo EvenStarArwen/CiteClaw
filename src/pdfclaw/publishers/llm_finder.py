@@ -84,16 +84,34 @@ What should we do next? Respond with a JSON object."""
 
 
 def _get_llm_config() -> tuple[str, str, str] | None:
+    """Detect LLM config from env vars. Priority:
+    1. Explicit PDFCLAW_LLM_* vars (any OpenAI-compatible endpoint)
+    2. GEMINI_API_KEY (auto-configures Google's OpenAI-compatible endpoint)
+    3. CITECLAW_VLLM_* vars (Modal Gemma)
+    """
+    # Option 1: explicit config
     base_url = os.environ.get("PDFCLAW_LLM_BASE_URL") or ""
-    api_key = (
-        os.environ.get("PDFCLAW_LLM_API_KEY")
-        or os.environ.get("CITECLAW_VLLM_API_KEY")
-        or ""
-    )
-    model = os.environ.get("PDFCLAW_LLM_MODEL") or "google/gemma-4-31B-it"
-    if not api_key or not base_url:
-        return None
-    return base_url, api_key, model
+    api_key = os.environ.get("PDFCLAW_LLM_API_KEY") or ""
+    model = os.environ.get("PDFCLAW_LLM_MODEL") or ""
+    if base_url and api_key:
+        return base_url, api_key, model or "google/gemma-4-31B-it"
+
+    # Option 2: Gemini (auto-detect from GEMINI_API_KEY)
+    gemini_key = os.environ.get("GEMINI_API_KEY") or ""
+    if gemini_key:
+        return (
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            gemini_key,
+            model or "gemini-2.0-flash-lite",
+        )
+
+    # Option 3: Modal Gemma (CITECLAW_VLLM_* vars)
+    vllm_key = os.environ.get("CITECLAW_VLLM_API_KEY") or ""
+    vllm_base = os.environ.get("PDFCLAW_LLM_BASE_URL") or os.environ.get("CITECLAW_VLLM_BASE_URL") or ""
+    if vllm_key and vllm_base:
+        return vllm_base, vllm_key, model or "google/gemma-4-31B-it"
+
+    return None
 
 
 def _extract_candidates(page: "Page") -> list[dict]:
