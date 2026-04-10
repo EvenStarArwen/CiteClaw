@@ -46,7 +46,7 @@ const SOURCE_COLORS: Record<string, string> = {
   reinforced: "#f87171",
 }
 
-function getNodeColor(node: GraphNode): string {
+export function getNodeColor(node: GraphNode): string {
   if (node.cluster != null) {
     const idx = Math.abs(parseInt(node.cluster, 10)) % CLUSTER_COLORS.length
     return CLUSTER_COLORS[idx] ?? "#9ca3af"
@@ -57,7 +57,7 @@ function getNodeColor(node: GraphNode): string {
   return "#9ca3af"
 }
 
-function getNodeSize(citationCount: number): number {
+export function getNodeSize(citationCount: number): number {
   return 3 + Math.log2(Math.max(1, citationCount)) * 1.5
 }
 
