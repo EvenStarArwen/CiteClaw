@@ -212,6 +212,7 @@ class BrowserRecipeBase:
             try:
                 api_resp = page.context.request.get(
                     pdf_url, timeout=self.DOWNLOAD_TIMEOUT_MS,
+                    headers={"Referer": page.url},
                 )
                 if api_resp.ok:
                     body = api_resp.body()
@@ -257,6 +258,7 @@ class BrowserRecipeBase:
                 try:
                     api_resp = page.context.request.get(
                         href, timeout=self.DOWNLOAD_TIMEOUT_MS,
+                        headers={"Referer": page.url},
                     )
                 except Exception as req_exc:  # noqa: BLE001
                     last_err = f"{selector}: context.request.get failed: {req_exc}"

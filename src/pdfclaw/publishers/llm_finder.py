@@ -366,7 +366,10 @@ class LLMPdfFinderRecipe:
 
             if action == "fetch":
                 try:
-                    api_resp = context.request.get(href, timeout=30_000)
+                    api_resp = context.request.get(
+                        href, timeout=30_000,
+                        headers={"Referer": page.url},
+                    )
                 except Exception as exc:  # noqa: BLE001
                     history_lines.append(
                         f"- Turn {turn}: FETCHED [{target}] ({href[:80]}) → network error: {exc}"
