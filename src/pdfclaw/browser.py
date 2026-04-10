@@ -44,15 +44,20 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("pdfclaw.browser")
 
-# URLs we open during the ``login`` subcommand. The user is expected to
-# click "Access through your institution" / "Sign in via Shibboleth" /
-# "OpenAthens" on each, complete the SSO dance, and then close the
-# window. The cookies persist in the profile directory.
+# URLs we open during the ``login`` subcommand. We use ARTICLE pages
+# (not homepages) so the "Access through your institution" link is
+# visible. The user clicks that link, picks their university, completes
+# SSO, and the cookies persist in the profile directory.
+#
+# Homepage login (e.g. nature.com "Log in" button) takes you to a
+# PERSONAL account page, not the institutional Shibboleth flow.
 LOGIN_URLS = [
-    "https://www.nature.com/",
-    "https://www.sciencedirect.com/",
-    "https://www.science.org/",
-    "https://www.cell.com/",
+    # Nature — a paywalled article; "Access through your institution" link is in the sidebar
+    "https://www.nature.com/articles/s41586-021-03819-2",
+    # ScienceDirect — institutional login portal
+    "https://www.sciencedirect.com/user/institution/login",
+    # Science.org — a paywalled article
+    "https://www.science.org/doi/10.1126/science.ade2574",
 ]
 
 
@@ -96,12 +101,31 @@ def launch_for_login(profile_path: Path) -> None:
     )
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=str(profile_path),
-            headless=False,
-            viewport={"width": 1280, "height": 900},
-            accept_downloads=True,
-        )
+        # Use the SYSTEM Chrome (channel="chrome") instead of
+        # Playwright's bundled Chromium. Real Chrome doesn't have the
+        # --enable-automation flag and passes Cloudflare Turnstile
+        # challenges that the bundled Chromium can't.
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(profile_path),
+                channel="chrome",
+                headless=False,
+                viewport={"width": 1280, "height": 900},
+                accept_downloads=True,
+            )
+        except Exception:  # noqa: BLE001
+            # Fallback: if system Chrome not found, use bundled Chromium
+            log.warning(
+                "System Chrome not found; falling back to Playwright Chromium. "
+                "Cloudflare-protected sites (Cell, Science) may show infinite "
+                "captcha loops. Install Google Chrome to fix this."
+            )
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(profile_path),
+                headless=False,
+                viewport={"width": 1280, "height": 900},
+                accept_downloads=True,
+            )
         # Open one tab per login URL
         for url in LOGIN_URLS:
             page = context.new_page()
@@ -151,12 +175,22 @@ def open_browser_context(
         ) from exc
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=str(profile_path),
-            headless=headless,
-            viewport={"width": 1280, "height": 900},
-            accept_downloads=True,
-        )
+        # Prefer system Chrome for the same reason as launch_for_login:
+        # Cloudflare/Akamai detect bundled Chromium's automation flags.
+        launch_kwargs: dict = {
+            "user_data_dir": str(profile_path),
+            "headless": headless,
+            "viewport": {"width": 1280, "height": 900},
+            "accept_downloads": True,
+        }
+        if downloads_dir is not None:
+            launch_kwargs["downloads_path"] = str(downloads_dir)
+        try:
+            context = p.chromium.launch_persistent_context(
+                channel="chrome", **launch_kwargs,
+            )
+        except Exception:  # noqa: BLE001
+            context = p.chromium.launch_persistent_context(**launch_kwargs)
         page = context.new_page()
         try:
             yield context, page
