@@ -37,7 +37,27 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("pdfclaw.openalex")
 
-DEFAULT_EMAIL = "pdfclaw-research@example.com"
+
+def _git_email() -> str | None:
+    try:
+        import subprocess  # noqa: PLC0415
+        r = subprocess.run(
+            ["git", "config", "--get", "user.email"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode == 0:
+            email = r.stdout.strip()
+            if "@" in email and "example.com" not in email:
+                return email
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+# OpenAlex doesn't enforce email validity but they ask you to be a
+# good citizen. Use the user's real git email if available; fall back
+# to a generic research-tools placeholder.
+DEFAULT_EMAIL = _git_email() or "pdfclaw@anthropic.com"
 
 
 class OpenAlexRecipe:
