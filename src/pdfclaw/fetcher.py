@@ -199,6 +199,24 @@ class Fetcher:
                         auth_failed_recipes=auth_failed_recipes,
                         consecutive_failures=consecutive_failures,
                     )
+                    # Fallback: if primary DOI chain failed and paper
+                    # has an arXiv ID, try fetching from arXiv directly.
+                    if not result.ok and paper.arxiv_id:
+                        arxiv_doi = f"10.48550/arXiv.{paper.arxiv_id}"
+                        if arxiv_doi != paper.doi:  # avoid retrying same DOI
+                            arxiv_chain = find_recipes(arxiv_doi, self.recipes)
+                            if arxiv_chain:
+                                log.info(
+                                    "Primary chain failed; trying arXiv fallback %s",
+                                    paper.arxiv_id,
+                                )
+                                arxiv_result = self._try_chain(
+                                    paper, arxiv_chain, http, page,
+                                    auth_failed_recipes=auth_failed_recipes,
+                                    consecutive_failures=consecutive_failures,
+                                )
+                                if arxiv_result.ok:
+                                    result = arxiv_result
                     self._handle_result(paper, result, stats)
                     remaining = total_plan - i
                     log.info(

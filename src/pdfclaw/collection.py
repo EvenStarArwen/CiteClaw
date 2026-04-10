@@ -46,6 +46,8 @@ class Paper:
     venue: str | None
     doi: str | None     # None if we couldn't recover it
     doi_source: str     # "external_ids" | "disclaimer" | "missing"
+    arxiv_id: str | None = None   # bare arXiv ID e.g. "2007.06225"
+    pmcid: str | None = None      # e.g. "PMC8285895"
 
 
 def load_collection(json_path: Path) -> list[dict]:

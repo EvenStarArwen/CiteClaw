@@ -60,6 +60,8 @@ def enrich_dois_from_s2(papers: list[Paper], *, timeout: float = 60.0) -> list[P
         headers["x-api-key"] = api_key
 
     enriched: dict[str, str] = {}  # paper_id -> doi
+    arxiv_ids: dict[str, str] = {}  # paper_id -> bare arXiv ID
+    pmcids: dict[str, str] = {}     # paper_id -> PMC ID
 
     with httpx.Client(headers=headers, timeout=timeout) as http:
         for start in range(0, len(missing), BATCH_SIZE):
@@ -101,39 +103,51 @@ def enrich_dois_from_s2(papers: list[Paper], *, timeout: float = 60.0) -> list[P
                         continue
                     ext = row.get("externalIds") or {}
                     doi = ext.get("DOI") or ext.get("doi")
+                    arxiv = ext.get("ArXiv") or ext.get("arxiv")
+                    pmc = ext.get("PubMedCentral") or ext.get("pubmedcentral")
+                    # Always store arXiv/PMC IDs for fallback
+                    if arxiv:
+                        arxiv_ids[paper_id] = arxiv.strip()
+                    if pmc:
+                        pmcids[paper_id] = pmc.strip()
                     if doi:
                         enriched[paper_id] = doi.strip()
                         continue
-                    # No DOI but maybe an ArXiv ID — convert to canonical
-                    # 10.48550/arXiv.<id> form so the ArxivRecipe picks it up.
-                    arxiv_id = ext.get("ArXiv") or ext.get("arxiv")
-                    if arxiv_id:
-                        enriched[paper_id] = f"10.48550/arXiv.{arxiv_id.strip()}"
+                    # No DOI — use ArXiv DOI as primary
+                    if arxiv:
+                        enriched[paper_id] = f"10.48550/arXiv.{arxiv.strip()}"
                 break  # success
 
             if not api_key:
                 # Anonymous rate limit safety
                 time.sleep(1.1)
 
-    if not enriched:
-        log.warning("S2 enrichment found no new DOIs")
+    if not enriched and not arxiv_ids:
+        log.warning("S2 enrichment found no new DOIs or arXiv IDs")
         return papers
 
-    log.info("S2 enrichment recovered %d additional DOIs", len(enriched))
+    log.info(
+        "S2 enrichment recovered %d additional DOIs, %d arXiv IDs, %d PMC IDs",
+        len(enriched), len(arxiv_ids), len(pmcids),
+    )
 
     out: list[Paper] = []
     for p in papers:
+        new_doi = p.doi
+        new_src = p.doi_source
         if p.doi is None and p.paper_id in enriched:
-            out.append(
-                Paper(
-                    paper_id=p.paper_id,
-                    title=p.title,
-                    year=p.year,
-                    venue=p.venue,
-                    doi=enriched[p.paper_id],
-                    doi_source="s2_batch",
-                )
+            new_doi = enriched[p.paper_id]
+            new_src = "s2_batch"
+        out.append(
+            Paper(
+                paper_id=p.paper_id,
+                title=p.title,
+                year=p.year,
+                venue=p.venue,
+                doi=new_doi,
+                doi_source=new_src,
+                arxiv_id=arxiv_ids.get(p.paper_id) or p.arxiv_id,
+                pmcid=pmcids.get(p.paper_id) or p.pmcid,
             )
-        else:
-            out.append(p)
+        )
     return out
