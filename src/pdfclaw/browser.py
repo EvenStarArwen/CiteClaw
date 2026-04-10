@@ -52,9 +52,9 @@ log = logging.getLogger("pdfclaw.browser")
 # Homepage login (e.g. nature.com "Log in" button) takes you to a
 # PERSONAL account page, not the institutional Shibboleth flow.
 LOGIN_URLS = [
-    # Nature — a paywalled article; "Access through your institution" link is in the sidebar
-    "https://www.nature.com/articles/s41586-021-03819-2",
-    # ScienceDirect — institutional login portal
+    # Nature — a PAYWALLED article (NOT OA); look for "Access through your institution"
+    "https://www.nature.com/articles/nbt.3988",
+    # ScienceDirect — institutional login portal (already confirmed working)
     "https://www.sciencedirect.com/user/institution/login",
     # Science.org — a paywalled article
     "https://www.science.org/doi/10.1126/science.ade2574",
