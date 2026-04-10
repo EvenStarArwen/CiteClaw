@@ -51,23 +51,22 @@ MAX_TURNS = 5
 MAX_CANDIDATES = 25
 
 SYSTEM_PROMPT = """\
-You are an agent that downloads PDFs of academic papers from publisher websites.
+You are an agent that downloads PDFs of academic papers from publisher websites. Your ONLY goal is to get the main article PDF. Everything else (cookie banners, login prompts, subscription nags, navigation menus) is an obstacle to dismiss or ignore.
 
 You can take ONE action per turn:
-- {"action": "fetch", "target": N, "reasoning": "..."} — HTTP GET link N's URL and check if it returns a PDF
-- {"action": "navigate", "target": N, "reasoning": "..."} — go to link N's page to see more links (use when you think the link leads to a reader/viewer page, not a direct PDF)
-- {"action": "give_up", "reasoning": "..."} — the PDF is genuinely unavailable (server error, broken page, etc.)
+- {"action": "fetch", "target": N, "reasoning": "..."} — HTTP GET link N's URL to download the PDF
+- {"action": "navigate", "target": N, "reasoning": "..."} — open link N's page in the browser to see new links
+- {"action": "give_up", "reasoning": "..."} — the PDF is genuinely unavailable
 
-Important:
-- FETCH tries to download the URL directly. If it returns a PDF file, we're done.
-- NAVIGATE opens the page in the browser so you can see its links in the next turn.
-- Choose FETCH for links that look like direct PDF URLs (contain .pdf, /pdf/, pdfdirect, etc.)
-- Choose NAVIGATE for links that look like they open a reader/viewer (contain /reader/, /view/, stamp.jsp, etc.)
-- If a previous FETCH returned an error (403, 404, 500) or HTML instead of PDF, reason about WHY and try a different approach.
-- If the publisher's server is genuinely broken (e.g. "Failed to load PDF document"), GIVE UP — it's not your fault.
-- Always pick the MAIN article PDF, not supplementary material or figures.
+Decision rules:
+- Links with .pdf or /pdf/ or /pdfdirect/ in the href → try FETCH first
+- Links to /reader/ or /view/ or stamp.jsp → NAVIGATE (these are PDF viewers with a download button inside)
+- If FETCH returns 403: the publisher may block direct API access. Try NAVIGATE to the same or similar URL instead — the browser has authentication cookies that direct HTTP doesn't.
+- If FETCH returns 404 or 500 or "Failed to load PDF": the server is broken. GIVE UP.
+- Ignore cookie consent links, privacy policy links, advertisement links, social media links, reference links.
+- Pick the MAIN article PDF, not supplementary material or figures.
 
-Respond with ONLY a JSON object, no other text."""
+Respond with ONLY a JSON object."""
 
 USER_TEMPLATE = """\
 Paper DOI: {doi}
@@ -112,6 +111,34 @@ def _get_llm_config() -> tuple[str, str, str] | None:
         return vllm_base, vllm_key, model or "google/gemma-4-31B-it"
 
     return None
+
+
+def _dismiss_cookie_banners(page: "Page") -> None:
+    """Try to close cookie consent banners that block the real content."""
+    cookie_selectors = [
+        'button:has-text("Accept All")',
+        'button:has-text("Accept all")',
+        'button:has-text("Accept Cookies")',
+        'button:has-text("Accept")',
+        'button:has-text("Agree")',
+        'button:has-text("I agree")',
+        'button:has-text("OK")',
+        'button:has-text("Got it")',
+        'button:has-text("Allow all")',
+        '#onetrust-accept-btn-handler',
+        '.cookie-accept',
+        '[data-testid="cookie-accept"]',
+        'button.accept-cookies',
+    ]
+    for sel in cookie_selectors:
+        try:
+            loc = page.locator(sel)
+            if loc.count() > 0:
+                loc.first.click(timeout=2_000)
+                page.wait_for_timeout(500)
+                return
+        except Exception:  # noqa: BLE001
+            continue
 
 
 def _extract_candidates(page: "Page") -> list[dict]:
@@ -256,6 +283,7 @@ class LLMPdfFinderRecipe:
         history_lines: list[str] = []
 
         for turn in range(MAX_TURNS):
+            _dismiss_cookie_banners(page)
             candidates = _extract_candidates(page)
 
             history_str = ""

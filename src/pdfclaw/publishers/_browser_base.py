@@ -189,6 +189,21 @@ class BrowserRecipeBase:
         if self.EXTRA_WAIT_MS > 0:
             page.wait_for_timeout(self.EXTRA_WAIT_MS)
 
+        # Step 3.5: dismiss cookie consent banners
+        for cookie_sel in [
+            'button:has-text("Accept All")', 'button:has-text("Accept all")',
+            'button:has-text("Accept")', 'button:has-text("Agree")',
+            '#onetrust-accept-btn-handler', '.cookie-accept',
+        ]:
+            try:
+                loc = page.locator(cookie_sel)
+                if loc.count() > 0:
+                    loc.first.click(timeout=2_000)
+                    page.wait_for_timeout(500)
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+
         # Step 4a: try the known PDF URL template if this recipe has one.
         # This bypasses selector discovery entirely for publishers with
         # a predictable /doi/pdf/{doi} endpoint.
