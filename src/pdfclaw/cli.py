@@ -81,10 +81,21 @@ def cmd_list(args: argparse.Namespace) -> int:
         else:
             by_recipe[recipe.name] += 1
 
+    # Also show progress against any existing parsed/ output
+    parsed_dir = args.checkpoint / "parsed"
+    fetched_ids: set[str] = set()
+    if parsed_dir.is_dir():
+        for f in parsed_dir.glob("*.json"):
+            fetched_ids.add(f.stem)
+
     print(f"\n=== {args.checkpoint} ===")
     print(f"Total accepted papers: {total}")
     print(f"  with DOI:    {len(with_doi)}")
     print(f"  without DOI: {len(no_doi)}")
+    if fetched_ids:
+        print()
+        print(f"  fetched:     {len(fetched_ids)}  ({100*len(fetched_ids)/total:.1f}%)")
+        print(f"  remaining:   {total - len(fetched_ids)}")
     print()
     print("DOI prefix breakdown:")
     for pfx, n in sorted(by_prefix.items(), key=lambda kv: -kv[1])[:20]:
