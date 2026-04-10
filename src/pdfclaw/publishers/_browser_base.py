@@ -305,7 +305,7 @@ class BrowserRecipeBase:
         # Last resort: if the page URL looks like a PDF URL (Chrome
         # opened it in the viewer), try extracting bytes via JS fetch.
         page_url = page.url.lower()
-        if "/pdf" in page_url or page_url.endswith(".pdf"):
+        if ".pdf" in page_url or "/pdf" in page_url:
             try:
                 raw = page.evaluate("""
                     async () => {

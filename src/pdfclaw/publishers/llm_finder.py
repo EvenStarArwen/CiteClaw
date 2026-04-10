@@ -124,7 +124,7 @@ def _extract_pdf_from_viewer(page: "Page") -> bytes | None:
     the full session cookies and auth — unlike context.request.get().
     """
     url = page.url.lower()
-    if "/pdf" not in url and not url.endswith(".pdf"):
+    if ".pdf" not in url and "/pdf" not in url:
         return None
 
     log.info("Attempting to extract PDF from Chrome viewer at %s", page.url[:80])
