@@ -441,11 +441,22 @@ class LLMPdfFinderRecipe:
                             pass
 
                         if not download_ok:
-                            # Try 2: the click may have navigated to a
-                            # PDF URL that Chrome opened in its viewer.
-                            # Use in-page JavaScript fetch() to grab the
-                            # bytes — this has the page's full auth.
+                            # Try 2: the click may have opened the PDF
+                            # in the CURRENT tab or a NEW tab. Check all
+                            # pages in the context for a PDF viewer.
                             body = _extract_pdf_from_viewer(page)
+                            if not body:
+                                for other_page in context.pages:
+                                    if other_page == page:
+                                        continue
+                                    body = _extract_pdf_from_viewer(other_page)
+                                    if body:
+                                        # Clean up the extra tab
+                                        try:
+                                            other_page.close()
+                                        except Exception:  # noqa: BLE001
+                                            pass
+                                        break
 
                         if body and b"%PDF-" in body[:1024]:
                             pdf_start = body.index(b"%PDF-")
