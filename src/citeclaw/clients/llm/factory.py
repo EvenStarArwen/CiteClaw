@@ -46,6 +46,7 @@ def _build_registry_client(
         endpoint_api_key=api_key or None,
         endpoint_timeout=entry.request_timeout,
         served_model_name=entry.served_model_name or alias,
+        thinking_budget=entry.thinking_budget,
     )
 
 

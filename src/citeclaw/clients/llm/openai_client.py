@@ -39,7 +39,22 @@ def _extract_reasoning_tokens(usage: Any) -> int:
     return getattr(details, "reasoning_tokens", 0) or 0
 
 
-def _custom_endpoint_reasoning_kwargs(reasoning_effort: str) -> dict[str, Any]:
+# Default thinking-token budgets per effort level.  These prevent OSS
+# reasoning models (Gemma 4, Qwen3, DeepSeek-R1) from spending 60–100 K
+# tokens on a single call while still giving them useful thinking room.
+# Commercial models (o3, Claude) handle this internally; the budget is
+# only sent to vLLM / custom endpoints via ``thinking_token_budget``.
+_EFFORT_THINKING_BUDGET: dict[str, int] = {
+    "high": 16384,
+    "medium": 8192,
+    "low": 4096,
+}
+
+
+def _custom_endpoint_reasoning_kwargs(
+    reasoning_effort: str,
+    thinking_budget: int = 0,
+) -> dict[str, Any]:
     """Map ``reasoning_effort`` to OSS chat-template kwargs.
 
     Two interlocked knobs are required for Gemma 4 thinking mode to
@@ -66,11 +81,14 @@ def _custom_endpoint_reasoning_kwargs(reasoning_effort: str) -> dict[str, Any]:
     reasoning_effort knob is touched at all — including the explicit
     "off" path, since some chat templates inject an empty
     ``<|channel>thought\\n<channel|>`` placeholder there too.
+
+    ``thinking_budget`` (from ``ModelEndpoint.thinking_budget``)
+    overrides the default effort-based cap. ``0`` means use the default.
     """
     effort = (reasoning_effort or "").strip().lower()
     if not effort:
         return {}
-    extra_body = {
+    extra_body: dict[str, Any] = {
         "chat_template_kwargs": {"enable_thinking": False},
         # See docstring above — must be False to keep the channel markers
         # visible in the response so the reasoning parser can split.
@@ -79,6 +97,12 @@ def _custom_endpoint_reasoning_kwargs(reasoning_effort: str) -> dict[str, Any]:
     if effort in ("off", "none", "false", "disable", "disabled"):
         return {"extra_body": extra_body}
     extra_body["chat_template_kwargs"]["enable_thinking"] = True
+    # Cap reasoning tokens to prevent runaway thinking.  Passed as
+    # ``thinking_budget`` inside ``chat_template_kwargs`` — this is a
+    # Gemma 4 chat-template feature that limits the thinking trace
+    # without requiring vLLM's ``--reasoning-config`` server flag.
+    budget = thinking_budget or _EFFORT_THINKING_BUDGET.get(effort, 16384)
+    extra_body["chat_template_kwargs"]["thinking_budget"] = budget
     return {
         "reasoning_effort": effort,
         "extra_body": extra_body,
@@ -161,6 +185,7 @@ class OpenAIClient:
         endpoint_api_key: str | None = None,
         endpoint_timeout: float | None = None,
         served_model_name: str | None = None,
+        thinking_budget: int = 0,
     ) -> None:
         self._config = config
         self._budget = budget
@@ -172,6 +197,7 @@ class OpenAIClient:
         self._reasoning_effort = (
             reasoning_effort if reasoning_effort is not None else config.reasoning_effort
         )
+        self._thinking_budget = thinking_budget
         # Custom-endpoint paths (registry alias OR legacy llm_base_url) skip
         # the OpenAI o-series reasoning detection — those endpoints host OSS
         # models that take ``chat_template_kwargs`` instead of
@@ -226,7 +252,9 @@ class OpenAIClient:
             if with_logprobs:
                 kwargs["logprobs"] = True
         if self._is_custom:
-            kwargs.update(_custom_endpoint_reasoning_kwargs(self._reasoning_effort))
+            kwargs.update(_custom_endpoint_reasoning_kwargs(
+                self._reasoning_effort, self._thinking_budget,
+            ))
         elif self._is_reasoning and self._reasoning_effort:
             kwargs["reasoning_effort"] = self._reasoning_effort
 

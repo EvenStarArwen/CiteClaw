@@ -60,6 +60,13 @@ class ModelEndpoint(BaseModel):
         Per-endpoint override for ``llm_request_timeout``. ``None`` falls
         back to the global setting. Useful when one endpoint (e.g. a
         large reasoning model) needs longer timeouts than the rest.
+    thinking_budget : int
+        Maximum reasoning tokens the model may spend per call, passed as
+        ``thinking_token_budget`` to vLLM. ``0`` (default) means use the
+        effort-based default from :func:`_EFFORT_THINKING_BUDGET`.
+        Setting this caps the model's thinking trace without affecting
+        content output — prevents Gemma 4 / Qwen3 from burning 100 K
+        tokens on a single call.
     """
 
     base_url: str
@@ -67,6 +74,7 @@ class ModelEndpoint(BaseModel):
     api_key_env: str = ""
     reasoning_parser: str = ""
     request_timeout: float | None = None
+    thinking_budget: int = 0
 
     @property
     def resolved_api_key(self) -> str:
