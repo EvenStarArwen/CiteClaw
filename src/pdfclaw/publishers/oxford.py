@@ -18,8 +18,11 @@ class OxfordRecipe(BrowserRecipeBase):
     DOI_PREFIX = "10.1093/"
     EXTRA_WAIT_MS = 1_500
     DOWNLOAD_SELECTORS = [
+        # OUP's canonical PDF link — the href contains the actual PDF path
+        # e.g. /bioinformatics/article-pdf/33/21/3387/50315453/xxx.pdf
+        'a.article-pdfLink',
+        'a.pdf[href*="article-pdf"]',
+        'a[href*="article-pdf"][href$=".pdf"]',
         'a[data-track-action="ArticleHeader|Download PDF"]',
-        'a[href*=".pdf"][data-track-action*="PDF"]',
-        'a:has-text("Download PDF")',
         'a:has-text("PDF")',
     ]
