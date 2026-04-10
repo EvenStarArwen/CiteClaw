@@ -99,11 +99,13 @@ class BrowserRecipeBase:
     URL_BUILDER: Callable[[str], str] | None = None
     GOTO_TIMEOUT_MS: int = 45_000
     NETWORKIDLE_TIMEOUT_MS: int = 15_000
-    # Tightened from 60s to 20s — paywalled publishers without auth don't
-    # trigger a download on click; they navigate to SSO. Waiting 60s for
-    # something that's never coming kills throughput on a missing-auth run.
     DOWNLOAD_TIMEOUT_MS: int = 20_000
     CLICK_TIMEOUT_MS: int = 10_000
+    # If set, try fetching this URL (with {doi} placeholder) BEFORE
+    # scanning for selectors. Many publishers have a predictable
+    # /doi/pdf/{doi} endpoint that returns raw PDF bytes — much more
+    # reliable than finding + clicking buttons on their JS-rendered pages.
+    PDF_URL_TEMPLATE: str | None = None
 
     def matches(self, doi: str) -> bool:
         d = doi.lower()
@@ -187,7 +189,28 @@ class BrowserRecipeBase:
         if self.EXTRA_WAIT_MS > 0:
             page.wait_for_timeout(self.EXTRA_WAIT_MS)
 
-        # Step 4: find the PDF link href and fetch it directly via the
+        # Step 4a: try the known PDF URL template if this recipe has one.
+        # This bypasses selector discovery entirely for publishers with
+        # a predictable /doi/pdf/{doi} endpoint.
+        if self.PDF_URL_TEMPLATE:
+            pdf_url = self.PDF_URL_TEMPLATE.format(doi=doi)
+            try:
+                api_resp = page.context.request.get(
+                    pdf_url, timeout=self.DOWNLOAD_TIMEOUT_MS,
+                )
+                if api_resp.ok:
+                    body = api_resp.body()
+                    if body.startswith(b"%PDF-"):
+                        return FetchResult(
+                            paper_id=paper_id, doi=doi, status=STATUS_OK,
+                            pdf_bytes=body, fetched_via=self.name,
+                            extra={"href": pdf_url, "method": "pdf_url_template",
+                                   "n_bytes": len(body)},
+                        )
+            except Exception as exc:  # noqa: BLE001
+                log.debug("%s: PDF_URL_TEMPLATE fetch failed: %s", self.name, exc)
+
+        # Step 4b: find the PDF link href and fetch it directly via the
         # browser context's request API (carries SSO cookies). This is
         # more reliable than click + expect_download because:
         #   - Chrome's PDF viewer doesn't interfere

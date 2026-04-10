@@ -16,6 +16,7 @@ from pdfclaw.publishers._browser_base import BrowserRecipeBase
 class ACSRecipe(BrowserRecipeBase):
     name = "acs_browser"
     DOI_PREFIX = "10.1021/"
+    PDF_URL_TEMPLATE = "https://pubs.acs.org/doi/pdf/{doi}"
     EXTRA_WAIT_MS = 1_500
     DOWNLOAD_SELECTORS = [
         'a[title="PDF"]',

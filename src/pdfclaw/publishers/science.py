@@ -17,6 +17,7 @@ from pdfclaw.publishers._browser_base import BrowserRecipeBase
 class ScienceRecipe(BrowserRecipeBase):
     name = "science_browser"
     DOI_PREFIX = "10.1126/"
+    PDF_URL_TEMPLATE = "https://www.science.org/doi/pdf/{doi}"
     EXTRA_WAIT_MS = 1_500
     DOWNLOAD_SELECTORS = [
         # Science.org canonical PDF anchor

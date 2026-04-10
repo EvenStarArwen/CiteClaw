@@ -18,6 +18,7 @@ from pdfclaw.publishers._browser_base import BrowserRecipeBase
 class SpringerRecipe(BrowserRecipeBase):
     name = "springer_browser"
     DOI_PREFIX = "10.1007/"
+    PDF_URL_TEMPLATE = "https://link.springer.com/content/pdf/{doi}.pdf"
     EXTRA_WAIT_MS = 1_500
     DOWNLOAD_SELECTORS = [
         'a[data-track-action="Pdf download"]',

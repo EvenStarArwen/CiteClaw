@@ -17,6 +17,7 @@ from pdfclaw.publishers._browser_base import BrowserRecipeBase
 class WileyRecipe(BrowserRecipeBase):
     name = "wiley_browser"
     DOI_PREFIX = "10.1002/"
+    PDF_URL_TEMPLATE = "https://onlinelibrary.wiley.com/doi/pdfdirect/{doi}"
     EXTRA_WAIT_MS = 1_500
     DOWNLOAD_SELECTORS = [
         # Direct PDF link in the article header (full text article view)

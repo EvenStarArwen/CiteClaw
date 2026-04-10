@@ -21,6 +21,7 @@ from pdfclaw.publishers._browser_base import BrowserRecipeBase
 class PNASRecipe(BrowserRecipeBase):
     name = "pnas_browser"
     DOI_PREFIX = "10.1073/"
+    PDF_URL_TEMPLATE = "https://www.pnas.org/doi/pdf/{doi}"
     EXTRA_WAIT_MS = 1_500
     DOWNLOAD_SELECTORS = [
         'a[data-test="download-pdf"]',
