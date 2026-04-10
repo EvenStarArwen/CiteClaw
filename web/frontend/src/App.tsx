@@ -1,13 +1,25 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { Layout } from "./components/Layout"
+import { Home } from "./pages/Home"
+import { RunView } from "./pages/RunView"
+import { ConfigView } from "./pages/ConfigView"
+
+const queryClient = new QueryClient()
+
 function App() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-950 text-white">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold tracking-tight mb-4">CiteClaw</h1>
-        <p className="text-lg text-gray-400">
-          Snowballing literature acquisition
-        </p>
-      </div>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/run/:runId" element={<RunView />} />
+            <Route path="/configs/:name" element={<ConfigView />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
   )
 }
 
