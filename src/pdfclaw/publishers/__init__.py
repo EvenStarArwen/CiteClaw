@@ -40,10 +40,12 @@ from pdfclaw.publishers.impact import ImpactJournalsRecipe
 from pdfclaw.publishers.iop import IOPRecipe
 from pdfclaw.publishers.mdpi import MDPIRecipe
 from pdfclaw.publishers.nature import NatureRecipe
+from pdfclaw.publishers.openalex import OpenAlexRecipe
 from pdfclaw.publishers.oxford import OxfordRecipe
 from pdfclaw.publishers.pnas import PNASRecipe
 from pdfclaw.publishers.rsc import RSCRecipe
 from pdfclaw.publishers.science import ScienceRecipe
+from pdfclaw.publishers.scihub import SciHubRecipe
 from pdfclaw.publishers.springer import SpringerRecipe
 from pdfclaw.publishers.taylor_francis import TaylorFrancisRecipe
 from pdfclaw.publishers.unpaywall import UnpaywallRecipe
@@ -71,10 +73,12 @@ __all__ = [
     "ImpactJournalsRecipe",
     "MDPIRecipe",
     "NatureRecipe",
+    "OpenAlexRecipe",
     "OxfordRecipe",
     "PNASRecipe",
     "RSCRecipe",
     "Recipe",
+    "SciHubRecipe",
     "ScienceRecipe",
     "SpringerRecipe",
     "TaylorFrancisRecipe",
@@ -97,6 +101,7 @@ def build_default_registry() -> list[Recipe]:
         WileyTDMRecipe(),               # 10.1002, 10.15252 — Wiley TDM API (gated on env var)
         ElsevierTDMRecipe(),            # 10.1016/   — Elsevier TDM API (gated on env var)
         UnpaywallRecipe(),              # ANY DOI    — universal OA-copy lookup
+        OpenAlexRecipe(),               # ANY DOI    — complementary OA lookup to Unpaywall
         EuropePMCRecipe(),              # ANY DOI    — biomedical fulltext via JATS XML
 
         # === Browser recipes (need Chromium; some need SSO profile) ===
@@ -123,6 +128,9 @@ def build_default_registry() -> list[Recipe]:
         TaylorFrancisRecipe(),          # 10.1080/   — Taylor & Francis Online
         CSHLRecipe(),                   # 10.1261/   — CSHL Press / RNA Society
         PNASRecipe(),                   # 10.1073/   — PNAS paywalled fallback (HighwireOA tries OA first)
+
+        # === Last-resort opt-in: Sci-Hub (gated on PDFCLAW_ENABLE_SCIHUB) ===
+        SciHubRecipe(),                 # ANY DOI    — opt-in shadow-library fallback
     ]
 
 
