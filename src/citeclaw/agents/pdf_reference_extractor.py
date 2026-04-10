@@ -133,12 +133,13 @@ class PdfExtractionResult:
 # Extraction
 # ---------------------------------------------------------------------------
 
-# Default budget: at ~1.3 tokens/char, 28 K chars ≈ 21 K input tokens.
-# With a 64 K context window, that leaves ~40 K tokens for system
-# prompt, reasoning (Gemma 4 uses 5–15 K for thinking), and output
-# (1–3 K for the JSON).  For the minimum 32 K context, users can
-# override with ``max_input_chars: 14000`` in the YAML step config.
-_DEFAULT_MAX_INPUT_CHARS = 28_000
+# Default budget: at ~1.3 tokens/char, 40 K chars ≈ 30 K input tokens.
+# With a 128 K context window and ``reasoning_effort: high``, the model
+# may use 30–60 K tokens for thinking, leaving plenty for the JSON
+# output (~3 K tokens for 10–20 references).  For smaller context
+# windows, users can override with ``max_input_chars`` in the YAML step
+# config (e.g. 14000 for 32 K context).
+_DEFAULT_MAX_INPUT_CHARS = 40_000
 
 
 def _truncate_for_context(
