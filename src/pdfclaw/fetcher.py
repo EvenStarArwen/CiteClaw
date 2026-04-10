@@ -226,7 +226,12 @@ class Fetcher:
         one that hard-failed.
         """
         FAILURE_THRESHOLD = 3
-        HARD_FAIL_STATUSES = {"error", "not_pdf", "blocked"}
+        # Only count outright ERROR results — NOT_PDF means the recipe
+        # found something but it wasn't a PDF (different paper, same
+        # recipe might still get a real PDF). NOT_FOUND means the
+        # recipe correctly checked and the paper isn't there. Neither
+        # is a sign the recipe is broken.
+        HARD_FAIL_STATUSES = {"error", "blocked"}
 
         last_result: FetchResult | None = None
         for recipe in chain:
@@ -246,7 +251,10 @@ class Fetcher:
                     "Recipe %s raised on %s: %s",
                     recipe.name, paper.paper_id, exc,
                 )
-                consecutive_failures[recipe.name] = consecutive_failures.get(recipe.name, 0) + 1
+                # Only suppress browser recipes on raises — HTTP recipes
+                # are cheap to retry.
+                if recipe.needs_browser:
+                    consecutive_failures[recipe.name] = consecutive_failures.get(recipe.name, 0) + 1
                 continue
 
             if result.ok:
@@ -263,7 +271,11 @@ class Fetcher:
                 last_result = result
                 continue
 
-            if result.status in HARD_FAIL_STATUSES:
+            # Only suppress BROWSER recipes after consecutive failures.
+            # HTTP recipes are cheap (~5s) and the failure rate is
+            # naturally high (many papers don't have OA copies); we
+            # don't want to suppress them and miss the papers that DO.
+            if recipe.needs_browser and result.status in HARD_FAIL_STATUSES:
                 consecutive_failures[recipe.name] = consecutive_failures.get(recipe.name, 0) + 1
                 if (
                     consecutive_failures[recipe.name] >= FAILURE_THRESHOLD
@@ -276,7 +288,6 @@ class Fetcher:
                         "See /tmp/pdfclaw_failures/ for snapshots.",
                         recipe.name, consecutive_failures[recipe.name],
                     )
-            # NOT_FOUND / AUTH don't increment the counter
             last_result = result
 
         if last_result is None:
