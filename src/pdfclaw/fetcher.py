@@ -210,8 +210,20 @@ class Fetcher:
                                     "Primary chain failed; trying arXiv fallback %s",
                                     paper.arxiv_id,
                                 )
+                                # Create a temporary Paper with the arXiv DOI
+                                # so ArxivRecipe.fetch() receives the correct DOI
+                                arxiv_paper = Paper(
+                                    paper_id=paper.paper_id,
+                                    title=paper.title,
+                                    year=paper.year,
+                                    venue=paper.venue,
+                                    doi=arxiv_doi,
+                                    doi_source="arxiv_fallback",
+                                    arxiv_id=paper.arxiv_id,
+                                    pmcid=paper.pmcid,
+                                )
                                 arxiv_result = self._try_chain(
-                                    paper, arxiv_chain, http, page,
+                                    arxiv_paper, arxiv_chain, http, page,
                                     auth_failed_recipes=auth_failed_recipes,
                                     consecutive_failures=consecutive_failures,
                                 )

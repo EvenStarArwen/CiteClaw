@@ -102,7 +102,7 @@ def _get_llm_config() -> tuple[str, str, str] | None:
         return (
             "https://generativelanguage.googleapis.com/v1beta/openai",
             gemini_key,
-            model or "gemini-2.0-flash-lite",
+            model or "gemini-3.1-flash-lite-preview",
         )
 
     # Option 3: Modal Gemma (CITECLAW_VLLM_* vars)
