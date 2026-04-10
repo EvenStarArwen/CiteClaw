@@ -105,27 +105,29 @@ def launch_for_login(profile_path: Path) -> None:
         # Playwright's bundled Chromium. Real Chrome doesn't have the
         # --enable-automation flag and passes Cloudflare Turnstile
         # challenges that the bundled Chromium can't.
+        # Key trick: suppress --enable-automation and AutomationControlled
+        # so Cloudflare Turnstile doesn't loop. Without this, the
+        # "Chrome is being controlled by automated test software" banner
+        # appears and CF rejects every challenge attempt.
+        stealth_kwargs: dict = {
+            "user_data_dir": str(profile_path),
+            "headless": False,
+            "viewport": {"width": 1280, "height": 900},
+            "accept_downloads": True,
+            "ignore_default_args": ["--enable-automation"],
+            "args": ["--disable-blink-features=AutomationControlled"],
+        }
         try:
             context = p.chromium.launch_persistent_context(
-                user_data_dir=str(profile_path),
-                channel="chrome",
-                headless=False,
-                viewport={"width": 1280, "height": 900},
-                accept_downloads=True,
+                channel="chrome", **stealth_kwargs,
             )
         except Exception:  # noqa: BLE001
-            # Fallback: if system Chrome not found, use bundled Chromium
             log.warning(
                 "System Chrome not found; falling back to Playwright Chromium. "
                 "Cloudflare-protected sites (Cell, Science) may show infinite "
                 "captcha loops. Install Google Chrome to fix this."
             )
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=str(profile_path),
-                headless=False,
-                viewport={"width": 1280, "height": 900},
-                accept_downloads=True,
-            )
+            context = p.chromium.launch_persistent_context(**stealth_kwargs)
         # Open one tab per login URL
         for url in LOGIN_URLS:
             page = context.new_page()
@@ -182,6 +184,8 @@ def open_browser_context(
             "headless": headless,
             "viewport": {"width": 1280, "height": 900},
             "accept_downloads": True,
+            "ignore_default_args": ["--enable-automation"],
+            "args": ["--disable-blink-features=AutomationControlled"],
         }
         if downloads_dir is not None:
             launch_kwargs["downloads_path"] = str(downloads_dir)
