@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom"
 import { TopBar } from "./TopBar"
 import { PaperPanel } from "./PaperPanel"
 import { RunControls } from "./RunControls"
+import { HitlModal } from "./HitlModal"
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -37,6 +38,7 @@ export function Layout() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+      <HitlModal />
     </div>
   )
 }

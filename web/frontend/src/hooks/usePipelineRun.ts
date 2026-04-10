@@ -17,6 +17,7 @@ export function usePipelineRun(runId: string | null) {
   const stepEnd = useAppStore((s) => s.stepEnd)
   const paperAdded = useAppStore((s) => s.paperAdded)
   const shapeTableUpdate = useAppStore((s) => s.shapeTableUpdate)
+  const hitlRequest = useAppStore((s) => s.hitlRequest)
 
   useEffect(() => {
     if (!runId) {
@@ -68,6 +69,12 @@ export function usePipelineRun(runId: string | null) {
         case "shape_table_update":
           shapeTableUpdate(msg.rendered_shape as string)
           break
+
+        case "hitl_request":
+          hitlRequest(
+            msg.papers as { paper_id: string; title: string; venue: string; year: number | null; abstract: string }[],
+          )
+          break
       }
     }
 
@@ -79,5 +86,5 @@ export function usePipelineRun(runId: string | null) {
       ws.close()
       wsRef.current = null
     }
-  }, [runId, startRun, resetRun, stepStart, stepEnd, paperAdded, shapeTableUpdate])
+  }, [runId, startRun, resetRun, stepStart, stepEnd, paperAdded, shapeTableUpdate, hitlRequest])
 }

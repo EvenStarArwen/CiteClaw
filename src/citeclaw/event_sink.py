@@ -68,6 +68,18 @@ class EventSink(Protocol):
 
     def shape_table_update(self, rendered_shape: str) -> None: ...
 
+    def hitl_request(
+        self,
+        run_id: str,
+        papers: list[dict[str, Any]],
+    ) -> None:
+        """Emitted when ``HumanInTheLoop`` enters web mode and needs
+        user labels for the given paper sample. Each dict in *papers*
+        carries ``paper_id``, ``title``, ``venue``, ``year``,
+        ``abstract`` (truncated). The backend holds this event until
+        the user submits labels via ``POST /api/runs/{run_id}/hitl``."""
+        ...
+
 
 class NullEventSink:
     """No-op sink. Used as the default so existing CLI runs are
@@ -94,6 +106,13 @@ class NullEventSink:
         return None
 
     def shape_table_update(self, rendered_shape: str) -> None:
+        return None
+
+    def hitl_request(
+        self,
+        run_id: str,
+        papers: list[dict[str, Any]],
+    ) -> None:
         return None
 
 
@@ -152,6 +171,16 @@ class RecordingEventSink:
         self.events.append((
             "shape_table_update",
             {"rendered_shape": rendered_shape},
+        ))
+
+    def hitl_request(
+        self,
+        run_id: str,
+        papers: list[dict[str, Any]],
+    ) -> None:
+        self.events.append((
+            "hitl_request",
+            {"run_id": run_id, "papers": list(papers)},
         ))
 
     # ----- convenience accessors used by tests -----

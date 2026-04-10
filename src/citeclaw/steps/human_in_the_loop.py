@@ -364,6 +364,63 @@ class HumanInTheLoop:
         return labels, timeouts, stop_requested
 
     # ------------------------------------------------------------------
+    # Web-mode label collection (PE-09)
+    # ------------------------------------------------------------------
+
+    def _collect_labels_web(
+        self,
+        candidates: list[PaperRecord],
+        ctx,
+    ) -> tuple[dict[str, bool], int, bool]:
+        """Emit an ``hitl_request`` event and block until the web backend
+        writes labels into ``ctx.hitl_gate``.
+
+        Returns ``(labels, timeouts, stop_requested)`` matching the same
+        shape as ``_collect_labels`` so the rest of ``run()`` is agnostic
+        to the input mode.
+        """
+        gate = ctx.hitl_gate
+
+        # Build paper summaries for the frontend.
+        paper_dicts = [
+            {
+                "paper_id": p.paper_id,
+                "title": p.title or "<no title>",
+                "venue": p.venue or "?",
+                "year": p.year,
+                "abstract": (p.abstract or "")[:400],
+            }
+            for p in candidates
+        ]
+
+        # Reset gate state for this request.
+        gate.event.clear()
+        gate.labels.clear()
+        gate.stop_requested = False
+
+        # Emit the request — the web backend forwards this to WebSocket
+        # subscribers who render the HitlModal.
+        run_id = getattr(ctx, "run_id", "unknown")
+        ctx.event_sink.hitl_request(run_id, paper_dicts)
+
+        log.info(
+            "HITL web mode: emitted hitl_request with %d papers, "
+            "waiting up to %.0fs for user labels",
+            len(candidates), gate.timeout_sec,
+        )
+
+        # Block until the backend POST handler sets the event.
+        responded = gate.event.wait(timeout=gate.timeout_sec)
+        if not responded:
+            log.warning(
+                "HITL web mode: timed out after %.0fs with no response",
+                gate.timeout_sec,
+            )
+            return {}, 1, False
+
+        return dict(gate.labels), 0, gate.stop_requested
+
+    # ------------------------------------------------------------------
     # Per-filter agreement (A2 fix)
     # ------------------------------------------------------------------
 
@@ -454,8 +511,13 @@ class HumanInTheLoop:
                 stats={"reason": "hydration_failed"},
             )
 
-        # 4. Collect labels.
-        labels, timeouts, stop_requested = self._collect_labels(candidates)
+        # 4. Collect labels — web mode or CLI mode.
+        if ctx.hitl_gate is not None and ctx.event_sink is not None:
+            labels, timeouts, stop_requested = self._collect_labels_web(
+                candidates, ctx,
+            )
+        else:
+            labels, timeouts, stop_requested = self._collect_labels(candidates)
 
         # 5. Compute per-filter agreement (A2 fix uses screened_by_filter).
         agreement = self._compute_agreement(candidates, labels, ctx)

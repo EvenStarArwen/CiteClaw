@@ -29,7 +29,8 @@ import pytest
 
 from citeclaw.cache import Cache
 from citeclaw.config import BudgetTracker, Settings
-from citeclaw.context import Context
+from citeclaw.context import Context, HitlGate
+from citeclaw.event_sink import RecordingEventSink
 from citeclaw.models import PaperRecord
 from citeclaw.steps import build_step
 from citeclaw.steps.human_in_the_loop import HumanInTheLoop
@@ -510,3 +511,163 @@ class TestHumanInTheLoopRegistry:
         assert step.include_accepted is False
         assert step.balance_by_filter is False
         assert step._seed == 99
+
+
+# ---------------------------------------------------------------------------
+# PE-09: web-mode HITL via HitlGate + EventSink
+# ---------------------------------------------------------------------------
+
+
+class TestWebModeHitl:
+    """Tests for the web-mode HITL path where labels come from a
+    ``HitlGate`` instead of the rich CLI."""
+
+    def test_web_mode_uses_gate_labels(self, tmp_path: Path):
+        """When ``ctx.hitl_gate`` and ``ctx.event_sink`` are set, the
+        step emits ``hitl_request`` and reads labels from the gate."""
+        import threading
+
+        fs = FakeS2Client()
+        fs.add(make_paper("W1", title="Web paper 1"))
+        fs.add(make_paper("W2", title="Web paper 2"))
+        ctx = _build_ctx(tmp_path, fs)
+        ctx.rejection_ledger["W1"] = ["llm_q"]
+        ctx.rejection_ledger["W2"] = ["llm_q"]
+        ctx.papers_screened_by_filter["llm_q"] = {"W1", "W2"}
+        ctx.seen.update({"W1", "W2"})
+
+        # Set up web-mode gate.
+        gate = HitlGate(timeout_sec=5.0)
+        sink = RecordingEventSink()
+        ctx.hitl_gate = gate
+        ctx.event_sink = sink
+
+        # Simulate the backend responding in a background thread.
+        def respond():
+            # Wait for the hitl_request event.
+            import time
+            for _ in range(50):
+                if sink.of("hitl_request"):
+                    break
+                time.sleep(0.05)
+            gate.labels.update({"W1": True, "W2": False})
+            gate.stop_requested = False
+            gate.event.set()
+
+        t = threading.Thread(target=respond, daemon=True)
+        t.start()
+
+        step = HumanInTheLoop(
+            enabled=True, k=2, seed=0,
+            include_accepted=False, balance_by_filter=False,
+            min_delay_sec=0,
+        )
+        result = step.run([], ctx)
+        t.join(timeout=5)
+
+        # Verify hitl_request was emitted.
+        hitl_events = sink.of("hitl_request")
+        assert len(hitl_events) == 1
+        assert len(hitl_events[0]["papers"]) == 2
+
+        # Verify labels were collected from the gate.
+        assert result.stats["labels_collected"] == 2
+        assert result.stats["timeouts"] == 0
+        assert result.stop_pipeline is False
+
+        # Report should be written.
+        report = json.loads(
+            (ctx.config.data_dir / "hitl_report.json").read_text(),
+        )
+        assert report["labels_collected"] == 2
+
+    def test_web_mode_timeout_returns_no_labels(self, tmp_path: Path):
+        """When the gate times out, the step returns 0 labels."""
+        fs = FakeS2Client()
+        fs.add(make_paper("T1", title="Timeout paper"))
+        ctx = _build_ctx(tmp_path, fs)
+        ctx.rejection_ledger["T1"] = ["llm_q"]
+        ctx.papers_screened_by_filter["llm_q"] = {"T1"}
+        ctx.seen.add("T1")
+
+        gate = HitlGate(timeout_sec=0.1)  # Very short timeout.
+        sink = RecordingEventSink()
+        ctx.hitl_gate = gate
+        ctx.event_sink = sink
+
+        step = HumanInTheLoop(
+            enabled=True, k=1, seed=0,
+            include_accepted=False, balance_by_filter=False,
+            min_delay_sec=0,
+        )
+        result = step.run([], ctx)
+
+        assert result.stats["labels_collected"] == 0
+        assert result.stats["timeouts"] == 1
+        assert result.stop_pipeline is False
+
+    def test_web_mode_stop_requested(self, tmp_path: Path):
+        """When the gate has ``stop_requested=True``, the step sets
+        ``stop_pipeline=True``."""
+        import threading
+
+        fs = FakeS2Client()
+        fs.add(make_paper("S1", title="Stop paper"))
+        ctx = _build_ctx(tmp_path, fs)
+        ctx.rejection_ledger["S1"] = ["llm_q"]
+        ctx.papers_screened_by_filter["llm_q"] = {"S1"}
+        ctx.seen.add("S1")
+
+        gate = HitlGate(timeout_sec=5.0)
+        sink = RecordingEventSink()
+        ctx.hitl_gate = gate
+        ctx.event_sink = sink
+
+        def respond():
+            import time
+            for _ in range(50):
+                if sink.of("hitl_request"):
+                    break
+                time.sleep(0.05)
+            gate.labels.update({"S1": True})
+            gate.stop_requested = True
+            gate.event.set()
+
+        t = threading.Thread(target=respond, daemon=True)
+        t.start()
+
+        step = HumanInTheLoop(
+            enabled=True, k=1, seed=0,
+            include_accepted=False, balance_by_filter=False,
+            min_delay_sec=0,
+        )
+        result = step.run([], ctx)
+        t.join(timeout=5)
+
+        assert result.stop_pipeline is True
+        assert result.stats["stop_requested"] is True
+
+    def test_cli_mode_when_no_gate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Without ``ctx.hitl_gate``, the step falls back to CLI mode."""
+        fs = FakeS2Client()
+        fs.add(make_paper("C1", title="CLI paper"))
+        ctx = _build_ctx(tmp_path, fs)
+        ctx.rejection_ledger["C1"] = ["llm_q"]
+        ctx.papers_screened_by_filter["llm_q"] = {"C1"}
+        ctx.seen.add("C1")
+
+        # No gate, no event_sink → CLI mode.
+        assert ctx.hitl_gate is None
+
+        _install_confirm_stub(monkeypatch, [True, False])
+        step = HumanInTheLoop(
+            enabled=True, k=1, seed=0,
+            include_accepted=False, balance_by_filter=False,
+            min_delay_sec=0,
+        )
+        result = step.run([], ctx)
+
+        # Should still work via CLI mode.
+        assert result.stats["labels_collected"] == 1

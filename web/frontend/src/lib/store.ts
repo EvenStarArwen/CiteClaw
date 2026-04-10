@@ -20,6 +20,16 @@ export interface LiveNode {
   addedAt: number
 }
 
+/* ---- HITL paper type (matches backend hitl_request event) ---- */
+
+export interface HitlPaper {
+  paper_id: string
+  title: string
+  venue: string
+  year: number | null
+  abstract: string
+}
+
 /* ---- Store ---- */
 
 interface AppState {
@@ -33,6 +43,11 @@ interface AppState {
   pipelineSteps: PipelineStepInfo[]
   liveNodes: LiveNode[]
   shapeTable: string | null
+
+  /* HITL web-mode state (PE-09) */
+  hitlPapers: HitlPaper[] | null
+  hitlRequest: (papers: HitlPaper[]) => void
+  clearHitl: () => void
 
   stepStart: (idx: number, name: string, description: string) => void
   stepEnd: (
@@ -61,11 +76,16 @@ export const useAppStore = create<AppState>((set) => ({
   liveNodes: [],
   shapeTable: null,
 
+  /* HITL defaults */
+  hitlPapers: null,
+  hitlRequest: (papers) => set({ hitlPapers: papers }),
+  clearHitl: () => set({ hitlPapers: null }),
+
   startRun: (runId) =>
-    set({ pipelineRunId: runId, pipelineSteps: [], liveNodes: [], shapeTable: null }),
+    set({ pipelineRunId: runId, pipelineSteps: [], liveNodes: [], shapeTable: null, hitlPapers: null }),
 
   resetRun: () =>
-    set({ pipelineRunId: null, pipelineSteps: [], liveNodes: [], shapeTable: null }),
+    set({ pipelineRunId: null, pipelineSteps: [], liveNodes: [], shapeTable: null, hitlPapers: null }),
 
   stepStart: (idx, name, description) =>
     set((s) => ({

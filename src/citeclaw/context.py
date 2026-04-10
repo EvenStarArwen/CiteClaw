@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from citeclaw.config import BudgetTracker, Settings
 from citeclaw.models import PaperRecord
@@ -16,6 +17,24 @@ if TYPE_CHECKING:
     from citeclaw.cache import Cache
     from citeclaw.cluster.base import ClusterResult
     from citeclaw.clients.s2 import SemanticScholarClient
+    from citeclaw.event_sink import EventSink
+
+
+@dataclass
+class HitlGate:
+    """Synchronization gate for web-mode HITL.
+
+    The ``HumanInTheLoop`` step sets up a gate, emits an ``hitl_request``
+    event via the event sink, then blocks on ``event.wait()``. The web
+    backend's ``POST /api/runs/{run_id}/hitl`` handler writes user labels
+    into ``labels`` and calls ``event.set()`` to unblock the pipeline
+    thread.
+    """
+
+    event: threading.Event = field(default_factory=threading.Event)
+    labels: dict[str, bool] = field(default_factory=dict)
+    stop_requested: bool = False
+    timeout_sec: float = 600.0
 
 
 @dataclass
@@ -102,3 +121,14 @@ class Context:
     # pipeline runner swaps in a real :class:`citeclaw.progress.Dashboard`
     # at start of run when stdout is interactive.
     dashboard: DashboardLike = field(default_factory=NullDashboard)
+
+    # PE-09: web-mode HITL synchronization gate. When set, the
+    # ``HumanInTheLoop`` step emits an ``hitl_request`` event and blocks
+    # on ``hitl_gate.event`` instead of prompting via rich CLI. The web
+    # backend writes labels into ``hitl_gate.labels`` and sets the event.
+    hitl_gate: HitlGate | None = None
+
+    # Event sink for streaming pipeline events to the web UI. Steps can
+    # call ``ctx.event_sink.<method>`` to emit events; defaults to None
+    # (steps should check before calling, or the pipeline runner sets it).
+    event_sink: Any = None
