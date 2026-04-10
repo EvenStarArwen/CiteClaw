@@ -36,7 +36,7 @@ const CLUSTER_COLORS = [
   "#14b8a6", // teal
 ]
 
-const SOURCE_COLORS: Record<string, string> = {
+export const SOURCE_COLORS: Record<string, string> = {
   seed: "#facc15",
   forward: "#60a5fa",
   backward: "#34d399",

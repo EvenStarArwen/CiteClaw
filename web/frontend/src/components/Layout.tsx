@@ -1,5 +1,7 @@
 import { Outlet } from "react-router-dom"
 import { TopBar } from "./TopBar"
+import { PaperPanel } from "./PaperPanel"
+import { RunControls } from "./RunControls"
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -16,9 +18,7 @@ export function Layout() {
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
               Paper Detail
             </h2>
-            <p className="text-sm text-gray-500">
-              Select a node in the graph to view paper details.
-            </p>
+            <PaperPanel />
           </div>
         </ResizablePanel>
         <ResizableHandle />
@@ -33,9 +33,7 @@ export function Layout() {
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
               Controls
             </h2>
-            <p className="text-sm text-gray-500">
-              Configure and run pipelines here.
-            </p>
+            <RunControls />
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
