@@ -115,6 +115,52 @@ def _get_llm_config() -> tuple[str, str, str] | None:
     return None
 
 
+def _extract_pdf_from_viewer(page: "Page") -> bytes | None:
+    """If Chrome opened a PDF in its built-in viewer, extract the bytes.
+
+    When the page URL looks like a PDF URL (contains /pdf/ or ends in
+    .pdf), use JavaScript fetch() from WITHIN the page to download the
+    same URL. Because this fetch runs in the page's JS context, it has
+    the full session cookies and auth — unlike context.request.get().
+    """
+    url = page.url.lower()
+    if "/pdf" not in url and not url.endswith(".pdf"):
+        return None
+
+    log.info("Attempting to extract PDF from Chrome viewer at %s", page.url[:80])
+    try:
+        # JavaScript fetch from within the page — has all cookies
+        raw = page.evaluate("""
+            async () => {
+                try {
+                    const resp = await fetch(window.location.href, {
+                        credentials: 'include'
+                    });
+                    if (!resp.ok) return null;
+                    const buf = await resp.arrayBuffer();
+                    // Convert to base64 for transfer to Python
+                    const bytes = new Uint8Array(buf);
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return btoa(binary);
+                } catch (e) {
+                    return null;
+                }
+            }
+        """)
+        if raw:
+            import base64  # noqa: PLC0415
+            body = base64.b64decode(raw)
+            if len(body) > 1000:  # sanity check
+                log.info("Extracted %d bytes from Chrome PDF viewer", len(body))
+                return body
+    except Exception as exc:  # noqa: BLE001
+        log.debug("PDF viewer extraction failed: %s", exc)
+    return None
+
+
 def _dismiss_cookie_banners(page: "Page") -> None:
     """Try to close cookie consent banners that block the real content."""
     cookie_selectors = [
@@ -367,30 +413,51 @@ class LLMPdfFinderRecipe:
                         click_sel = f'{chosen["tag"]}:has-text("{chosen["text"][:30]}")'
 
                     if click_sel and page.locator(click_sel).count() > 0:
-                        import tempfile  # noqa: PLC0415
-                        with page.expect_download(timeout=20_000) as dl_info:
-                            page.locator(click_sel).first.click(timeout=5_000)
-                        download = dl_info.value
-                        tmpdir = Path(tempfile.mkdtemp(prefix="pdfclaw_llm_"))
-                        tmp_pdf = tmpdir / "tmp.pdf"
+                        # Try 1: click + expect_download (works when
+                        # the click triggers a real file download)
+                        download_ok = False
                         try:
-                            download.save_as(str(tmp_pdf))
-                            body = tmp_pdf.read_bytes()
-                        finally:
-                            if tmp_pdf.exists():
-                                tmp_pdf.unlink()
-                            tmpdir.rmdir()
+                            import tempfile  # noqa: PLC0415
+                            with page.expect_download(timeout=15_000) as dl_info:
+                                page.locator(click_sel).first.click(timeout=5_000)
+                            download = dl_info.value
+                            tmpdir = Path(tempfile.mkdtemp(prefix="pdfclaw_llm_"))
+                            tmp_pdf = tmpdir / "tmp.pdf"
+                            try:
+                                download.save_as(str(tmp_pdf))
+                                body = tmp_pdf.read_bytes()
+                            finally:
+                                if tmp_pdf.exists():
+                                    tmp_pdf.unlink()
+                                tmpdir.rmdir()
+                            if b"%PDF-" in body[:1024]:
+                                pdf_start = body.index(b"%PDF-")
+                                body = body[pdf_start:] if pdf_start > 0 else body
+                                download_ok = True
+                        except Exception:  # noqa: BLE001
+                            # expect_download timed out — the click
+                            # probably opened Chrome's PDF viewer
+                            # instead of triggering a download.
+                            pass
 
-                        if b"%PDF-" in body[:1024]:
+                        if not download_ok:
+                            # Try 2: the click may have navigated to a
+                            # PDF URL that Chrome opened in its viewer.
+                            # Use in-page JavaScript fetch() to grab the
+                            # bytes — this has the page's full auth.
+                            body = _extract_pdf_from_viewer(page)
+
+                        if body and b"%PDF-" in body[:1024]:
                             pdf_start = body.index(b"%PDF-")
                             body = body[pdf_start:] if pdf_start > 0 else body
                             return FetchResult(
                                 paper_id=paper_id, doi=doi, status=STATUS_OK,
                                 pdf_bytes=body, fetched_via=self.name,
-                                extra={"method": "click", "llm_turns": turn + 1,
+                                extra={"method": "click+viewer_extract",
+                                       "llm_turns": turn + 1,
                                        "n_bytes": len(body)},
                             )
-                        history_lines[-1] += f" → download captured but not PDF ({body[:16]!r})"
+                        history_lines[-1] += f" → click didn't produce PDF (viewer extract also failed)"
                     else:
                         history_lines[-1] += " → selector not found on page"
                 except Exception as exc:  # noqa: BLE001

@@ -302,6 +302,36 @@ class BrowserRecipeBase:
                 last_err = f"{selector}: {exc}"
                 continue
 
+        # Last resort: if the page URL looks like a PDF URL (Chrome
+        # opened it in the viewer), try extracting bytes via JS fetch.
+        page_url = page.url.lower()
+        if "/pdf" in page_url or page_url.endswith(".pdf"):
+            try:
+                raw = page.evaluate("""
+                    async () => {
+                        try {
+                            const resp = await fetch(window.location.href, {credentials: 'include'});
+                            if (!resp.ok) return null;
+                            const buf = await resp.arrayBuffer();
+                            const bytes = new Uint8Array(buf);
+                            let binary = '';
+                            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                            return btoa(binary);
+                        } catch(e) { return null; }
+                    }
+                """)
+                if raw:
+                    import base64  # noqa: PLC0415
+                    body = base64.b64decode(raw)
+                    if body.startswith(b"%PDF-"):
+                        return FetchResult(
+                            paper_id=paper_id, doi=doi, status=STATUS_OK,
+                            pdf_bytes=body, fetched_via=self.name,
+                            extra={"method": "viewer_js_extract", "n_bytes": len(body)},
+                        )
+            except Exception:  # noqa: BLE001
+                pass
+
         snapshot = self._dump_failure(page, paper_id)
         return FetchResult(
             paper_id=paper_id, doi=doi, status=STATUS_ERROR,
