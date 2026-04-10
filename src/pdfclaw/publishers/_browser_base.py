@@ -140,6 +140,15 @@ class BrowserRecipeBase:
         page = browser_page
         target_url = self._build_url(doi)
 
+        # Step 0: clean up — navigate to about:blank first to release
+        # resources from whatever article the page was showing before.
+        # Without this, each paper leaves a heavy publisher page loaded
+        # in the tab, and after 50+ papers the memory usage gets bad.
+        try:
+            page.goto("about:blank", wait_until="commit", timeout=5_000)
+        except Exception:  # noqa: BLE001
+            pass
+
         # Step 1: navigate
         try:
             page.goto(
