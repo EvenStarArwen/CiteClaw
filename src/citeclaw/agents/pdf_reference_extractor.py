@@ -149,16 +149,14 @@ def _truncate_for_context(
 ) -> tuple[str, str]:
     """Ensure ``body + refs`` fits within *max_chars*.
 
-    Allocation strategy: give the reference list up to 30% of the
-    budget (capped at 8 K chars — that's ~120 references, more than
-    enough for the LLM to resolve markers). The body gets the
-    remainder, truncated from the end — the introduction and
-    related-work sections at the beginning carry the most citation
-    context.
+    The reference list is critical for citation-marker resolution, so
+    it gets priority: up to 40% of the budget or the full list,
+    whichever is smaller.  Huge appendix-polluted reference sections
+    (> 40% of budget) are capped to leave room for body text.  The
+    body is truncated from the end — the introduction and related-work
+    sections at the beginning carry the most citation context.
     """
-    # Cap the reference list — papers with huge appendices can have
-    # 30–40 K chars after the "References" heading.
-    ref_cap = min(max_chars * 3 // 10, 8_000)
+    ref_cap = max_chars * 2 // 5  # 40% of total budget
     ref_budget = min(len(refs), ref_cap)
     refs_out = refs[:ref_budget]
     if len(refs) > ref_budget:
