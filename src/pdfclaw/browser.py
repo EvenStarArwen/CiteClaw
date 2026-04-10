@@ -195,23 +195,24 @@ def open_browser_context(
             )
         except Exception:  # noqa: BLE001
             context = p.chromium.launch_persistent_context(**launch_kwargs)
-        page = context.new_page()
-
         # Force PDF downloads instead of opening in Chrome's PDF viewer.
-        # Without this, clicking "Download PDF" on Nature/Science/etc.
-        # opens the PDF in a new tab/inline viewer and Playwright's
-        # expect_download never fires — the root cause of "browser opens
-        # the page with Exeter access but still reports FAIL".
+        # Set on CONTEXT (not page) so it applies to ALL tabs — Nature
+        # opens PDFs in a new tab, and page-level routes don't cover it.
         def _force_pdf_download(route):
-            resp = route.fetch()
-            headers = dict(resp.headers)
-            headers["content-disposition"] = "attachment"
-            route.fulfill(response=resp, headers=headers)
+            try:
+                resp = route.fetch()
+                headers = dict(resp.headers)
+                headers["content-disposition"] = "attachment"
+                route.fulfill(response=resp, headers=headers)
+            except Exception:  # noqa: BLE001
+                route.continue_()
 
-        page.route("**/*.pdf", _force_pdf_download)
-        page.route("**/*.pdf?*", _force_pdf_download)
-        page.route("**/pdf/**", _force_pdf_download)
-        page.route("**/*pdf*download*", _force_pdf_download)
+        context.route("**/*.pdf", _force_pdf_download)
+        context.route("**/*.pdf?*", _force_pdf_download)
+        context.route("**/pdf/**", _force_pdf_download)
+        context.route("**/doi/pdf/**", _force_pdf_download)
+
+        page = context.new_page()
 
         try:
             yield context, page
