@@ -187,52 +187,65 @@ class BrowserRecipeBase:
         if self.EXTRA_WAIT_MS > 0:
             page.wait_for_timeout(self.EXTRA_WAIT_MS)
 
-        # Step 4: try each download selector in order (specific then generic)
+        # Step 4: find the PDF link href and fetch it directly via the
+        # browser context's request API (carries SSO cookies). This is
+        # more reliable than click + expect_download because:
+        #   - Chrome's PDF viewer doesn't interfere
+        #   - New tab / popup behaviour doesn't matter
+        #   - No timing issues with download events
+        from urllib.parse import urlparse  # noqa: PLC0415
+
         last_err: str | None = None
         for selector in self._all_selectors():
             try:
-                if page.locator(selector).count() == 0:
+                loc = page.locator(selector)
+                if loc.count() == 0:
                     last_err = f"selector not present: {selector}"
                     continue
+
+                href = loc.first.get_attribute("href")
+                if not href:
+                    last_err = f"{selector}: no href attribute"
+                    continue
+
+                # Make absolute
+                if href.startswith("/"):
+                    parts = urlparse(page.url)
+                    href = f"{parts.scheme}://{parts.netloc}{href}"
+                elif not href.startswith("http"):
+                    href = f"https://{href}"
+
+                # Fetch PDF directly using browser context (SSO cookies)
                 try:
-                    with page.expect_download(timeout=self.DOWNLOAD_TIMEOUT_MS) as dl_info:
-                        page.locator(selector).first.click(timeout=self.CLICK_TIMEOUT_MS)
-                    download = dl_info.value
-                except Exception as click_exc:  # noqa: BLE001
-                    # Click happened but no download fired. Common cause:
-                    # the click navigated to an SSO / login wall. If the
-                    # current URL now matches an SSO host, surface AUTH
-                    # so the orchestrator skips subsequent papers from
-                    # this publisher instead of grinding through 100 60s
-                    # timeouts.
-                    new_url = page.url.lower()
-                    if any(host in new_url for host in self.SSO_HOSTS):
+                    api_resp = page.context.request.get(
+                        href, timeout=self.DOWNLOAD_TIMEOUT_MS,
+                    )
+                except Exception as req_exc:  # noqa: BLE001
+                    last_err = f"{selector}: context.request.get failed: {req_exc}"
+                    continue
+
+                if not api_resp.ok:
+                    # Check for SSO redirect
+                    resp_url = api_resp.url.lower() if hasattr(api_resp, 'url') else ""
+                    if any(host in resp_url for host in self.SSO_HOSTS):
                         return FetchResult(
                             paper_id=paper_id, doi=doi, status=STATUS_AUTH,
                             fetched_via=self.name,
-                            error=(
-                                f"Click navigated to SSO at {page.url}. Run "
-                                "`python -m pdfclaw login` and sign in via your "
-                                "institution, then re-run this fetch."
-                            ),
+                            error=f"PDF fetch redirected to SSO: {api_resp.url}",
                         )
-                    raise click_exc
+                    last_err = f"{selector}: HTTP {api_resp.status} for {href}"
+                    continue
 
-                tmpdir = Path(tempfile.mkdtemp(prefix=f"pdfclaw_{self.name}_"))
-                tmp_pdf = tmpdir / "tmp.pdf"
-                try:
-                    download.save_as(str(tmp_pdf))
-                    body = tmp_pdf.read_bytes()
-                finally:
-                    if tmp_pdf.exists():
-                        tmp_pdf.unlink()
-                    tmpdir.rmdir()
-
+                body = api_resp.body()
                 if not body.startswith(b"%PDF-"):
+                    # Maybe got an HTML login page
+                    if b"<html" in body[:500].lower():
+                        last_err = f"{selector}: got HTML instead of PDF from {href}"
+                        continue
                     return FetchResult(
                         paper_id=paper_id, doi=doi, status=STATUS_NOT_PDF,
                         fetched_via=self.name,
-                        error=f"Downloaded body isn't PDF (first bytes: {body[:8]!r})",
+                        error=f"Response isn't PDF (first bytes: {body[:8]!r})",
                     )
 
                 return FetchResult(
@@ -240,6 +253,7 @@ class BrowserRecipeBase:
                     pdf_bytes=body, fetched_via=self.name,
                     extra={
                         "selector": selector,
+                        "href": href,
                         "n_bytes": len(body),
                         "final_url": page.url,
                     },
