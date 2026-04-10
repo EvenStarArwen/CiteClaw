@@ -58,7 +58,7 @@ def _extract_all_ref_titles(text: str) -> list[str]:
     if not matches:
         return []
     last = matches[-1]
-    if last.start() < len(text) * 0.5:
+    if last.start() < len(text) * 0.4:
         return []
     ref_section = text[last.end():]
 

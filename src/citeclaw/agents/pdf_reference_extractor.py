@@ -41,6 +41,36 @@ _REF_HEADING_RE = re.compile(
 )
 
 
+def _try_salvage_json(text: str) -> dict | None:
+    """Attempt to parse truncated JSON by closing brackets.
+
+    When the LLM hits the token limit mid-output, the JSON is truncated.
+    We try progressively closing brackets to recover as many complete
+    reference entries as possible.
+    """
+    if not text or "{" not in text:
+        return None
+    # Strategy: find the last complete '}' that closes a reference entry,
+    # then close the array and root object.
+    for suffix in ("]}", "]}"):
+        # Find last complete reference entry.
+        last_close = text.rfind("}")
+        while last_close > 0:
+            candidate = text[:last_close + 1] + suffix
+            try:
+                decoded = json.loads(candidate)
+                if isinstance(decoded, dict) and "relevant_references" in decoded:
+                    log.info(
+                        "Salvaged %d references from truncated JSON",
+                        len(decoded["relevant_references"]),
+                    )
+                    return decoded
+            except (json.JSONDecodeError, ValueError):
+                pass
+            last_close = text.rfind("}", 0, last_close)
+    return None
+
+
 def split_references(text: str) -> tuple[str, str]:
     """Split paper text into ``(body, reference_list)``.
 
@@ -56,8 +86,10 @@ def split_references(text: str) -> tuple[str, str]:
     if not matches:
         return text, ""
     last = matches[-1]
-    # Only trust a heading in the latter half of the document.
-    if last.start() < len(text) * 0.5:
+    # Only trust a heading in the latter 60% of the document.
+    # Some papers (e.g. those with long appendices) have the reference
+    # section as early as 40% of the total text.
+    if last.start() < len(text) * 0.4:
         return text, ""
     body = text[: last.start()].rstrip()
     refs = text[last.end() :].lstrip()
@@ -101,10 +133,12 @@ class PdfExtractionResult:
 # Extraction
 # ---------------------------------------------------------------------------
 
-# Default budget: reserve ~6 K tokens for system + schema + reasoning +
-# output; use the rest for the paper text.  At ~1.3 tokens/char this
-# gives ≈18–20 K chars of paper content for a 32 K-context model.
-_DEFAULT_MAX_INPUT_CHARS = 24_000
+# Default budget: at ~1.3 tokens/char, 28 K chars ≈ 21 K input tokens.
+# With a 64 K context window, that leaves ~40 K tokens for system
+# prompt, reasoning (Gemma 4 uses 5–15 K for thinking), and output
+# (1–3 K for the JSON).  For the minimum 32 K context, users can
+# override with ``max_input_chars: 14000`` in the YAML step config.
+_DEFAULT_MAX_INPUT_CHARS = 28_000
 
 
 def _truncate_for_context(
@@ -114,13 +148,21 @@ def _truncate_for_context(
 ) -> tuple[str, str]:
     """Ensure ``body + refs`` fits within *max_chars*.
 
-    The reference list is kept in full (up to half the budget) so the
-    LLM can resolve citation markers.  The body is truncated from the
-    end if necessary — the introduction and related-work sections at the
-    beginning carry the most citation context.
+    Allocation strategy: give the reference list up to 30% of the
+    budget (capped at 8 K chars — that's ~120 references, more than
+    enough for the LLM to resolve markers). The body gets the
+    remainder, truncated from the end — the introduction and
+    related-work sections at the beginning carry the most citation
+    context.
     """
-    ref_budget = min(len(refs), max_chars // 2)
+    # Cap the reference list — papers with huge appendices can have
+    # 30–40 K chars after the "References" heading.
+    ref_cap = min(max_chars * 3 // 10, 8_000)
+    ref_budget = min(len(refs), ref_cap)
     refs_out = refs[:ref_budget]
+    if len(refs) > ref_budget:
+        refs_out += "\n\n[... reference list truncated ...]"
+
     body_budget = max_chars - len(refs_out)
     if len(body) > body_budget:
         body_out = body[:body_budget] + "\n\n[... body text truncated ...]"
@@ -192,12 +234,16 @@ def extract_pdf_references(
     try:
         decoded = json.loads(resp.text)
     except (json.JSONDecodeError, TypeError, ValueError):
-        log.warning(
-            "PDF extraction: LLM returned invalid JSON (len=%d): %.120s",
-            len(resp.text) if resp.text else 0,
-            resp.text or "",
-        )
-        return PdfExtractionResult(raw_reasoning=raw_reasoning)
+        # Try to salvage truncated JSON — the LLM may have hit the
+        # token limit mid-output.  Look for complete reference entries.
+        decoded = _try_salvage_json(resp.text or "")
+        if decoded is None:
+            log.warning(
+                "PDF extraction: LLM returned invalid JSON (len=%d): %.120s",
+                len(resp.text) if resp.text else 0,
+                resp.text or "",
+            )
+            return PdfExtractionResult(raw_reasoning=raw_reasoning)
 
     if not isinstance(decoded, dict):
         return PdfExtractionResult(raw_reasoning=raw_reasoning)
