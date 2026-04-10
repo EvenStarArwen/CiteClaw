@@ -166,12 +166,13 @@ class Fetcher:
         # Tracks publishers that have already returned AUTH so we can
         # skip them quickly without re-launching the browser flow.
         auth_failed_recipes: set[str] = set()
-        # Per-recipe consecutive failure count. After N failures in a
-        # row from the same recipe, we suppress it for the rest of the
-        # run — this catches CF/Akamai blocks (where every fetch fails
-        # the same way) without grinding through all 57 bioRxiv papers.
+        # Per-recipe consecutive HARD-FAILURE count. After N hard
+        # failures in a row from the same recipe, we suppress it for
+        # the rest of the run — catches CF/Akamai blocks and broken
+        # selectors without grinding through every paper.
+        # Updated INSIDE _try_chain so the actual failing recipe is
+        # tracked, not the last one in the fallback chain.
         consecutive_failures: dict[str, int] = {}
-        FAILURE_THRESHOLD = 3
 
         with httpx.Client(
             headers={"User-Agent": self.http_user_agent},
@@ -193,36 +194,11 @@ class Fetcher:
 
                 for paper, chain in plan:
                     result = self._try_chain(
-                        paper, chain, http, page, auth_failed_recipes,
+                        paper, chain, http, page,
+                        auth_failed_recipes=auth_failed_recipes,
+                        consecutive_failures=consecutive_failures,
                     )
                     self._handle_result(paper, result, stats)
-                    # Track consecutive failures per recipe; after
-                    # FAILURE_THRESHOLD hard-failures, treat as
-                    # auth-suppressed. NOT_FOUND results are NOT
-                    # counted — those are the recipe correctly
-                    # reporting "I checked, this paper isn't here".
-                    # Only STATUS_ERROR / STATUS_NOT_PDF / STATUS_BLOCKED
-                    # are real failures that suggest the recipe is
-                    # broken in this environment.
-                    rname = result.fetched_via
-                    HARD_FAIL_STATUSES = {"error", "not_pdf", "blocked"}
-                    if rname and rname != "(none)":
-                        if result.ok:
-                            consecutive_failures[rname] = 0
-                        elif result.status in HARD_FAIL_STATUSES:
-                            consecutive_failures[rname] = consecutive_failures.get(rname, 0) + 1
-                            if (
-                                consecutive_failures[rname] >= FAILURE_THRESHOLD
-                                and rname not in auth_failed_recipes
-                            ):
-                                auth_failed_recipes.add(rname)
-                                log.warning(
-                                    "Recipe %s hit %d consecutive hard failures; suppressing for the rest of the run "
-                                    "(CF/Akamai/JS-rendering hostile in headless? or selectors broken?). "
-                                    "See /tmp/pdfclaw_failures/ for snapshots.",
-                                    rname, consecutive_failures[rname],
-                                )
-                        # NOT_FOUND / AUTH don't increment the counter
                     self._sleep_a_bit()
             finally:
                 if ctx_manager is not None:
@@ -236,15 +212,27 @@ class Fetcher:
         chain: list[Recipe],
         http: httpx.Client,
         browser_page,
+        *,
         auth_failed_recipes: set[str],
+        consecutive_failures: dict[str, int],
     ) -> FetchResult:
-        """Walk the recipe chain until one returns OK or all fail."""
+        """Walk the recipe chain until one returns OK or all fail.
+
+        Tracks per-recipe consecutive hard failures so the orchestrator
+        can suppress flaky recipes mid-run. Tracking happens here (not
+        in the outer loop) because the chain might run several recipes
+        per paper, and each one's failure counter needs to be updated
+        independently — the LAST recipe tried isn't necessarily the
+        one that hard-failed.
+        """
+        FAILURE_THRESHOLD = 3
+        HARD_FAIL_STATUSES = {"error", "not_pdf", "blocked"}
+
         last_result: FetchResult | None = None
         for recipe in chain:
             if recipe.needs_browser and browser_page is None:
-                continue  # browser pass not running
+                continue
             if recipe.name in auth_failed_recipes:
-                # We already know this publisher needs a fresh login
                 continue
 
             try:
@@ -258,20 +246,40 @@ class Fetcher:
                     "Recipe %s raised on %s: %s",
                     recipe.name, paper.paper_id, exc,
                 )
+                consecutive_failures[recipe.name] = consecutive_failures.get(recipe.name, 0) + 1
                 continue
 
             if result.ok:
+                consecutive_failures[recipe.name] = 0
                 return result
+
             if result.status == STATUS_AUTH:
-                auth_failed_recipes.add(recipe.name)
-                log.warning(
-                    "AUTH required for recipe %s; will skip subsequent papers from this publisher",
-                    recipe.name,
-                )
+                if recipe.name not in auth_failed_recipes:
+                    auth_failed_recipes.add(recipe.name)
+                    log.warning(
+                        "AUTH required for recipe %s; will skip subsequent papers from this publisher",
+                        recipe.name,
+                    )
+                last_result = result
+                continue
+
+            if result.status in HARD_FAIL_STATUSES:
+                consecutive_failures[recipe.name] = consecutive_failures.get(recipe.name, 0) + 1
+                if (
+                    consecutive_failures[recipe.name] >= FAILURE_THRESHOLD
+                    and recipe.name not in auth_failed_recipes
+                ):
+                    auth_failed_recipes.add(recipe.name)
+                    log.warning(
+                        "Recipe %s hit %d consecutive hard failures; suppressing for the rest of the run "
+                        "(CF/Akamai/JS-rendering hostile in headless? or selectors broken?). "
+                        "See /tmp/pdfclaw_failures/ for snapshots.",
+                        recipe.name, consecutive_failures[recipe.name],
+                    )
+            # NOT_FOUND / AUTH don't increment the counter
             last_result = result
 
         if last_result is None:
-            # All recipes were skipped (e.g. all browser recipes with no browser)
             from pdfclaw.publishers.base import STATUS_ERROR
             return FetchResult(
                 paper_id=paper.paper_id, doi=paper.doi or "",
