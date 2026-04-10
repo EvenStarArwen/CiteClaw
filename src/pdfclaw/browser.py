@@ -195,23 +195,6 @@ def open_browser_context(
             )
         except Exception:  # noqa: BLE001
             context = p.chromium.launch_persistent_context(**launch_kwargs)
-        # Force PDF downloads instead of opening in Chrome's PDF viewer.
-        # Set on CONTEXT (not page) so it applies to ALL tabs — Nature
-        # opens PDFs in a new tab, and page-level routes don't cover it.
-        def _force_pdf_download(route):
-            try:
-                resp = route.fetch()
-                headers = dict(resp.headers)
-                headers["content-disposition"] = "attachment"
-                route.fulfill(response=resp, headers=headers)
-            except Exception:  # noqa: BLE001
-                route.continue_()
-
-        context.route("**/*.pdf", _force_pdf_download)
-        context.route("**/*.pdf?*", _force_pdf_download)
-        context.route("**/pdf/**", _force_pdf_download)
-        context.route("**/doi/pdf/**", _force_pdf_download)
-
         page = context.new_page()
 
         try:
