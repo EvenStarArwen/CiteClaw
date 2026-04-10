@@ -39,6 +39,7 @@ from pdfclaw.publishers.ijcai import IJCAIRecipe
 from pdfclaw.publishers.impact import ImpactJournalsRecipe
 from pdfclaw.publishers.iop import IOPRecipe
 from pdfclaw.publishers.mdpi import MDPIRecipe
+from pdfclaw.publishers.llm_finder import LLMPdfFinderRecipe
 from pdfclaw.publishers.nature import NatureRecipe
 from pdfclaw.publishers.openalex import OpenAlexRecipe
 from pdfclaw.publishers.oxford import OxfordRecipe
@@ -128,6 +129,9 @@ def build_default_registry() -> list[Recipe]:
         TaylorFrancisRecipe(),          # 10.1080/   — Taylor & Francis Online
         CSHLRecipe(),                   # 10.1261/   — CSHL Press / RNA Society
         PNASRecipe(),                   # 10.1073/   — PNAS paywalled fallback (HighwireOA tries OA first)
+
+        # === LLM-guided universal finder (gated on PDFCLAW_LLM_BASE_URL) ===
+        LLMPdfFinderRecipe(),           # ANY DOI    — LLM picks the PDF link from the page DOM
 
         # === Last-resort opt-in: Sci-Hub (gated on PDFCLAW_ENABLE_SCIHUB) ===
         SciHubRecipe(),                 # ANY DOI    — opt-in shadow-library fallback
