@@ -41,6 +41,23 @@ def _extract_n(user: str) -> int:
 
 def stub_respond(system: str, user: str) -> str:
     """Return a deterministic JSON / text response for the given prompt."""
+    if '"relevant_references"' in user:
+        # PDF reference extraction (citeclaw.agents.pdf_reference_extractor).
+        # Return one deterministic reference so the pipeline has something
+        # to resolve via search_match.
+        return json.dumps({
+            "relevant_references": [
+                {
+                    "citation_marker": "[1]",
+                    "reference_text": "Stub Author. Stub Reference Title. Journal 2023.",
+                    "title": "Stub Reference Title",
+                    "mentions": [
+                        {"quote": "We build on [1] which established the baseline.", "relevance": "baseline"}
+                    ],
+                    "relevance_explanation": "Foundational baseline work.",
+                }
+            ]
+        })
     if '"topic_label"' in user:
         return json.dumps({"topic_label": "stub-topic", "summary": "stub summary"})
     if '"agent_decision"' in user or '"should_stop"' in user:

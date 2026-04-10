@@ -38,6 +38,7 @@ class PaperSource:
     SEMANTIC = "semantic"
     AUTHOR = "author"
     REINFORCED = "reinforced"
+    PDF = "pdf"
 
 
 class LLMVerdict(str, enum.Enum):

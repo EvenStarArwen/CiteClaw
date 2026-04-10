@@ -290,6 +290,16 @@ def export_graphml(
         g.es["intents"] = intents_attr
         g.es["is_influential"] = is_inf_attr
 
+        # PDF-extraction provenance (ExpandByPDF).
+        pdf_rel_attr: list[str] = []
+        pdf_marker_attr: list[str] = []
+        for src_pid, tgt_pid in edge_pair_keys:
+            meta = edge_meta.get((src_pid, tgt_pid)) or {}
+            pdf_rel_attr.append(str(meta.get("pdf_relevance", "")))
+            pdf_marker_attr.append(str(meta.get("pdf_citation_marker", "")))
+        g.es["pdf_relevance"] = pdf_rel_attr
+        g.es["pdf_citation_marker"] = pdf_marker_attr
+
     log.info("  Graph: %d nodes, %d edges", g.vcount(), g.ecount())
     graphml_path.parent.mkdir(parents=True, exist_ok=True)
     g.write_graphml(str(graphml_path))

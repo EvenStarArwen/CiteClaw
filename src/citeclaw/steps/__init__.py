@@ -9,6 +9,7 @@ from citeclaw.steps.cluster import Cluster
 from citeclaw.steps.expand_backward import ExpandBackward
 from citeclaw.steps.expand_by_author import ExpandByAuthor
 from citeclaw.steps.expand_by_search import ExpandBySearch
+from citeclaw.steps.expand_by_pdf import ExpandByPDF
 from citeclaw.steps.expand_by_semantics import ExpandBySemantics
 from citeclaw.steps.expand_forward import ExpandForward
 from citeclaw.steps.finalize import Finalize
@@ -51,6 +52,9 @@ def _build_expand_forward(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_backward(d: dict, blocks: dict) -> BaseStep:
     return ExpandBackward(
         screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        pdf_references=bool(d.get("pdf_references", False)),
+        pdf_model=d.get("pdf_model"),
+        headless=bool(d.get("headless", True)),
     )
 
 
@@ -79,6 +83,19 @@ def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
         topic_description=d.get("topic_description"),
         max_anchor_papers=int(d.get("max_anchor_papers", 20)),
         apply_local_query_args=d.get("apply_local_query_args"),
+    )
+
+
+def _build_expand_by_pdf(d: dict, blocks: dict) -> BaseStep:
+    """Build an ``ExpandByPDF`` step from its YAML dict."""
+    return ExpandByPDF(
+        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        topic_description=d.get("topic_description"),
+        model=d.get("model"),
+        reasoning_effort=d.get("reasoning_effort", "high"),
+        max_papers=int(d["max_papers"]) if "max_papers" in d else None,
+        max_input_chars=int(d.get("max_input_chars", 24_000)),
+        headless=bool(d.get("headless", True)),
     )
 
 
@@ -180,6 +197,7 @@ STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
     "ResolveSeeds":      _build_resolve_seeds,
     "ExpandForward":     _build_expand_forward,
     "ExpandBackward":    _build_expand_backward,
+    "ExpandByPDF":       _build_expand_by_pdf,
     "ExpandBySearch":    _build_expand_by_search,
     "ExpandBySemantics": _build_expand_by_semantics,
     "ExpandByAuthor":    _build_expand_by_author,
