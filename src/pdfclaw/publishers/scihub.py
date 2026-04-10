@@ -153,8 +153,18 @@ class SciHubRecipe:
                 continue
 
             body = pdf_resp.content
-            if not body.startswith(b"%PDF-"):
-                last_err = f"{mirror}: PDF body isn't PDF (first bytes: {body[:8]!r})"
+            # Some servers add whitespace/BOM before %PDF-; check first 1KB
+            if b"%PDF-" in body[:1024]:
+                # Strip anything before %PDF-
+                pdf_start = body.index(b"%PDF-")
+                if pdf_start > 0:
+                    body = body[pdf_start:]
+            elif not body.startswith(b"%PDF-"):
+                log.info(
+                    "%s: PDF body doesn't look like PDF (len=%d, first 32 bytes: %r)",
+                    mirror, len(body), body[:32],
+                )
+                last_err = f"{mirror}: PDF body isn't PDF (first bytes: {body[:16]!r})"
                 continue
 
             return FetchResult(
