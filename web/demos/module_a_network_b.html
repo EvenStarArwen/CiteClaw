@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CiteClaw Module A — Variant B (Connected Papers + Pin)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #1e293b;
+    --ink-soft: #475569;
+    --ink-faint: #94a3b8;
+    --line: #e2e8f0;
+    --line-strong: #cbd5e1;
+    --accent: #6b46c1;
+    --accent-soft: #ede9fe;
+    --panel: #fbfbfd;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 22% 53% 25%;
+    grid-template-rows: 48px 1fr;
+    height: 100vh;
+    width: 100vw;
+  }
+  header.topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--line);
+    gap: 16px;
+    background: #fff;
+  }
+  header .brand {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+  header .brand span.sub {
+    font-weight: 400;
+    color: var(--ink-faint);
+    margin-left: 8px;
+    font-size: 13px;
+  }
+  header .grow-btn {
+    margin-left: auto;
+    background: var(--ink);
+    color: #fff;
+    border: 0;
+    padding: 8px 14px;
+    font: inherit;
+    font-weight: 500;
+    font-size: 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  header .grow-btn:hover { background: #0f172a; }
+  header .grow-btn:disabled { background: var(--line-strong); cursor: default; }
+
+  /* ---- Left panel: paper list ---- */
+  aside.left {
+    border-right: 1px solid var(--line);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+  }
+  .left-header {
+    padding: 14px 16px 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+  .left-header .title {
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+  .left-header select {
+    width: 100%;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--ink);
+  }
+  .list {
+    flex: 1;
+    overflow-y: auto;
+  }
+  .list-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    transition: background 80ms;
+  }
+  .list-item:hover { background: #f1f5f9; }
+  .list-item.active {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding-left: 13px;
+  }
+  .list-item .li-title {
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--ink);
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .list-item .li-meta {
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .list-item .li-cits {
+    float: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Center panel: graph ---- */
+  main.center {
+    position: relative;
+    background: #fff;
+    overflow: hidden;
+  }
+  #sigma { position: absolute; inset: 0; }
+  .legend {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(255,255,255,0.96);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 11px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+    pointer-events: none;
+    min-width: 210px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .legend-row:last-child { margin-bottom: 0; }
+  .legend-label {
+    font-weight: 600;
+    color: var(--ink-soft);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    min-width: 42px;
+  }
+  .year-bar {
+    flex: 1;
+    height: 10px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #fff4a3, #ffda6b, #f4b840, #c4933f, #7a7a9e, #506a98, #2f5c93, #1d3557);
+    position: relative;
+  }
+  .year-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: var(--ink-faint);
+    margin-top: 3px;
+    padding: 0 1px;
+  }
+  .size-scale {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .size-dot {
+    border-radius: 50%;
+    background: var(--ink-faint);
+  }
+  .size-s { width: 5px; height: 5px; }
+  .size-m { width: 10px; height: 10px; }
+  .size-l { width: 16px; height: 16px; }
+  .size-caption {
+    font-size: 9px;
+    color: var(--ink-faint);
+    margin-left: 2px;
+  }
+  .seed-legend {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--accent);
+  }
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(30, 41, 59, 0.96);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    max-width: 280px;
+    line-height: 1.35;
+    display: none;
+    z-index: 20;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
+  }
+
+  /* ---- Right panel: detail drawer ---- */
+  aside.right {
+    border-left: 1px solid var(--line);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+  }
+  .right-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .right-header .rh-title {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    flex: 1;
+  }
+  .pin-btn {
+    border: 1px solid var(--line);
+    background: #fff;
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--ink-soft);
+    transition: all 120ms;
+    padding: 0;
+  }
+  .pin-btn:hover { background: #f1f5f9; }
+  .pin-btn.pinned {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .pin-btn svg { display: block; }
+  .pin-status {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pin-status.is-pinned { color: var(--accent); }
+  .detail {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 20px;
+  }
+  .detail.empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 13px;
+    padding: 40px 30px;
+  }
+  .detail .d-cluster {
+    display: inline-block;
+    padding: 3px 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .detail .d-seed {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 3px 8px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .detail h2 {
+    margin: 0 0 10px 0;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .detail .d-authors {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  .detail .d-venue {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-bottom: 14px;
+    font-style: italic;
+  }
+  .detail .d-cites {
+    display: inline-block;
+    background: #f1f5f9;
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  .detail .d-abstract {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">CiteClaw <span class="sub">— Module A · Citation Network (variant B)</span></div>
+    <button id="growBtn" class="grow-btn">Simulate live growth</button>
+  </header>
+
+  <aside class="left">
+    <div class="left-header">
+      <div class="title" id="leftTitle">Papers (0)</div>
+      <select id="sortSelect">
+        <option value="citations">Sort by: Citations</option>
+        <option value="year">Sort by: Year</option>
+        <option value="title">Sort by: Title</option>
+      </select>
+    </div>
+    <div class="list" id="list"></div>
+  </aside>
+
+  <main class="center">
+    <div id="sigma"></div>
+    <div class="legend">
+      <div class="legend-row">
+        <div class="legend-label">Year</div>
+        <div style="flex:1">
+          <div class="year-bar"></div>
+          <div class="year-ticks"><span>2018</span><span>2021</span><span>2025</span></div>
+        </div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-label">Size</div>
+        <div class="size-scale">
+          <div class="size-dot size-s"></div>
+          <div class="size-dot size-m"></div>
+          <div class="size-dot size-l"></div>
+          <span class="size-caption">log citations</span>
+        </div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-label">Seed</div>
+        <div><span class="seed-legend"></span> <span class="size-caption" style="margin-left:4px">purple ring</span></div>
+      </div>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+  </main>
+
+  <aside class="right">
+    <div class="right-header">
+      <div class="rh-title">Detail</div>
+      <div class="pin-status" id="pinStatus">Hover mode</div>
+      <button class="pin-btn" id="pinBtn" title="Click a node to pin">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+      </button>
+    </div>
+    <div class="detail empty" id="detail">Hover a paper to preview</div>
+  </aside>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "graphology": "https://esm.sh/graphology@0.26",
+  "graphology-layout-forceatlas2": "https://esm.sh/graphology-layout-forceatlas2@0.10",
+  "graphology-layout-forceatlas2/worker": "https://esm.sh/graphology-layout-forceatlas2@0.10/worker",
+  "sigma": "https://esm.sh/sigma@3"
+}}
+</script>
+
+<script type="module">
+import Graph from "graphology";
+import FA2Layout from "graphology-layout-forceatlas2/worker";
+import Sigma from "sigma";
+
+// ---------- mock data ----------
+const YEAR_COLORS = {
+  2018:"#fff4a3", 2019:"#ffda6b", 2020:"#f4b840", 2021:"#c4933f",
+  2022:"#7a7a9e", 2023:"#506a98", 2024:"#2f5c93", 2025:"#1d3557"
+};
+const SEED_COLOR = "#6b46c1";
+
+const CLUSTERS = {
+  protein:   { label: "Protein structure" },
+  diffusion: { label: "Diffusion models" },
+  nlp:       { label: "NLP transformers" },
+  graph:     { label: "Graph NNs" }
+};
+
+const PAPERS_RAW = [
+  // protein
+  ["AlphaFold: Using AI for scientific discovery","Jumper J","Evans R","Pritzel A","Nature",2020,6800,"protein",true],
+  ["Highly accurate protein structure prediction with AlphaFold 2","Jumper J","Evans R","Pritzel A","Nature",2021,7900,"protein",true],
+  ["AlphaFold 3: All-atom structure prediction across biomolecules","Abramson J","Adler J","Dunger J","Nature",2024,820,"protein",false],
+  ["ESMFold: Evolutionary-scale prediction of atomic-level protein structure","Lin Z","Akin H","Rao R","Science",2023,2100,"protein",false],
+  ["RoseTTAFold: Accurate prediction of protein structures and interactions","Baek M","DiMaio F","Anishchenko I","Science",2021,3200,"protein",false],
+  ["ColabFold: Making protein folding accessible to all","Mirdita M","Schutze K","Moriwaki Y","NatureMethods",2022,2900,"protein",false],
+  ["OmegaFold: High-resolution de novo structure prediction","Wu R","Ding F","Wang R","bioRxiv",2022,520,"protein",false],
+  ["ProtBERT: Modeling sequences of amino acids as protein language","Elnaggar A","Heinzinger M","Dallago C","TPAMI",2021,1200,"protein",false],
+  ["ESM-2: Language models of protein sequences at scale","Lin Z","Akin H","Rao R","Science",2023,1950,"protein",false],
+  ["Chai-1: Decoding the molecular interactions of life","Boitreaud J","Dent J","McPartlon M","bioRxiv",2024,310,"protein",false],
+  ["Boltz-1: Democratizing biomolecular interaction modeling","Wohlwend J","Corso G","Passaro S","bioRxiv",2024,240,"protein",false],
+  ["ProteinMPNN: Robust deep learning based protein sequence design","Dauparas J","Anishchenko I","Bennett N","Science",2022,1700,"protein",false],
+  ["RFdiffusion: Broadly applicable and accurate protein design","Watson J","Juergens D","Bennett N","Nature",2023,1400,"protein",false],
+  ["AlphaFold-Multimer: Protein complexes with AlphaFold","Evans R","O'Neill M","Pritzel A","bioRxiv",2022,1800,"protein",false],
+  ["ESM-1b: Biological structure and function emerge from scaling","Rives A","Meier J","Sercu T","PNAS",2021,2400,"protein",false],
+  ["ProtTrans: Cracking the language of life via self-supervision","Elnaggar A","Heinzinger M","Dallago C","TPAMI",2022,950,"protein",false],
+  ["UniRep: Unified rational protein engineering with sequence features","Alley E","Khimulya G","Biswas S","NatureMethods",2019,780,"protein",false],
+  ["SE(3)-equivariant protein structure prediction","Jing B","Eismann S","Suriana P","ICLR",2021,620,"protein",false],
+  ["ProGen: Language modeling for protein generation","Madani A","Krause B","Greene E","NatureBiotech",2023,560,"protein",false],
+  ["OpenFold: Reproducing AlphaFold in a trainable model","Ahdritz G","Bouatta N","Floristean C","NatureMethods",2024,410,"protein",false],
+
+  // diffusion
+  ["Denoising Diffusion Probabilistic Models","Ho J","Jain A","Abbeel P","NeurIPS",2020,7800,"diffusion",true],
+  ["High-Resolution Image Synthesis with Latent Diffusion","Rombach R","Blattmann A","Lorenzer D","CVPR",2022,5200,"diffusion",false],
+  ["GLIDE: Photorealistic image generation with text-guided diffusion","Nichol A","Dhariwal P","Ramesh A","ICML",2022,2400,"diffusion",false],
+  ["Imagen: Photorealistic text-to-image with deep language understanding","Saharia C","Chan W","Saxena S","NeurIPS",2022,2800,"diffusion",false],
+  ["DALL-E 2: Hierarchical text-conditional image generation","Ramesh A","Dhariwal P","Nichol A","arXiv",2022,3300,"diffusion",false],
+  ["Consistency Models","Song Y","Dhariwal P","Chen M","ICML",2023,1300,"diffusion",false],
+  ["Flow Matching for Generative Modeling","Lipman Y","Chen R","Ben-Hamu H","ICLR",2023,1100,"diffusion",false],
+  ["Score-Based Generative Modeling through SDEs","Song Y","Sohl-Dickstein J","Kingma D","ICLR",2021,4200,"diffusion",false],
+  ["Classifier-Free Diffusion Guidance","Ho J","Salimans T","NeurIPS W","2022,1850","",2022,1850,"diffusion",false],
+  ["Elucidating the Design Space of Diffusion Models","Karras T","Aittala M","Aila T","NeurIPS",2022,1600,"diffusion",false],
+  ["ControlNet: Adding conditional control to text-to-image","Zhang L","Rao A","Agrawala M","ICCV",2023,2300,"diffusion",false],
+  ["SDXL: Improving latent diffusion for high-resolution synthesis","Podell D","English Z","Lacey K","ICLR",2024,1400,"diffusion",false],
+  ["Cascaded Diffusion Models for High Fidelity Generation","Ho J","Saharia C","Chan W","JMLR",2022,870,"diffusion",false],
+  ["DreamBooth: Fine-tuning text-to-image for subject driven generation","Ruiz N","Li Y","Jampani V","CVPR",2023,1200,"diffusion",false],
+  ["Diffusion Transformer (DiT): Scalable backbones","Peebles W","Xie S","ICCV","2023",2023,960,"diffusion",false],
+  ["InstructPix2Pix: Learning to follow image editing instructions","Brooks T","Holynski A","Efros A","CVPR",2023,740,"diffusion",false],
+  ["Stable Video Diffusion","Blattmann A","Dockhorn T","Kulal S","arXiv",2024,520,"diffusion",false],
+  ["Rectified Flow: Learning fast transport","Liu X","Gong C","Liu Q","ICLR",2023,610,"diffusion",false],
+  ["EDM2: Analyzing and improving diffusion training","Karras T","Aittala M","Lehtinen J","NeurIPS",2024,380,"diffusion",false],
+  ["MDM: Human motion diffusion model","Tevet G","Raab S","Gordon B","ICLR",2023,550,"diffusion",false],
+
+  // nlp
+  ["BERT: Pre-training of Deep Bidirectional Transformers","Devlin J","Chang M","Lee K","NAACL",2019,7900,"nlp",true],
+  ["Language Models are Few-Shot Learners (GPT-3)","Brown T","Mann B","Ryder N","NeurIPS",2020,6500,"nlp",false],
+  ["GPT-4 Technical Report","OpenAI","Achiam J","Adler S","arXiv",2023,4200,"nlp",false],
+  ["RoBERTa: A Robustly Optimized BERT Pretraining Approach","Liu Y","Ott M","Goyal N","arXiv",2019,6200,"nlp",false],
+  ["Exploring the Limits of Transfer Learning with T5","Raffel C","Shazeer N","Roberts A","JMLR",2020,5100,"nlp",false],
+  ["PaLM: Scaling Language Modeling with Pathways","Chowdhery A","Narang S","Devlin J","JMLR",2023,2100,"nlp",false],
+  ["LLaMA: Open and Efficient Foundation Language Models","Touvron H","Lavril T","Izacard G","arXiv",2023,3200,"nlp",false],
+  ["LLaMA 2: Open Foundation and Fine-Tuned Chat Models","Touvron H","Martin L","Stone K","arXiv",2023,2600,"nlp",false],
+  ["Chinchilla: Training Compute-Optimal Large Language Models","Hoffmann J","Borgeaud S","Mensch A","NeurIPS",2022,1900,"nlp",false],
+  ["Mistral 7B","Jiang A","Sablayrolles A","Mensch A","arXiv",2023,1500,"nlp",false],
+  ["Gemini: A Family of Highly Capable Multimodal Models","Team G","Anil R","Borgeaud S","arXiv",2024,1300,"nlp",false],
+  ["Claude: Constitutional AI for Helpful and Harmless Assistants","Bai Y","Kadavath S","Kundu S","arXiv",2022,1100,"nlp",false],
+  ["FLAN-T5: Scaling Instruction-Finetuned Language Models","Chung H","Hou L","Longpre S","JMLR",2024,1800,"nlp",false],
+  ["Gemma: Open Models Based on Gemini Research","Team G","Mesnard T","Hardin C","arXiv",2024,720,"nlp",false],
+  ["OPT: Open Pre-trained Transformer Language Models","Zhang S","Roller S","Goyal N","arXiv",2022,1400,"nlp",false],
+  ["BLOOM: A 176B-Parameter Open-Access Multilingual Model","BigScience","Scao T","Fan A","arXiv",2023,1100,"nlp",false],
+  ["InstructGPT: Training language models to follow instructions","Ouyang L","Wu J","Jiang X","NeurIPS",2022,3900,"nlp",false],
+  ["Scaling Laws for Neural Language Models","Kaplan J","McCandlish S","Henighan T","arXiv",2020,3100,"nlp",false],
+  ["Mixtral of Experts: Sparse MoE at scale","Jiang A","Roux A","Mensch A","arXiv",2024,820,"nlp",false],
+  ["Sparks of Artificial General Intelligence: Early GPT-4 experiments","Bubeck S","Chandrasekaran V","Eldan R","arXiv",2023,2600,"nlp",false],
+
+  // graph
+  ["Semi-Supervised Classification with Graph Convolutional Networks","Kipf T","Welling M","ICLR","",2018,6200,"graph",false],
+  ["Graph Attention Networks","Velickovic P","Cucurull G","Casanova A","ICLR",2018,5100,"graph",false],
+  ["GraphSAGE: Inductive Representation Learning on Large Graphs","Hamilton W","Ying R","Leskovec J","NeurIPS",2018,4400,"graph",false],
+  ["Neural Message Passing for Quantum Chemistry","Gilmer J","Schoenholz S","Riley P","ICML",2018,3300,"graph",false],
+  ["How Powerful are Graph Neural Networks? (GIN)","Xu K","Hu W","Leskovec J","ICLR",2019,3600,"graph",false],
+  ["PyTorch Geometric: Fast Graph Learning with PyTorch","Fey M","Lenssen J","ICLR W","",2019,2800,"graph",false],
+  ["Deep Graph Library (DGL): A Graph-Centric Framework","Wang M","Zheng D","Ye Z","arXiv",2019,2100,"graph",false],
+  ["SE(3)-Transformers for 3D Roto-Translation Equivariant Networks","Fuchs F","Worrall D","Fischer V","NeurIPS",2020,1800,"graph",false],
+  ["A Generalization of Transformer Networks to Graphs","Dwivedi V","Bresson X","arXiv","",2020,1200,"graph",false],
+  ["NodeFormer: Efficient Graph Transformer for Node Classification","Wu Q","Zhao W","Li Z","NeurIPS",2022,420,"graph",false],
+  ["GNNExplainer: Generating Explanations for Graph Neural Networks","Ying R","Bourgeois D","You J","NeurIPS",2019,1400,"graph",false],
+  ["Graphormer: Do Transformers Really Perform Badly for Graphs","Ying C","Cai T","Luo S","NeurIPS",2021,1300,"graph",false],
+  ["Principal Neighbourhood Aggregation for Graph Nets","Corso G","Cavalleri L","Beaini D","NeurIPS",2020,640,"graph",false],
+  ["Position-aware Graph Neural Networks","You J","Ying R","Leskovec J","ICML",2019,680,"graph",false],
+  ["GraphGPS: General, Powerful, Scalable Graph Transformers","Rampasek L","Galkin M","Dwivedi V","NeurIPS",2022,520,"graph",false],
+  ["Strategies for Pre-training Graph Neural Networks","Hu W","Liu B","Gomes J","ICLR",2020,970,"graph",false],
+  ["Benchmarking Graph Neural Networks","Dwivedi V","Joshi C","Luu A","JMLR",2023,850,"graph",false],
+  ["DiffPool: Hierarchical Graph Representation Learning","Ying R","You J","Morris C","NeurIPS",2018,1800,"graph",false],
+  ["Message Passing Neural Networks for Equivariant Predictions","Satorras V","Hoogeboom E","Welling M","ICML",2021,1100,"graph",false],
+  ["Directional Graph Networks","Beaini D","Passaro S","Letourneau V","ICML",2021,380,"graph",false]
+];
+
+const ABSTRACT_SNIPPETS = {
+  protein: "We introduce a deep learning approach that models the joint distribution over residue coordinates and side-chain conformations. On standard CASP targets it surpasses homology-based baselines.",
+  diffusion: "We present a generative model trained by iteratively denoising samples from a fixed forward process. Empirically we achieve state-of-the-art sample quality at competitive inference cost.",
+  nlp: "We scale a transformer language model and study how capabilities emerge as a function of data, compute, and parameters. We report results across a suite of downstream reasoning benchmarks.",
+  graph: "We propose a message-passing architecture that aggregates information from local neighborhoods while remaining permutation equivariant. Our method is competitive on node and graph classification."
+};
+
+// normalize to objects
+const PAPERS = PAPERS_RAW.slice(0, 80).map((row, i) => {
+  // row = [title,a1,a2,a3,venue,year,cits,cluster,seed]
+  const title = row[0];
+  const authors = [row[1], row[2], row[3]].filter(s => s && !/^\d/.test(s));
+  const venue = row[4] || "arXiv";
+  const year = typeof row[5] === "number" ? row[5] : 2022;
+  const cits = typeof row[6] === "number" ? row[6] : 500;
+  const cluster = row[7] || "nlp";
+  const seed = !!row[8];
+  const abs = ABSTRACT_SNIPPETS[cluster] + " The method is validated on " + venue + " benchmarks with strong reported gains.";
+  return {
+    id: "p" + i,
+    title, authors, venue, year, citation_count: cits, cluster, seed,
+    abstract: abs
+  };
+});
+
+// force exactly 3 seeds
+let seedsMarked = PAPERS.filter(p => p.seed).length;
+if (seedsMarked < 3) {
+  const needed = 3 - seedsMarked;
+  const extra = PAPERS.filter(p => !p.seed).sort((a,b)=>b.citation_count-a.citation_count).slice(0, needed);
+  extra.forEach(p => p.seed = true);
+}
+
+// edges: ~60% intra-cluster, ~40% cross-cluster, ~250 total
+function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(42);
+
+const EDGES = [];
+const seen = new Set();
+function addEdge(a, b) {
+  if (a === b) return;
+  const k = a < b ? a+"|"+b : b+"|"+a;
+  if (seen.has(k)) return;
+  seen.add(k);
+  EDGES.push({ source: a, target: b, weight: 0.15 + rnd() * 0.85 });
+}
+const byCluster = {};
+for (const p of PAPERS) (byCluster[p.cluster] ||= []).push(p);
+
+// intra-cluster edges (~150)
+for (const c of Object.keys(byCluster)) {
+  const list = byCluster[c];
+  for (let i = 0; i < list.length; i++) {
+    const k = 2 + Math.floor(rnd() * 3);
+    for (let j = 0; j < k; j++) {
+      const t = list[Math.floor(rnd() * list.length)];
+      addEdge(list[i].id, t.id);
+    }
+  }
+}
+// cross-cluster edges (~100)
+while (EDGES.length < 250) {
+  const a = PAPERS[Math.floor(rnd() * PAPERS.length)];
+  const b = PAPERS[Math.floor(rnd() * PAPERS.length)];
+  if (a.cluster !== b.cluster) addEdge(a.id, b.id);
+}
+
+// ---------- graph ----------
+function nodeSize(c) {
+  return 2 + 28 * (Math.log1p(c) / Math.log1p(10000));
+}
+function nodeColor(p) {
+  if (p.seed) return SEED_COLOR;
+  return YEAR_COLORS[p.year] || "#7a7a9e";
+}
+
+const graph = new Graph();
+
+// start with 30, add rest later on growth
+const initialIds = new Set();
+const topByCit = [...PAPERS].sort((a,b) => b.citation_count - a.citation_count).slice(0, 30);
+topByCit.forEach(p => initialIds.add(p.id));
+
+// ensure all 3 seeds are in initial
+PAPERS.filter(p => p.seed).forEach(p => initialIds.add(p.id));
+
+const remaining = PAPERS.filter(p => !initialIds.has(p.id));
+
+// place initial nodes in a rough cluster layout
+const clusterAngles = { protein: 0, diffusion: Math.PI/2, nlp: Math.PI, graph: 3*Math.PI/2 };
+function randomSeedPos(p) {
+  const a = clusterAngles[p.cluster] ?? 0;
+  const r = 8 + rnd() * 4;
+  return { x: Math.cos(a)*r + (rnd()-0.5)*3, y: Math.sin(a)*r + (rnd()-0.5)*3 };
+}
+
+for (const p of PAPERS.filter(p => initialIds.has(p.id))) {
+  const { x, y } = randomSeedPos(p);
+  const s = nodeSize(p.citation_count);
+  graph.addNode(p.id, {
+    x, y,
+    label: p.title,
+    size: s,
+    _animSize: s,
+    _targetSize: s,
+    color: nodeColor(p),
+    _paper: p
+  });
+}
+for (const e of EDGES) {
+  if (graph.hasNode(e.source) && graph.hasNode(e.target)) {
+    graph.addEdge(e.source, e.target, { size: e.weight * 2.5 + 0.5, color: "#cbd5e1", _weight: e.weight });
+  }
+}
+
+// force-label top-3 by citation
+const top3 = [...PAPERS].sort((a,b) => b.citation_count - a.citation_count).slice(0, 3).map(p => p.id);
+
+// ---------- sigma ----------
+const container = document.getElementById("sigma");
+const sigma = new Sigma(graph, container, {
+  renderLabels: true,
+  labelFont: "Inter, system-ui, sans-serif",
+  labelColor: { color: "#1e293b" },
+  labelSize: 12,
+  labelWeight: "600",
+  labelRenderedSizeThreshold: 8,
+  defaultEdgeColor: "#cbd5e1",
+  edgeReducer: (edge, data) => {
+    const target = graph.target(edge);
+    const source = graph.source(edge);
+    const out = { ...data };
+    out.color = graph.getNodeAttribute(target, "color");
+    if (state.selectedId) {
+      if (source === state.selectedId || target === state.selectedId) {
+        out.color = graph.getNodeAttribute(target, "color");
+      } else {
+        out.color = "rgba(203, 213, 225, 0.25)";
+      }
+    }
+    return out;
+  },
+  nodeReducer: (id, data) => {
+    const out = { ...data, size: data._animSize ?? data.size };
+    if (state.selectedId && id !== state.selectedId) {
+      // dim others; 1-hop neighbors retain partial color
+      const isNeighbor = graph.areNeighbors(state.selectedId, id);
+      if (!isNeighbor) {
+        out.color = hexToRgba(data.color, 0.15);
+        out.label = null;
+      }
+    }
+    if (top3.includes(id)) out.forceLabel = true;
+    return out;
+  }
+});
+
+function hexToRgba(hex, a) {
+  if (!hex || hex[0] !== "#") return hex;
+  const h = hex.slice(1);
+  const v = h.length === 3 ? h.split("").map(c => c+c).join("") : h;
+  const r = parseInt(v.slice(0,2),16), g = parseInt(v.slice(2,4),16), b = parseInt(v.slice(4,6),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ---------- FA2 ----------
+const layout = new FA2Layout(graph, {
+  settings: {
+    linLogMode: true,
+    adjustSizes: true,
+    barnesHutOptimize: true,
+    scalingRatio: 10,
+    gravity: 1,
+    slowDown: 10,
+    edgeWeightInfluence: 1
+  }
+});
+layout.start();
+
+// ---------- state ----------
+const state = {
+  selectedId: null,  // pinned selection (click)
+  hoverId: null,     // hover preview
+  pinned: false,
+  sortBy: "citations",
+  visibleIds: new Set(initialIds)
+};
+
+// ---------- UI: list ----------
+const listEl = document.getElementById("list");
+const leftTitleEl = document.getElementById("leftTitle");
+const sortSelect = document.getElementById("sortSelect");
+
+function renderList() {
+  const visible = PAPERS.filter(p => state.visibleIds.has(p.id));
+  const sorted = [...visible].sort((a,b) => {
+    if (state.sortBy === "citations") return b.citation_count - a.citation_count;
+    if (state.sortBy === "year") return b.year - a.year;
+    if (state.sortBy === "title") return a.title.localeCompare(b.title);
+    return 0;
+  });
+  leftTitleEl.textContent = `Papers (${visible.length})`;
+  listEl.innerHTML = "";
+  for (const p of sorted) {
+    const row = document.createElement("div");
+    row.className = "list-item" + (state.selectedId === p.id ? " active" : "");
+    row.dataset.id = p.id;
+    row.innerHTML = `
+      <div class="li-title">${escape(p.title)}</div>
+      <div class="li-meta">
+        <span class="li-cits">${formatCits(p.citation_count)}</span>
+        ${escape(p.authors[0] || "")} · ${p.year}
+      </div>`;
+    row.addEventListener("click", () => {
+      pinPaper(p.id);
+    });
+    listEl.appendChild(row);
+  }
+}
+function formatCits(c) {
+  if (c >= 1000) return (c/1000).toFixed(1) + "k";
+  return String(c);
+}
+function escape(s) {
+  return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+sortSelect.addEventListener("change", () => {
+  state.sortBy = sortSelect.value;
+  renderList();
+});
+
+// ---------- UI: detail drawer ----------
+const detailEl = document.getElementById("detail");
+const pinBtn = document.getElementById("pinBtn");
+const pinStatus = document.getElementById("pinStatus");
+const tooltip = document.getElementById("tooltip");
+
+function renderDetail(paperId) {
+  if (!paperId) {
+    detailEl.className = "detail empty";
+    detailEl.textContent = "Hover a paper to preview";
+    return;
+  }
+  const p = PAPERS.find(x => x.id === paperId);
+  if (!p) return;
+  detailEl.className = "detail";
+  const authorStr = p.authors.slice(0,3).join(", ") + (p.authors.length > 3 ? ", et al." : "");
+  const abs = p.abstract.length > 200 ? p.abstract.slice(0, 200) + "…" : p.abstract;
+  detailEl.innerHTML = `
+    <div>
+      <span class="d-cluster">${escape(CLUSTERS[p.cluster].label)}</span>
+      ${p.seed ? '<span class="d-seed">Seed</span>' : ''}
+    </div>
+    <h2>${escape(p.title)}</h2>
+    <div class="d-authors">${escape(authorStr)}</div>
+    <div class="d-venue">${escape(p.venue)} · ${p.year}</div>
+    <div class="d-cites">${p.citation_count.toLocaleString()} citations</div>
+    <div class="d-abstract">${escape(abs)}</div>
+  `;
+}
+
+function updatePinUI() {
+  if (state.pinned) {
+    pinBtn.classList.add("pinned");
+    pinStatus.classList.add("is-pinned");
+    pinStatus.textContent = "Pinned";
+    pinBtn.title = "Click to unpin";
+  } else {
+    pinBtn.classList.remove("pinned");
+    pinStatus.classList.remove("is-pinned");
+    pinStatus.textContent = "Hover mode";
+    pinBtn.title = "Click a node to pin";
+  }
+}
+
+function pinPaper(id) {
+  state.selectedId = id;
+  state.pinned = true;
+  renderDetail(id);
+  updatePinUI();
+  renderList();
+  sigma.refresh();
+}
+function unpin() {
+  state.pinned = false;
+  state.selectedId = null;
+  updatePinUI();
+  renderList();
+  if (state.hoverId) renderDetail(state.hoverId);
+  else renderDetail(null);
+  sigma.refresh();
+}
+
+pinBtn.addEventListener("click", () => {
+  if (state.pinned) unpin();
+});
+
+// ---------- sigma events ----------
+sigma.on("enterNode", ({ node, event }) => {
+  state.hoverId = node;
+  if (!state.pinned) {
+    renderDetail(node);
+  }
+  const p = graph.getNodeAttribute(node, "_paper");
+  tooltip.style.display = "block";
+  tooltip.textContent = `${p.title} (${p.year})`;
+  moveTooltip(event);
+});
+sigma.on("leaveNode", () => {
+  state.hoverId = null;
+  tooltip.style.display = "none";
+  if (!state.pinned) renderDetail(null);
+});
+sigma.getMouseCaptor().on("mousemovebody", (e) => moveTooltip(e));
+function moveTooltip(event) {
+  if (tooltip.style.display !== "block") return;
+  const rect = container.getBoundingClientRect();
+  const ev = event.original || event;
+  const cx = (ev.clientX ?? 0) - rect.left;
+  const cy = (ev.clientY ?? 0) - rect.top;
+  tooltip.style.left = (cx + 12) + "px";
+  tooltip.style.top = (cy + 12) + "px";
+}
+sigma.on("clickNode", ({ node }) => {
+  pinPaper(node);
+});
+sigma.on("clickStage", () => {
+  if (state.pinned) unpin();
+});
+
+// ---------- live growth ----------
+const growBtn = document.getElementById("growBtn");
+const animNodes = new Map();
+
+function tickAnimations() {
+  let active = false;
+  const now = performance.now();
+  animNodes.forEach((a, id) => {
+    const t = Math.min(1, (now - a.start) / a.dur);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const s = a.from + (a.to - a.from) * eased;
+    if (graph.hasNode(id)) graph.setNodeAttribute(id, "_animSize", s);
+    if (t >= 1) animNodes.delete(id);
+    else active = true;
+  });
+  sigma.refresh();
+  if (active) requestAnimationFrame(tickAnimations);
+}
+
+function addPaperWithAnim(p) {
+  if (graph.hasNode(p.id)) return;
+  // seed near a random existing neighbor (prefer same cluster)
+  const nodes = graph.nodes();
+  const sameCluster = nodes.filter(id => {
+    const pp = graph.getNodeAttribute(id, "_paper");
+    return pp.cluster === p.cluster;
+  });
+  const pool = sameCluster.length ? sameCluster : nodes;
+  const anchor = pool[Math.floor(rnd() * pool.length)];
+  const ax = graph.getNodeAttribute(anchor, "x");
+  const ay = graph.getNodeAttribute(anchor, "y");
+  const target = nodeSize(p.citation_count);
+  graph.addNode(p.id, {
+    x: ax + (rnd()-0.5) * 10,
+    y: ay + (rnd()-0.5) * 10,
+    label: p.title,
+    size: target,
+    _animSize: 0,
+    _targetSize: target,
+    color: nodeColor(p),
+    _paper: p
+  });
+  // add edges whose both endpoints now exist
+  for (const e of EDGES) {
+    if ((e.source === p.id || e.target === p.id) &&
+        graph.hasNode(e.source) && graph.hasNode(e.target) &&
+        !graph.hasEdge(e.source, e.target)) {
+      graph.addEdge(e.source, e.target, { size: e.weight * 2.5 + 0.5, color: "#cbd5e1", _weight: e.weight });
+    }
+  }
+  animNodes.set(p.id, { from: 0, to: target, start: performance.now(), dur: 400 });
+  state.visibleIds.add(p.id);
+}
+
+growBtn.addEventListener("click", () => {
+  if (growBtn.disabled) return;
+  growBtn.disabled = true;
+  growBtn.textContent = "Growing…";
+  const queue = [...remaining];
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i >= queue.length) {
+      clearInterval(iv);
+      growBtn.textContent = "Growth complete";
+      return;
+    }
+    addPaperWithAnim(queue[i++]);
+    renderList();
+    if (animNodes.size === 1) requestAnimationFrame(tickAnimations);
+  }, 150);
+});
+
+// initial render
+renderList();
+updatePinUI();
+</script>
+</body>
+</html>
