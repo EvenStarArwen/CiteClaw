@@ -32,7 +32,7 @@ YAML example::
       model: gemma-4-31b             # optional
       reasoning_effort: high         # optional
       max_papers: 20                 # cap papers to read (default: all)
-      max_input_chars: 24000         # per-paper text budget
+      max_input_chars: 80000         # per-paper text budget (128K-ctx default)
       headless: true                 # browser mode for pdfclaw
 """
 
@@ -73,7 +73,7 @@ class ExpandByPDF:
         model: str | None = None,
         reasoning_effort: str | None = "high",
         max_papers: int | None = None,
-        max_input_chars: int = 24_000,
+        max_input_chars: int = 80_000,
         headless: bool = True,
     ) -> None:
         self.screener = screener

@@ -225,13 +225,18 @@ class PdfExtractionResult:
 # Extraction
 # ---------------------------------------------------------------------------
 
-# Default budget: at ~1.3 tokens/char, 40 K chars ≈ 30 K input tokens.
-# With a 128 K context window and ``reasoning_effort: high``, the model
-# may use 30–60 K tokens for thinking, leaving plenty for the JSON
-# output (~3 K tokens for 10–20 references).  For smaller context
-# windows, users can override with ``max_input_chars`` in the YAML step
-# config (e.g. 14000 for 32 K context).
-_DEFAULT_MAX_INPUT_CHARS = 40_000
+# Default budget: at ~1.3 tokens/char, 80 K chars ≈ 60 K input tokens.
+# With a 128 K context window and ``reasoning_effort: high`` the model
+# typically spends 5–15 K tokens on thinking for extraction tasks
+# (empirically measured on Gemma 4 31B over dozens of bio papers; the
+# output JSON fits in ~3–5 K tokens), leaving a comfortable margin
+# for long papers. Prior default was 40 K, which cut off the training-
+# data section of Nature-style papers (body + main refs + methods +
+# extended refs concatenated > 40 K chars), causing low recall on
+# foundational papers like AlphaFold / ESM. For smaller context
+# windows, users can override with ``max_input_chars`` in the YAML
+# step config (e.g. 14 000 for 32 K context).
+_DEFAULT_MAX_INPUT_CHARS = 80_000
 
 
 def _truncate_body_middle_out(body: str, budget: int) -> str:
