@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CiteClaw — Pipeline Building (v2)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --panel: #fbf9f3;
+    --border: #e4e0d4;
+    --chrome: #faf8f2;
+    --ink-1: #1e2735;
+    --ink-2: #55606d;
+    --ink-3: #7f768c;
+    --accent: #3e3548;
+    --positive: #5a8570;
+    --warning: #8b5a5a;
+    --btn-border: #c4bcaa;
+    --btn-hover: #f0ecde;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 13px;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* Section A */
+  .section-a {
+    flex: 0 0 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .brand {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink-1);
+    letter-spacing: -0.2px;
+  }
+  .brand-tail {
+    color: var(--ink-3);
+    font-weight: 400;
+    font-size: 13px;
+    margin-left: 2px;
+  }
+  .btn {
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-1);
+    background: transparent;
+    border: 1px solid var(--btn-border);
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn-run {
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-run:hover { background: var(--btn-hover); }
+
+  /* Main grid */
+  .main-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 280px;
+    grid-template-rows: 60% 40%;
+    grid-template-areas:
+      "b c e"
+      "b d e";
+    min-width: 0;
+    min-height: 0;
+  }
+  .section-b, .section-c, .section-d, .section-e {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .section-b { grid-area: b; background: var(--panel); border-right: 1px solid var(--border); }
+  .section-c { grid-area: c; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .section-d { grid-area: d; background: var(--panel); }
+  .section-e { grid-area: e; background: var(--panel); border-left: 1px solid var(--border); }
+
+  /* Panel header */
+  .panel-header {
+    flex: 0 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--chrome);
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-2);
+  }
+  .panel-meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  /* Section B — Seed search */
+  .search-wrap {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-input {
+    width: 100%;
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    color: var(--ink-1);
+    background: #ffffff;
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 120ms;
+  }
+  .search-input:focus { border-color: var(--ink-3); }
+  .search-input::placeholder { color: var(--ink-3); }
+  .results-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2px 0;
+  }
+  .result-row {
+    padding: 10px 12px 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    transition: background 120ms;
+  }
+  .result-row:hover { background: var(--btn-hover); }
+  .result-row.selected {
+    background: rgba(62, 53, 72, 0.04);
+    border-left: 3px solid var(--accent);
+    padding-left: 9px;
+  }
+  .checkmark-box {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--btn-border);
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+    transition: background 120ms, border-color 120ms;
+  }
+  .checkmark-box svg { display: block; opacity: 0; transition: opacity 120ms; }
+  .result-row.selected .checkmark-box {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .result-row.selected .checkmark-box svg { opacity: 1; }
+  .result-body { flex: 1; min-width: 0; }
+  .result-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-1);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .result-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .result-authors {
+    font-size: 11px;
+    color: var(--ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .result-cites {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  /* Section C — Pipeline canvas */
+  .canvas-wrap {
+    flex: 1;
+    position: relative;
+    background: var(--bg);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .canvas-wrap.drop-active::before {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border: 1.5px dashed var(--accent);
+    background: rgba(62, 53, 72, 0.04);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .canvas-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .node-label {
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    fill: #ffffff;
+    pointer-events: none;
+    user-select: none;
+  }
+  .pipeline-node { cursor: pointer; transition: filter 120ms; }
+  .pipeline-node:hover .node-shape { stroke-width: 2; }
+  .pipeline-node.selected .node-shape {
+    stroke: #3e3548 !important;
+    stroke-width: 2.5;
+    filter: url(#shadow);
+  }
+
+  /* Section D — Config panel */
+  .config-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .config-single {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 18px;
+  }
+  .config-split {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 42% 58%;
+    overflow: hidden;
+  }
+  .cfg-tree-col, .cfg-form-col {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px;
+  }
+  .cfg-tree-col { border-right: 1px solid var(--border); }
+  .cfg-row { margin-bottom: 14px; }
+  .cfg-row:last-child { margin-bottom: 0; }
+  .cfg-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    margin-bottom: 5px;
+  }
+  .cfg-input, .cfg-textarea, .cfg-select {
+    width: 100%;
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+    color: var(--ink-1);
+    background: #ffffff;
+    border: 1px solid var(--border);
+    padding: 7px 9px;
+    outline: none;
+  }
+  .cfg-textarea { resize: none; line-height: 1.45; }
+  .cfg-input:focus, .cfg-textarea:focus, .cfg-select:focus { border-color: var(--ink-3); }
+  .cfg-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .cfg-mono {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .seed-mini-list {
+    border: 1px solid var(--border);
+    background: #ffffff;
+  }
+  .seed-mini-row {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+  .seed-mini-row:last-child { border-bottom: none; }
+  .seed-mini-title {
+    font-size: 12px;
+    color: var(--ink-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .seed-mini-year {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+    flex-shrink: 0;
+  }
+  .cfg-empty {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-style: italic;
+    padding: 14px 4px;
+  }
+
+  /* Filter tree */
+  .filter-container {
+    margin-bottom: 8px;
+    padding-left: 8px;
+    border-left: 2px solid var(--accent);
+  }
+  .filter-container-any  { border-left-color: var(--positive); }
+  .filter-container-not  { border-left-color: var(--warning); }
+  .filter-container-head {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 4px;
+    padding-left: 2px;
+  }
+  .filter-atom {
+    position: relative;
+    padding: 7px 24px 7px 10px;
+    background: #fbf9f3;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--ink-2);
+    margin: 4px 0;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .filter-atom:hover { background: var(--btn-hover); }
+  .filter-atom.selected {
+    border: 2px solid var(--accent);
+    padding: 6px 23px 6px 9px;
+    background: rgba(62, 53, 72, 0.04);
+  }
+  .filter-atom-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 1px;
+  }
+  .filter-atom-preview {
+    font-size: 10px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .filter-atom-del {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+  }
+  .filter-atom-del:hover { color: var(--warning); }
+  .filter-add-btn {
+    display: inline-block;
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    color: var(--ink-2);
+    background: transparent;
+    border: 1px dashed var(--btn-border);
+    padding: 4px 8px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .filter-add-btn:hover { background: var(--btn-hover); }
+  .filter-add-menu {
+    border: 1px solid var(--border);
+    background: #ffffff;
+    padding: 4px;
+    margin-top: 4px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+  }
+  .filter-add-menu button {
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    color: var(--ink-1);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 4px 6px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .filter-add-menu button:hover { background: var(--btn-hover); }
+
+  /* Section E — Palette */
+  .palette-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+  }
+  .cat-header {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    margin: 12px 2px 6px 2px;
+  }
+  .cat-header:first-child { margin-top: 0; }
+  .block-chip {
+    padding: 10px 12px;
+    background: #fbf9f3;
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    margin-bottom: 6px;
+    cursor: grab;
+    transition: background 120ms;
+  }
+  .block-chip:hover { background: var(--btn-hover); }
+  .block-chip:active { cursor: grabbing; }
+  .block-chip-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 2px;
+  }
+  .block-chip-desc {
+    font-size: 10px;
+    color: var(--ink-3);
+    line-height: 1.35;
+  }
+
+  /* Section F */
+  .section-f {
+    flex: 0 0 32px;
+    background: var(--chrome);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .status-left {
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .status-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--positive);
+    display: inline-block;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Section A -->
+  <div class="section-a">
+    <div>
+      <span class="brand">CiteClaw</span><span class="brand-tail"> &middot; New run &middot; v2</span>
+    </div>
+    <button id="runBtn" class="btn btn-run">Run pipeline</button>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+    <!-- Section B -->
+    <div class="section-b">
+      <div class="panel-header">
+        <div class="panel-title">Seed papers</div>
+        <div class="panel-meta" id="seedCount">(3 selected)</div>
+      </div>
+      <div class="search-wrap">
+        <input type="text" id="seedSearch" class="search-input" placeholder="Search Semantic Scholar...">
+      </div>
+      <div id="resultsList" class="results-list"></div>
+    </div>
+
+    <!-- Section C -->
+    <div class="section-c">
+      <div class="panel-header">
+        <div class="panel-title">Pipeline</div>
+        <div class="panel-meta" id="pipelineMeta">7 blocks &middot; 2 branches</div>
+      </div>
+      <div id="canvasWrap" class="canvas-wrap">
+        <svg id="pipelineSvg" class="canvas-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+    </div>
+
+    <!-- Section D -->
+    <div class="section-d">
+      <div class="panel-header">
+        <div class="panel-title" id="configTitle">Configuration &middot; Seeds + Topic</div>
+      </div>
+      <div id="configBody" class="config-body"></div>
+    </div>
+
+    <!-- Section E -->
+    <div class="section-e">
+      <div class="panel-header">
+        <div class="panel-title">Building blocks</div>
+      </div>
+      <div id="paletteBody" class="palette-body"></div>
+    </div>
+  </div>
+
+  <!-- Section F -->
+  <div class="section-f">
+    <div class="status-left" id="statusLeft">7 blocks &middot; 3 seeds selected &middot; ready to run</div>
+    <div class="status-right">
+      <span class="status-dot"></span>
+      <span>Session: demo &middot; v2</span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   CONSTANTS — copied from page1_build_a.html
+===================================================== */
+const BLOCK_COLORS = {
+  seeds:    { fill: "#8aa695", stroke: "#5a7c6b", textOnFill: "#ffffff" },
+  forward:  { fill: "#9c7d8a", stroke: "#755a66", textOnFill: "#ffffff" },
+  backward: { fill: "#6b82a0", stroke: "#48627a", textOnFill: "#ffffff" },
+  rerank:   { fill: "#a89878", stroke: "#7a6b4e", textOnFill: "#ffffff" },
+  rescreen: { fill: "#78688a", stroke: "#584868", textOnFill: "#ffffff" }
+};
+
+const MOCK_PIPELINE = {
+  nodes: [
+    { id: "seeds",    type: "seeds",    label: "Seeds + Topic",        shape: "parallelogram", x: 40,  y: 140 },
+    { id: "fwd1",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 220, y: 140 },
+    { id: "bwd1",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 400, y: 140 },
+    { id: "rerank",   type: "rerank",   label: "Diversified Reranker", shape: "rect",          x: 600, y: 60  },
+    { id: "fwd2",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 800, y: 60  },
+    { id: "bwd2",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 600, y: 220 },
+    { id: "rescreen", type: "rescreen", label: "Rescreener",           shape: "rect",          x: 1000,y: 140 }
+  ],
+  edges: [
+    { from: "seeds",  to: "fwd1" },
+    { from: "fwd1",   to: "bwd1" },
+    { from: "bwd1",   to: "rerank" },
+    { from: "bwd1",   to: "bwd2" },
+    { from: "rerank", to: "fwd2" },
+    { from: "fwd2",   to: "rescreen" },
+    { from: "bwd2",   to: "rescreen" }
+  ]
+};
+
+const MOCK_SEED_RESULTS = [
+  { id: "p1",  title: "Highly accurate protein structure prediction with AlphaFold",             authors: "Jumper, Evans, Pritzel, et al.", year: 2021, venue: "Nature",         citations: 7900 },
+  { id: "p2",  title: "AlphaFold 3: All-atom structure prediction across biomolecules",          authors: "Abramson, Adler, Dunger, et al.",year: 2024, venue: "Nature",         citations: 820  },
+  { id: "p3",  title: "RoseTTAFold: Accurate prediction of protein structures and interactions", authors: "Baek, DiMaio, Anishchenko",      year: 2021, venue: "Science",        citations: 3200 },
+  { id: "p4",  title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure",authors: "Lin, Akin, Rao, et al.",         year: 2023, venue: "Science",        citations: 2100 },
+  { id: "p5",  title: "ColabFold: Making protein folding accessible to all",                     authors: "Mirdita, Schutze, Moriwaki",     year: 2022, venue: "Nature Methods", citations: 2900 },
+  { id: "p6",  title: "OmegaFold: High-resolution de novo structure prediction",                 authors: "Wu, Ding, Wang",                 year: 2022, venue: "bioRxiv",        citations: 520  },
+  { id: "p7",  title: "ProteinMPNN: Robust deep learning based protein sequence design",         authors: "Dauparas, Anishchenko, Bennett", year: 2022, venue: "Science",        citations: 1700 },
+  { id: "p8",  title: "RFdiffusion: Broadly applicable and accurate protein design",             authors: "Watson, Juergens, Bennett",      year: 2023, venue: "Nature",         citations: 1400 },
+  { id: "p9",  title: "Chai-1: Decoding the molecular interactions of life",                     authors: "Boitreaud, Dent, McPartlon",     year: 2024, venue: "bioRxiv",        citations: 310  },
+  { id: "p10", title: "Boltz-1: Democratizing biomolecular interaction modeling",                authors: "Wohlwend, Corso, Passaro",       year: 2024, venue: "bioRxiv",        citations: 240  }
+];
+
+const INITIAL_SELECTED_SEEDS = ["p1", "p3", "p5"];
+
+const BUILDING_BLOCKS_CATALOG = {
+  "SEEDS": [
+    { id: "LoadSeeds",    type: "seeds",    label: "Load Seeds",    desc: "Initialize collection from seed papers" },
+    { id: "ResolveSeeds", type: "seeds",    label: "Resolve Seeds", desc: "Fuzzy-match seed titles via S2" }
+  ],
+  "EXPAND": [
+    { id: "ExpandForward",    type: "forward",  label: "Expand Forward",      desc: "Fetch citers of accepted papers" },
+    { id: "ExpandBackward",   type: "backward", label: "Expand Backward",     desc: "Fetch references of accepted papers" },
+    { id: "ExpandBySearch",   type: "forward",  label: "Expand by Search",    desc: "Iterative LLM search agent" },
+    { id: "ExpandBySemantics",type: "forward",  label: "Expand by Semantics", desc: "SPECTER2 kNN recommendations" },
+    { id: "ExpandByAuthor",   type: "forward",  label: "Expand by Author",    desc: "Top-K authors and their papers" }
+  ],
+  "FILTER": [
+    { id: "Rerank",   type: "rerank",   label: "Rerank",    desc: "Top-K with cluster diversity" },
+    { id: "ReScreen", type: "rescreen", label: "Re-screen", desc: "Apply screener to all accepted" },
+    { id: "Cluster",  type: "rerank",   label: "Cluster",   desc: "Topic-model clusters" }
+  ],
+  "CONTROL": [
+    { id: "Parallel",       type: "forward", label: "Parallel",          desc: "Branch and union results" },
+    { id: "HumanInTheLoop", type: "forward", label: "Human in the Loop", desc: "Interactive quality check" },
+    { id: "MergeDuplicates",type: "forward", label: "Merge Duplicates",  desc: "Preprint-published dedup" }
+  ],
+  "FINALIZE": [
+    { id: "Finalize", type: "rescreen", label: "Finalize", desc: "Write outputs" }
+  ]
+};
+
+const BLOCK_CONFIGS = {
+  "seeds":    { topic: "Deep learning methods for protein structure prediction and design, including AlphaFold-family models and diffusion-based approaches.", seedCount: 3 },
+  "fwd1":     { name: "Forward Screener",  model: "gemma-4-31b", reasoning: "medium" },
+  "bwd1":     { name: "Backward Screener", model: "gemma-4-31b", reasoning: "medium" },
+  "rerank":   { metric: "pagerank", k: 3, diversity: "forward_topics" },
+  "fwd2":     { name: "Forward Screener",  model: "gemma-4-31b", reasoning: "medium" },
+  "bwd2":     { name: "Backward Screener", model: "gemma-4-31b", reasoning: "medium" },
+  "rescreen": { target: "entire_collection", screener: "tight_screener" }
+};
+
+const NODE_W = 150;
+const NODE_H = 64;
+const SKEW = 15;
+
+/* =====================================================
+   UTIL — declared before state so nothing forward-refs
+===================================================== */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+function randomId() {
+  return "f_" + Math.random().toString(36).slice(2, 8);
+}
+
+function defaultFilterTree() {
+  return {
+    id: "root",
+    type: "Sequential",
+    children: [
+      { id: randomId(), type: "YearFilter",     params: { min: 2018, max: 2025 } },
+      { id: randomId(), type: "CitationFilter", params: { beta: 30, pass_if_cited_at_least: null } },
+      { id: randomId(), type: "LLMFilter",      params: {
+          query: "The paper proposes a novel method for protein structure prediction or design.",
+          scope: "title_abstract",
+          model: "gemma-4-31b",
+          reasoning_effort: "medium"
+        }
+      }
+    ]
+  };
+}
+
+/* =====================================================
+   STATE
+===================================================== */
+const state = {
+  selectedBlockId: "seeds",
+  selectedSeedIds: new Set(INITIAL_SELECTED_SEEDS),
+  searchQuery: "",
+  blockFilters: {
+    fwd1: defaultFilterTree(),
+    bwd1: defaultFilterTree(),
+    fwd2: defaultFilterTree(),
+    bwd2: defaultFilterTree()
+  },
+  selectedFilterId: null,
+  nextNodeOffset: 0
+};
+
+/* =====================================================
+   SECTION B — seed search with checkmarks
+===================================================== */
+function renderResults() {
+  const list = document.getElementById("resultsList");
+  const q = state.searchQuery.trim().toLowerCase();
+  const filtered = q
+    ? MOCK_SEED_RESULTS.filter(p =>
+        p.title.toLowerCase().includes(q) ||
+        p.authors.toLowerCase().includes(q) ||
+        p.venue.toLowerCase().includes(q))
+    : MOCK_SEED_RESULTS;
+
+  let html = "";
+  filtered.forEach(p => {
+    const sel = state.selectedSeedIds.has(p.id);
+    html += `
+      <div class="result-row${sel ? " selected" : ""}" data-pid="${p.id}">
+        <div class="checkmark-box">
+          <svg width="11" height="11" viewBox="0 0 11 11">
+            <polyline points="1.5,5.5 4.5,8.5 9.5,2.5" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"/>
+          </svg>
+        </div>
+        <div class="result-body">
+          <div class="result-title">${escapeHtml(p.title)}</div>
+          <div class="result-meta">
+            <div class="result-authors">${escapeHtml(p.authors)} &middot; ${p.year} &middot; ${escapeHtml(p.venue)}</div>
+            <div class="result-cites">${p.citations.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll(".result-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const pid = row.getAttribute("data-pid");
+      if (state.selectedSeedIds.has(pid)) state.selectedSeedIds.delete(pid);
+      else state.selectedSeedIds.add(pid);
+      renderResults();
+      renderSeedCount();
+      renderStatus();
+      if (state.selectedBlockId === "seeds") renderConfig();
+    });
+  });
+}
+
+function renderSeedCount() {
+  const n = state.selectedSeedIds.size;
+  document.getElementById("seedCount").textContent = `(${n} selected)`;
+}
+
+/* =====================================================
+   SECTION C — pipeline canvas (auto-fit viewBox, orthogonal arrows)
+===================================================== */
+function renderPipeline() {
+  const svg = document.getElementById("pipelineSvg");
+  const nodes = MOCK_PIPELINE.nodes;
+  const edges = MOCK_PIPELINE.edges;
+
+  // Compute bounding box of all nodes
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    const w = NODE_W + (n.shape === "parallelogram" ? SKEW : 0);
+    if (n.x < minX) minX = n.x;
+    if (n.y < minY) minY = n.y;
+    if (n.x + w > maxX) maxX = n.x + w;
+    if (n.y + NODE_H > maxY) maxY = n.y + NODE_H;
+  });
+  if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 100; maxY = 100; }
+  const pad = 40;
+  const vbX = minX - pad;
+  const vbY = minY - pad;
+  const vbW = (maxX - minX) + pad * 2;
+  const vbH = (maxY - minY) + pad * 2;
+  svg.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
+
+  // Defs
+  let defs = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a7a58"/>
+      </marker>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+        <feOffset dx="0" dy="1" result="offsetblur"/>
+        <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+        <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+  `;
+
+  // Edges (orthogonal L or Z paths)
+  let edgeEls = "";
+  edges.forEach(e => {
+    const a = nodes.find(n => n.id === e.from);
+    const b = nodes.find(n => n.id === e.to);
+    if (!a || !b) return;
+    const aW = NODE_W + (a.shape === "parallelogram" ? SKEW : 0);
+    const sx = a.x + aW;                // right edge of source
+    const sy = a.y + NODE_H / 2;
+    const tx = b.x;                     // left edge of target
+    const ty = b.y + NODE_H / 2;
+    const mx = (sx + tx) / 2;
+    const d = `M ${sx} ${sy} L ${mx} ${sy} L ${mx} ${ty} L ${tx} ${ty}`;
+    edgeEls += `<path d="${d}" fill="none" stroke="#8a7a58" stroke-width="1.5" marker-end="url(#arrow)"/>`;
+  });
+
+  // Nodes (square corners — no rx)
+  let nodeEls = "";
+  nodes.forEach(n => {
+    const colors = BLOCK_COLORS[n.type];
+    const isSelected = n.id === state.selectedBlockId;
+    const selClass = isSelected ? " selected" : "";
+    let shape;
+    if (n.shape === "parallelogram") {
+      const pts = [
+        [n.x + SKEW, n.y],
+        [n.x + NODE_W + SKEW, n.y],
+        [n.x + NODE_W, n.y + NODE_H],
+        [n.x, n.y + NODE_H]
+      ].map(p => p.join(",")).join(" ");
+      shape = `<polygon class="node-shape" points="${pts}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5"/>`;
+    } else {
+      shape = `<rect class="node-shape" x="${n.x}" y="${n.y}" width="${NODE_W}" height="${NODE_H}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5"/>`;
+    }
+    const cx = n.x + NODE_W / 2 + (n.shape === "parallelogram" ? SKEW / 2 : 0);
+    const cy = n.y + NODE_H / 2;
+    const labelLines = wrapLabel(n.label, 16);
+    let labelSvg;
+    if (labelLines.length === 1) {
+      labelSvg = `<text class="node-label" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[0])}</text>`;
+    } else {
+      labelSvg = `
+        <text class="node-label" x="${cx}" y="${cy - 8}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[0])}</text>
+        <text class="node-label" x="${cx}" y="${cy + 8}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[1] || "")}</text>
+      `;
+    }
+    nodeEls += `<g class="pipeline-node${selClass}" data-id="${n.id}">${shape}${labelSvg}</g>`;
+  });
+
+  svg.innerHTML = defs + edgeEls + nodeEls;
+
+  svg.querySelectorAll(".pipeline-node").forEach(g => {
+    g.addEventListener("click", () => {
+      state.selectedBlockId = g.getAttribute("data-id");
+      state.selectedFilterId = null;
+      renderPipeline();
+      renderConfig();
+    });
+  });
+
+  // Update the panel meta
+  const branchCount = countBranches();
+  document.getElementById("pipelineMeta").textContent =
+    `${nodes.length} blocks \u00b7 ${branchCount} branches`;
+}
+
+function countBranches() {
+  // branches = number of nodes that have >1 outgoing edge
+  const out = {};
+  MOCK_PIPELINE.edges.forEach(e => { out[e.from] = (out[e.from] || 0) + 1; });
+  let b = 0;
+  Object.values(out).forEach(c => { if (c > 1) b++; });
+  return Math.max(1, b + 1); // approx
+}
+
+function wrapLabel(text, maxLen) {
+  if (text.length <= maxLen) return [text];
+  const words = text.split(" ");
+  const lines = [""];
+  words.forEach(w => {
+    if ((lines[lines.length - 1] + " " + w).trim().length > maxLen && lines[lines.length - 1]) {
+      lines.push(w);
+    } else {
+      lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim();
+    }
+  });
+  return lines.slice(0, 2);
+}
+
+function screenToSvg(svg, clientX, clientY) {
+  const pt = svg.createSVGPoint();
+  pt.x = clientX; pt.y = clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const transformed = pt.matrixTransform(ctm.inverse());
+  return { x: transformed.x, y: transformed.y };
+}
+
+/* =====================================================
+   SECTION D — config panel (split for screener blocks)
+===================================================== */
+function renderConfig() {
+  const id = state.selectedBlockId;
+  const node = MOCK_PIPELINE.nodes.find(n => n.id === id);
+  const title = document.getElementById("configTitle");
+  const body = document.getElementById("configBody");
+  const label = node ? node.label : id;
+  title.textContent = `Configuration \u00b7 ${label}`;
+
+  const isScreener = node && (node.type === "forward" || node.type === "backward");
+
+  if (isScreener) {
+    body.innerHTML = `
+      <div class="config-split">
+        <div class="cfg-tree-col" id="cfgTreeCol"></div>
+        <div class="cfg-form-col" id="cfgFormCol"></div>
+      </div>
+    `;
+    renderFilterTree(id);
+    renderFilterForm(id);
+    return;
+  }
+
+  // Single-column variants
+  body.innerHTML = `<div class="config-single" id="cfgSingle"></div>`;
+  const single = document.getElementById("cfgSingle");
+  const cfg = BLOCK_CONFIGS[id];
+
+  if (!node || id === "seeds") {
+    const seedCfg = BLOCK_CONFIGS["seeds"];
+    const selectedList = [...state.selectedSeedIds]
+      .map(pid => MOCK_SEED_RESULTS.find(p => p.id === pid))
+      .filter(Boolean);
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Topic description</div>
+        <textarea class="cfg-textarea" rows="4">${escapeHtml(seedCfg.topic)}</textarea>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Selected seeds (${selectedList.length})</div>
+        <div class="seed-mini-list">
+          ${selectedList.length === 0
+            ? '<div class="seed-mini-row"><div class="seed-mini-title cfg-mono">(none)</div></div>'
+            : selectedList.map(p => `
+                <div class="seed-mini-row">
+                  <div class="seed-mini-title">${escapeHtml(p.title)} &middot; ${escapeHtml(p.venue)}</div>
+                  <div class="seed-mini-year">${p.year}</div>
+                </div>
+              `).join("")}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  if (node.type === "rerank") {
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Metric</div>
+        <select class="cfg-select">
+          <option ${cfg.metric === "pagerank" ? "selected" : ""}>pagerank</option>
+          <option ${cfg.metric === "degree" ? "selected" : ""}>degree</option>
+          <option ${cfg.metric === "citation_count" ? "selected" : ""}>citation_count</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">K</div>
+        <input type="number" class="cfg-input" value="${cfg.k}">
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Diversity cluster</div>
+        <input type="text" class="cfg-input" value="${escapeHtml(cfg.diversity)}">
+      </div>
+    `;
+    return;
+  }
+
+  if (node.type === "rescreen") {
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Target</div>
+        <select class="cfg-select">
+          <option ${cfg.target === "entire_collection" ? "selected" : ""}>entire_collection</option>
+          <option ${cfg.target === "seeds_only" ? "selected" : ""}>seeds_only</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Screener reference</div>
+        <select class="cfg-select">
+          <option ${cfg.screener === "tight_screener" ? "selected" : ""}>tight_screener</option>
+          <option ${cfg.screener === "forward_screener" ? "selected" : ""}>forward_screener</option>
+          <option ${cfg.screener === "backward_screener" ? "selected" : ""}>backward_screener</option>
+        </select>
+      </div>
+    `;
+    return;
+  }
+
+  // Fallback for unknown / newly dropped block types
+  single.innerHTML = `
+    <div class="cfg-row">
+      <div class="cfg-label">Block type</div>
+      <div class="cfg-mono">${escapeHtml(node.type)}</div>
+    </div>
+    <div class="cfg-row">
+      <div class="cfg-label">Label</div>
+      <div class="cfg-mono">${escapeHtml(node.label)}</div>
+    </div>
+  `;
+}
+
+/* ---- filter tree rendering ---- */
+function renderFilterTree(blockId) {
+  const col = document.getElementById("cfgTreeCol");
+  const tree = state.blockFilters[blockId];
+  if (!tree) {
+    col.innerHTML = '<div class="cfg-empty">No filter tree for this block.</div>';
+    return;
+  }
+  col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter tree</div>` + renderContainer(tree, blockId);
+  attachTreeHandlers(blockId);
+}
+
+function renderContainer(container, blockId) {
+  const typeClass =
+    container.type === "Any" ? " filter-container-any" :
+    container.type === "Not" ? " filter-container-not" : "";
+  const head =
+    container.type === "Sequential" ? "SEQUENTIAL \u00b7 AND" :
+    container.type === "Any"        ? "ANY \u00b7 OR" :
+    "NOT";
+  let childrenHtml = "";
+  container.children.forEach(child => {
+    if (child.children) {
+      childrenHtml += renderContainer(child, blockId);
+    } else {
+      childrenHtml += renderAtom(child);
+    }
+  });
+  return `
+    <div class="filter-container${typeClass}" data-cid="${container.id}">
+      <div class="filter-container-head">${head}</div>
+      ${childrenHtml}
+      <button class="filter-add-btn" data-add-target="${container.id}">+ add filter</button>
+      <div class="filter-add-menu" data-menu-for="${container.id}" style="display:none;">
+        <button data-kind="YearFilter">YearFilter</button>
+        <button data-kind="CitationFilter">CitationFilter</button>
+        <button data-kind="LLMFilter">LLMFilter</button>
+        <button data-kind="SimilarityFilter">SimilarityFilter</button>
+        <button data-kind="Any">+ Any group</button>
+        <button data-kind="Not">+ Not wrapper</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderAtom(atom) {
+  const sel = atom.id === state.selectedFilterId;
+  const preview = atomPreview(atom);
+  return `
+    <div class="filter-atom${sel ? " selected" : ""}" data-fid="${atom.id}">
+      <div class="filter-atom-name">${atom.type}</div>
+      <div class="filter-atom-preview">${escapeHtml(preview)}</div>
+      <button class="filter-atom-del" data-del="${atom.id}" title="Remove">\u00d7</button>
+    </div>
+  `;
+}
+
+function atomPreview(atom) {
+  const p = atom.params || {};
+  switch (atom.type) {
+    case "YearFilter":       return `${p.min}\u2013${p.max}`;
+    case "CitationFilter":   return `beta=${p.beta}${p.pass_if_cited_at_least ? ", shortcut \u2265" + p.pass_if_cited_at_least : ""}`;
+    case "LLMFilter":        return `${p.scope} \u00b7 ${p.model}`;
+    case "SimilarityFilter": return `threshold=${p.threshold}, on_no_data=${p.on_no_data}`;
+    default:                 return "";
+  }
+}
+
+function attachTreeHandlers(blockId) {
+  const col = document.getElementById("cfgTreeCol");
+  // Atom click → select
+  col.querySelectorAll(".filter-atom").forEach(el => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".filter-atom-del")) return;
+      state.selectedFilterId = el.getAttribute("data-fid");
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+  // Delete
+  col.querySelectorAll(".filter-atom-del").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const fid = btn.getAttribute("data-del");
+      removeFilterById(state.blockFilters[blockId], fid);
+      if (state.selectedFilterId === fid) state.selectedFilterId = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+  // + add filter buttons
+  col.querySelectorAll(".filter-add-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const cid = btn.getAttribute("data-add-target");
+      const menu = col.querySelector(`[data-menu-for="${cid}"]`);
+      if (!menu) return;
+      menu.style.display = menu.style.display === "none" ? "grid" : "none";
+    });
+  });
+  // menu options
+  col.querySelectorAll(".filter-add-menu button").forEach(mbtn => {
+    mbtn.addEventListener("click", () => {
+      const kind = mbtn.getAttribute("data-kind");
+      const menu = mbtn.parentElement;
+      const cid = menu.getAttribute("data-menu-for");
+      addFilterTo(state.blockFilters[blockId], cid, kind);
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+}
+
+function removeFilterById(container, fid) {
+  if (!container.children) return false;
+  for (let i = 0; i < container.children.length; i++) {
+    const c = container.children[i];
+    if (c.id === fid) {
+      container.children.splice(i, 1);
+      return true;
+    }
+    if (c.children && removeFilterById(c, fid)) return true;
+  }
+  return false;
+}
+
+function findContainerById(container, cid) {
+  if (container.id === cid) return container;
+  if (!container.children) return null;
+  for (const c of container.children) {
+    if (c.children) {
+      const found = findContainerById(c, cid);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function addFilterTo(tree, cid, kind) {
+  const target = findContainerById(tree, cid);
+  if (!target) return;
+  const newFilter = buildNewFilter(kind);
+  target.children.push(newFilter);
+}
+
+function buildNewFilter(kind) {
+  switch (kind) {
+    case "YearFilter":
+      return { id: randomId(), type: "YearFilter", params: { min: 2018, max: 2025 } };
+    case "CitationFilter":
+      return { id: randomId(), type: "CitationFilter", params: { beta: 30, pass_if_cited_at_least: null } };
+    case "LLMFilter":
+      return { id: randomId(), type: "LLMFilter", params: {
+        query: "The paper proposes a novel method relevant to the topic.",
+        scope: "title_abstract",
+        model: "gemma-4-31b",
+        reasoning_effort: "medium"
+      } };
+    case "SimilarityFilter":
+      return { id: randomId(), type: "SimilarityFilter", params: { threshold: 0.025, on_no_data: "pass" } };
+    case "Any":
+      return { id: randomId(), type: "Any", children: [] };
+    case "Not":
+      return { id: randomId(), type: "Not", children: [] };
+    default:
+      return { id: randomId(), type: kind, params: {} };
+  }
+}
+
+/* ---- filter form (right column) ---- */
+function findAtomById(container, fid) {
+  if (!container.children) return null;
+  for (const c of container.children) {
+    if (c.id === fid && !c.children) return c;
+    if (c.children) {
+      const found = findAtomById(c, fid);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function renderFilterForm(blockId) {
+  const col = document.getElementById("cfgFormCol");
+  const tree = state.blockFilters[blockId];
+  const fid = state.selectedFilterId;
+  if (!fid || !tree) {
+    col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter config</div>
+      <div class="cfg-empty">Select a filter on the left to configure it.</div>`;
+    return;
+  }
+  const atom = findAtomById(tree, fid);
+  if (!atom) {
+    col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter config</div>
+      <div class="cfg-empty">Filter not found.</div>`;
+    return;
+  }
+  const p = atom.params || {};
+  let formHtml = `<div class="cfg-label" style="margin-bottom:8px;">${atom.type}</div>`;
+
+  if (atom.type === "YearFilter") {
+    formHtml += `
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Min year</div>
+            <input type="number" class="cfg-input" data-param="min" value="${p.min}">
+          </div>
+          <div>
+            <div class="cfg-label">Max year</div>
+            <input type="number" class="cfg-input" data-param="max" value="${p.max}">
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (atom.type === "CitationFilter") {
+    formHtml += `
+      <div class="cfg-row">
+        <div class="cfg-label">Beta</div>
+        <input type="number" class="cfg-input" data-param="beta" value="${p.beta}">
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Pass if cited at least (optional)</div>
+        <input type="number" class="cfg-input" data-param="pass_if_cited_at_least" value="${p.pass_if_cited_at_least == null ? "" : p.pass_if_cited_at_least}">
+      </div>
+    `;
+  } else if (atom.type === "LLMFilter") {
+    formHtml += `
+      <div class="cfg-row">
+        <div class="cfg-label">Query</div>
+        <textarea class="cfg-textarea" rows="4" data-param="query">${escapeHtml(p.query || "")}</textarea>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Scope</div>
+            <select class="cfg-select" data-param="scope">
+              ${["title","title_abstract","full_text"].map(v =>
+                `<option value="${v}"${v === p.scope ? " selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <div class="cfg-label">Model</div>
+            <select class="cfg-select" data-param="model">
+              ${["gemma-4-31b","gpt-4o","gemini-3-pro"].map(v =>
+                `<option value="${v}"${v === p.model ? " selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Reasoning effort</div>
+        <select class="cfg-select" data-param="reasoning_effort">
+          ${["minimal","low","medium","high"].map(v =>
+            `<option value="${v}"${v === p.reasoning_effort ? " selected" : ""}>${v}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  } else if (atom.type === "SimilarityFilter") {
+    formHtml += `
+      <div class="cfg-row">
+        <div class="cfg-label">Threshold</div>
+        <input type="number" step="0.001" class="cfg-input" data-param="threshold" value="${p.threshold}">
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">On no data</div>
+        <select class="cfg-select" data-param="on_no_data">
+          <option value="pass"${p.on_no_data === "pass" ? " selected" : ""}>pass</option>
+          <option value="reject"${p.on_no_data === "reject" ? " selected" : ""}>reject</option>
+        </select>
+      </div>
+    `;
+  } else {
+    formHtml += `<div class="cfg-empty">No editable params for ${atom.type}.</div>`;
+  }
+
+  col.innerHTML = formHtml;
+
+  // Wire up inputs
+  col.querySelectorAll("[data-param]").forEach(el => {
+    el.addEventListener("input", () => {
+      const key = el.getAttribute("data-param");
+      let value = el.value;
+      if (el.type === "number") {
+        value = value === "" ? null : Number(value);
+      }
+      atom.params[key] = value;
+      // Re-render the tree so the preview updates
+      renderFilterTree(blockId);
+    });
+    el.addEventListener("change", () => {
+      const key = el.getAttribute("data-param");
+      atom.params[key] = el.value;
+      renderFilterTree(blockId);
+    });
+  });
+}
+
+/* =====================================================
+   SECTION E — palette with drag-and-drop
+===================================================== */
+function renderPalette() {
+  const body = document.getElementById("paletteBody");
+  let html = "";
+  Object.entries(BUILDING_BLOCKS_CATALOG).forEach(([cat, items]) => {
+    html += `<div class="cat-header">${cat}</div>`;
+    items.forEach(it => {
+      const color = BLOCK_COLORS[it.type].fill;
+      html += `
+        <div class="block-chip"
+             draggable="true"
+             data-id="${it.id}"
+             data-type="${it.type}"
+             data-label="${escapeHtml(it.label)}"
+             style="border-left-color: ${color};">
+          <div class="block-chip-label">${escapeHtml(it.label)}</div>
+          <div class="block-chip-desc">${escapeHtml(it.desc)}</div>
+        </div>
+      `;
+    });
+  });
+  body.innerHTML = html;
+
+  body.querySelectorAll(".block-chip").forEach(el => {
+    el.addEventListener("dragstart", (e) => {
+      const payload = {
+        blockId: el.getAttribute("data-id"),
+        type: el.getAttribute("data-type"),
+        label: el.getAttribute("data-label")
+      };
+      e.dataTransfer.setData("application/x-citeclaw-block", JSON.stringify(payload));
+      e.dataTransfer.effectAllowed = "copy";
+    });
+  });
+}
+
+/* =====================================================
+   Canvas drop target
+===================================================== */
+function wireDropTarget() {
+  const wrap = document.getElementById("canvasWrap");
+  const svg = document.getElementById("pipelineSvg");
+  wrap.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    wrap.classList.add("drop-active");
+  });
+  wrap.addEventListener("dragleave", (e) => {
+    if (e.target === wrap) wrap.classList.remove("drop-active");
+  });
+  wrap.addEventListener("drop", (e) => {
+    e.preventDefault();
+    wrap.classList.remove("drop-active");
+    const raw = e.dataTransfer.getData("application/x-citeclaw-block");
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch { return; }
+
+    const { x, y } = screenToSvg(svg, e.clientX, e.clientY);
+    const nodeX = Math.round(x - NODE_W / 2);
+    const nodeY = Math.round(y - NODE_H / 2);
+
+    const newId = `${payload.blockId.toLowerCase()}_${Date.now().toString(36).slice(-4)}`;
+    const newNode = {
+      id: newId,
+      type: payload.type,
+      label: payload.label,
+      shape: payload.type === "seeds" ? "parallelogram" : "rect",
+      x: nodeX,
+      y: nodeY
+    };
+    MOCK_PIPELINE.nodes.push(newNode);
+
+    // If it's a screener-like block, seed a default filter tree
+    if (payload.type === "forward" || payload.type === "backward") {
+      state.blockFilters[newId] = defaultFilterTree();
+    }
+
+    // If it's a non-seeds block, give it a BLOCK_CONFIGS entry so D doesn't crash
+    if (payload.type === "rerank" && !BLOCK_CONFIGS[newId]) {
+      BLOCK_CONFIGS[newId] = { metric: "pagerank", k: 3, diversity: "forward_topics" };
+    } else if (payload.type === "rescreen" && !BLOCK_CONFIGS[newId]) {
+      BLOCK_CONFIGS[newId] = { target: "entire_collection", screener: "tight_screener" };
+    }
+
+    state.selectedBlockId = newId;
+    state.selectedFilterId = null;
+    renderPipeline();
+    renderConfig();
+    renderStatus();
+  });
+}
+
+/* =====================================================
+   SECTION F — status bar
+===================================================== */
+function renderStatus() {
+  const blockCount = MOCK_PIPELINE.nodes.length;
+  const seedCount = state.selectedSeedIds.size;
+  document.getElementById("statusLeft").textContent =
+    `${blockCount} blocks \u00b7 ${seedCount} seed${seedCount === 1 ? "" : "s"} selected \u00b7 ready to run`;
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+document.getElementById("seedSearch").addEventListener("input", (e) => {
+  state.searchQuery = e.target.value;
+  renderResults();
+});
+document.getElementById("runBtn").addEventListener("click", () => {
+  alert("Would transition to Page 2 in real app");
+});
+
+renderResults();
+renderSeedCount();
+renderPipeline();
+renderConfig();
+renderPalette();
+wireDropTarget();
+renderStatus();
+
+window.addEventListener("resize", () => {
+  // SVG uses width/height 100% with viewBox, so auto-scales; nothing to re-render.
+});
+</script>
+</body>
+</html>
