@@ -402,6 +402,9 @@ graph.forEachNode((id, attrs) => {
 // top-3 citations get forceLabel
 const top3 = [...PAPERS].sort((a,b)=>b.citations-a.citations).slice(0,3).map(p=>p.id);
 
+// state must be declared before new Sigma: nodeReducer/edgeReducer run synchronously in the constructor
+const state = { selected: null, growing: false };
+
 const container = document.getElementById('graph');
 const sigmaInstance = new Sigma(graph, container, {
   labelRenderedSizeThreshold: 8,
@@ -467,8 +470,6 @@ const layout = new FA2Layout(graph, {
   },
 });
 layout.start();
-
-const state = { selected: null, growing: false };
 
 // animation RAF for live-added nodes
 function easeOutCubic(t) { return 1 - Math.pow(1-t, 3); }

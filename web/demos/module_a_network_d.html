@@ -503,6 +503,17 @@ const container = document.getElementById("sigma-root");
 
 const top3Ids = [...ALL_PAPERS].sort((a,b)=>b.citation_count-a.citation_count).slice(0,3).map(p=>p.id);
 
+// state must precede new Sigma: reducers run synchronously in the constructor, TDZ otherwise
+const state = {
+  added: new Set(),
+  growing: false,
+  selected: null,
+  hop1: new Set(),
+  hopEdges: new Set(),
+  layout: null,
+  animTimers: []
+};
+
 const sigmaInstance = new Sigma(graph, container, {
   defaultNodeColor: "#7996ab",
   defaultEdgeColor: "#a8a198",
@@ -543,16 +554,6 @@ function hexWithAlpha(hex, a){
   }
   return hex;
 }
-
-const state = {
-  added: new Set(),
-  growing: false,
-  selected: null,
-  hop1: new Set(),
-  hopEdges: new Set(),
-  layout: null,
-  animTimers: []
-};
 
 function addPaperToGraph(p, x, y){
   const target = sizeFor(p.citation_count);

@@ -647,6 +647,15 @@ for (const e of EDGES) {
 // force-label top-3 by citation
 const top3 = [...PAPERS].sort((a,b) => b.citation_count - a.citation_count).slice(0, 3).map(p => p.id);
 
+// ---------- state (must precede new Sigma: reducers run synchronously in constructor, TDZ otherwise) ----------
+const state = {
+  selectedId: null,
+  hoverId: null,
+  pinned: false,
+  sortBy: "citations",
+  visibleIds: new Set(initialIds)
+};
+
 // ---------- sigma ----------
 const container = document.getElementById("sigma");
 const sigma = new Sigma(graph, container, {
@@ -707,15 +716,6 @@ const layout = new FA2Layout(graph, {
   }
 });
 layout.start();
-
-// ---------- state ----------
-const state = {
-  selectedId: null,  // pinned selection (click)
-  hoverId: null,     // hover preview
-  pinned: false,
-  sortBy: "citations",
-  visibleIds: new Set(initialIds)
-};
 
 // ---------- UI: list ----------
 const listEl = document.getElementById("list");
@@ -779,7 +779,7 @@ function renderDetail(paperId) {
   const abs = p.abstract.length > 200 ? p.abstract.slice(0, 200) + "…" : p.abstract;
   detailEl.innerHTML = `
     <div>
-      <span class="d-cluster">${escape(CLUSTERS[p.cluster].label)}</span>
+      <span class="d-cluster">${escape(CLUSTERS[p.cluster]?.label ?? p.cluster)}</span>
       ${p.seed ? '<span class="d-seed">Seed</span>' : ''}
     </div>
     <h2>${escape(p.title)}</h2>
