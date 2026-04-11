@@ -71,7 +71,7 @@ class ExpandByPDF:
         screener: Any = None,
         topic_description: str | None = None,
         model: str | None = None,
-        reasoning_effort: str | None = "high",
+        reasoning_effort: str | None = "medium",
         max_papers: int | None = None,
         max_input_chars: int = 80_000,
         headless: bool = True,
