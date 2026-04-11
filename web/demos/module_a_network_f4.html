@@ -21,7 +21,7 @@
     --ink-faint: #94a3b8;
     --rule: #e4e0d4;
     --rule-strong: #c9c3b3;
-    --accent: #241340;
+    --accent: #3e3548;
     --accent-soft: #ece7f2;
     --hover: #f0ecde;
   }
@@ -174,7 +174,7 @@
   }
   #legend .bar {
     height: 8px; width: 170px;
-    background: linear-gradient(to right, #b5a7c7, #a091b8, #8b7ba6, #766593, #624f80, #4d3a6e, #392559, #241340);
+    background: linear-gradient(to right, #c8c0d0, #b6aec0, #a59db0, #948ca0, #7f768c, #6a6178, #544b64, #3e3548);
     border: 1px solid var(--accent);
   }
   #legend .years { display: flex; justify-content: space-between; width: 170px; margin-top: 2px; font-size: 9px; color: var(--ink-faint); }
@@ -182,7 +182,7 @@
   #legend .size-item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
   #legend .dot {
     border-radius: 50%;
-    background: #624f80;
+    background: #7f768c;
     border: 0.5px solid var(--accent);
     opacity: 0.75;
   }
@@ -190,7 +190,7 @@
   #legend .seed-row { display: flex; align-items: center; gap: 6px; }
   #legend .seed-dot {
     width: 9px; height: 9px; border-radius: 50%;
-    background: #059669;
+    background: #5a8570;
     border: 1px solid var(--accent);
   }
 
@@ -244,7 +244,7 @@
     display: inline-block;
     margin-left: 6px;
     padding: 3px 8px;
-    background: #059669;
+    background: #5a8570;
     color: #fff;
     border-radius: 3px;
     font-size: 10px;
@@ -357,17 +357,17 @@ import FA2Layout from 'graphology-layout-forceatlas2/worker';
 
 // ---------- palette ----------
 const YEAR_COLORS = {
-  2018: "#b5a7c7",
-  2019: "#a091b8",
-  2020: "#8b7ba6",
-  2021: "#766593",
-  2022: "#624f80",
-  2023: "#4d3a6e",
-  2024: "#392559",
-  2025: "#241340"
+  2018: "#c8c0d0",
+  2019: "#b6aec0",
+  2020: "#a59db0",
+  2021: "#948ca0",
+  2022: "#7f768c",
+  2023: "#6a6178",
+  2024: "#544b64",
+  2025: "#3e3548"
 };
-const SEED_COLOR = "#059669";
-const yearColor = (y) => YEAR_COLORS[y] || '#624f80';
+const SEED_COLOR = "#5a8570";
+const yearColor = (y) => YEAR_COLORS[y] || '#7f768c';
 const nodeRadius = (c) => 2 + 28 * (Math.log1p(c) / Math.log1p(10000));
 
 // ---------- mock data (from variant A) ----------
@@ -601,8 +601,8 @@ const sigmaInstance = new Sigma(graph, container, {
   labelFont: 'Inter, -apple-system, sans-serif',
   labelSize: 11,
   labelWeight: '400',
-  defaultEdgeColor: '#8b7ba6',
-  defaultNodeColor: '#624f80',
+  defaultEdgeColor: '#a59db0',
+  defaultNodeColor: '#7f768c',
   minCameraRatio: 0.05,
   maxCameraRatio: 8,
   edgeReducer: (edge, data) => {
