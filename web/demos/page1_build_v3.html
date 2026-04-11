@@ -1,0 +1,2659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CiteClaw — Pipeline Building (v3)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --panel: #fbf9f3;
+    --border: #e4e0d4;
+    --chrome: #faf8f2;
+    --ink-1: #1e2735;
+    --ink-2: #55606d;
+    --ink-3: #7f768c;
+    --accent: #3e3548;
+    --positive: #5a8570;
+    --warning: #8b5a5a;
+    --btn-border: #c4bcaa;
+    --btn-hover: #f0ecde;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 13px;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* Section A */
+  .section-a {
+    flex: 0 0 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .brand {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink-1);
+    letter-spacing: -0.2px;
+  }
+  .brand-tail {
+    color: var(--ink-3);
+    font-weight: 400;
+    font-size: 13px;
+    margin-left: 2px;
+  }
+  .btn {
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-1);
+    background: transparent;
+    border: 1px solid var(--btn-border);
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn-run {
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-run:hover { background: var(--btn-hover); }
+  .btn-mini {
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--ink-2);
+    background: #fbf9f3;
+    border: 1px solid var(--btn-border);
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .btn-mini:hover { background: var(--btn-hover); }
+
+  /* Main grid */
+  .main-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 280px;
+    grid-template-rows: 60% 40%;
+    grid-template-areas:
+      "b c e"
+      "b d e";
+    min-width: 0;
+    min-height: 0;
+  }
+  .section-b, .section-c, .section-d, .section-e {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .section-b { grid-area: b; background: var(--panel); border-right: 1px solid var(--border); }
+  .section-c { grid-area: c; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .section-d { grid-area: d; background: var(--panel); }
+  .section-e { grid-area: e; background: var(--panel); border-left: 1px solid var(--border); }
+
+  /* Panel header */
+  .panel-header {
+    flex: 0 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--chrome);
+  }
+  .panel-header-actions { display: flex; align-items: center; gap: 6px; }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-2);
+  }
+  .panel-meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  /* Section B — Seed search */
+  .search-wrap {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-input {
+    width: 100%;
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    color: var(--ink-1);
+    background: #ffffff;
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 120ms;
+  }
+  .search-input:focus { border-color: var(--ink-3); }
+  .search-input::placeholder { color: var(--ink-3); }
+  .results-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2px 0;
+  }
+  .result-row {
+    padding: 10px 12px 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    transition: background 120ms;
+  }
+  .result-row:hover { background: var(--btn-hover); }
+  .result-row.selected {
+    background: rgba(62, 53, 72, 0.04);
+    border-left: 3px solid var(--accent);
+    padding-left: 9px;
+  }
+  .checkmark-box {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--btn-border);
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+    transition: background 120ms, border-color 120ms;
+  }
+  .checkmark-box svg { display: block; opacity: 0; transition: opacity 120ms; }
+  .result-row.selected .checkmark-box {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .result-row.selected .checkmark-box svg { opacity: 1; }
+  .result-body { flex: 1; min-width: 0; }
+  .result-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-1);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .result-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .result-authors {
+    font-size: 11px;
+    color: var(--ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .result-cites {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  /* Section C — Pipeline canvas */
+  .canvas-wrap {
+    flex: 1;
+    position: relative;
+    background: var(--bg);
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+  }
+  .canvas-wrap.drop-active::before {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border: 1.5px dashed var(--accent);
+    background: rgba(62, 53, 72, 0.04);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .canvas-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    user-select: none;
+  }
+  .canvas-svg.connecting, .canvas-svg.dragging { cursor: crosshair; }
+  .canvas-svg.dragging { cursor: grabbing; }
+  .node-label {
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    fill: #ffffff;
+    pointer-events: none;
+    user-select: none;
+  }
+  .pipeline-node { cursor: grab; transition: filter 120ms; }
+  .pipeline-node.dragging { cursor: grabbing; }
+  .pipeline-node:hover .node-shape { stroke-width: 2; }
+  .pipeline-node.selected .node-shape {
+    stroke: #3e3548 !important;
+    stroke-width: 2.5;
+    filter: url(#shadow);
+  }
+  .node-port {
+    cursor: crosshair;
+    transition: r 120ms;
+  }
+  .node-port:hover { stroke-width: 2; }
+  .node-del-btn {
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+  .pipeline-node:hover .node-del-btn { opacity: 1; }
+  .node-del-btn rect { fill: #ffffff; stroke: #8b5a5a; stroke-width: 1.2; }
+  .node-del-btn text {
+    font-family: "Inter", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    fill: #8b5a5a;
+    pointer-events: none;
+  }
+  .pipeline-edge {
+    fill: none;
+    stroke-width: 1.5;
+    cursor: pointer;
+    transition: stroke-width 120ms;
+  }
+  .pipeline-edge.selected {
+    stroke: #3e3548 !important;
+    stroke-width: 3 !important;
+  }
+  .pipeline-edge-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 12;
+    cursor: pointer;
+  }
+  .pipeline-edge-preview {
+    fill: none;
+    stroke: #3e3548;
+    stroke-width: 2;
+    stroke-dasharray: 4 3;
+    pointer-events: none;
+  }
+
+  /* Section D — Config panel */
+  .config-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .config-single {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 18px;
+  }
+  .config-split {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 42% 58%;
+    overflow: hidden;
+  }
+  .cfg-tree-col, .cfg-form-col {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px;
+  }
+  .cfg-tree-col { border-right: 1px solid var(--border); }
+  .cfg-row { margin-bottom: 14px; }
+  .cfg-row:last-child { margin-bottom: 0; }
+  .cfg-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    margin-bottom: 5px;
+  }
+  .cfg-input, .cfg-textarea, .cfg-select {
+    width: 100%;
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+    color: var(--ink-1);
+    background: #ffffff;
+    border: 1px solid var(--border);
+    padding: 7px 9px;
+    outline: none;
+  }
+  .cfg-textarea { resize: none; line-height: 1.45; }
+  .cfg-input:focus, .cfg-textarea:focus, .cfg-select:focus { border-color: var(--ink-3); }
+  .cfg-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .cfg-mono {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .seed-mini-list {
+    border: 1px solid var(--border);
+    background: #ffffff;
+  }
+  .seed-mini-row {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+  .seed-mini-row:last-child { border-bottom: none; }
+  .seed-mini-title {
+    font-size: 12px;
+    color: var(--ink-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .seed-mini-year {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+    flex-shrink: 0;
+  }
+  .cfg-empty {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-style: italic;
+    padding: 14px 4px;
+  }
+  .cfg-radio-row {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .cfg-radio-row label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--ink-1);
+    cursor: pointer;
+  }
+  .cfg-query-row {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    gap: 6px;
+    margin-bottom: 6px;
+    align-items: start;
+  }
+  .cfg-query-row .cfg-input, .cfg-query-row .cfg-textarea { font-size: 11px; padding: 5px 7px; }
+  .cfg-query-del {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 4px 7px;
+  }
+  .cfg-query-del:hover { color: var(--warning); border-color: var(--warning); }
+  .cfg-measure-row {
+    border: 1px solid var(--border);
+    background: #ffffff;
+    padding: 7px 9px;
+    margin-bottom: 6px;
+    position: relative;
+  }
+  .cfg-measure-head {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 5px;
+  }
+  .cfg-measure-del {
+    position: absolute;
+    top: 4px; right: 4px;
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 4px;
+  }
+  .cfg-measure-del:hover { color: var(--warning); }
+  .cfg-route-row {
+    border: 1px solid var(--border);
+    background: #ffffff;
+    padding: 9px 10px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .cfg-route-head {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .cfg-route-del {
+    position: absolute;
+    top: 5px; right: 5px;
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .cfg-route-del:hover { color: var(--warning); }
+  .cfg-route-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-3);
+    margin-bottom: 3px;
+  }
+
+  /* Filter tree */
+  .filter-container {
+    margin-bottom: 8px;
+    padding: 4px 0 4px 10px;
+    border-left: 2px solid var(--accent);
+    cursor: pointer;
+  }
+  .filter-container.selected { background: rgba(62, 53, 72, 0.05); }
+  .filter-container-any      { border-left-color: var(--positive); }
+  .filter-container-not      { border-left-color: var(--warning); }
+  .filter-container-route    { border-left-color: #8a7a58; }
+  .filter-container-head {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 4px;
+    padding-left: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .filter-container-del {
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+  }
+  .filter-container-del:hover { color: var(--warning); }
+  .filter-atom {
+    position: relative;
+    padding: 7px 24px 7px 10px;
+    background: #fbf9f3;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--ink-2);
+    margin: 4px 0;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .filter-atom:hover { background: var(--btn-hover); }
+  .filter-atom.selected {
+    border: 2px solid var(--accent);
+    padding: 6px 23px 6px 9px;
+    background: rgba(62, 53, 72, 0.04);
+  }
+  .filter-atom-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 1px;
+  }
+  .filter-atom-preview {
+    font-size: 10px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .filter-atom-del {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+  }
+  .filter-atom-del:hover { color: var(--warning); }
+  .filter-add-btn {
+    display: inline-block;
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    color: var(--ink-2);
+    background: transparent;
+    border: 1px dashed var(--btn-border);
+    padding: 4px 8px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .filter-add-btn:hover { background: var(--btn-hover); }
+  .filter-add-menu {
+    border: 1px solid var(--border);
+    background: #ffffff;
+    padding: 4px;
+    margin-top: 4px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+  }
+  .filter-add-menu button {
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    color: var(--ink-1);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 4px 6px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .filter-add-menu button:hover { background: var(--btn-hover); }
+
+  /* Section E — Palette */
+  .palette-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+  }
+  .cat-header {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    margin: 12px 2px 6px 2px;
+  }
+  .cat-header:first-child { margin-top: 0; }
+  .block-chip {
+    padding: 10px 12px;
+    background: #fbf9f3;
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    margin-bottom: 6px;
+    cursor: grab;
+    transition: background 120ms;
+  }
+  .block-chip:hover { background: var(--btn-hover); }
+  .block-chip:active { cursor: grabbing; }
+  .block-chip-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 2px;
+  }
+  .block-chip-desc {
+    font-size: 10px;
+    color: var(--ink-3);
+    line-height: 1.35;
+  }
+
+  /* Section F */
+  .section-f {
+    flex: 0 0 32px;
+    background: var(--chrome);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .status-left {
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .status-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--positive);
+    display: inline-block;
+  }
+
+  /* Palette picker (floating panel) */
+  .palette-picker {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 188px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(30,39,53,0.08);
+    z-index: 5;
+    padding: 8px 10px 10px 10px;
+  }
+  .palette-picker.hidden { display: none; }
+  .palette-picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .palette-picker-title {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-2);
+  }
+  .palette-picker-close {
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+  .palette-picker-close:hover { color: var(--ink-1); }
+  .palette-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 2px;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .palette-row:hover { background: #faf8f2; }
+  .palette-row.active .palette-swatches {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .palette-name {
+    font-size: 10px;
+    color: var(--ink-2);
+    flex: 1;
+    font-family: "Inter", sans-serif;
+  }
+  .palette-swatches {
+    display: flex;
+    gap: 1px;
+    padding: 1px;
+  }
+  .palette-swatch {
+    width: 14px;
+    height: 10px;
+    border: 1px solid #e4e0d4;
+  }
+  .palette-toggle-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 4;
+    font-size: 10px;
+    padding: 4px 8px;
+    background: #ffffff;
+    border: 1px solid var(--btn-border);
+    color: var(--ink-2);
+    cursor: pointer;
+    display: none;
+  }
+  .palette-toggle-btn.visible { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Section A -->
+  <div class="section-a">
+    <div>
+      <span class="brand">CiteClaw</span><span class="brand-tail"> &middot; New run &middot; v3</span>
+    </div>
+    <button id="runBtn" class="btn btn-run">Run pipeline</button>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+    <!-- Section B -->
+    <div class="section-b">
+      <div class="panel-header">
+        <div class="panel-title">Seed papers</div>
+        <div class="panel-meta" id="seedCount">(3 selected)</div>
+      </div>
+      <div class="search-wrap">
+        <input type="text" id="seedSearch" class="search-input" placeholder="Search Semantic Scholar...">
+      </div>
+      <div id="resultsList" class="results-list"></div>
+    </div>
+
+    <!-- Section C -->
+    <div class="section-c">
+      <div class="panel-header">
+        <div class="panel-title">Pipeline</div>
+        <div class="panel-header-actions">
+          <button id="fitViewBtn" class="btn-mini" title="Frame all nodes">Fit to view</button>
+          <button id="palettePickerBtn" class="btn-mini" title="Colour palette">Palette</button>
+          <div class="panel-meta" id="pipelineMeta">7 blocks &middot; 2 branches</div>
+        </div>
+      </div>
+      <div id="canvasWrap" class="canvas-wrap">
+        <svg id="pipelineSvg" class="canvas-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+        <button id="paletteToggleBtn" class="palette-toggle-btn">Palette</button>
+        <div id="palettePicker" class="palette-picker hidden">
+          <div class="palette-picker-head">
+            <div class="palette-picker-title">Palette</div>
+            <button id="palettePickerClose" class="palette-picker-close" title="Hide">&times;</button>
+          </div>
+          <div id="palettePickerList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section D -->
+    <div class="section-d">
+      <div class="panel-header">
+        <div class="panel-title" id="configTitle">Configuration &middot; Seeds + Topic</div>
+      </div>
+      <div id="configBody" class="config-body"></div>
+    </div>
+
+    <!-- Section E -->
+    <div class="section-e">
+      <div class="panel-header">
+        <div class="panel-title">Building blocks</div>
+      </div>
+      <div id="paletteBody" class="palette-body"></div>
+    </div>
+  </div>
+
+  <!-- Section F -->
+  <div class="section-f">
+    <div class="status-left" id="statusLeft">7 blocks &middot; 3 seeds selected &middot; ready to run</div>
+    <div class="status-right">
+      <span class="status-dot"></span>
+      <span>Session: demo &middot; v3</span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   PALETTES
+===================================================== */
+const PALETTES = {
+  "muted-ppt": {
+    label: "Muted PPT",
+    seeds:    "#8aa695",
+    forward:  "#9c7d8a",
+    backward: "#6b82a0",
+    rerank:   "#a89878",
+    rescreen: "#78688a"
+  },
+  "nord": {
+    label: "Nord Frost",
+    seeds:    "#8fbcbb",
+    forward:  "#bf616a",
+    backward: "#5e81ac",
+    rerank:   "#ebcb8b",
+    rescreen: "#b48ead"
+  },
+  "rose-pine": {
+    label: "Rose Pine",
+    seeds:    "#9ccfd8",
+    forward:  "#eb6f92",
+    backward: "#31748f",
+    rerank:   "#f6c177",
+    rescreen: "#c4a7e7"
+  },
+  "everforest": {
+    label: "Everforest",
+    seeds:    "#83c092",
+    forward:  "#e67e80",
+    backward: "#7fbbb3",
+    rerank:   "#dbbc7f",
+    rescreen: "#d699b6"
+  },
+  "gruvbox-muted": {
+    label: "Gruvbox",
+    seeds:    "#8ec07c",
+    forward:  "#cc6666",
+    backward: "#83a598",
+    rerank:   "#d79921",
+    rescreen: "#b16286"
+  },
+  "solarized-muted": {
+    label: "Solarized",
+    seeds:    "#859900",
+    forward:  "#dc322f",
+    backward: "#268bd2",
+    rerank:   "#b58900",
+    rescreen: "#6c71c4"
+  },
+  "catppuccin-latte": {
+    label: "Catppuccin",
+    seeds:    "#40a02b",
+    forward:  "#d20f39",
+    backward: "#1e66f5",
+    rerank:   "#df8e1d",
+    rescreen: "#8839ef"
+  },
+  "tokyo-night-muted": {
+    label: "Tokyo Night",
+    seeds:    "#73daca",
+    forward:  "#f7768e",
+    backward: "#7aa2f7",
+    rerank:   "#e0af68",
+    rescreen: "#bb9af7"
+  },
+  "monochrome-slate": {
+    label: "Monochrome",
+    seeds:    "#94a3b8",
+    forward:  "#64748b",
+    backward: "#475569",
+    rerank:   "#334155",
+    rescreen: "#1e293b"
+  },
+  "ocean": {
+    label: "Ocean",
+    seeds:    "#8bb8a8",
+    forward:  "#6e8faf",
+    backward: "#5b7a9d",
+    rerank:   "#9bb7d4",
+    rescreen: "#4a6580"
+  }
+};
+
+const CATEGORY_ORDER = ["seeds", "forward", "backward", "rerank", "rescreen"];
+
+/* =====================================================
+   MOCK PIPELINE
+===================================================== */
+const MOCK_PIPELINE = {
+  nodes: [
+    { id: "seeds",    type: "seeds",    label: "Seeds + Topic",        shape: "parallelogram", x: 60,  y: 300 },
+    { id: "fwd1",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 260, y: 300 },
+    { id: "bwd1",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 460, y: 300 },
+    { id: "rerank",   type: "rerank",   label: "Diversified Reranker", shape: "rect",          x: 680, y: 180 },
+    { id: "fwd2",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 900, y: 180 },
+    { id: "bwd2",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 680, y: 420 },
+    { id: "rescreen", type: "rescreen", label: "Rescreener",           shape: "rect",          x: 1140,y: 300 }
+  ],
+  edges: [
+    { from: "seeds",  to: "fwd1" },
+    { from: "fwd1",   to: "bwd1" },
+    { from: "bwd1",   to: "rerank" },
+    { from: "bwd1",   to: "bwd2" },
+    { from: "rerank", to: "fwd2" },
+    { from: "fwd2",   to: "rescreen" },
+    { from: "bwd2",   to: "rescreen" }
+  ]
+};
+
+const MOCK_SEED_RESULTS = [
+  { id: "p1",  title: "Highly accurate protein structure prediction with AlphaFold",             authors: "Jumper, Evans, Pritzel, et al.", year: 2021, venue: "Nature",         citations: 7900 },
+  { id: "p2",  title: "AlphaFold 3: All-atom structure prediction across biomolecules",          authors: "Abramson, Adler, Dunger, et al.",year: 2024, venue: "Nature",         citations: 820  },
+  { id: "p3",  title: "RoseTTAFold: Accurate prediction of protein structures and interactions", authors: "Baek, DiMaio, Anishchenko",      year: 2021, venue: "Science",        citations: 3200 },
+  { id: "p4",  title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure",authors: "Lin, Akin, Rao, et al.",         year: 2023, venue: "Science",        citations: 2100 },
+  { id: "p5",  title: "ColabFold: Making protein folding accessible to all",                     authors: "Mirdita, Schutze, Moriwaki",     year: 2022, venue: "Nature Methods", citations: 2900 },
+  { id: "p6",  title: "OmegaFold: High-resolution de novo structure prediction",                 authors: "Wu, Ding, Wang",                 year: 2022, venue: "bioRxiv",        citations: 520  },
+  { id: "p7",  title: "ProteinMPNN: Robust deep learning based protein sequence design",         authors: "Dauparas, Anishchenko, Bennett", year: 2022, venue: "Science",        citations: 1700 },
+  { id: "p8",  title: "RFdiffusion: Broadly applicable and accurate protein design",             authors: "Watson, Juergens, Bennett",      year: 2023, venue: "Nature",         citations: 1400 },
+  { id: "p9",  title: "Chai-1: Decoding the molecular interactions of life",                     authors: "Boitreaud, Dent, McPartlon",     year: 2024, venue: "bioRxiv",        citations: 310  },
+  { id: "p10", title: "Boltz-1: Democratizing biomolecular interaction modeling",                authors: "Wohlwend, Corso, Passaro",       year: 2024, venue: "bioRxiv",        citations: 240  }
+];
+
+const INITIAL_SELECTED_SEEDS = ["p1", "p3", "p5"];
+
+const BUILDING_BLOCKS_CATALOG = {
+  "SEEDS": [
+    { id: "LoadSeeds",    type: "seeds",    label: "Load Seeds",    desc: "Initialize collection from seed papers" },
+    { id: "ResolveSeeds", type: "seeds",    label: "Resolve Seeds", desc: "Fuzzy-match seed titles via S2" }
+  ],
+  "EXPAND": [
+    { id: "ExpandForward",    type: "forward",  label: "Expand Forward",      desc: "Fetch citers of accepted papers" },
+    { id: "ExpandBackward",   type: "backward", label: "Expand Backward",     desc: "Fetch references of accepted papers" },
+    { id: "ExpandBySearch",   type: "forward",  label: "Expand by Search",    desc: "Iterative LLM search agent" },
+    { id: "ExpandBySemantics",type: "forward",  label: "Expand by Semantics", desc: "SPECTER2 kNN recommendations" },
+    { id: "ExpandByAuthor",   type: "forward",  label: "Expand by Author",    desc: "Top-K authors and their papers" }
+  ],
+  "FILTER": [
+    { id: "Rerank",   type: "rerank",   label: "Rerank",    desc: "Top-K with cluster diversity" },
+    { id: "ReScreen", type: "rescreen", label: "Re-screen", desc: "Apply screener to all accepted" },
+    { id: "Cluster",  type: "rerank",   label: "Cluster",   desc: "Topic-model clusters" }
+  ],
+  "CONTROL": [
+    { id: "Parallel",       type: "forward", label: "Parallel",          desc: "Branch and union results" },
+    { id: "HumanInTheLoop", type: "forward", label: "Human in the Loop", desc: "Interactive quality check" },
+    { id: "MergeDuplicates",type: "forward", label: "Merge Duplicates",  desc: "Preprint-published dedup" }
+  ],
+  "FINALIZE": [
+    { id: "Finalize", type: "rescreen", label: "Finalize", desc: "Write outputs" }
+  ]
+};
+
+const BLOCK_CONFIGS = {
+  "seeds":    { topic: "Deep learning methods for protein structure prediction and design, including AlphaFold-family models and diffusion-based approaches.", seedCount: 3 },
+  "fwd1":     { name: "Forward Screener",  model: "gemma-4-31b", reasoning: "medium" },
+  "bwd1":     { name: "Backward Screener", model: "gemma-4-31b", reasoning: "medium" },
+  "rerank":   { metric: "pagerank", k: 3, diversity: "forward_topics" },
+  "fwd2":     { name: "Forward Screener",  model: "gemma-4-31b", reasoning: "medium" },
+  "bwd2":     { name: "Backward Screener", model: "gemma-4-31b", reasoning: "medium" },
+  "rescreen": { target: "entire_collection", screener: "tight_screener" }
+};
+
+const NODE_W = 150;
+const NODE_H = 64;
+const SKEW = 15;
+const PORT_R = 5;
+const PORT_R_HOVER = 7;
+const LOGICAL_VB_W = 2000;
+const LOGICAL_VB_H = 900;
+
+/* =====================================================
+   UTIL
+===================================================== */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+function randomId() {
+  return "f_" + Math.random().toString(36).slice(2, 8);
+}
+
+function nodeWidthOf(node) {
+  return NODE_W + (node.shape === "parallelogram" ? SKEW : 0);
+}
+
+function darkenHex(hex, factor) {
+  // factor in [0,1], 0.75 => 25% darker
+  const m = /^#?([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(hex);
+  if (!m) return hex;
+  let r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+  r = Math.max(0, Math.min(255, Math.round(r * factor)));
+  g = Math.max(0, Math.min(255, Math.round(g * factor)));
+  b = Math.max(0, Math.min(255, Math.round(b * factor)));
+  return "#" + [r,g,b].map(v => v.toString(16).padStart(2,"0")).join("");
+}
+
+function blockColors(type, paletteKey) {
+  const pal = PALETTES[paletteKey] || PALETTES["muted-ppt"];
+  const fill = pal[type] || pal.forward || "#9c7d8a";
+  return {
+    fill: fill,
+    stroke: darkenHex(fill, 0.72),
+    textOnFill: "#ffffff"
+  };
+}
+
+function defaultFilterTree() {
+  return {
+    id: "root",
+    type: "Sequential",
+    children: [
+      { id: randomId(), type: "YearFilter",     params: { min: 2018, max: 2025 } },
+      { id: randomId(), type: "CitationFilter", params: { beta: 30, pass_if_cited_at_least: null } },
+      {
+        id: randomId(), type: "LLMFilter",
+        params: {
+          mode: "single",
+          query: "The paper proposes a novel method for protein structure prediction or design.",
+          formula: "",
+          queries: [],
+          scope: "title_abstract",
+          model: "gemma-4-31b",
+          reasoning_effort: "medium"
+        }
+      }
+    ]
+  };
+}
+
+function defaultRouteBranch() {
+  return {
+    id: randomId(),
+    type: "CitationFilter",
+    params: { beta: 30, pass_if_cited_at_least: null }
+  };
+}
+
+/* =====================================================
+   STATE
+===================================================== */
+const state = {
+  selectedBlockId: "seeds",
+  selectedSeedIds: new Set(INITIAL_SELECTED_SEEDS),
+  searchQuery: "",
+  blockFilters: {
+    fwd1: defaultFilterTree(),
+    bwd1: defaultFilterTree(),
+    fwd2: defaultFilterTree(),
+    bwd2: defaultFilterTree()
+  },
+  selectedFilterId: null,
+  selectedEdgeIndex: null,
+  activePalette: localStorage.getItem("citeclaw_v3_palette") || "muted-ppt",
+  palettePickerVisible: true,
+  // viewbox
+  viewBox: { x: 0, y: 0, w: LOGICAL_VB_W, h: LOGICAL_VB_H },
+  // pointer interaction
+  pointerMode: "idle", // 'idle' | 'dragging-node' | 'connecting' | 'panning'
+  dragNode: null,      // { id, offsetX, offsetY }
+  connect: null,       // { fromId, cursorX, cursorY }
+  pan: null            // { startClientX, startClientY, startScrollLeft, startScrollTop }
+};
+
+/* =====================================================
+   SECTION B — seed search
+===================================================== */
+function renderResults() {
+  const list = document.getElementById("resultsList");
+  const q = state.searchQuery.trim().toLowerCase();
+  const filtered = q
+    ? MOCK_SEED_RESULTS.filter(p =>
+        p.title.toLowerCase().includes(q) ||
+        p.authors.toLowerCase().includes(q) ||
+        p.venue.toLowerCase().includes(q))
+    : MOCK_SEED_RESULTS;
+
+  let html = "";
+  filtered.forEach(p => {
+    const sel = state.selectedSeedIds.has(p.id);
+    html += `
+      <div class="result-row${sel ? " selected" : ""}" data-pid="${p.id}">
+        <div class="checkmark-box">
+          <svg width="11" height="11" viewBox="0 0 11 11">
+            <polyline points="1.5,5.5 4.5,8.5 9.5,2.5" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"/>
+          </svg>
+        </div>
+        <div class="result-body">
+          <div class="result-title">${escapeHtml(p.title)}</div>
+          <div class="result-meta">
+            <div class="result-authors">${escapeHtml(p.authors)} &middot; ${p.year} &middot; ${escapeHtml(p.venue)}</div>
+            <div class="result-cites">${p.citations.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll(".result-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const pid = row.getAttribute("data-pid");
+      if (state.selectedSeedIds.has(pid)) state.selectedSeedIds.delete(pid);
+      else state.selectedSeedIds.add(pid);
+      renderResults();
+      renderSeedCount();
+      renderStatus();
+      if (state.selectedBlockId === "seeds") renderConfig();
+    });
+  });
+}
+
+function renderSeedCount() {
+  const n = state.selectedSeedIds.size;
+  document.getElementById("seedCount").textContent = `(${n} selected)`;
+}
+
+/* =====================================================
+   SECTION C — pipeline canvas
+===================================================== */
+function portPositions(node, edges, allEdges) {
+  // computes ordered in/out y offsets for each node.
+  // unused here; computed inline in renderPipeline via maps.
+}
+
+function renderPipeline() {
+  const svg = document.getElementById("pipelineSvg");
+  const nodes = MOCK_PIPELINE.nodes;
+  const edges = MOCK_PIPELINE.edges;
+  const paletteKey = state.activePalette;
+
+  // Build maps of incoming / outgoing edge indices per node, in order
+  const outByNode = new Map();
+  const inByNode = new Map();
+  edges.forEach((e, idx) => {
+    if (!outByNode.has(e.from)) outByNode.set(e.from, []);
+    if (!inByNode.has(e.to)) inByNode.set(e.to, []);
+    outByNode.get(e.from).push(idx);
+    inByNode.get(e.to).push(idx);
+  });
+
+  // set logical viewBox
+  svg.setAttribute("viewBox",
+    `${state.viewBox.x} ${state.viewBox.y} ${state.viewBox.w} ${state.viewBox.h}`);
+  svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+
+  // defs
+  const strokeColor = "#8a7a58";
+  let defs = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="${strokeColor}"/>
+      </marker>
+      <marker id="arrow-selected" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3e3548"/>
+      </marker>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+        <feOffset dx="0" dy="1" result="offsetblur"/>
+        <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+        <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+  `;
+
+  // compute port Y for a given edge side. k is 0-indexed, n is total edges at that side.
+  function distributedY(node, k, n) {
+    return node.y + ((k + 1) * NODE_H) / (n + 1);
+  }
+
+  // Edges
+  let edgeEls = "";
+  edges.forEach((e, idx) => {
+    const a = nodes.find(n => n.id === e.from);
+    const b = nodes.find(n => n.id === e.to);
+    if (!a || !b) return;
+    const outs = outByNode.get(a.id) || [];
+    const ins = inByNode.get(b.id) || [];
+    const outOrder = outs.indexOf(idx);
+    const inOrder = ins.indexOf(idx);
+    const aW = nodeWidthOf(a);
+    const sx = a.x + aW;
+    const sy = distributedY(a, outOrder, outs.length);
+    const tx = b.x;
+    const ty = distributedY(b, inOrder, ins.length);
+    const mx = (sx + tx) / 2;
+    const d = `M ${sx} ${sy} L ${mx} ${sy} L ${mx} ${ty} L ${tx} ${ty}`;
+    const selected = state.selectedEdgeIndex === idx;
+    const marker = selected ? "url(#arrow-selected)" : "url(#arrow)";
+    const strokeCol = selected ? "#3e3548" : strokeColor;
+    const selClass = selected ? " selected" : "";
+    edgeEls += `
+      <g class="pipeline-edge-group" data-edge-idx="${idx}">
+        <path class="pipeline-edge-hit" d="${d}"/>
+        <path class="pipeline-edge${selClass}" d="${d}" stroke="${strokeCol}" marker-end="${marker}"/>
+      </g>
+    `;
+  });
+
+  // Preview edge (while connecting)
+  let previewEl = "";
+  if (state.pointerMode === "connecting" && state.connect) {
+    const a = nodes.find(n => n.id === state.connect.fromId);
+    if (a) {
+      const aW = nodeWidthOf(a);
+      const outs = outByNode.get(a.id) || [];
+      const sx = a.x + aW;
+      const sy = distributedY(a, outs.length, outs.length + 1);
+      const tx = state.connect.cursorX;
+      const ty = state.connect.cursorY;
+      const mx = (sx + tx) / 2;
+      const d = `M ${sx} ${sy} L ${mx} ${sy} L ${mx} ${ty} L ${tx} ${ty}`;
+      previewEl = `<path class="pipeline-edge-preview" d="${d}"/>`;
+    }
+  }
+
+  // Nodes
+  let nodeEls = "";
+  nodes.forEach(n => {
+    const colors = blockColors(n.type, paletteKey);
+    const isSelected = n.id === state.selectedBlockId;
+    const selClass = isSelected ? " selected" : "";
+    const nW = nodeWidthOf(n);
+    let shape;
+    if (n.shape === "parallelogram") {
+      const pts = [
+        [n.x + SKEW, n.y],
+        [n.x + NODE_W + SKEW, n.y],
+        [n.x + NODE_W, n.y + NODE_H],
+        [n.x, n.y + NODE_H]
+      ].map(p => p.join(",")).join(" ");
+      shape = `<polygon class="node-shape" points="${pts}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5"/>`;
+    } else {
+      shape = `<rect class="node-shape" x="${n.x}" y="${n.y}" width="${NODE_W}" height="${NODE_H}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5"/>`;
+    }
+    const cx = n.x + NODE_W / 2 + (n.shape === "parallelogram" ? SKEW / 2 : 0);
+    const cy = n.y + NODE_H / 2;
+    const labelLines = wrapLabel(n.label, 16);
+    let labelSvg;
+    if (labelLines.length === 1) {
+      labelSvg = `<text class="node-label" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[0])}</text>`;
+    } else {
+      labelSvg = `
+        <text class="node-label" x="${cx}" y="${cy - 8}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[0])}</text>
+        <text class="node-label" x="${cx}" y="${cy + 8}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[1] || "")}</text>
+      `;
+    }
+
+    // Distribute ports for display: single input port at center-left, single output port at center-right.
+    // The ACTUAL edge endpoints are distributed by edge count (above); the visible port circles are the primary "attach here" hit targets, so we put them on centers.
+    const inPortX = n.x;
+    const inPortY = n.y + NODE_H / 2;
+    const outPortX = n.x + nW;
+    const outPortY = n.y + NODE_H / 2;
+
+    const ports = `
+      <circle class="node-port node-port-in" data-port-kind="in" data-port-node="${n.id}"
+              cx="${inPortX}" cy="${inPortY}" r="${PORT_R}"
+              fill="${colors.stroke}" stroke="${colors.fill}"/>
+      <circle class="node-port node-port-out" data-port-kind="out" data-port-node="${n.id}"
+              cx="${outPortX}" cy="${outPortY}" r="${PORT_R}"
+              fill="${colors.stroke}" stroke="${colors.fill}"/>
+    `;
+
+    // Delete × button (top-right)
+    const delX = n.x + nW - 14;
+    const delY = n.y + 2;
+    const delBtn = `
+      <g class="node-del-btn" data-del-node="${n.id}">
+        <rect x="${delX}" y="${delY}" width="14" height="14"/>
+        <text x="${delX + 7}" y="${delY + 11}" text-anchor="middle">&times;</text>
+      </g>
+    `;
+
+    nodeEls += `
+      <g class="pipeline-node${selClass}" data-id="${n.id}">
+        ${shape}
+        ${labelSvg}
+        ${ports}
+        ${delBtn}
+      </g>
+    `;
+  });
+
+  svg.innerHTML = defs + edgeEls + previewEl + nodeEls;
+
+  wireCanvasHandlers(svg);
+
+  // Meta
+  const branchCount = countBranches();
+  document.getElementById("pipelineMeta").textContent =
+    `${nodes.length} blocks \u00b7 ${branchCount} branches`;
+}
+
+function countBranches() {
+  const out = {};
+  MOCK_PIPELINE.edges.forEach(e => { out[e.from] = (out[e.from] || 0) + 1; });
+  let b = 0;
+  Object.values(out).forEach(c => { if (c > 1) b++; });
+  return Math.max(1, b + 1);
+}
+
+function wrapLabel(text, maxLen) {
+  if (text.length <= maxLen) return [text];
+  const words = text.split(" ");
+  const lines = [""];
+  words.forEach(w => {
+    if ((lines[lines.length - 1] + " " + w).trim().length > maxLen && lines[lines.length - 1]) {
+      lines.push(w);
+    } else {
+      lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim();
+    }
+  });
+  return lines.slice(0, 2);
+}
+
+function screenToSvg(svg, clientX, clientY) {
+  const pt = svg.createSVGPoint();
+  pt.x = clientX; pt.y = clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const transformed = pt.matrixTransform(ctm.inverse());
+  return { x: transformed.x, y: transformed.y };
+}
+
+/* ---- pointer interaction for the canvas ---- */
+function wireCanvasHandlers(svg) {
+  // mousedown on a node (body) or a port or empty area
+  svg.addEventListener("mousedown", (e) => {
+    const portEl = e.target.closest(".node-port");
+    const delEl = e.target.closest(".node-del-btn");
+    const nodeEl = e.target.closest(".pipeline-node");
+    const edgeHitEl = e.target.closest(".pipeline-edge-group");
+
+    if (delEl) {
+      e.stopPropagation();
+      const nid = delEl.getAttribute("data-del-node");
+      deleteNode(nid);
+      return;
+    }
+
+    if (portEl) {
+      const kind = portEl.getAttribute("data-port-kind");
+      const nodeId = portEl.getAttribute("data-port-node");
+      if (kind === "out") {
+        e.preventDefault();
+        e.stopPropagation();
+        state.pointerMode = "connecting";
+        const { x, y } = screenToSvg(svg, e.clientX, e.clientY);
+        state.connect = { fromId: nodeId, cursorX: x, cursorY: y };
+        svg.classList.add("connecting");
+        renderPipeline();
+      }
+      return;
+    }
+
+    if (nodeEl) {
+      e.preventDefault();
+      const nid = nodeEl.getAttribute("data-id");
+      const node = MOCK_PIPELINE.nodes.find(n => n.id === nid);
+      if (!node) return;
+      const { x, y } = screenToSvg(svg, e.clientX, e.clientY);
+      state.pointerMode = "dragging-node";
+      state.dragNode = {
+        id: nid,
+        offsetX: x - node.x,
+        offsetY: y - node.y,
+        moved: false
+      };
+      state.selectedBlockId = nid;
+      state.selectedEdgeIndex = null;
+      state.selectedFilterId = null;
+      svg.classList.add("dragging");
+      renderPipeline();
+      renderConfig();
+      return;
+    }
+
+    if (edgeHitEl) {
+      e.preventDefault();
+      const idx = parseInt(edgeHitEl.getAttribute("data-edge-idx"), 10);
+      state.selectedEdgeIndex = idx;
+      state.selectedBlockId = null;
+      renderPipeline();
+      return;
+    }
+
+    // Empty area: start panning via scroll
+    e.preventDefault();
+    const wrap = document.getElementById("canvasWrap");
+    state.pointerMode = "panning";
+    state.pan = {
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startScrollLeft: wrap.scrollLeft,
+      startScrollTop: wrap.scrollTop
+    };
+    state.selectedEdgeIndex = null;
+    // Do not clear selectedBlockId on empty click — keep last selection
+    renderPipeline();
+  });
+
+  // port hover effect: scale r
+  svg.querySelectorAll(".node-port").forEach(p => {
+    p.addEventListener("mouseenter", () => p.setAttribute("r", PORT_R_HOVER));
+    p.addEventListener("mouseleave", () => p.setAttribute("r", PORT_R));
+  });
+}
+
+function onGlobalMouseMove(e) {
+  const svg = document.getElementById("pipelineSvg");
+  if (!svg) return;
+
+  if (state.pointerMode === "dragging-node" && state.dragNode) {
+    const { x, y } = screenToSvg(svg, e.clientX, e.clientY);
+    const node = MOCK_PIPELINE.nodes.find(n => n.id === state.dragNode.id);
+    if (!node) return;
+    node.x = Math.round(x - state.dragNode.offsetX);
+    node.y = Math.round(y - state.dragNode.offsetY);
+    state.dragNode.moved = true;
+    renderPipeline();
+    return;
+  }
+
+  if (state.pointerMode === "connecting" && state.connect) {
+    const { x, y } = screenToSvg(svg, e.clientX, e.clientY);
+    state.connect.cursorX = x;
+    state.connect.cursorY = y;
+    renderPipeline();
+    return;
+  }
+
+  if (state.pointerMode === "panning" && state.pan) {
+    const wrap = document.getElementById("canvasWrap");
+    const dx = e.clientX - state.pan.startClientX;
+    const dy = e.clientY - state.pan.startClientY;
+    wrap.scrollLeft = state.pan.startScrollLeft - dx;
+    wrap.scrollTop = state.pan.startScrollTop - dy;
+    return;
+  }
+}
+
+function onGlobalMouseUp(e) {
+  const svg = document.getElementById("pipelineSvg");
+
+  if (state.pointerMode === "connecting" && state.connect) {
+    // Check drop target: port under cursor
+    let targetPort = null;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (el) {
+      const portEl = el.closest(".node-port");
+      if (portEl && portEl.getAttribute("data-port-kind") === "in") {
+        targetPort = portEl;
+      } else {
+        // Also: dropping anywhere on a node body should count as connecting to its input
+        const nodeEl = el.closest(".pipeline-node");
+        if (nodeEl) {
+          const nid = nodeEl.getAttribute("data-id");
+          if (nid && nid !== state.connect.fromId) {
+            // Commit edge
+            const from = state.connect.fromId;
+            const to = nid;
+            const exists = MOCK_PIPELINE.edges.some(x => x.from === from && x.to === to);
+            if (!exists) MOCK_PIPELINE.edges.push({ from, to });
+          }
+        }
+      }
+    }
+    if (targetPort) {
+      const toId = targetPort.getAttribute("data-port-node");
+      if (toId !== state.connect.fromId) {
+        const from = state.connect.fromId;
+        const to = toId;
+        const exists = MOCK_PIPELINE.edges.some(x => x.from === from && x.to === to);
+        if (!exists) MOCK_PIPELINE.edges.push({ from, to });
+      }
+    }
+    state.pointerMode = "idle";
+    state.connect = null;
+    if (svg) svg.classList.remove("connecting");
+    renderPipeline();
+    return;
+  }
+
+  if (state.pointerMode === "dragging-node") {
+    state.pointerMode = "idle";
+    state.dragNode = null;
+    if (svg) svg.classList.remove("dragging");
+    return;
+  }
+
+  if (state.pointerMode === "panning") {
+    state.pointerMode = "idle";
+    state.pan = null;
+    return;
+  }
+}
+
+function deleteNode(nid) {
+  const idx = MOCK_PIPELINE.nodes.findIndex(n => n.id === nid);
+  if (idx < 0) return;
+  MOCK_PIPELINE.nodes.splice(idx, 1);
+  MOCK_PIPELINE.edges = MOCK_PIPELINE.edges.filter(e => e.from !== nid && e.to !== nid);
+  if (state.selectedBlockId === nid) state.selectedBlockId = null;
+  delete state.blockFilters[nid];
+  delete BLOCK_CONFIGS[nid];
+  renderPipeline();
+  renderConfig();
+  renderStatus();
+}
+
+function deleteEdge(idx) {
+  if (idx < 0 || idx >= MOCK_PIPELINE.edges.length) return;
+  MOCK_PIPELINE.edges.splice(idx, 1);
+  state.selectedEdgeIndex = null;
+  renderPipeline();
+}
+
+function fitToView() {
+  const nodes = MOCK_PIPELINE.nodes;
+  if (!nodes.length) {
+    state.viewBox = { x: 0, y: 0, w: LOGICAL_VB_W, h: LOGICAL_VB_H };
+    renderPipeline();
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    const w = nodeWidthOf(n);
+    if (n.x < minX) minX = n.x;
+    if (n.y < minY) minY = n.y;
+    if (n.x + w > maxX) maxX = n.x + w;
+    if (n.y + NODE_H > maxY) maxY = n.y + NODE_H;
+  });
+  const pad = 80;
+  state.viewBox = {
+    x: minX - pad,
+    y: minY - pad,
+    w: (maxX - minX) + pad * 2,
+    h: (maxY - minY) + pad * 2
+  };
+  renderPipeline();
+}
+
+/* =====================================================
+   SECTION D — config panel
+===================================================== */
+function renderConfig() {
+  const id = state.selectedBlockId;
+  const node = id ? MOCK_PIPELINE.nodes.find(n => n.id === id) : null;
+  const title = document.getElementById("configTitle");
+  const body = document.getElementById("configBody");
+  const label = node ? node.label : (id || "(nothing selected)");
+  title.textContent = `Configuration \u00b7 ${label}`;
+
+  const isScreener = node && (node.type === "forward" || node.type === "backward");
+
+  if (isScreener) {
+    body.innerHTML = `
+      <div class="config-split">
+        <div class="cfg-tree-col" id="cfgTreeCol"></div>
+        <div class="cfg-form-col" id="cfgFormCol"></div>
+      </div>
+    `;
+    renderFilterTree(id);
+    renderFilterForm(id);
+    return;
+  }
+
+  // Single-column variants
+  body.innerHTML = `<div class="config-single" id="cfgSingle"></div>`;
+  const single = document.getElementById("cfgSingle");
+
+  if (!node || id === "seeds") {
+    const seedCfg = BLOCK_CONFIGS["seeds"];
+    const selectedList = [...state.selectedSeedIds]
+      .map(pid => MOCK_SEED_RESULTS.find(p => p.id === pid))
+      .filter(Boolean);
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Topic description</div>
+        <textarea class="cfg-textarea" rows="4">${escapeHtml(seedCfg.topic)}</textarea>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Selected seeds (${selectedList.length})</div>
+        <div class="seed-mini-list">
+          ${selectedList.length === 0
+            ? '<div class="seed-mini-row"><div class="seed-mini-title cfg-mono">(none)</div></div>'
+            : selectedList.map(p => `
+                <div class="seed-mini-row">
+                  <div class="seed-mini-title">${escapeHtml(p.title)} &middot; ${escapeHtml(p.venue)}</div>
+                  <div class="seed-mini-year">${p.year}</div>
+                </div>
+              `).join("")}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const cfg = BLOCK_CONFIGS[id] || {};
+
+  if (node.type === "rerank") {
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Metric</div>
+        <select class="cfg-select">
+          <option ${cfg.metric === "pagerank" ? "selected" : ""}>pagerank</option>
+          <option ${cfg.metric === "degree" ? "selected" : ""}>degree</option>
+          <option ${cfg.metric === "citation_count" ? "selected" : ""}>citation_count</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">K</div>
+        <input type="number" class="cfg-input" value="${cfg.k != null ? cfg.k : 3}">
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Diversity cluster</div>
+        <input type="text" class="cfg-input" value="${escapeHtml(cfg.diversity || "forward_topics")}">
+      </div>
+    `;
+    return;
+  }
+
+  if (node.type === "rescreen") {
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Target</div>
+        <select class="cfg-select">
+          <option ${cfg.target === "entire_collection" ? "selected" : ""}>entire_collection</option>
+          <option ${cfg.target === "seeds_only" ? "selected" : ""}>seeds_only</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Screener reference</div>
+        <select class="cfg-select">
+          <option ${cfg.screener === "tight_screener" ? "selected" : ""}>tight_screener</option>
+          <option ${cfg.screener === "forward_screener" ? "selected" : ""}>forward_screener</option>
+          <option ${cfg.screener === "backward_screener" ? "selected" : ""}>backward_screener</option>
+        </select>
+      </div>
+    `;
+    return;
+  }
+
+  single.innerHTML = `
+    <div class="cfg-row">
+      <div class="cfg-label">Block type</div>
+      <div class="cfg-mono">${escapeHtml(node.type)}</div>
+    </div>
+    <div class="cfg-row">
+      <div class="cfg-label">Label</div>
+      <div class="cfg-mono">${escapeHtml(node.label)}</div>
+    </div>
+  `;
+}
+
+/* ---- filter tree (recursive rendering) ---- */
+function renderFilterTree(blockId) {
+  const col = document.getElementById("cfgTreeCol");
+  const tree = state.blockFilters[blockId];
+  if (!tree) {
+    col.innerHTML = '<div class="cfg-empty">No filter tree for this block.</div>';
+    return;
+  }
+  col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter tree</div>` + renderFilterNode(tree, blockId, 0, true);
+  attachTreeHandlers(blockId);
+}
+
+function isContainer(node) {
+  return node && (node.type === "Sequential" || node.type === "Any" || node.type === "Not" || node.type === "Route");
+}
+
+function renderFilterNode(node, blockId, depth, isRoot) {
+  if (isContainer(node)) return renderContainer(node, blockId, depth, isRoot);
+  return renderAtom(node, blockId, depth);
+}
+
+function renderContainer(container, blockId, depth, isRoot) {
+  const typeClass =
+    container.type === "Any"   ? " filter-container-any" :
+    container.type === "Not"   ? " filter-container-not" :
+    container.type === "Route" ? " filter-container-route" :
+    "";
+  const head =
+    container.type === "Sequential" ? "SEQUENTIAL \u00b7 AND" :
+    container.type === "Any"        ? "ANY \u00b7 OR" :
+    container.type === "Not"        ? "NOT" :
+    "ROUTE";
+  const isSelected = container.id === state.selectedFilterId;
+  const selClass = isSelected ? " selected" : "";
+  const delBtn = isRoot
+    ? ""
+    : `<button class="filter-container-del" data-del-container="${container.id}" title="Remove">&times;</button>`;
+
+  let childrenHtml = "";
+  if (container.type === "Route") {
+    // Route is rendered as a list of (predicate → pass_to) rows plus an optional default.
+    // Children for a Route are stored as an array: each item has shape
+    //   { kind: 'route', predicate, value(s), passTo: <filterNode> }
+    // plus optionally { kind: 'default', passTo: <filterNode> }
+    (container.routes || []).forEach((route, i) => {
+      childrenHtml += `
+        <div class="cfg-route-row" data-route-idx="${i}" data-route-container="${container.id}">
+          <div class="cfg-route-head">Route ${i + 1}</div>
+          <div class="cfg-route-label">If &middot; ${escapeHtml(route.predicate)}</div>
+          <div class="cfg-route-label" style="margin-top:6px;">Pass to</div>
+          ${ route.passTo ? renderFilterNode(route.passTo, blockId, depth + 1, false) : '<div class="cfg-empty">(empty)</div>' }
+          <button class="cfg-route-del" data-del-route="${container.id}:${i}" title="Remove route">&times;</button>
+        </div>
+      `;
+    });
+    if (container.defaultBranch) {
+      childrenHtml += `
+        <div class="cfg-route-row">
+          <div class="cfg-route-head">Default</div>
+          ${ renderFilterNode(container.defaultBranch, blockId, depth + 1, false) }
+        </div>
+      `;
+    }
+  } else if (container.type === "Not") {
+    // Not: single child
+    const only = (container.children || [])[0];
+    childrenHtml += only
+      ? renderFilterNode(only, blockId, depth + 1, false)
+      : '<div class="cfg-empty">(no child — add one)</div>';
+  } else {
+    // Sequential / Any
+    (container.children || []).forEach(child => {
+      childrenHtml += renderFilterNode(child, blockId, depth + 1, false);
+    });
+  }
+
+  // Add button: disabled for 'Not' if it already has a child
+  const canAdd = !(container.type === "Not" && container.children && container.children.length >= 1);
+  const addBtnHtml = canAdd
+    ? `<button class="filter-add-btn" data-add-target="${container.id}">+ add ${container.type === "Route" ? "route" : "filter"}</button>`
+    : "";
+  const addMenu = `
+    <div class="filter-add-menu" data-menu-for="${container.id}" style="display:none;">
+      ${ container.type === "Route"
+        ? `
+          <button data-kind="route:venue_in">Route &middot; venue_in</button>
+          <button data-kind="route:cit_at_least">Route &middot; cit_at_least</button>
+          <button data-kind="route:year_at_least">Route &middot; year_at_least</button>
+          <button data-kind="default">+ default branch</button>
+        `
+        : `
+          <button data-kind="YearFilter">YearFilter</button>
+          <button data-kind="CitationFilter">CitationFilter</button>
+          <button data-kind="LLMFilter">LLMFilter</button>
+          <button data-kind="SimilarityFilter">SimilarityFilter</button>
+          <button data-kind="Sequential">+ Sequential</button>
+          <button data-kind="Any">+ Any</button>
+          <button data-kind="Not">+ Not</button>
+          <button data-kind="Route">+ Route</button>
+        `
+      }
+    </div>
+  `;
+
+  return `
+    <div class="filter-container${typeClass}${selClass}" data-cid="${container.id}">
+      <div class="filter-container-head">
+        <span>${head}</span>
+        ${delBtn}
+      </div>
+      ${childrenHtml}
+      ${addBtnHtml}
+      ${addMenu}
+    </div>
+  `;
+}
+
+function renderAtom(atom, blockId, depth) {
+  const sel = atom.id === state.selectedFilterId;
+  const preview = atomPreview(atom);
+  return `
+    <div class="filter-atom${sel ? " selected" : ""}" data-fid="${atom.id}">
+      <div class="filter-atom-name">${atom.type}</div>
+      <div class="filter-atom-preview">${escapeHtml(preview)}</div>
+      <button class="filter-atom-del" data-del="${atom.id}" title="Remove">&times;</button>
+    </div>
+  `;
+}
+
+function atomPreview(atom) {
+  const p = atom.params || {};
+  switch (atom.type) {
+    case "YearFilter":       return `${p.min}\u2013${p.max}`;
+    case "CitationFilter":   return `beta=${p.beta}${p.pass_if_cited_at_least ? ", shortcut \u2265" + p.pass_if_cited_at_least : ""}`;
+    case "LLMFilter": {
+      if (p.mode === "formula") return `formula \u00b7 ${p.scope} \u00b7 ${p.model}`;
+      return `${p.scope} \u00b7 ${p.model}`;
+    }
+    case "SimilarityFilter": {
+      const measures = (p.measures || []).map(m => m.type).join("/");
+      return `t=${p.threshold}${measures ? " \u00b7 " + measures : ""}`;
+    }
+    default: return "";
+  }
+}
+
+function attachTreeHandlers(blockId) {
+  const col = document.getElementById("cfgTreeCol");
+
+  // Atom click → select
+  col.querySelectorAll(".filter-atom").forEach(el => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".filter-atom-del")) return;
+      state.selectedFilterId = el.getAttribute("data-fid");
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Container click → select (click head area; ignore clicks on children, buttons, menus)
+  col.querySelectorAll(".filter-container").forEach(el => {
+    const head = el.querySelector(".filter-container-head");
+    if (head) {
+      head.addEventListener("click", (e) => {
+        if (e.target.closest(".filter-container-del")) return;
+        e.stopPropagation();
+        state.selectedFilterId = el.getAttribute("data-cid");
+        renderFilterTree(blockId);
+        renderFilterForm(blockId);
+      });
+    }
+  });
+
+  // Atom delete
+  col.querySelectorAll(".filter-atom-del").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const fid = btn.getAttribute("data-del");
+      removeFilterById(state.blockFilters[blockId], fid);
+      if (state.selectedFilterId === fid) state.selectedFilterId = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Container delete
+  col.querySelectorAll(".filter-container-del").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute("data-del-container");
+      removeFilterById(state.blockFilters[blockId], cid);
+      if (state.selectedFilterId === cid) state.selectedFilterId = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Route-branch delete
+  col.querySelectorAll("[data-del-route]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const [cid, idxStr] = btn.getAttribute("data-del-route").split(":");
+      const container = findContainerById(state.blockFilters[blockId], cid);
+      if (container && container.routes) {
+        container.routes.splice(parseInt(idxStr, 10), 1);
+        renderFilterTree(blockId);
+        renderFilterForm(blockId);
+      }
+    });
+  });
+
+  // + add buttons
+  col.querySelectorAll(".filter-add-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute("data-add-target");
+      const menu = col.querySelector(`[data-menu-for="${cid}"]`);
+      if (!menu) return;
+      menu.style.display = menu.style.display === "none" ? "grid" : "none";
+    });
+  });
+
+  // menu options
+  col.querySelectorAll(".filter-add-menu button").forEach(mbtn => {
+    mbtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const kind = mbtn.getAttribute("data-kind");
+      const menu = mbtn.parentElement;
+      const cid = menu.getAttribute("data-menu-for");
+      addFilterTo(state.blockFilters[blockId], cid, kind);
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+}
+
+function removeFilterById(root, fid) {
+  // Walks the filter tree looking for nodes whose id === fid.
+  // Containers (Sequential, Any) store kids in .children.
+  // Not stores one kid in .children[0].
+  // Route stores branches in .routes[i].passTo and .defaultBranch.
+  function walk(container) {
+    if (!container) return false;
+    if (container.type === "Route") {
+      if (container.defaultBranch && container.defaultBranch.id === fid) {
+        container.defaultBranch = null;
+        return true;
+      }
+      if (container.defaultBranch && walk(container.defaultBranch)) return true;
+      if (container.routes) {
+        for (let i = 0; i < container.routes.length; i++) {
+          const r = container.routes[i];
+          if (r.passTo && r.passTo.id === fid) {
+            r.passTo = null;
+            return true;
+          }
+          if (r.passTo && isContainer(r.passTo) && walk(r.passTo)) return true;
+        }
+      }
+      return false;
+    }
+    if (!container.children) return false;
+    for (let i = 0; i < container.children.length; i++) {
+      const c = container.children[i];
+      if (c.id === fid) {
+        container.children.splice(i, 1);
+        return true;
+      }
+      if (isContainer(c) && walk(c)) return true;
+    }
+    return false;
+  }
+  return walk(root);
+}
+
+function findContainerById(root, cid) {
+  if (!root) return null;
+  if (root.id === cid) return root;
+  if (root.type === "Route") {
+    if (root.defaultBranch) {
+      const f = findContainerById(root.defaultBranch, cid);
+      if (f) return f;
+    }
+    if (root.routes) {
+      for (const r of root.routes) {
+        if (r.passTo) {
+          const f = findContainerById(r.passTo, cid);
+          if (f) return f;
+        }
+      }
+    }
+    return null;
+  }
+  if (!root.children) return null;
+  for (const c of root.children) {
+    if (isContainer(c)) {
+      const f = findContainerById(c, cid);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+function findAtomById(root, fid) {
+  if (!root) return null;
+  if (root.id === fid && !isContainer(root)) return root;
+  if (root.type === "Route") {
+    if (root.defaultBranch) {
+      const a = findAtomById(root.defaultBranch, fid);
+      if (a) return a;
+    }
+    if (root.routes) {
+      for (const r of root.routes) {
+        if (r.passTo) {
+          const a = findAtomById(r.passTo, fid);
+          if (a) return a;
+        }
+      }
+    }
+    return null;
+  }
+  if (!root.children) return null;
+  for (const c of root.children) {
+    if (c.id === fid && !isContainer(c)) return c;
+    if (isContainer(c)) {
+      const a = findAtomById(c, fid);
+      if (a) return a;
+    }
+  }
+  return null;
+}
+
+function findNodeById(root, id) {
+  if (!root) return null;
+  if (root.id === id) return root;
+  if (root.type === "Route") {
+    if (root.defaultBranch) {
+      const a = findNodeById(root.defaultBranch, id);
+      if (a) return a;
+    }
+    if (root.routes) {
+      for (const r of root.routes) {
+        if (r.passTo) {
+          const a = findNodeById(r.passTo, id);
+          if (a) return a;
+        }
+      }
+    }
+    return null;
+  }
+  if (!root.children) return null;
+  for (const c of root.children) {
+    const a = findNodeById(c, id);
+    if (a) return a;
+  }
+  return null;
+}
+
+function addFilterTo(tree, cid, kind) {
+  const target = findContainerById(tree, cid);
+  if (!target) return;
+  // Route-specific kinds: 'route:<predicate>' and 'default'
+  if (target.type === "Route") {
+    if (kind === "default") {
+      target.defaultBranch = defaultRouteBranch();
+      return;
+    }
+    if (kind.startsWith("route:")) {
+      const predicate = kind.slice("route:".length);
+      const newRoute = {
+        predicate,
+        // per-predicate default value
+        value: predicate === "venue_in" ? "arXiv, bioRxiv" :
+               predicate === "cit_at_least" ? 50 :
+               predicate === "year_at_least" ? 2020 : "",
+        passTo: defaultRouteBranch()
+      };
+      if (!target.routes) target.routes = [];
+      target.routes.push(newRoute);
+      return;
+    }
+    return;
+  }
+  if (target.type === "Not") {
+    // Enforce single child
+    if (target.children && target.children.length >= 1) return;
+    if (!target.children) target.children = [];
+    target.children.push(buildNewFilter(kind));
+    return;
+  }
+  const newFilter = buildNewFilter(kind);
+  if (!target.children) target.children = [];
+  target.children.push(newFilter);
+}
+
+function buildNewFilter(kind) {
+  switch (kind) {
+    case "YearFilter":
+      return { id: randomId(), type: "YearFilter", params: { min: 2018, max: 2025 } };
+    case "CitationFilter":
+      return { id: randomId(), type: "CitationFilter", params: { beta: 30, pass_if_cited_at_least: null } };
+    case "LLMFilter":
+      return { id: randomId(), type: "LLMFilter", params: {
+        mode: "single",
+        query: "The paper proposes a novel method relevant to the topic.",
+        formula: "(q_ml | q_stats) & !q_survey",
+        queries: [],
+        scope: "title_abstract",
+        model: "gemma-4-31b",
+        reasoning_effort: "medium"
+      } };
+    case "SimilarityFilter":
+      return { id: randomId(), type: "SimilarityFilter", params: {
+        threshold: 0.025,
+        on_no_data: "pass",
+        measures: [{ type: "RefSim" }, { type: "CitSim", pass_if_cited_at_least: null }]
+      } };
+    case "Sequential":
+      return { id: randomId(), type: "Sequential", children: [] };
+    case "Any":
+      return { id: randomId(), type: "Any", children: [] };
+    case "Not":
+      return { id: randomId(), type: "Not", children: [] };
+    case "Route":
+      return { id: randomId(), type: "Route", routes: [], defaultBranch: null };
+    default:
+      return { id: randomId(), type: kind, params: {} };
+  }
+}
+
+/* ---- filter form (right column) ---- */
+function renderFilterForm(blockId) {
+  const col = document.getElementById("cfgFormCol");
+  const tree = state.blockFilters[blockId];
+  const fid = state.selectedFilterId;
+  if (!fid || !tree) {
+    col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter config</div>
+      <div class="cfg-empty">Select a filter on the left to configure it.</div>`;
+    return;
+  }
+  const selNode = findNodeById(tree, fid);
+  if (!selNode) {
+    col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter config</div>
+      <div class="cfg-empty">Filter not found.</div>`;
+    return;
+  }
+  if (isContainer(selNode)) {
+    col.innerHTML = renderContainerForm(selNode);
+    attachContainerFormHandlers(blockId, selNode);
+    return;
+  }
+  col.innerHTML = renderAtomForm(selNode);
+  attachAtomFormHandlers(blockId, selNode);
+}
+
+function renderContainerForm(node) {
+  let html = `<div class="cfg-label" style="margin-bottom:8px;">${node.type}</div>`;
+  if (node.type === "Sequential" || node.type === "Any") {
+    const count = (node.children || []).length;
+    html += `<div class="cfg-mono">${count} child filter${count === 1 ? "" : "s"}.</div>`;
+    html += `<div class="cfg-mono" style="margin-top:8px;">${node.type === "Sequential" ? "All children must pass (AND)." : "Any child passing accepts (OR)."}</div>`;
+  } else if (node.type === "Not") {
+    html += `<div class="cfg-mono">Inverts a single child filter. ${(node.children || [])[0] ? "(child set)" : "(no child yet)"}</div>`;
+  } else if (node.type === "Route") {
+    const count = (node.routes || []).length;
+    html += `<div class="cfg-mono">${count} route${count === 1 ? "" : "s"}${node.defaultBranch ? " + default" : ""}.</div>`;
+    // Predicate editors
+    (node.routes || []).forEach((r, i) => {
+      html += `
+        <div class="cfg-row" style="margin-top:14px;">
+          <div class="cfg-label">Route ${i + 1} &middot; predicate ${escapeHtml(r.predicate)}</div>
+          ${ r.predicate === "venue_in"
+            ? `<input class="cfg-input" data-route-idx="${i}" data-route-key="value" value="${escapeHtml(String(r.value || ""))}" placeholder="arXiv, bioRxiv">`
+            : `<input class="cfg-input" type="number" data-route-idx="${i}" data-route-key="value" value="${r.value != null ? r.value : ""}">`
+          }
+        </div>
+      `;
+    });
+  }
+  return html;
+}
+
+function attachContainerFormHandlers(blockId, node) {
+  const col = document.getElementById("cfgFormCol");
+  col.querySelectorAll("[data-route-idx]").forEach(el => {
+    el.addEventListener("input", () => {
+      const i = parseInt(el.getAttribute("data-route-idx"), 10);
+      const key = el.getAttribute("data-route-key");
+      const r = node.routes[i];
+      if (!r) return;
+      if (el.type === "number") {
+        r[key] = el.value === "" ? null : Number(el.value);
+      } else {
+        r[key] = el.value;
+      }
+      renderFilterTree(blockId);
+    });
+  });
+}
+
+function renderAtomForm(atom) {
+  const p = atom.params || {};
+  let html = `<div class="cfg-label" style="margin-bottom:8px;">${atom.type}</div>`;
+  if (atom.type === "YearFilter") {
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Min year</div>
+            <input type="number" class="cfg-input" data-param="min" value="${p.min}">
+          </div>
+          <div>
+            <div class="cfg-label">Max year</div>
+            <input type="number" class="cfg-input" data-param="max" value="${p.max}">
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (atom.type === "CitationFilter") {
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-label">Beta</div>
+        <input type="number" class="cfg-input" data-param="beta" value="${p.beta}">
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Pass if cited at least (optional)</div>
+        <input type="number" class="cfg-input" data-param="pass_if_cited_at_least" value="${p.pass_if_cited_at_least == null ? "" : p.pass_if_cited_at_least}">
+      </div>
+    `;
+  } else if (atom.type === "LLMFilter") {
+    const mode = p.mode || "single";
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-label">Mode</div>
+        <div class="cfg-radio-row">
+          <label><input type="radio" name="llm-mode-${atom.id}" data-llm-mode="single"${mode === "single" ? " checked" : ""}> Single prompt</label>
+          <label><input type="radio" name="llm-mode-${atom.id}" data-llm-mode="formula"${mode === "formula" ? " checked" : ""}> Formula</label>
+        </div>
+      </div>
+    `;
+    if (mode === "single") {
+      html += `
+        <div class="cfg-row">
+          <div class="cfg-label">Prompt</div>
+          <textarea class="cfg-textarea" rows="4" data-param="query">${escapeHtml(p.query || "")}</textarea>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="cfg-row">
+          <div class="cfg-label">Formula</div>
+          <input class="cfg-input" data-param="formula" value="${escapeHtml(p.formula || "")}" placeholder="(q_ml | q_stats) & !q_survey">
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-label">Queries</div>
+          <div id="llm-queries-list-${atom.id}">
+            ${(p.queries || []).map((q, i) => `
+              <div class="cfg-query-row" data-query-idx="${i}">
+                <input class="cfg-input" data-q-key="name" value="${escapeHtml(q.name || "")}" placeholder="q_ml">
+                <textarea class="cfg-textarea" rows="2" data-q-key="text" placeholder="prompt text">${escapeHtml(q.text || "")}</textarea>
+                <button class="cfg-query-del" data-q-del="${i}" title="Remove">&times;</button>
+              </div>
+            `).join("")}
+          </div>
+          <button class="filter-add-btn" data-add-query>+ add query</button>
+        </div>
+      `;
+    }
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Scope</div>
+            <select class="cfg-select" data-param="scope">
+              ${["title","title_abstract","venue","full_text"].map(v =>
+                `<option value="${v}"${v === p.scope ? " selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <div class="cfg-label">Model</div>
+            <select class="cfg-select" data-param="model">
+              ${["gemma-4-31b","gpt-4o","gemini-3-pro"].map(v =>
+                `<option value="${v}"${v === p.model ? " selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Reasoning effort</div>
+        <select class="cfg-select" data-param="reasoning_effort">
+          ${["minimal","low","medium","high"].map(v =>
+            `<option value="${v}"${v === p.reasoning_effort ? " selected" : ""}>${v}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  } else if (atom.type === "SimilarityFilter") {
+    const measures = p.measures || [];
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Threshold</div>
+            <input type="number" step="0.001" class="cfg-input" data-param="threshold" value="${p.threshold}">
+          </div>
+          <div>
+            <div class="cfg-label">On no data</div>
+            <select class="cfg-select" data-param="on_no_data">
+              <option value="pass"${p.on_no_data === "pass" ? " selected" : ""}>pass</option>
+              <option value="reject"${p.on_no_data === "reject" ? " selected" : ""}>reject</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Measures</div>
+        <div id="measure-list-${atom.id}">
+          ${measures.map((m, i) => `
+            <div class="cfg-measure-row" data-measure-idx="${i}">
+              <div class="cfg-measure-head">${m.type}</div>
+              <button class="cfg-measure-del" data-m-del="${i}" title="Remove">&times;</button>
+              ${ m.type === "CitSim"
+                ? `
+                  <div class="cfg-label">pass_if_cited_at_least</div>
+                  <input class="cfg-input" type="number" data-m-key="pass_if_cited_at_least" value="${m.pass_if_cited_at_least == null ? "" : m.pass_if_cited_at_least}">
+                `
+                : m.type === "SemanticSim"
+                ? `
+                  <div class="cfg-label">Embedder</div>
+                  <select class="cfg-select" data-m-key="embedder">
+                    ${["s2","voyage","local"].map(v => `<option value="${v}"${m.embedder === v ? " selected" : ""}>${v}</option>`).join("")}
+                  </select>
+                `
+                : `<div class="cfg-mono">(no params)</div>`
+              }
+            </div>
+          `).join("")}
+        </div>
+        <div class="filter-add-menu" id="measure-menu-${atom.id}" style="display:grid; margin-top:4px;">
+          <button data-add-measure="RefSim">+ RefSim</button>
+          <button data-add-measure="CitSim">+ CitSim</button>
+          <button data-add-measure="SemanticSim">+ SemanticSim</button>
+        </div>
+      </div>
+    `;
+  } else {
+    html += `<div class="cfg-empty">No editable params for ${atom.type}.</div>`;
+  }
+  return html;
+}
+
+function attachAtomFormHandlers(blockId, atom) {
+  const col = document.getElementById("cfgFormCol");
+
+  // Standard param inputs
+  col.querySelectorAll("[data-param]").forEach(el => {
+    const handler = () => {
+      const key = el.getAttribute("data-param");
+      let value = el.value;
+      if (el.type === "number") value = value === "" ? null : Number(value);
+      atom.params[key] = value;
+      renderFilterTree(blockId);
+    };
+    el.addEventListener("input", handler);
+    el.addEventListener("change", handler);
+  });
+
+  // LLMFilter: mode radio
+  col.querySelectorAll("[data-llm-mode]").forEach(r => {
+    r.addEventListener("change", () => {
+      if (r.checked) {
+        atom.params.mode = r.getAttribute("data-llm-mode");
+        if (atom.params.mode === "formula" && (!atom.params.queries || atom.params.queries.length === 0)) {
+          atom.params.queries = [
+            { name: "q_ml", text: "the paper proposes a new ML/DL method" },
+            { name: "q_stats", text: "the paper proposes a new statistical method" },
+            { name: "q_survey", text: "the paper is a pure survey or review" }
+          ];
+          if (!atom.params.formula) atom.params.formula = "(q_ml | q_stats) & !q_survey";
+        }
+        renderFilterForm(blockId);
+        renderFilterTree(blockId);
+      }
+    });
+  });
+
+  // LLMFilter: per-query edits
+  col.querySelectorAll(".cfg-query-row").forEach(row => {
+    const idx = parseInt(row.getAttribute("data-query-idx"), 10);
+    row.querySelectorAll("[data-q-key]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const key = inp.getAttribute("data-q-key");
+        if (!atom.params.queries) atom.params.queries = [];
+        if (!atom.params.queries[idx]) atom.params.queries[idx] = { name: "", text: "" };
+        atom.params.queries[idx][key] = inp.value;
+        renderFilterTree(blockId);
+      });
+    });
+    const delBtn = row.querySelector("[data-q-del]");
+    if (delBtn) {
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        atom.params.queries.splice(idx, 1);
+        renderFilterForm(blockId);
+        renderFilterTree(blockId);
+      });
+    }
+  });
+
+  // LLMFilter: add query
+  const addQueryBtn = col.querySelector("[data-add-query]");
+  if (addQueryBtn) {
+    addQueryBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!atom.params.queries) atom.params.queries = [];
+      atom.params.queries.push({ name: "q_new", text: "" });
+      renderFilterForm(blockId);
+      renderFilterTree(blockId);
+    });
+  }
+
+  // SimilarityFilter: add measure
+  col.querySelectorAll("[data-add-measure]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const kind = btn.getAttribute("data-add-measure");
+      if (!atom.params.measures) atom.params.measures = [];
+      if (kind === "RefSim") atom.params.measures.push({ type: "RefSim" });
+      else if (kind === "CitSim") atom.params.measures.push({ type: "CitSim", pass_if_cited_at_least: null });
+      else if (kind === "SemanticSim") atom.params.measures.push({ type: "SemanticSim", embedder: "s2" });
+      renderFilterForm(blockId);
+      renderFilterTree(blockId);
+    });
+  });
+
+  // SimilarityFilter: delete measure + measure-param edit
+  col.querySelectorAll(".cfg-measure-row").forEach(row => {
+    const idx = parseInt(row.getAttribute("data-measure-idx"), 10);
+    const delBtn = row.querySelector("[data-m-del]");
+    if (delBtn) {
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        atom.params.measures.splice(idx, 1);
+        renderFilterForm(blockId);
+        renderFilterTree(blockId);
+      });
+    }
+    row.querySelectorAll("[data-m-key]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const key = inp.getAttribute("data-m-key");
+        let v = inp.value;
+        if (inp.type === "number") v = v === "" ? null : Number(v);
+        atom.params.measures[idx][key] = v;
+        renderFilterTree(blockId);
+      });
+      inp.addEventListener("change", () => {
+        const key = inp.getAttribute("data-m-key");
+        atom.params.measures[idx][key] = inp.value;
+        renderFilterTree(blockId);
+      });
+    });
+  });
+}
+
+/* =====================================================
+   SECTION E — palette with drag-and-drop
+===================================================== */
+function renderPalette() {
+  const body = document.getElementById("paletteBody");
+  const paletteKey = state.activePalette;
+  let html = "";
+  Object.entries(BUILDING_BLOCKS_CATALOG).forEach(([cat, items]) => {
+    html += `<div class="cat-header">${cat}</div>`;
+    items.forEach(it => {
+      const color = blockColors(it.type, paletteKey).fill;
+      html += `
+        <div class="block-chip"
+             draggable="true"
+             data-id="${it.id}"
+             data-type="${it.type}"
+             data-label="${escapeHtml(it.label)}"
+             style="border-left-color: ${color};">
+          <div class="block-chip-label">${escapeHtml(it.label)}</div>
+          <div class="block-chip-desc">${escapeHtml(it.desc)}</div>
+        </div>
+      `;
+    });
+  });
+  body.innerHTML = html;
+
+  body.querySelectorAll(".block-chip").forEach(el => {
+    el.addEventListener("dragstart", (e) => {
+      const payload = {
+        blockId: el.getAttribute("data-id"),
+        type: el.getAttribute("data-type"),
+        label: el.getAttribute("data-label")
+      };
+      e.dataTransfer.setData("application/x-citeclaw-block", JSON.stringify(payload));
+      e.dataTransfer.effectAllowed = "copy";
+    });
+  });
+}
+
+/* =====================================================
+   Canvas drop target (for new blocks from palette)
+===================================================== */
+function wireDropTarget() {
+  const wrap = document.getElementById("canvasWrap");
+  const svg = document.getElementById("pipelineSvg");
+  wrap.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    wrap.classList.add("drop-active");
+  });
+  wrap.addEventListener("dragleave", (e) => {
+    if (e.target === wrap) wrap.classList.remove("drop-active");
+  });
+  wrap.addEventListener("drop", (e) => {
+    e.preventDefault();
+    wrap.classList.remove("drop-active");
+    const raw = e.dataTransfer.getData("application/x-citeclaw-block");
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch { return; }
+
+    const { x, y } = screenToSvg(svg, e.clientX, e.clientY);
+    const nodeX = Math.round(x - NODE_W / 2);
+    const nodeY = Math.round(y - NODE_H / 2);
+
+    const newId = `${payload.blockId.toLowerCase()}_${Date.now().toString(36).slice(-4)}`;
+    const newNode = {
+      id: newId,
+      type: payload.type,
+      label: payload.label,
+      shape: payload.type === "seeds" ? "parallelogram" : "rect",
+      x: nodeX,
+      y: nodeY
+    };
+    MOCK_PIPELINE.nodes.push(newNode);
+
+    if (payload.type === "forward" || payload.type === "backward") {
+      state.blockFilters[newId] = defaultFilterTree();
+    }
+    if (payload.type === "rerank" && !BLOCK_CONFIGS[newId]) {
+      BLOCK_CONFIGS[newId] = { metric: "pagerank", k: 3, diversity: "forward_topics" };
+    } else if (payload.type === "rescreen" && !BLOCK_CONFIGS[newId]) {
+      BLOCK_CONFIGS[newId] = { target: "entire_collection", screener: "tight_screener" };
+    }
+
+    state.selectedBlockId = newId;
+    state.selectedFilterId = null;
+    state.selectedEdgeIndex = null;
+    renderPipeline();
+    renderConfig();
+    renderStatus();
+  });
+}
+
+/* =====================================================
+   Palette picker (color scheme)
+===================================================== */
+function renderPalettePicker() {
+  const list = document.getElementById("palettePickerList");
+  let html = "";
+  Object.entries(PALETTES).forEach(([key, pal]) => {
+    const isActive = state.activePalette === key;
+    const swatches = CATEGORY_ORDER.map(cat => {
+      const c = pal[cat] || "#cccccc";
+      return `<div class="palette-swatch" style="background:${c};"></div>`;
+    }).join("");
+    html += `
+      <div class="palette-row${isActive ? " active" : ""}" data-palette-key="${key}">
+        <div class="palette-swatches">${swatches}</div>
+        <div class="palette-name">${escapeHtml(pal.label)}</div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll(".palette-row").forEach(row => {
+    row.addEventListener("click", () => {
+      state.activePalette = row.getAttribute("data-palette-key");
+      try { localStorage.setItem("citeclaw_v3_palette", state.activePalette); } catch {}
+      renderPipeline();
+      renderPalette();
+      renderPalettePicker();
+    });
+  });
+  updatePalettePickerVisibility();
+}
+
+function updatePalettePickerVisibility() {
+  const picker = document.getElementById("palettePicker");
+  const toggle = document.getElementById("paletteToggleBtn");
+  if (state.palettePickerVisible) {
+    picker.classList.remove("hidden");
+    toggle.classList.remove("visible");
+  } else {
+    picker.classList.add("hidden");
+    toggle.classList.add("visible");
+  }
+}
+
+/* =====================================================
+   SECTION F — status bar
+===================================================== */
+function renderStatus() {
+  const blockCount = MOCK_PIPELINE.nodes.length;
+  const seedCount = state.selectedSeedIds.size;
+  document.getElementById("statusLeft").textContent =
+    `${blockCount} blocks \u00b7 ${seedCount} seed${seedCount === 1 ? "" : "s"} selected \u00b7 ready to run`;
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+document.getElementById("seedSearch").addEventListener("input", (e) => {
+  state.searchQuery = e.target.value;
+  renderResults();
+});
+document.getElementById("runBtn").addEventListener("click", () => {
+  alert("Would transition to Page 2 in real app");
+});
+document.getElementById("fitViewBtn").addEventListener("click", () => {
+  fitToView();
+});
+document.getElementById("palettePickerBtn").addEventListener("click", () => {
+  state.palettePickerVisible = true;
+  updatePalettePickerVisibility();
+});
+document.getElementById("paletteToggleBtn").addEventListener("click", () => {
+  state.palettePickerVisible = true;
+  updatePalettePickerVisibility();
+});
+document.getElementById("palettePickerClose").addEventListener("click", () => {
+  state.palettePickerVisible = false;
+  updatePalettePickerVisibility();
+});
+
+// Global pointer handlers for canvas drag / connect / pan
+document.addEventListener("mousemove", onGlobalMouseMove);
+document.addEventListener("mouseup", onGlobalMouseUp);
+
+// Keyboard: Delete / Backspace on selected node or edge
+document.addEventListener("keydown", (e) => {
+  // Ignore if the user is typing in a form field
+  const tag = (e.target && e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if (e.key === "Delete" || e.key === "Backspace") {
+    if (state.selectedEdgeIndex != null) {
+      e.preventDefault();
+      deleteEdge(state.selectedEdgeIndex);
+    } else if (state.selectedBlockId) {
+      e.preventDefault();
+      deleteNode(state.selectedBlockId);
+    }
+  }
+});
+
+renderResults();
+renderSeedCount();
+renderPipeline();
+renderConfig();
+renderPalette();
+renderPalettePicker();
+wireDropTarget();
+renderStatus();
+fitToView();
+
+window.addEventListener("resize", () => {
+  // SVG + viewBox handles scale automatically.
+});
+</script>
+</body>
+</html>
