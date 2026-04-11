@@ -51,8 +51,28 @@ USER_TEMPLATE = (
     "marker (e.g. \"[23]\" for numbered styles, or \"(Smith et al., 2020)\" "
     "for author-year styles), the full reference entry, the title, "
     "verbatim quote(s) showing where it is cited, and a relevance "
-    "explanation.\n"
-    "Return JSON with the key \"relevant_references\"."
+    "explanation.\n\n"
+    "## Output Format\n"
+    "Return a JSON object with exactly this structure (no markdown "
+    "fences, no extra keys):\n"
+    "```\n"
+    "{{\n"
+    '  "relevant_references": [\n'
+    "    {{\n"
+    '      "citation_marker": "[23]",\n'
+    '      "reference_text": "Smith, J. et al. Title of paper. Journal 10, 1-5 (2020).",\n'
+    '      "title": "Title of paper",\n'
+    '      "mentions": [\n'
+    '        {{"quote": "verbatim sentence from paper body", '
+    '"relevance": "short tag"}}\n'
+    "      ],\n"
+    '      "relevance_explanation": "one-sentence reason"\n'
+    "    }}\n"
+    "  ]\n"
+    "}}\n"
+    "```\n"
+    "If no references are relevant, return "
+    "`{{\"relevant_references\": []}}`."
 )
 
 
