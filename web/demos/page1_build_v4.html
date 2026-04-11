@@ -1,0 +1,3024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CiteClaw — Pipeline Building (v4)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --panel: #fbf9f3;
+    --border: #e4e0d4;
+    --chrome: #faf8f2;
+    --ink-1: #1e2735;
+    --ink-2: #55606d;
+    --ink-3: #7f768c;
+    --accent: #3e3548;
+    --positive: #5a8570;
+    --warning: #8b5a5a;
+    --btn-border: #c4bcaa;
+    --btn-hover: #f0ecde;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 13px;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* Section A */
+  .section-a {
+    flex: 0 0 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .brand {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink-1);
+    letter-spacing: -0.2px;
+  }
+  .brand-tail {
+    color: var(--ink-3);
+    font-weight: 400;
+    font-size: 13px;
+    margin-left: 2px;
+  }
+  .btn {
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-1);
+    background: transparent;
+    border: 1px solid var(--btn-border);
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn-run {
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-run:hover { background: var(--btn-hover); }
+  .btn-mini {
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--ink-2);
+    background: #fbf9f3;
+    border: 1px solid var(--btn-border);
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .btn-mini:hover { background: var(--btn-hover); }
+
+  /* Main grid */
+  .main-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 280px;
+    grid-template-rows: 60% 40%;
+    grid-template-areas:
+      "b c e"
+      "b d e";
+    min-width: 0;
+    min-height: 0;
+  }
+  .section-b, .section-c, .section-d, .section-e {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .section-b { grid-area: b; background: var(--panel); border-right: 1px solid var(--border); }
+  .section-c { grid-area: c; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .section-d { grid-area: d; background: var(--panel); }
+  .section-e { grid-area: e; background: var(--panel); border-left: 1px solid var(--border); }
+
+  /* Panel header */
+  .panel-header {
+    flex: 0 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--chrome);
+  }
+  .panel-header-actions { display: flex; align-items: center; gap: 6px; }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-2);
+  }
+  .panel-meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  /* Section B — Seed search */
+  .search-wrap {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-input {
+    width: 100%;
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    color: var(--ink-1);
+    background: #ffffff;
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 120ms;
+  }
+  .search-input:focus { border-color: var(--ink-3); }
+  .search-input::placeholder { color: var(--ink-3); }
+  .results-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2px 0;
+  }
+  .result-row {
+    padding: 10px 12px 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    transition: background 120ms;
+  }
+  .result-row:hover { background: var(--btn-hover); }
+  .result-row.selected {
+    background: rgba(62, 53, 72, 0.04);
+    border-left: 3px solid var(--accent);
+    padding-left: 9px;
+  }
+  .checkmark-box {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--btn-border);
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+    transition: background 120ms, border-color 120ms;
+  }
+  .checkmark-box svg { display: block; opacity: 0; transition: opacity 120ms; }
+  .result-row.selected .checkmark-box {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .result-row.selected .checkmark-box svg { opacity: 1; }
+  .result-body { flex: 1; min-width: 0; }
+  .result-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-1);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .result-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .result-authors {
+    font-size: 11px;
+    color: var(--ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .result-cites {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  /* Section C — Pipeline canvas */
+  .canvas-wrap {
+    flex: 1;
+    position: relative;
+    background: var(--bg);
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+  }
+  .canvas-wrap.drop-active::before {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border: 1.5px dashed var(--accent);
+    background: rgba(62, 53, 72, 0.04);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .canvas-stage {
+    position: relative;
+    display: block;
+  }
+  .canvas-svg {
+    display: block;
+    pointer-events: none;
+    user-select: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .canvas-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+  .pipeline-edge {
+    fill: none;
+    stroke-width: 1.5;
+    pointer-events: none;
+  }
+
+  /* HTML node overlay (draggable, clickable) */
+  .node-overlay {
+    position: absolute;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    color: #ffffff;
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.25;
+    cursor: grab;
+    pointer-events: auto;
+    user-select: none;
+    border: 1.5px solid transparent;
+    transition: filter 120ms;
+    overflow: hidden;
+    border-radius: 2px;
+  }
+  .node-overlay:hover { filter: brightness(1.03); }
+  .node-overlay.dragging-ghost { opacity: 0.45; }
+  .node-overlay.selected {
+    box-shadow: 0 0 0 2px var(--accent), 0 2px 6px rgba(30,39,53,0.18);
+  }
+  .node-overlay.swap-target {
+    box-shadow: 0 0 0 3px var(--positive);
+  }
+  .node-overlay .node-del-btn, .node-overlay .node-fork-btn {
+    position: absolute;
+    top: 3px;
+    background: #ffffff;
+    border: 1px solid #c4bcaa;
+    font-family: "Inter", sans-serif;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+    color: #55606d;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms;
+    padding: 2px 4px;
+  }
+  .node-overlay:hover .node-del-btn,
+  .node-overlay:hover .node-fork-btn { opacity: 1; }
+  .node-overlay .node-del-btn {
+    right: 3px;
+    color: #8b5a5a;
+    border-color: #8b5a5a;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+  }
+  .node-overlay .node-fork-btn {
+    left: 3px;
+    color: #8a7a58;
+    border-color: #8a7a58;
+  }
+  .node-overlay .node-del-btn:hover { background: #fbf0ef; }
+  .node-overlay .node-fork-btn:hover { background: #fbf8ee; }
+  .node-overlay .node-label-text {
+    pointer-events: none;
+    max-width: 100%;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .empty-branch-overlay {
+    position: absolute;
+    box-sizing: border-box;
+    background: rgba(138, 122, 88, 0.05);
+    border: 1.2px dashed #8a7a58;
+    color: #8a7a58;
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    user-select: none;
+  }
+  .empty-branch-overlay.drop-hover {
+    background: rgba(90, 133, 112, 0.12);
+    border-color: var(--positive);
+    border-width: 1.8px;
+  }
+
+  /* Section D — Config panel */
+  .config-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .config-single {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 18px;
+  }
+  .config-split {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 42% 58%;
+    overflow: hidden;
+  }
+  .cfg-tree-col, .cfg-form-col {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px;
+  }
+  .cfg-tree-col { border-right: 1px solid var(--border); }
+  .cfg-row { margin-bottom: 14px; }
+  .cfg-row:last-child { margin-bottom: 0; }
+  .cfg-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    margin-bottom: 5px;
+  }
+  .cfg-input, .cfg-textarea, .cfg-select {
+    width: 100%;
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+    color: var(--ink-1);
+    background: #ffffff;
+    border: 1px solid var(--border);
+    padding: 7px 9px;
+    outline: none;
+  }
+  .cfg-textarea { resize: none; line-height: 1.45; }
+  .cfg-input:focus, .cfg-textarea:focus, .cfg-select:focus { border-color: var(--ink-3); }
+  .cfg-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .cfg-mono {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .seed-mini-list {
+    border: 1px solid var(--border);
+    background: #ffffff;
+  }
+  .seed-mini-row {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+  .seed-mini-row:last-child { border-bottom: none; }
+  .seed-mini-title {
+    font-size: 12px;
+    color: var(--ink-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .seed-mini-year {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+    flex-shrink: 0;
+  }
+  .cfg-empty {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-style: italic;
+    padding: 14px 4px;
+  }
+  .cfg-radio-row {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .cfg-radio-row label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--ink-1);
+    cursor: pointer;
+  }
+  .cfg-query-row {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    gap: 6px;
+    margin-bottom: 6px;
+    align-items: start;
+  }
+  .cfg-query-row .cfg-input, .cfg-query-row .cfg-textarea { font-size: 11px; padding: 5px 7px; }
+  .cfg-query-del {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 4px 7px;
+  }
+  .cfg-query-del:hover { color: var(--warning); border-color: var(--warning); }
+  .cfg-measure-row {
+    border: 1px solid var(--border);
+    background: #ffffff;
+    padding: 7px 9px;
+    margin-bottom: 6px;
+    position: relative;
+  }
+  .cfg-measure-head {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 5px;
+  }
+  .cfg-measure-del {
+    position: absolute;
+    top: 4px; right: 4px;
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 4px;
+  }
+  .cfg-measure-del:hover { color: var(--warning); }
+
+  /* Filter tree */
+  .filter-container {
+    margin-bottom: 8px;
+    padding: 4px 0 4px 10px;
+    border-left: 2px solid var(--accent);
+    cursor: pointer;
+    position: relative;
+  }
+  .filter-container.selected { background: rgba(62, 53, 72, 0.05); }
+  .filter-container-any      { border-left-color: var(--positive); }
+  .filter-container-not      { border-left-color: var(--warning); }
+  .filter-container-route    { border-left-color: #8a7a58; }
+  .filter-container-head {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 4px;
+    padding-left: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .filter-container-type {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-2);
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: "Inter", sans-serif;
+  }
+  .filter-container-type:hover { background: var(--btn-hover); border-color: var(--btn-border); }
+  .filter-type-menu {
+    position: absolute;
+    left: 12px;
+    top: 22px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(30,39,53,0.08);
+    padding: 3px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+  }
+  .filter-type-menu button {
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    color: var(--ink-1);
+    background: transparent;
+    border: none;
+    padding: 5px 8px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .filter-type-menu button:hover { background: var(--btn-hover); }
+  .filter-container-del {
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+  }
+  .filter-container-del:hover { color: var(--warning); }
+  .filter-atom {
+    position: relative;
+    padding: 7px 24px 7px 10px;
+    background: #fbf9f3;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--ink-2);
+    margin: 4px 0;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .filter-atom:hover { background: var(--btn-hover); }
+  .filter-atom.selected {
+    border: 2px solid var(--accent);
+    padding: 6px 23px 6px 9px;
+    background: rgba(62, 53, 72, 0.04);
+  }
+  .filter-atom.drag-before { box-shadow: 0 -2px 0 0 var(--accent); }
+  .filter-atom.drag-after  { box-shadow: 0  2px 0 0 var(--accent); }
+  .filter-container.drag-before { box-shadow: 0 -2px 0 0 var(--accent); }
+  .filter-container.drag-after  { box-shadow: 0  2px 0 0 var(--accent); }
+  .filter-atom-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 1px;
+  }
+  .filter-atom-preview {
+    font-size: 10px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .filter-atom-del {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+  }
+  .filter-atom-del:hover { color: var(--warning); }
+  .filter-add-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    position: relative;
+  }
+  .filter-add-btn {
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    color: var(--ink-2);
+    background: transparent;
+    border: 1px dashed var(--btn-border);
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .filter-add-btn:hover { background: var(--btn-hover); }
+  .filter-add-menu {
+    position: absolute;
+    left: 0;
+    top: 26px;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    padding: 4px;
+    z-index: 5;
+    box-shadow: 0 2px 8px rgba(30,39,53,0.08);
+    display: flex;
+    flex-direction: column;
+    min-width: 210px;
+  }
+  .filter-add-menu button {
+    font-family: "Inter", sans-serif;
+    font-size: 10px;
+    color: var(--ink-1);
+    background: transparent;
+    border: none;
+    padding: 5px 8px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .filter-add-menu button:hover { background: var(--btn-hover); }
+  .filter-add-menu .menu-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 3px 2px;
+  }
+  .filter-add-menu .menu-head {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    padding: 4px 8px 2px 8px;
+  }
+
+  /* Section E — Palette */
+  .palette-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+  }
+  .cat-header {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    margin: 12px 2px 6px 2px;
+  }
+  .cat-header:first-child { margin-top: 0; }
+  .block-chip {
+    padding: 10px 12px;
+    background: #fbf9f3;
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    margin-bottom: 6px;
+    cursor: grab;
+    transition: background 120ms;
+  }
+  .block-chip:hover { background: var(--btn-hover); }
+  .block-chip:active { cursor: grabbing; }
+  .block-chip-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 2px;
+  }
+  .block-chip-desc {
+    font-size: 10px;
+    color: var(--ink-3);
+    line-height: 1.35;
+  }
+
+  /* Section F */
+  .section-f {
+    flex: 0 0 32px;
+    background: var(--chrome);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .status-left {
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .status-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--positive);
+    display: inline-block;
+  }
+
+  /* Palette picker (floating panel) */
+  .palette-picker {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 188px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(30,39,53,0.08);
+    z-index: 5;
+    padding: 8px 10px 10px 10px;
+  }
+  .palette-picker.hidden { display: none; }
+  .palette-picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .palette-picker-title {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-2);
+  }
+  .palette-picker-close {
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+  .palette-picker-close:hover { color: var(--ink-1); }
+  .palette-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 2px;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .palette-row:hover { background: #faf8f2; }
+  .palette-row.active .palette-swatches {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .palette-name {
+    font-size: 10px;
+    color: var(--ink-2);
+    flex: 1;
+    font-family: "Inter", sans-serif;
+  }
+  .palette-swatches {
+    display: flex;
+    gap: 1px;
+    padding: 1px;
+  }
+  .palette-swatch {
+    width: 14px;
+    height: 10px;
+    border: 1px solid #e4e0d4;
+  }
+  .palette-toggle-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 4;
+    font-size: 10px;
+    padding: 4px 8px;
+    background: #ffffff;
+    border: 1px solid var(--btn-border);
+    color: var(--ink-2);
+    cursor: pointer;
+    display: none;
+  }
+  .palette-toggle-btn.visible { display: block; }
+
+  .canvas-hint {
+    position: absolute;
+    bottom: 10px;
+    left: 12px;
+    font-size: 10px;
+    color: var(--ink-3);
+    background: rgba(255,255,255,0.7);
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    pointer-events: none;
+    z-index: 3;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Section A -->
+  <div class="section-a">
+    <div>
+      <span class="brand">CiteClaw</span><span class="brand-tail"> &middot; New run &middot; v4</span>
+    </div>
+    <button id="runBtn" class="btn btn-run">Run pipeline</button>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+    <!-- Section B -->
+    <div class="section-b">
+      <div class="panel-header">
+        <div class="panel-title">Seed papers</div>
+        <div class="panel-meta" id="seedCount">(3 selected)</div>
+      </div>
+      <div class="search-wrap">
+        <input type="text" id="seedSearch" class="search-input" placeholder="Search Semantic Scholar...">
+      </div>
+      <div id="resultsList" class="results-list"></div>
+    </div>
+
+    <!-- Section C -->
+    <div class="section-c">
+      <div class="panel-header">
+        <div class="panel-title">Pipeline</div>
+        <div class="panel-header-actions">
+          <button id="palettePickerBtn" class="btn-mini" title="Colour palette">Palette</button>
+          <div class="panel-meta" id="pipelineMeta">7 blocks &middot; 2 branches</div>
+        </div>
+      </div>
+      <div id="canvasWrap" class="canvas-wrap">
+        <div id="canvasStage" class="canvas-stage">
+          <svg id="pipelineSvg" class="canvas-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div id="canvasOverlay" class="canvas-overlay"></div>
+        </div>
+        <div class="canvas-hint">Drop palette blocks to append &middot; drag blocks to swap siblings</div>
+        <button id="paletteToggleBtn" class="palette-toggle-btn">Palette</button>
+        <div id="palettePicker" class="palette-picker hidden">
+          <div class="palette-picker-head">
+            <div class="palette-picker-title">Palette</div>
+            <button id="palettePickerClose" class="palette-picker-close" title="Hide">&times;</button>
+          </div>
+          <div id="palettePickerList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section D -->
+    <div class="section-d">
+      <div class="panel-header">
+        <div class="panel-title" id="configTitle">Configuration &middot; Seeds + Topic</div>
+      </div>
+      <div id="configBody" class="config-body"></div>
+    </div>
+
+    <!-- Section E -->
+    <div class="section-e">
+      <div class="panel-header">
+        <div class="panel-title">Building blocks</div>
+      </div>
+      <div id="paletteBody" class="palette-body"></div>
+    </div>
+  </div>
+
+  <!-- Section F -->
+  <div class="section-f">
+    <div class="status-left" id="statusLeft">7 blocks &middot; 3 seeds selected &middot; ready to run</div>
+    <div class="status-right">
+      <span class="status-dot"></span>
+      <span>Session: demo &middot; v4</span>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =====================================================
+   PALETTES (kept from v3)
+===================================================== */
+const PALETTES = {
+  "muted-ppt": {
+    label: "Muted PPT",
+    seeds:    "#8aa695",
+    forward:  "#9c7d8a",
+    backward: "#6b82a0",
+    rerank:   "#a89878",
+    rescreen: "#78688a"
+  },
+  "nord": {
+    label: "Nord Frost",
+    seeds:    "#8fbcbb",
+    forward:  "#bf616a",
+    backward: "#5e81ac",
+    rerank:   "#ebcb8b",
+    rescreen: "#b48ead"
+  },
+  "rose-pine": {
+    label: "Rose Pine",
+    seeds:    "#9ccfd8",
+    forward:  "#eb6f92",
+    backward: "#31748f",
+    rerank:   "#f6c177",
+    rescreen: "#c4a7e7"
+  },
+  "everforest": {
+    label: "Everforest",
+    seeds:    "#83c092",
+    forward:  "#e67e80",
+    backward: "#7fbbb3",
+    rerank:   "#dbbc7f",
+    rescreen: "#d699b6"
+  },
+  "gruvbox-muted": {
+    label: "Gruvbox",
+    seeds:    "#8ec07c",
+    forward:  "#cc6666",
+    backward: "#83a598",
+    rerank:   "#d79921",
+    rescreen: "#b16286"
+  },
+  "solarized-muted": {
+    label: "Solarized",
+    seeds:    "#859900",
+    forward:  "#dc322f",
+    backward: "#268bd2",
+    rerank:   "#b58900",
+    rescreen: "#6c71c4"
+  },
+  "catppuccin-latte": {
+    label: "Catppuccin",
+    seeds:    "#40a02b",
+    forward:  "#d20f39",
+    backward: "#1e66f5",
+    rerank:   "#df8e1d",
+    rescreen: "#8839ef"
+  },
+  "tokyo-night-muted": {
+    label: "Tokyo Night",
+    seeds:    "#73daca",
+    forward:  "#f7768e",
+    backward: "#7aa2f7",
+    rerank:   "#e0af68",
+    rescreen: "#bb9af7"
+  },
+  "monochrome-slate": {
+    label: "Monochrome",
+    seeds:    "#94a3b8",
+    forward:  "#64748b",
+    backward: "#475569",
+    rerank:   "#334155",
+    rescreen: "#1e293b"
+  },
+  "ocean": {
+    label: "Ocean",
+    seeds:    "#8bb8a8",
+    forward:  "#6e8faf",
+    backward: "#5b7a9d",
+    rerank:   "#9bb7d4",
+    rescreen: "#4a6580"
+  }
+};
+
+const CATEGORY_ORDER = ["seeds", "forward", "backward", "rerank", "rescreen"];
+
+/* =====================================================
+   MOCK PIPELINE (tree format — NEW in v4)
+===================================================== */
+const MOCK_PIPELINE_TREE = {
+  kind: "sequence", id: "root",
+  children: [
+    { kind: "step", id: "seeds",    type: "seeds",    label: "Seeds + Topic" },
+    { kind: "step", id: "fwd1",     type: "forward",  label: "Forward Screener" },
+    { kind: "step", id: "bwd1",     type: "backward", label: "Backward Screener" },
+    {
+      kind: "parallel", id: "par1",
+      branches: [
+        { kind: "sequence", id: "par1_b0", children: [
+          { kind: "step", id: "rerank", type: "rerank",  label: "Diversified Reranker" },
+          { kind: "step", id: "fwd2",   type: "forward", label: "Forward Screener" }
+        ]},
+        { kind: "sequence", id: "par1_b1", children: [
+          { kind: "step", id: "bwd2",   type: "backward", label: "Backward Screener" }
+        ]}
+      ]
+    },
+    { kind: "step", id: "rescreen", type: "rescreen", label: "Rescreener" }
+  ]
+};
+
+const MOCK_SEED_RESULTS = [
+  { id: "p1",  title: "Highly accurate protein structure prediction with AlphaFold",             authors: "Jumper, Evans, Pritzel, et al.", year: 2021, venue: "Nature",         citations: 7900 },
+  { id: "p2",  title: "AlphaFold 3: All-atom structure prediction across biomolecules",          authors: "Abramson, Adler, Dunger, et al.",year: 2024, venue: "Nature",         citations: 820  },
+  { id: "p3",  title: "RoseTTAFold: Accurate prediction of protein structures and interactions", authors: "Baek, DiMaio, Anishchenko",      year: 2021, venue: "Science",        citations: 3200 },
+  { id: "p4",  title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure",authors: "Lin, Akin, Rao, et al.",         year: 2023, venue: "Science",        citations: 2100 },
+  { id: "p5",  title: "ColabFold: Making protein folding accessible to all",                     authors: "Mirdita, Schutze, Moriwaki",     year: 2022, venue: "Nature Methods", citations: 2900 },
+  { id: "p6",  title: "OmegaFold: High-resolution de novo structure prediction",                 authors: "Wu, Ding, Wang",                 year: 2022, venue: "bioRxiv",        citations: 520  },
+  { id: "p7",  title: "ProteinMPNN: Robust deep learning based protein sequence design",         authors: "Dauparas, Anishchenko, Bennett", year: 2022, venue: "Science",        citations: 1700 },
+  { id: "p8",  title: "RFdiffusion: Broadly applicable and accurate protein design",             authors: "Watson, Juergens, Bennett",      year: 2023, venue: "Nature",         citations: 1400 },
+  { id: "p9",  title: "Chai-1: Decoding the molecular interactions of life",                     authors: "Boitreaud, Dent, McPartlon",     year: 2024, venue: "bioRxiv",        citations: 310  },
+  { id: "p10", title: "Boltz-1: Democratizing biomolecular interaction modeling",                authors: "Wohlwend, Corso, Passaro",       year: 2024, venue: "bioRxiv",        citations: 240  }
+];
+
+const INITIAL_SELECTED_SEEDS = ["p1", "p3", "p5"];
+
+const BUILDING_BLOCKS_CATALOG = {
+  "SEEDS": [
+    { id: "LoadSeeds",    type: "seeds",    label: "Load Seeds",    desc: "Initialize collection from seed papers" },
+    { id: "ResolveSeeds", type: "seeds",    label: "Resolve Seeds", desc: "Fuzzy-match seed titles via S2" }
+  ],
+  "EXPAND": [
+    { id: "ExpandForward",    type: "forward",  label: "Expand Forward",      desc: "Fetch citers of accepted papers" },
+    { id: "ExpandBackward",   type: "backward", label: "Expand Backward",     desc: "Fetch references of accepted papers" },
+    { id: "ExpandBySearch",   type: "forward",  label: "Expand by Search",    desc: "Iterative LLM search agent" },
+    { id: "ExpandBySemantics",type: "forward",  label: "Expand by Semantics", desc: "SPECTER2 kNN recommendations" },
+    { id: "ExpandByAuthor",   type: "forward",  label: "Expand by Author",    desc: "Top-K authors and their papers" }
+  ],
+  "FILTER": [
+    { id: "Rerank",   type: "rerank",   label: "Rerank",    desc: "Top-K with cluster diversity" },
+    { id: "ReScreen", type: "rescreen", label: "Re-screen", desc: "Apply screener to all accepted" },
+    { id: "Cluster",  type: "rerank",   label: "Cluster",   desc: "Topic-model clusters" }
+  ],
+  "CONTROL": [
+    { id: "HumanInTheLoop", type: "forward", label: "Human in the Loop", desc: "Interactive quality check" },
+    { id: "MergeDuplicates",type: "forward", label: "Merge Duplicates",  desc: "Preprint-published dedup" }
+  ],
+  "FINALIZE": [
+    { id: "Finalize", type: "rescreen", label: "Finalize", desc: "Write outputs" }
+  ]
+};
+
+const BLOCK_CONFIGS = {
+  "seeds":    { topic: "Deep learning methods for protein structure prediction and design, including AlphaFold-family models and diffusion-based approaches.", seedCount: 3 },
+  "fwd1":     { name: "Forward Screener",  model: "gemma-4-31b", reasoning: "medium" },
+  "bwd1":     { name: "Backward Screener", model: "gemma-4-31b", reasoning: "medium" },
+  "rerank":   { metric: "pagerank", k: 3, diversity: "forward_topics" },
+  "fwd2":     { name: "Forward Screener",  model: "gemma-4-31b", reasoning: "medium" },
+  "bwd2":     { name: "Backward Screener", model: "gemma-4-31b", reasoning: "medium" },
+  "rescreen": { target: "entire_collection", screener: "tight_screener" }
+};
+
+/* =====================================================
+   LAYOUT CONSTANTS
+===================================================== */
+const BLOCK_W = 150;
+const BLOCK_H = 60;
+const GAP_X   = 48;
+const GAP_Y   = 30;
+const PAD     = 36;
+const EMPTY_W = 140;
+const EMPTY_H = 60;
+
+/* =====================================================
+   UTIL
+===================================================== */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+function randomId(prefix) {
+  return (prefix || "id") + "_" + Math.random().toString(36).slice(2, 8);
+}
+function darkenHex(hex, factor) {
+  const m = /^#?([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(hex);
+  if (!m) return hex;
+  let r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+  r = Math.max(0, Math.min(255, Math.round(r * factor)));
+  g = Math.max(0, Math.min(255, Math.round(g * factor)));
+  b = Math.max(0, Math.min(255, Math.round(b * factor)));
+  return "#" + [r,g,b].map(v => v.toString(16).padStart(2,"0")).join("");
+}
+function blockColors(type, paletteKey) {
+  const pal = PALETTES[paletteKey] || PALETTES["muted-ppt"];
+  const fill = pal[type] || pal.forward || "#9c7d8a";
+  return {
+    fill: fill,
+    stroke: darkenHex(fill, 0.72),
+    textOnFill: "#ffffff"
+  };
+}
+function defaultFilterTree() {
+  return {
+    id: "root",
+    type: "Sequential",
+    children: [
+      { id: randomId("f"), type: "YearFilter",     params: { min: 2018, max: 2025 } },
+      { id: randomId("f"), type: "CitationFilter", params: { beta: 30, pass_if_cited_at_least: null } },
+      {
+        id: randomId("f"), type: "LLMFilter",
+        params: {
+          mode: "single",
+          query: "The paper proposes a novel method for protein structure prediction or design.",
+          formula: "",
+          queries: [],
+          scope: "title_abstract",
+          model: "gemma-4-31b",
+          reasoning_effort: "medium"
+        }
+      }
+    ]
+  };
+}
+
+/* =====================================================
+   STATE (declared before any initializer)
+===================================================== */
+const state = {
+  pipeline: MOCK_PIPELINE_TREE,
+  selectedBlockId: "seeds",
+  selectedSeedIds: new Set(INITIAL_SELECTED_SEEDS),
+  searchQuery: "",
+  blockFilters: {
+    fwd1: defaultFilterTree(),
+    bwd1: defaultFilterTree(),
+    fwd2: defaultFilterTree(),
+    bwd2: defaultFilterTree()
+  },
+  selectedFilterId: null,
+  activePalette: localStorage.getItem("citeclaw_v4_palette") || "muted-ppt",
+  palettePickerVisible: true,
+  // drag tracking (canvas)
+  canvasDrag: null,    // { sourceId, sourceParentId }
+  // drag tracking (filter tree)
+  filterDrag: null,    // { sourceId, sourceParentId }
+  openTypeMenuId: null,
+  openAddMenuId: null
+};
+
+/* =====================================================
+   TREE TRAVERSAL HELPERS
+===================================================== */
+// Walk the whole tree and call fn(node, parentSeq) for every node encountered.
+function walkTree(root, fn, parentSeq) {
+  fn(root, parentSeq || null);
+  if (root.kind === "sequence") {
+    (root.children || []).forEach(ch => walkTree(ch, fn, root));
+  } else if (root.kind === "parallel") {
+    (root.branches || []).forEach(br => walkTree(br, fn, null));
+  }
+}
+
+function findNode(root, id) {
+  let result = null;
+  walkTree(root, (n) => { if (n.id === id) result = n; });
+  return result;
+}
+
+// Returns the sequence node that directly contains child `id`.
+function findParentSequence(root, id) {
+  let result = null;
+  walkTree(root, (n) => {
+    if (n.kind === "sequence" && (n.children || []).some(c => c.id === id)) {
+      result = n;
+    }
+  });
+  return result;
+}
+
+// Get all "step" nodes in order (for things like counters).
+function allSteps(root) {
+  const out = [];
+  walkTree(root, (n) => { if (n.kind === "step") out.push(n); });
+  return out;
+}
+
+// Count parallels → branches.
+function countBranches(root) {
+  let b = 1;
+  walkTree(root, (n) => {
+    if (n.kind === "parallel") b += Math.max(0, (n.branches || []).length - 1);
+  });
+  return b;
+}
+
+/* =====================================================
+   LAYOUT
+   recursive layoutSequence returning { positions, edges, width, height }
+===================================================== */
+function layoutSequence(seq, startX, startY) {
+  // positions: array of { id, kind, x, y, w, h, parentSeqId, emptyOf? }
+  // edges: array of { fromId, toId }
+  const positions = [];
+  const edges = [];
+  const children = seq.children || [];
+
+  if (children.length === 0) {
+    // Empty sequence: render a dashed placeholder for this slot.
+    const emptyId = "empty_" + seq.id;
+    positions.push({
+      id: emptyId,
+      kind: "empty",
+      x: startX,
+      y: startY,
+      w: EMPTY_W,
+      h: EMPTY_H,
+      parentSeqId: seq.id,
+      emptyOf: seq.id
+    });
+    return {
+      positions,
+      edges,
+      width: EMPTY_W,
+      height: EMPTY_H,
+      entryIds: [emptyId],
+      exitIds: [emptyId]
+    };
+  }
+
+  // For each child: compute its own bounding box, stacked horizontally.
+  // We collect per-child bounding info so we can center them vertically relative
+  // to a "row centerline" at startY + BLOCK_H/2.
+  let currentX = startX;
+  const rowCenterY = startY + BLOCK_H / 2;
+
+  // We'll place step children at startY (so their center is rowCenterY).
+  // For parallels, we'll center the whole stack around rowCenterY so that
+  // the parallel sits visually centered on the seq's row.
+
+  // First pass: compute each child's "slot" width and height.
+  const childSlots = children.map(ch => {
+    if (ch.kind === "step") {
+      return { kind: "step", node: ch, w: BLOCK_W, h: BLOCK_H };
+    }
+    // Parallel: measure each branch by provisional layout (at 0,0).
+    const branchLayouts = (ch.branches || []).map(br => layoutSequence(br, 0, 0));
+    let maxBranchW = 0;
+    let totalH = 0;
+    branchLayouts.forEach((bl, i) => {
+      if (bl.width > maxBranchW) maxBranchW = bl.width;
+      totalH += bl.height;
+      if (i > 0) totalH += GAP_Y;
+    });
+    if (branchLayouts.length === 0) {
+      // No branches in parallel — render as an empty slot.
+      maxBranchW = EMPTY_W;
+      totalH = EMPTY_H;
+    }
+    return {
+      kind: "parallel",
+      node: ch,
+      w: maxBranchW,
+      h: totalH,
+      branchLayouts: branchLayouts
+    };
+  });
+
+  // Track entry + exit ids for linking with predecessors / successors.
+  // For a single-step child, entry = exit = that step's id.
+  // For a parallel child, entry ids = first step of each branch, exit ids = last.
+  // For an empty branch slot, its entry + exit is the emptyId.
+  const childEntries = [];
+  const childExits = [];
+
+  childSlots.forEach((slot, idx) => {
+    if (slot.kind === "step") {
+      const sx = currentX;
+      const sy = startY;
+      positions.push({
+        id: slot.node.id,
+        kind: "step",
+        node: slot.node,
+        x: sx,
+        y: sy,
+        w: BLOCK_W,
+        h: BLOCK_H,
+        parentSeqId: seq.id
+      });
+      childEntries.push([slot.node.id]);
+      childExits.push([slot.node.id]);
+      currentX += BLOCK_W + GAP_X;
+    } else {
+      // Parallel: vertically center the stack around rowCenterY.
+      const parX = currentX;
+      const parTop = rowCenterY - slot.h / 2;
+      const branches = slot.node.branches || [];
+      const branchLayouts = slot.branchLayouts;
+
+      // Re-lay each branch at the right coords so positions land where we want.
+      let bY = parTop;
+      const entriesForBranches = [];
+      const exitsForBranches = [];
+
+      branches.forEach((br, i) => {
+        // Recompute in-place starting at (parX, bY).
+        const bLayout = layoutSequence(br, parX, bY);
+        bLayout.positions.forEach(p => positions.push(p));
+        bLayout.edges.forEach(e => edges.push(e));
+        entriesForBranches.push(bLayout.entryIds);
+        exitsForBranches.push(bLayout.exitIds);
+        bY += bLayout.height + GAP_Y;
+      });
+
+      // Collect entries/exits for this child slot
+      const flatEntries = entriesForBranches.flat();
+      const flatExits = exitsForBranches.flat();
+      childEntries.push(flatEntries);
+      childExits.push(flatExits);
+
+      currentX += slot.w + GAP_X;
+    }
+  });
+
+  // Build edges between successive children.
+  for (let i = 0; i + 1 < childSlots.length; i++) {
+    const exits = childExits[i];
+    const entries = childEntries[i + 1];
+    exits.forEach(exitId => {
+      entries.forEach(entryId => {
+        edges.push({ fromId: exitId, toId: entryId });
+      });
+    });
+  }
+
+  // Compute bounding box of this sequence's layout.
+  // Width: from startX to currentX - GAP_X (strip trailing gap).
+  const width = Math.max(0, currentX - startX - GAP_X);
+  // Height: max over all children's heights (but stay centered around rowCenterY
+  // for parallels that are taller than BLOCK_H).
+  let minY = startY;
+  let maxY = startY + BLOCK_H;
+  childSlots.forEach(s => {
+    if (s.kind === "step") {
+      minY = Math.min(minY, startY);
+      maxY = Math.max(maxY, startY + BLOCK_H);
+    } else {
+      const parTop = rowCenterY - s.h / 2;
+      const parBot = rowCenterY + s.h / 2;
+      if (parTop < minY) minY = parTop;
+      if (parBot > maxY) maxY = parBot;
+    }
+  });
+  const height = maxY - minY;
+
+  // Entry/exit ids for this whole sequence (used when it's a branch of a parallel).
+  const entryIds = childEntries[0] || [];
+  const exitIds = childExits[childExits.length - 1] || [];
+
+  return { positions, edges, width, height, entryIds, exitIds };
+}
+
+// Top-level layout: wraps layoutSequence with padding, then shifts to ensure
+// every position has x >= PAD and y >= PAD (parallels taller than BLOCK_H
+// can legitimately make the row center go negative relative to startY).
+function layoutTree(root) {
+  const result = layoutSequence(root, PAD, PAD);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  if (result.positions.length === 0) {
+    return {
+      positions: [],
+      edges: [],
+      width: PAD * 2 + 400,
+      height: PAD * 2 + 200
+    };
+  }
+  result.positions.forEach(p => {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x + p.w > maxX) maxX = p.x + p.w;
+    if (p.y + p.h > maxY) maxY = p.y + p.h;
+  });
+  // Shift so minX == PAD and minY == PAD.
+  const dx = PAD - minX;
+  const dy = PAD - minY;
+  if (dx !== 0 || dy !== 0) {
+    result.positions.forEach(p => { p.x += dx; p.y += dy; });
+    maxX += dx;
+    maxY += dy;
+  }
+  const width = Math.max(maxX + PAD, PAD * 2 + 400);
+  const height = Math.max(maxY + PAD, PAD * 2 + 200);
+  return {
+    positions: result.positions,
+    edges: result.edges,
+    width,
+    height
+  };
+}
+
+/* =====================================================
+   SECTION B — seed search (kept from v3)
+===================================================== */
+function renderResults() {
+  const list = document.getElementById("resultsList");
+  const q = state.searchQuery.trim().toLowerCase();
+  const filtered = q
+    ? MOCK_SEED_RESULTS.filter(p =>
+        p.title.toLowerCase().includes(q) ||
+        p.authors.toLowerCase().includes(q) ||
+        p.venue.toLowerCase().includes(q))
+    : MOCK_SEED_RESULTS;
+
+  let html = "";
+  filtered.forEach(p => {
+    const sel = state.selectedSeedIds.has(p.id);
+    html += `
+      <div class="result-row${sel ? " selected" : ""}" data-pid="${p.id}">
+        <div class="checkmark-box">
+          <svg width="11" height="11" viewBox="0 0 11 11">
+            <polyline points="1.5,5.5 4.5,8.5 9.5,2.5" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"/>
+          </svg>
+        </div>
+        <div class="result-body">
+          <div class="result-title">${escapeHtml(p.title)}</div>
+          <div class="result-meta">
+            <div class="result-authors">${escapeHtml(p.authors)} &middot; ${p.year} &middot; ${escapeHtml(p.venue)}</div>
+            <div class="result-cites">${p.citations.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll(".result-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const pid = row.getAttribute("data-pid");
+      if (state.selectedSeedIds.has(pid)) state.selectedSeedIds.delete(pid);
+      else state.selectedSeedIds.add(pid);
+      renderResults();
+      renderSeedCount();
+      renderStatus();
+      if (state.selectedBlockId === "seeds") renderConfig();
+    });
+  });
+}
+
+function renderSeedCount() {
+  const n = state.selectedSeedIds.size;
+  document.getElementById("seedCount").textContent = `(${n} selected)`;
+}
+
+/* =====================================================
+   SECTION C — pipeline canvas (rewritten for v4)
+===================================================== */
+let lastLayout = null;
+
+function recomputeLayout() {
+  lastLayout = layoutTree(state.pipeline);
+  return lastLayout;
+}
+
+function renderCanvas() {
+  const svg = document.getElementById("pipelineSvg");
+  const overlay = document.getElementById("canvasOverlay");
+  const stage = document.getElementById("canvasStage");
+  const layout = recomputeLayout();
+  const paletteKey = state.activePalette;
+
+  // Size the stage (which both the SVG and overlay share)
+  stage.style.width = layout.width + "px";
+  stage.style.height = layout.height + "px";
+  svg.setAttribute("width", layout.width);
+  svg.setAttribute("height", layout.height);
+  svg.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
+  overlay.style.width = layout.width + "px";
+  overlay.style.height = layout.height + "px";
+
+  // defs
+  const strokeColor = "#8a7a58";
+  let defs = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="${strokeColor}"/>
+      </marker>
+    </defs>
+  `;
+
+  // Build quick lookup for positions by id
+  const byId = new Map();
+  layout.positions.forEach(p => byId.set(p.id, p));
+
+  // Group incoming edges per target so we can distribute entry y coordinates.
+  const incomingByTarget = new Map();
+  layout.edges.forEach(e => {
+    if (!incomingByTarget.has(e.toId)) incomingByTarget.set(e.toId, []);
+    incomingByTarget.get(e.toId).push(e.fromId);
+  });
+  const outgoingBySource = new Map();
+  layout.edges.forEach(e => {
+    if (!outgoingBySource.has(e.fromId)) outgoingBySource.set(e.fromId, []);
+    outgoingBySource.get(e.fromId).push(e.toId);
+  });
+
+  // Render edges in SVG
+  let edgeEls = "";
+  layout.edges.forEach(e => {
+    const a = byId.get(e.fromId);
+    const b = byId.get(e.toId);
+    if (!a || !b) return;
+
+    const ins = incomingByTarget.get(b.id) || [];
+    const outs = outgoingBySource.get(a.id) || [];
+    const inIdx = ins.indexOf(a.id);
+    const outIdx = outs.indexOf(b.id);
+    const nIn = ins.length;
+    const nOut = outs.length;
+
+    const sx = a.x + a.w;
+    const sy = a.y + ((outIdx + 1) * a.h) / (nOut + 1);
+    const tx = b.x;
+    const ty = b.y + ((inIdx + 1) * b.h) / (nIn + 1);
+
+    let d;
+    if (Math.abs(sy - ty) < 0.5) {
+      d = `M ${sx} ${sy} L ${tx} ${ty}`;
+    } else {
+      const midX = (sx + tx) / 2;
+      d = `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
+    }
+    edgeEls += `<path class="pipeline-edge" d="${d}" stroke="${strokeColor}" marker-end="url(#arrow)"/>`;
+  });
+
+  svg.innerHTML = defs + edgeEls;
+
+  // Render nodes and empty-branch slots as HTML overlay
+  let overlayHtml = "";
+  layout.positions.forEach(p => {
+    if (p.kind === "empty") {
+      overlayHtml += `
+        <div class="empty-branch-overlay"
+             data-empty-for="${p.emptyOf}"
+             style="left:${p.x}px; top:${p.y}px; width:${p.w}px; height:${p.h}px;">
+          Drop block here
+        </div>
+      `;
+      return;
+    }
+
+    const step = p.node;
+    const colors = blockColors(step.type, paletteKey);
+    const isSelected = step.id === state.selectedBlockId;
+    const selClass = isSelected ? " selected" : "";
+    const forkBtn = (step.id === "seeds")
+      ? ""
+      : `<button class="node-fork-btn" data-fork-node="${step.id}" title="Wrap in parallel">|| parallel</button>`;
+    const delBtn = (step.id === "seeds")
+      ? ""
+      : `<button class="node-del-btn" data-del-node="${step.id}" title="Delete">&times;</button>`;
+
+    overlayHtml += `
+      <div class="node-overlay${selClass}"
+           data-id="${step.id}"
+           data-parent-seq="${p.parentSeqId}"
+           draggable="true"
+           style="left:${p.x}px; top:${p.y}px; width:${p.w}px; height:${p.h}px; background:${colors.fill}; border-color:${colors.stroke};">
+        ${forkBtn}
+        ${delBtn}
+        <div class="node-label-text">${escapeHtml(step.label)}</div>
+      </div>
+    `;
+  });
+
+  overlay.innerHTML = overlayHtml;
+
+  wireCanvasHandlers(overlay);
+
+  // Meta
+  const blockCount = allSteps(state.pipeline).length;
+  const branchCount = countBranches(state.pipeline);
+  document.getElementById("pipelineMeta").textContent =
+    `${blockCount} blocks \u00b7 ${branchCount} branches`;
+}
+
+function wireCanvasHandlers(overlay) {
+  // Click on a node → select
+  overlay.querySelectorAll(".node-overlay").forEach(div => {
+    const id = div.getAttribute("data-id");
+
+    div.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".node-del-btn")) return;
+      if (e.target.closest(".node-fork-btn")) return;
+      if (state.selectedBlockId === id) return;
+      state.selectedBlockId = id;
+      state.selectedFilterId = null;
+      renderCanvas();
+      renderConfig();
+    });
+
+    // HTML5 drag: sibling swap
+    div.addEventListener("dragstart", (e) => {
+      if (e.target.closest(".node-del-btn") || e.target.closest(".node-fork-btn")) {
+        e.preventDefault();
+        return;
+      }
+      const parentSeqId = div.getAttribute("data-parent-seq");
+      state.canvasDrag = { sourceId: id, sourceParentId: parentSeqId };
+      try {
+        e.dataTransfer.setData("application/x-citeclaw-node", JSON.stringify({ id, parentSeqId }));
+        e.dataTransfer.effectAllowed = "move";
+      } catch {}
+      div.classList.add("dragging-ghost");
+    });
+
+    div.addEventListener("dragend", () => {
+      state.canvasDrag = null;
+      overlay.querySelectorAll(".node-overlay.dragging-ghost, .node-overlay.swap-target")
+        .forEach(el => el.classList.remove("dragging-ghost", "swap-target"));
+    });
+
+    div.addEventListener("dragover", (e) => {
+      const src = state.canvasDrag;
+      if (!src || src.sourceId === id) return;
+      const parentSeqId = div.getAttribute("data-parent-seq");
+      if (parentSeqId !== src.sourceParentId) return; // siblings only
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      div.classList.add("swap-target");
+    });
+
+    div.addEventListener("dragleave", () => {
+      div.classList.remove("swap-target");
+    });
+
+    div.addEventListener("drop", (e) => {
+      const src = state.canvasDrag;
+      if (!src || src.sourceId === id) return;
+      const parentSeqId = div.getAttribute("data-parent-seq");
+      if (parentSeqId !== src.sourceParentId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      swapSiblings(parentSeqId, src.sourceId, id);
+      state.canvasDrag = null;
+      div.classList.remove("swap-target");
+      renderCanvas();
+      renderConfig();
+    });
+  });
+
+  // Delete / fork buttons
+  overlay.querySelectorAll(".node-del-btn").forEach(btn => {
+    btn.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    });
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const nid = btn.getAttribute("data-del-node");
+      deleteStep(nid);
+    });
+  });
+  overlay.querySelectorAll(".node-fork-btn").forEach(btn => {
+    btn.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    });
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const nid = btn.getAttribute("data-fork-node");
+      forkStepIntoParallel(nid);
+    });
+  });
+
+  // Empty branch drop targets
+  overlay.querySelectorAll(".empty-branch-overlay").forEach(div => {
+    const seqId = div.getAttribute("data-empty-for");
+    div.addEventListener("dragover", (e) => {
+      const types = (e.dataTransfer && e.dataTransfer.types) || [];
+      if (!Array.from(types).includes("application/x-citeclaw-block")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      div.classList.add("drop-hover");
+    });
+    div.addEventListener("dragleave", () => div.classList.remove("drop-hover"));
+    div.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      div.classList.remove("drop-hover");
+      const raw = e.dataTransfer.getData("application/x-citeclaw-block");
+      if (!raw) return;
+      let payload;
+      try { payload = JSON.parse(raw); } catch { return; }
+      insertStepIntoSequence(seqId, payload);
+    });
+  });
+}
+
+/* ---- canvas mutations ---- */
+function swapSiblings(parentSeqId, idA, idB) {
+  const seq = findNode(state.pipeline, parentSeqId);
+  if (!seq || seq.kind !== "sequence") return;
+  const ia = seq.children.findIndex(c => c.id === idA);
+  const ib = seq.children.findIndex(c => c.id === idB);
+  if (ia < 0 || ib < 0) return;
+  const tmp = seq.children[ia];
+  seq.children[ia] = seq.children[ib];
+  seq.children[ib] = tmp;
+}
+
+function deleteStep(id) {
+  if (id === "seeds") return;
+  // Find the parent sequence and remove.
+  const parent = findParentSequence(state.pipeline, id);
+  if (parent) {
+    parent.children = parent.children.filter(c => c.id !== id);
+  } else {
+    // May be a parallel — find the parent sequence containing the parallel.
+    const parSeq = findParentSequence(state.pipeline, id);
+    if (parSeq) parSeq.children = parSeq.children.filter(c => c.id !== id);
+  }
+  if (state.selectedBlockId === id) {
+    state.selectedBlockId = allSteps(state.pipeline)[0] ? allSteps(state.pipeline)[0].id : null;
+  }
+  delete state.blockFilters[id];
+  renderCanvas();
+  renderConfig();
+  renderStatus();
+}
+
+function forkStepIntoParallel(stepId) {
+  // Replace the step `stepId` in its parent sequence with a parallel whose
+  // first branch is [the step] and second branch is empty.
+  const parent = findParentSequence(state.pipeline, stepId);
+  if (!parent) return;
+  const idx = parent.children.findIndex(c => c.id === stepId);
+  if (idx < 0) return;
+  const original = parent.children[idx];
+  const parId = randomId("par");
+  const newParallel = {
+    kind: "parallel", id: parId,
+    branches: [
+      { kind: "sequence", id: randomId("seq"), children: [original] },
+      { kind: "sequence", id: randomId("seq"), children: [] }
+    ]
+  };
+  parent.children[idx] = newParallel;
+  renderCanvas();
+}
+
+function insertStepIntoSequence(seqId, payload) {
+  const seq = findNode(state.pipeline, seqId);
+  if (!seq || seq.kind !== "sequence") return;
+  const newId = `${payload.blockId.toLowerCase()}_${Date.now().toString(36).slice(-4)}`;
+  const newStep = {
+    kind: "step",
+    id: newId,
+    type: payload.type,
+    label: payload.label
+  };
+  seq.children.push(newStep);
+
+  if (payload.type === "forward" || payload.type === "backward") {
+    state.blockFilters[newId] = defaultFilterTree();
+  }
+  if (payload.type === "rerank" && !BLOCK_CONFIGS[newId]) {
+    BLOCK_CONFIGS[newId] = { metric: "pagerank", k: 3, diversity: "forward_topics" };
+  } else if (payload.type === "rescreen" && !BLOCK_CONFIGS[newId]) {
+    BLOCK_CONFIGS[newId] = { target: "entire_collection", screener: "tight_screener" };
+  }
+
+  state.selectedBlockId = newId;
+  state.selectedFilterId = null;
+  renderCanvas();
+  renderConfig();
+  renderStatus();
+}
+
+function appendStepToRoot(payload) {
+  insertStepIntoSequence("root", payload);
+}
+
+/* =====================================================
+   SECTION D — config panel
+===================================================== */
+function renderConfig() {
+  const id = state.selectedBlockId;
+  const step = id ? findNode(state.pipeline, id) : null;
+  const title = document.getElementById("configTitle");
+  const body = document.getElementById("configBody");
+  const label = (step && step.kind === "step") ? step.label : (id || "(nothing selected)");
+  title.textContent = `Configuration \u00b7 ${label}`;
+
+  const isScreener = step && step.kind === "step" && (step.type === "forward" || step.type === "backward");
+
+  if (isScreener) {
+    body.innerHTML = `
+      <div class="config-split">
+        <div class="cfg-tree-col" id="cfgTreeCol"></div>
+        <div class="cfg-form-col" id="cfgFormCol"></div>
+      </div>
+    `;
+    renderFilterTree(id);
+    renderFilterForm(id);
+    return;
+  }
+
+  body.innerHTML = `<div class="config-single" id="cfgSingle"></div>`;
+  const single = document.getElementById("cfgSingle");
+
+  if (!step || id === "seeds") {
+    const seedCfg = BLOCK_CONFIGS["seeds"];
+    const selectedList = [...state.selectedSeedIds]
+      .map(pid => MOCK_SEED_RESULTS.find(p => p.id === pid))
+      .filter(Boolean);
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Topic description</div>
+        <textarea class="cfg-textarea" rows="4">${escapeHtml(seedCfg.topic)}</textarea>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Selected seeds (${selectedList.length})</div>
+        <div class="seed-mini-list">
+          ${selectedList.length === 0
+            ? '<div class="seed-mini-row"><div class="seed-mini-title cfg-mono">(none)</div></div>'
+            : selectedList.map(p => `
+                <div class="seed-mini-row">
+                  <div class="seed-mini-title">${escapeHtml(p.title)} &middot; ${escapeHtml(p.venue)}</div>
+                  <div class="seed-mini-year">${p.year}</div>
+                </div>
+              `).join("")}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const cfg = BLOCK_CONFIGS[id] || {};
+  if (step.type === "rerank") {
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Metric</div>
+        <select class="cfg-select">
+          <option ${cfg.metric === "pagerank" ? "selected" : ""}>pagerank</option>
+          <option ${cfg.metric === "degree" ? "selected" : ""}>degree</option>
+          <option ${cfg.metric === "citation_count" ? "selected" : ""}>citation_count</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">K</div>
+        <input type="number" class="cfg-input" value="${cfg.k != null ? cfg.k : 3}">
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Diversity cluster</div>
+        <input type="text" class="cfg-input" value="${escapeHtml(cfg.diversity || "forward_topics")}">
+      </div>
+    `;
+    return;
+  }
+
+  if (step.type === "rescreen") {
+    single.innerHTML = `
+      <div class="cfg-row">
+        <div class="cfg-label">Target</div>
+        <select class="cfg-select">
+          <option ${cfg.target === "entire_collection" ? "selected" : ""}>entire_collection</option>
+          <option ${cfg.target === "seeds_only" ? "selected" : ""}>seeds_only</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Screener reference</div>
+        <select class="cfg-select">
+          <option ${cfg.screener === "tight_screener" ? "selected" : ""}>tight_screener</option>
+          <option ${cfg.screener === "forward_screener" ? "selected" : ""}>forward_screener</option>
+          <option ${cfg.screener === "backward_screener" ? "selected" : ""}>backward_screener</option>
+        </select>
+      </div>
+    `;
+    return;
+  }
+
+  single.innerHTML = `
+    <div class="cfg-row">
+      <div class="cfg-label">Block type</div>
+      <div class="cfg-mono">${escapeHtml(step.type)}</div>
+    </div>
+    <div class="cfg-row">
+      <div class="cfg-label">Label</div>
+      <div class="cfg-mono">${escapeHtml(step.label)}</div>
+    </div>
+  `;
+}
+
+/* ---- filter tree ---- */
+function renderFilterTree(blockId) {
+  const col = document.getElementById("cfgTreeCol");
+  const tree = state.blockFilters[blockId];
+  if (!tree) {
+    col.innerHTML = '<div class="cfg-empty">No filter tree for this block.</div>';
+    return;
+  }
+  col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter tree</div>` + renderFilterNode(tree, blockId, 0, true);
+  attachTreeHandlers(blockId);
+}
+
+function isContainer(node) {
+  return node && (node.type === "Sequential" || node.type === "Any" || node.type === "Not" || node.type === "Route");
+}
+
+function renderFilterNode(node, blockId, depth, isRoot) {
+  if (isContainer(node)) return renderContainer(node, blockId, depth, isRoot);
+  return renderAtom(node, blockId, depth);
+}
+
+function containerHeadLabel(type) {
+  if (type === "Sequential") return "Sequential (AND)";
+  if (type === "Any") return "Any (OR)";
+  if (type === "Not") return "Not (invert)";
+  return "Route (if/else)";
+}
+
+function renderContainer(container, blockId, depth, isRoot) {
+  const typeClass =
+    container.type === "Any"   ? " filter-container-any" :
+    container.type === "Not"   ? " filter-container-not" :
+    container.type === "Route" ? " filter-container-route" :
+    "";
+  const isSelected = container.id === state.selectedFilterId;
+  const selClass = isSelected ? " selected" : "";
+  const delBtn = isRoot
+    ? ""
+    : `<button class="filter-container-del" data-del-container="${container.id}" title="Remove">&times;</button>`;
+
+  let childrenHtml = "";
+  if (container.type === "Route") {
+    (container.routes || []).forEach((route, i) => {
+      childrenHtml += `
+        <div class="cfg-measure-row" data-route-idx="${i}" data-route-container="${container.id}">
+          <div class="cfg-measure-head">Route ${i + 1} \u00b7 ${escapeHtml(route.predicate)}</div>
+          ${ route.passTo ? renderFilterNode(route.passTo, blockId, depth + 1, false) : '<div class="cfg-empty">(empty)</div>' }
+          <button class="cfg-measure-del" data-del-route="${container.id}:${i}" title="Remove route">&times;</button>
+        </div>
+      `;
+    });
+    if (container.defaultBranch) {
+      childrenHtml += `
+        <div class="cfg-measure-row">
+          <div class="cfg-measure-head">Default</div>
+          ${ renderFilterNode(container.defaultBranch, blockId, depth + 1, false) }
+        </div>
+      `;
+    }
+  } else if (container.type === "Not") {
+    const only = (container.children || [])[0];
+    childrenHtml += only
+      ? renderFilterNode(only, blockId, depth + 1, false)
+      : '<div class="cfg-empty">(no child — add one)</div>';
+  } else {
+    // Sequential / Any — children render in place; each child is draggable.
+    (container.children || []).forEach(child => {
+      childrenHtml += renderFilterNode(child, blockId, depth + 1, false);
+    });
+  }
+
+  // Type menu + add button
+  const typeMenuOpen = state.openTypeMenuId === container.id;
+  const addMenuOpen = state.openAddMenuId === container.id;
+  const canAdd = !(container.type === "Not" && container.children && container.children.length >= 1);
+  const addBtnHtml = canAdd
+    ? `<button class="filter-add-btn" data-add-target="${container.id}">+ add ${container.type === "Route" ? "route" : "filter"}</button>`
+    : "";
+
+  const addMenu = addMenuOpen ? `
+    <div class="filter-add-menu" data-menu-for="${container.id}">
+      ${ container.type === "Route"
+        ? `
+          <div class="menu-head">Routes</div>
+          <button data-kind="route:venue_in">Route &middot; venue_in</button>
+          <button data-kind="route:cit_at_least">Route &middot; cit_at_least</button>
+          <button data-kind="route:year_at_least">Route &middot; year_at_least</button>
+          <div class="menu-sep"></div>
+          <button data-kind="default">+ default branch</button>
+        `
+        : `
+          <div class="menu-head">Filters</div>
+          <button data-kind="YearFilter">Add YearFilter</button>
+          <button data-kind="CitationFilter">Add CitationFilter</button>
+          <button data-kind="LLMFilter">Add LLMFilter (single)</button>
+          <button data-kind="LLMFilterFormula">Add LLMFilter (formula)</button>
+          <button data-kind="SimilarityFilter">Add SimilarityFilter</button>
+          <div class="menu-sep"></div>
+          <div class="menu-head">Containers</div>
+          <button data-kind="Sequential">Add nested Sequential (AND)</button>
+          <button data-kind="Any">Add nested Any (OR)</button>
+          <button data-kind="Not">Add nested Not</button>
+          <button data-kind="Route">Add nested Route</button>
+        `
+      }
+    </div>
+  ` : "";
+
+  const typeMenu = typeMenuOpen && !isRoot ? `
+    <div class="filter-type-menu" data-type-menu-for="${container.id}">
+      <button data-switch="Sequential">Sequential (AND)</button>
+      <button data-switch="Any">Any (OR)</button>
+      <button data-switch="Not">Not (invert)</button>
+      <button data-switch="Route">Route (if/else)</button>
+    </div>
+  ` : (typeMenuOpen && isRoot ? `
+    <div class="filter-type-menu" data-type-menu-for="${container.id}">
+      <button data-switch="Sequential">Sequential (AND)</button>
+      <button data-switch="Any">Any (OR)</button>
+    </div>
+  ` : "");
+
+  const dragAttr = isRoot ? "" : ' draggable="true"';
+  return `
+    <div class="filter-container${typeClass}${selClass}" data-cid="${container.id}"${dragAttr}>
+      <div class="filter-container-head">
+        <button class="filter-container-type" data-type-toggle="${container.id}">
+          ${escapeHtml(containerHeadLabel(container.type))} &#9662;
+        </button>
+        ${delBtn}
+      </div>
+      ${typeMenu}
+      ${childrenHtml}
+      <div class="filter-add-wrap">
+        ${addBtnHtml}
+      </div>
+      ${addMenu}
+    </div>
+  `;
+}
+
+function renderAtom(atom, blockId, depth) {
+  const sel = atom.id === state.selectedFilterId;
+  const preview = atomPreview(atom);
+  return `
+    <div class="filter-atom${sel ? " selected" : ""}" data-fid="${atom.id}" draggable="true">
+      <div class="filter-atom-name">${escapeHtml(atom.type)}</div>
+      <div class="filter-atom-preview">${escapeHtml(preview)}</div>
+      <button class="filter-atom-del" data-del="${atom.id}" title="Remove">&times;</button>
+    </div>
+  `;
+}
+
+function atomPreview(atom) {
+  const p = atom.params || {};
+  switch (atom.type) {
+    case "YearFilter":       return `${p.min}\u2013${p.max}`;
+    case "CitationFilter":   return `beta=${p.beta}${p.pass_if_cited_at_least ? ", shortcut \u2265" + p.pass_if_cited_at_least : ""}`;
+    case "LLMFilter": {
+      if (p.mode === "formula") return `formula \u00b7 ${p.scope} \u00b7 ${p.model}`;
+      return `${p.scope} \u00b7 ${p.model}`;
+    }
+    case "SimilarityFilter": {
+      const measures = (p.measures || []).map(m => m.type).join("/");
+      return `t=${p.threshold}${measures ? " \u00b7 " + measures : ""}`;
+    }
+    default: return "";
+  }
+}
+
+function attachTreeHandlers(blockId) {
+  const col = document.getElementById("cfgTreeCol");
+
+  // Atom click → select
+  col.querySelectorAll(".filter-atom").forEach(el => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".filter-atom-del")) return;
+      state.selectedFilterId = el.getAttribute("data-fid");
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Container click → select (click head area; ignore clicks on children, buttons, menus)
+  col.querySelectorAll(".filter-container").forEach(el => {
+    const head = el.querySelector(".filter-container-head");
+    if (head) {
+      head.addEventListener("click", (e) => {
+        if (e.target.closest(".filter-container-del")) return;
+        if (e.target.closest(".filter-container-type")) return;
+        e.stopPropagation();
+        state.selectedFilterId = el.getAttribute("data-cid");
+        renderFilterTree(blockId);
+        renderFilterForm(blockId);
+      });
+    }
+  });
+
+  // Atom delete
+  col.querySelectorAll(".filter-atom-del").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const fid = btn.getAttribute("data-del");
+      removeFilterById(state.blockFilters[blockId], fid);
+      if (state.selectedFilterId === fid) state.selectedFilterId = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Container delete
+  col.querySelectorAll(".filter-container-del").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute("data-del-container");
+      removeFilterById(state.blockFilters[blockId], cid);
+      if (state.selectedFilterId === cid) state.selectedFilterId = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Route-branch delete
+  col.querySelectorAll("[data-del-route]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const [cid, idxStr] = btn.getAttribute("data-del-route").split(":");
+      const container = findFilterContainerById(state.blockFilters[blockId], cid);
+      if (container && container.routes) {
+        container.routes.splice(parseInt(idxStr, 10), 1);
+        renderFilterTree(blockId);
+        renderFilterForm(blockId);
+      }
+    });
+  });
+
+  // + add buttons
+  col.querySelectorAll(".filter-add-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute("data-add-target");
+      state.openAddMenuId = state.openAddMenuId === cid ? null : cid;
+      state.openTypeMenuId = null;
+      renderFilterTree(blockId);
+    });
+  });
+
+  // Add menu options
+  col.querySelectorAll(".filter-add-menu button").forEach(mbtn => {
+    mbtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const kind = mbtn.getAttribute("data-kind");
+      const menu = mbtn.parentElement;
+      const cid = menu.getAttribute("data-menu-for");
+      addFilterTo(state.blockFilters[blockId], cid, kind);
+      state.openAddMenuId = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Container type toggle
+  col.querySelectorAll(".filter-container-type").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute("data-type-toggle");
+      state.openTypeMenuId = state.openTypeMenuId === cid ? null : cid;
+      state.openAddMenuId = null;
+      renderFilterTree(blockId);
+    });
+  });
+
+  // Container type switch options
+  col.querySelectorAll(".filter-type-menu button").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const menu = btn.parentElement;
+      const cid = menu.getAttribute("data-type-menu-for");
+      const newType = btn.getAttribute("data-switch");
+      switchContainerType(state.blockFilters[blockId], cid, newType);
+      state.openTypeMenuId = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+  });
+
+  // Drag-to-reorder on .filter-atom and nested containers
+  col.querySelectorAll(".filter-atom, .filter-container:not([data-cid='root'])").forEach(el => {
+    const fid = el.getAttribute("data-fid") || el.getAttribute("data-cid");
+    if (!fid) return;
+    // Find parent sequence id (need to walk up)
+    const parentEl = el.parentElement && el.parentElement.closest(".filter-container");
+    const parentCid = parentEl ? parentEl.getAttribute("data-cid") : null;
+    if (!parentCid) return;
+
+    el.addEventListener("dragstart", (e) => {
+      e.stopPropagation();
+      state.filterDrag = { sourceId: fid, sourceParentId: parentCid };
+      try {
+        e.dataTransfer.setData("application/x-citeclaw-filter", fid);
+        e.dataTransfer.effectAllowed = "move";
+      } catch {}
+    });
+    el.addEventListener("dragover", (e) => {
+      const src = state.filterDrag;
+      if (!src || src.sourceId === fid) return;
+      if (src.sourceParentId !== parentCid) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = el.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      el.classList.remove("drag-before", "drag-after");
+      if (e.clientY < mid) el.classList.add("drag-before");
+      else el.classList.add("drag-after");
+    });
+    el.addEventListener("dragleave", () => {
+      el.classList.remove("drag-before", "drag-after");
+    });
+    el.addEventListener("drop", (e) => {
+      const src = state.filterDrag;
+      if (!src || src.sourceId === fid) return;
+      if (src.sourceParentId !== parentCid) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = el.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      el.classList.remove("drag-before", "drag-after");
+      reorderFilterSibling(state.blockFilters[blockId], parentCid, src.sourceId, fid, before);
+      state.filterDrag = null;
+      renderFilterTree(blockId);
+      renderFilterForm(blockId);
+    });
+    el.addEventListener("dragend", () => {
+      el.classList.remove("drag-before", "drag-after");
+    });
+  });
+}
+
+/* ---- filter tree mutations ---- */
+function removeFilterById(root, fid) {
+  function walk(container) {
+    if (!container) return false;
+    if (container.type === "Route") {
+      if (container.defaultBranch && container.defaultBranch.id === fid) {
+        container.defaultBranch = null;
+        return true;
+      }
+      if (container.defaultBranch && walk(container.defaultBranch)) return true;
+      if (container.routes) {
+        for (let i = 0; i < container.routes.length; i++) {
+          const r = container.routes[i];
+          if (r.passTo && r.passTo.id === fid) { r.passTo = null; return true; }
+          if (r.passTo && isContainer(r.passTo) && walk(r.passTo)) return true;
+        }
+      }
+      return false;
+    }
+    if (!container.children) return false;
+    for (let i = 0; i < container.children.length; i++) {
+      const c = container.children[i];
+      if (c.id === fid) { container.children.splice(i, 1); return true; }
+      if (isContainer(c) && walk(c)) return true;
+    }
+    return false;
+  }
+  return walk(root);
+}
+
+function findFilterContainerById(root, cid) {
+  if (!root) return null;
+  if (root.id === cid) return root;
+  if (root.type === "Route") {
+    if (root.defaultBranch) {
+      const f = findFilterContainerById(root.defaultBranch, cid);
+      if (f) return f;
+    }
+    if (root.routes) {
+      for (const r of root.routes) {
+        if (r.passTo) {
+          const f = findFilterContainerById(r.passTo, cid);
+          if (f) return f;
+        }
+      }
+    }
+    return null;
+  }
+  if (!root.children) return null;
+  for (const c of root.children) {
+    if (isContainer(c)) {
+      const f = findFilterContainerById(c, cid);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+function findFilterNodeById(root, id) {
+  if (!root) return null;
+  if (root.id === id) return root;
+  if (root.type === "Route") {
+    if (root.defaultBranch) {
+      const a = findFilterNodeById(root.defaultBranch, id);
+      if (a) return a;
+    }
+    if (root.routes) {
+      for (const r of root.routes) {
+        if (r.passTo) {
+          const a = findFilterNodeById(r.passTo, id);
+          if (a) return a;
+        }
+      }
+    }
+    return null;
+  }
+  if (!root.children) return null;
+  for (const c of root.children) {
+    const a = findFilterNodeById(c, id);
+    if (a) return a;
+  }
+  return null;
+}
+
+function defaultRouteBranch() {
+  return {
+    id: randomId("f"),
+    type: "CitationFilter",
+    params: { beta: 30, pass_if_cited_at_least: null }
+  };
+}
+
+function addFilterTo(tree, cid, kind) {
+  const target = findFilterContainerById(tree, cid);
+  if (!target) return;
+
+  if (target.type === "Route") {
+    if (kind === "default") {
+      target.defaultBranch = defaultRouteBranch();
+      return;
+    }
+    if (kind.startsWith("route:")) {
+      const predicate = kind.slice("route:".length);
+      const newRoute = {
+        predicate,
+        value: predicate === "venue_in" ? "arXiv, bioRxiv" :
+               predicate === "cit_at_least" ? 50 :
+               predicate === "year_at_least" ? 2020 : "",
+        passTo: defaultRouteBranch()
+      };
+      if (!target.routes) target.routes = [];
+      target.routes.push(newRoute);
+      return;
+    }
+    return;
+  }
+  if (target.type === "Not") {
+    if (target.children && target.children.length >= 1) return;
+    if (!target.children) target.children = [];
+    target.children.push(buildNewFilter(kind));
+    return;
+  }
+  const newFilter = buildNewFilter(kind);
+  if (!target.children) target.children = [];
+  target.children.push(newFilter);
+}
+
+function buildNewFilter(kind) {
+  switch (kind) {
+    case "YearFilter":
+      return { id: randomId("f"), type: "YearFilter", params: { min: 2018, max: 2025 } };
+    case "CitationFilter":
+      return { id: randomId("f"), type: "CitationFilter", params: { beta: 30, pass_if_cited_at_least: null } };
+    case "LLMFilter":
+      return { id: randomId("f"), type: "LLMFilter", params: {
+        mode: "single",
+        query: "The paper proposes a novel method relevant to the topic.",
+        formula: "",
+        queries: [],
+        scope: "title_abstract",
+        model: "gemma-4-31b",
+        reasoning_effort: "medium"
+      } };
+    case "LLMFilterFormula":
+      return { id: randomId("f"), type: "LLMFilter", params: {
+        mode: "formula",
+        query: "",
+        formula: "(q_ml | q_stats) & !q_survey",
+        queries: [
+          { name: "q_ml", text: "the paper proposes a new ML/DL method" },
+          { name: "q_stats", text: "the paper proposes a new statistical method" },
+          { name: "q_survey", text: "the paper is a pure survey or review" }
+        ],
+        scope: "title_abstract",
+        model: "gemma-4-31b",
+        reasoning_effort: "medium"
+      } };
+    case "SimilarityFilter":
+      return { id: randomId("f"), type: "SimilarityFilter", params: {
+        threshold: 0.025,
+        on_no_data: "pass",
+        measures: [{ type: "RefSim" }, { type: "CitSim", pass_if_cited_at_least: null }]
+      } };
+    case "Sequential":
+      return { id: randomId("f"), type: "Sequential", children: [] };
+    case "Any":
+      return { id: randomId("f"), type: "Any", children: [] };
+    case "Not":
+      return { id: randomId("f"), type: "Not", children: [] };
+    case "Route":
+      return { id: randomId("f"), type: "Route", routes: [], defaultBranch: null };
+    default:
+      return { id: randomId("f"), type: kind, params: {} };
+  }
+}
+
+// Convert this container to another type, preserving what we can.
+function switchContainerType(root, cid, newType) {
+  const target = findFilterContainerById(root, cid);
+  if (!target) return;
+  const oldType = target.type;
+  if (oldType === newType) return;
+
+  // From any container, collect existing children as a list of non-Route nodes.
+  let existingChildren = [];
+  if (oldType === "Sequential" || oldType === "Any" || oldType === "Not") {
+    existingChildren = target.children || [];
+  } else if (oldType === "Route") {
+    existingChildren = (target.routes || [])
+      .map(r => r.passTo)
+      .filter(Boolean);
+    if (target.defaultBranch) existingChildren.push(target.defaultBranch);
+  }
+
+  // Clear old fields
+  delete target.children;
+  delete target.routes;
+  delete target.defaultBranch;
+
+  if (newType === "Sequential" || newType === "Any") {
+    target.type = newType;
+    target.children = existingChildren;
+  } else if (newType === "Not") {
+    target.type = "Not";
+    target.children = existingChildren.slice(0, 1);
+  } else if (newType === "Route") {
+    target.type = "Route";
+    target.routes = existingChildren.map((ch, i) => ({
+      predicate: "year_at_least",
+      value: 2018,
+      passTo: ch
+    }));
+    target.defaultBranch = null;
+  }
+}
+
+function reorderFilterSibling(root, parentCid, srcId, tgtId, before) {
+  const parent = findFilterContainerById(root, parentCid);
+  if (!parent || !parent.children) return;
+  const children = parent.children;
+  const srcIdx = children.findIndex(c => c.id === srcId);
+  if (srcIdx < 0) return;
+  const [src] = children.splice(srcIdx, 1);
+  const tgtIdx = children.findIndex(c => c.id === tgtId);
+  if (tgtIdx < 0) {
+    // Fallback: append
+    children.push(src);
+    return;
+  }
+  const insertAt = before ? tgtIdx : tgtIdx + 1;
+  children.splice(insertAt, 0, src);
+}
+
+/* ---- filter form (right column) ---- */
+function renderFilterForm(blockId) {
+  const col = document.getElementById("cfgFormCol");
+  const tree = state.blockFilters[blockId];
+  const fid = state.selectedFilterId;
+  if (!fid || !tree) {
+    col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter config</div>
+      <div class="cfg-empty">Select a filter on the left to configure it.</div>`;
+    return;
+  }
+  const selNode = findFilterNodeById(tree, fid);
+  if (!selNode) {
+    col.innerHTML = `<div class="cfg-label" style="margin-bottom:8px;">Filter config</div>
+      <div class="cfg-empty">Filter not found.</div>`;
+    return;
+  }
+  if (isContainer(selNode)) {
+    col.innerHTML = renderContainerForm(selNode);
+    attachContainerFormHandlers(blockId, selNode);
+    return;
+  }
+  col.innerHTML = renderAtomForm(selNode);
+  attachAtomFormHandlers(blockId, selNode);
+}
+
+function renderContainerForm(node) {
+  let html = `<div class="cfg-label" style="margin-bottom:8px;">${escapeHtml(containerHeadLabel(node.type))}</div>`;
+  if (node.type === "Sequential" || node.type === "Any") {
+    const count = (node.children || []).length;
+    html += `<div class="cfg-mono">${count} child filter${count === 1 ? "" : "s"}.</div>`;
+    html += `<div class="cfg-mono" style="margin-top:8px;">${node.type === "Sequential" ? "All children must pass (AND)." : "Any child passing accepts (OR)."}</div>`;
+    html += `<div class="cfg-mono" style="margin-top:12px; color: var(--ink-3);">Tip: use the type switcher in the tree header to convert this container to Any / Not / Route. Drag child rows to reorder.</div>`;
+  } else if (node.type === "Not") {
+    html += `<div class="cfg-mono">Inverts a single child filter. ${(node.children || [])[0] ? "(child set)" : "(no child yet)"}</div>`;
+  } else if (node.type === "Route") {
+    const count = (node.routes || []).length;
+    html += `<div class="cfg-mono">${count} route${count === 1 ? "" : "s"}${node.defaultBranch ? " + default" : ""}.</div>`;
+    (node.routes || []).forEach((r, i) => {
+      html += `
+        <div class="cfg-row" style="margin-top:14px;">
+          <div class="cfg-label">Route ${i + 1} \u00b7 predicate ${escapeHtml(r.predicate)}</div>
+          ${ r.predicate === "venue_in"
+            ? `<input class="cfg-input" data-route-idx="${i}" data-route-key="value" value="${escapeHtml(String(r.value || ""))}" placeholder="arXiv, bioRxiv">`
+            : `<input class="cfg-input" type="number" data-route-idx="${i}" data-route-key="value" value="${r.value != null ? r.value : ""}">`
+          }
+        </div>
+      `;
+    });
+  }
+  return html;
+}
+
+function attachContainerFormHandlers(blockId, node) {
+  const col = document.getElementById("cfgFormCol");
+  col.querySelectorAll("[data-route-idx]").forEach(el => {
+    el.addEventListener("input", () => {
+      const i = parseInt(el.getAttribute("data-route-idx"), 10);
+      const key = el.getAttribute("data-route-key");
+      const r = node.routes[i];
+      if (!r) return;
+      if (el.type === "number") {
+        r[key] = el.value === "" ? null : Number(el.value);
+      } else {
+        r[key] = el.value;
+      }
+      renderFilterTree(blockId);
+    });
+  });
+}
+
+function renderAtomForm(atom) {
+  const p = atom.params || {};
+  let html = `<div class="cfg-label" style="margin-bottom:8px;">${atom.type}</div>`;
+  if (atom.type === "YearFilter") {
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Min year</div>
+            <input type="number" class="cfg-input" data-param="min" value="${p.min}">
+          </div>
+          <div>
+            <div class="cfg-label">Max year</div>
+            <input type="number" class="cfg-input" data-param="max" value="${p.max}">
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (atom.type === "CitationFilter") {
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-label">Beta</div>
+        <input type="number" class="cfg-input" data-param="beta" value="${p.beta}">
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Pass if cited at least (optional)</div>
+        <input type="number" class="cfg-input" data-param="pass_if_cited_at_least" value="${p.pass_if_cited_at_least == null ? "" : p.pass_if_cited_at_least}">
+      </div>
+    `;
+  } else if (atom.type === "LLMFilter") {
+    const mode = p.mode || "single";
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-label">Mode</div>
+        <div class="cfg-radio-row">
+          <label><input type="radio" name="llm-mode-${atom.id}" data-llm-mode="single"${mode === "single" ? " checked" : ""}> Single prompt</label>
+          <label><input type="radio" name="llm-mode-${atom.id}" data-llm-mode="formula"${mode === "formula" ? " checked" : ""}> Formula</label>
+        </div>
+      </div>
+    `;
+    if (mode === "single") {
+      html += `
+        <div class="cfg-row">
+          <div class="cfg-label">Prompt</div>
+          <textarea class="cfg-textarea" rows="4" data-param="query">${escapeHtml(p.query || "")}</textarea>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="cfg-row">
+          <div class="cfg-label">Formula</div>
+          <input class="cfg-input" data-param="formula" value="${escapeHtml(p.formula || "")}" placeholder="(q_ml | q_stats) & !q_survey">
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-label">Queries</div>
+          <div id="llm-queries-list-${atom.id}">
+            ${(p.queries || []).map((q, i) => `
+              <div class="cfg-query-row" data-query-idx="${i}">
+                <input class="cfg-input" data-q-key="name" value="${escapeHtml(q.name || "")}" placeholder="q_ml">
+                <textarea class="cfg-textarea" rows="2" data-q-key="text" placeholder="prompt text">${escapeHtml(q.text || "")}</textarea>
+                <button class="cfg-query-del" data-q-del="${i}" title="Remove">&times;</button>
+              </div>
+            `).join("")}
+          </div>
+          <button class="filter-add-btn" data-add-query>+ add query</button>
+        </div>
+      `;
+    }
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Scope</div>
+            <select class="cfg-select" data-param="scope">
+              ${["title","title_abstract","venue","full_text"].map(v =>
+                `<option value="${v}"${v === p.scope ? " selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <div class="cfg-label">Model</div>
+            <select class="cfg-select" data-param="model">
+              ${["gemma-4-31b","gpt-4o","gemini-3-pro"].map(v =>
+                `<option value="${v}"${v === p.model ? " selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Reasoning effort</div>
+        <select class="cfg-select" data-param="reasoning_effort">
+          ${["minimal","low","medium","high"].map(v =>
+            `<option value="${v}"${v === p.reasoning_effort ? " selected" : ""}>${v}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  } else if (atom.type === "SimilarityFilter") {
+    const measures = p.measures || [];
+    html += `
+      <div class="cfg-row">
+        <div class="cfg-pair">
+          <div>
+            <div class="cfg-label">Threshold</div>
+            <input type="number" step="0.001" class="cfg-input" data-param="threshold" value="${p.threshold}">
+          </div>
+          <div>
+            <div class="cfg-label">On no data</div>
+            <select class="cfg-select" data-param="on_no_data">
+              <option value="pass"${p.on_no_data === "pass" ? " selected" : ""}>pass</option>
+              <option value="reject"${p.on_no_data === "reject" ? " selected" : ""}>reject</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Measures</div>
+        <div id="measure-list-${atom.id}">
+          ${measures.map((m, i) => `
+            <div class="cfg-measure-row" data-measure-idx="${i}">
+              <div class="cfg-measure-head">${m.type}</div>
+              <button class="cfg-measure-del" data-m-del="${i}" title="Remove">&times;</button>
+              ${ m.type === "CitSim"
+                ? `
+                  <div class="cfg-label">pass_if_cited_at_least</div>
+                  <input class="cfg-input" type="number" data-m-key="pass_if_cited_at_least" value="${m.pass_if_cited_at_least == null ? "" : m.pass_if_cited_at_least}">
+                `
+                : m.type === "SemanticSim"
+                ? `
+                  <div class="cfg-label">Embedder</div>
+                  <select class="cfg-select" data-m-key="embedder">
+                    ${["s2","voyage","local"].map(v => `<option value="${v}"${m.embedder === v ? " selected" : ""}>${v}</option>`).join("")}
+                  </select>
+                `
+                : `<div class="cfg-mono">(no params)</div>`
+              }
+            </div>
+          `).join("")}
+        </div>
+        <div style="margin-top:4px; display:flex; gap:4px;">
+          <button class="filter-add-btn" data-add-measure="RefSim">+ RefSim</button>
+          <button class="filter-add-btn" data-add-measure="CitSim">+ CitSim</button>
+          <button class="filter-add-btn" data-add-measure="SemanticSim">+ SemanticSim</button>
+        </div>
+      </div>
+    `;
+  } else {
+    html += `<div class="cfg-empty">No editable params for ${atom.type}.</div>`;
+  }
+  return html;
+}
+
+function attachAtomFormHandlers(blockId, atom) {
+  const col = document.getElementById("cfgFormCol");
+
+  col.querySelectorAll("[data-param]").forEach(el => {
+    const handler = () => {
+      const key = el.getAttribute("data-param");
+      let value = el.value;
+      if (el.type === "number") value = value === "" ? null : Number(value);
+      atom.params[key] = value;
+      renderFilterTree(blockId);
+    };
+    el.addEventListener("input", handler);
+    el.addEventListener("change", handler);
+  });
+
+  col.querySelectorAll("[data-llm-mode]").forEach(r => {
+    r.addEventListener("change", () => {
+      if (r.checked) {
+        atom.params.mode = r.getAttribute("data-llm-mode");
+        if (atom.params.mode === "formula" && (!atom.params.queries || atom.params.queries.length === 0)) {
+          atom.params.queries = [
+            { name: "q_ml", text: "the paper proposes a new ML/DL method" },
+            { name: "q_stats", text: "the paper proposes a new statistical method" },
+            { name: "q_survey", text: "the paper is a pure survey or review" }
+          ];
+          if (!atom.params.formula) atom.params.formula = "(q_ml | q_stats) & !q_survey";
+        }
+        renderFilterForm(blockId);
+        renderFilterTree(blockId);
+      }
+    });
+  });
+
+  col.querySelectorAll(".cfg-query-row").forEach(row => {
+    const idx = parseInt(row.getAttribute("data-query-idx"), 10);
+    row.querySelectorAll("[data-q-key]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const key = inp.getAttribute("data-q-key");
+        if (!atom.params.queries) atom.params.queries = [];
+        if (!atom.params.queries[idx]) atom.params.queries[idx] = { name: "", text: "" };
+        atom.params.queries[idx][key] = inp.value;
+        renderFilterTree(blockId);
+      });
+    });
+    const delBtn = row.querySelector("[data-q-del]");
+    if (delBtn) {
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        atom.params.queries.splice(idx, 1);
+        renderFilterForm(blockId);
+        renderFilterTree(blockId);
+      });
+    }
+  });
+
+  const addQueryBtn = col.querySelector("[data-add-query]");
+  if (addQueryBtn) {
+    addQueryBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!atom.params.queries) atom.params.queries = [];
+      atom.params.queries.push({ name: "q_new", text: "" });
+      renderFilterForm(blockId);
+      renderFilterTree(blockId);
+    });
+  }
+
+  col.querySelectorAll("[data-add-measure]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const kind = btn.getAttribute("data-add-measure");
+      if (!atom.params.measures) atom.params.measures = [];
+      if (kind === "RefSim") atom.params.measures.push({ type: "RefSim" });
+      else if (kind === "CitSim") atom.params.measures.push({ type: "CitSim", pass_if_cited_at_least: null });
+      else if (kind === "SemanticSim") atom.params.measures.push({ type: "SemanticSim", embedder: "s2" });
+      renderFilterForm(blockId);
+      renderFilterTree(blockId);
+    });
+  });
+
+  col.querySelectorAll(".cfg-measure-row").forEach(row => {
+    const idx = parseInt(row.getAttribute("data-measure-idx"), 10);
+    const delBtn = row.querySelector("[data-m-del]");
+    if (delBtn) {
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        atom.params.measures.splice(idx, 1);
+        renderFilterForm(blockId);
+        renderFilterTree(blockId);
+      });
+    }
+    row.querySelectorAll("[data-m-key]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const key = inp.getAttribute("data-m-key");
+        let v = inp.value;
+        if (inp.type === "number") v = v === "" ? null : Number(v);
+        atom.params.measures[idx][key] = v;
+        renderFilterTree(blockId);
+      });
+      inp.addEventListener("change", () => {
+        const key = inp.getAttribute("data-m-key");
+        atom.params.measures[idx][key] = inp.value;
+        renderFilterTree(blockId);
+      });
+    });
+  });
+}
+
+/* =====================================================
+   SECTION E — palette with drag-and-drop
+===================================================== */
+function renderPalette() {
+  const body = document.getElementById("paletteBody");
+  const paletteKey = state.activePalette;
+  let html = "";
+  Object.entries(BUILDING_BLOCKS_CATALOG).forEach(([cat, items]) => {
+    html += `<div class="cat-header">${cat}</div>`;
+    items.forEach(it => {
+      const color = blockColors(it.type, paletteKey).fill;
+      html += `
+        <div class="block-chip"
+             draggable="true"
+             data-id="${it.id}"
+             data-type="${it.type}"
+             data-label="${escapeHtml(it.label)}"
+             style="border-left-color: ${color};">
+          <div class="block-chip-label">${escapeHtml(it.label)}</div>
+          <div class="block-chip-desc">${escapeHtml(it.desc)}</div>
+        </div>
+      `;
+    });
+  });
+  body.innerHTML = html;
+
+  body.querySelectorAll(".block-chip").forEach(el => {
+    el.addEventListener("dragstart", (e) => {
+      const payload = {
+        blockId: el.getAttribute("data-id"),
+        type: el.getAttribute("data-type"),
+        label: el.getAttribute("data-label")
+      };
+      try {
+        e.dataTransfer.setData("application/x-citeclaw-block", JSON.stringify(payload));
+        e.dataTransfer.effectAllowed = "copy";
+      } catch {}
+    });
+  });
+}
+
+/* =====================================================
+   Canvas drop target (for new blocks from palette)
+   Palette drops append to the root sequence.
+===================================================== */
+function wireDropTarget() {
+  const wrap = document.getElementById("canvasWrap");
+  wrap.addEventListener("dragover", (e) => {
+    const types = (e.dataTransfer && e.dataTransfer.types) || [];
+    if (!Array.from(types).includes("application/x-citeclaw-block")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    wrap.classList.add("drop-active");
+  });
+  wrap.addEventListener("dragleave", (e) => {
+    if (e.target === wrap) wrap.classList.remove("drop-active");
+  });
+  wrap.addEventListener("drop", (e) => {
+    const types = (e.dataTransfer && e.dataTransfer.types) || [];
+    if (!Array.from(types).includes("application/x-citeclaw-block")) return;
+    e.preventDefault();
+    wrap.classList.remove("drop-active");
+    // If the drop already landed on an .empty-branch-overlay, its own handler
+    // has (or will) stopPropagation — but the drop event still bubbles here.
+    // So we check: was the drop's path through an empty-branch-overlay?
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (el && el.closest(".empty-branch-overlay")) return;
+    const raw = e.dataTransfer.getData("application/x-citeclaw-block");
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch { return; }
+    appendStepToRoot(payload);
+  });
+}
+
+/* =====================================================
+   Palette picker (color scheme)
+===================================================== */
+function renderPalettePicker() {
+  const list = document.getElementById("palettePickerList");
+  let html = "";
+  Object.entries(PALETTES).forEach(([key, pal]) => {
+    const isActive = state.activePalette === key;
+    const swatches = CATEGORY_ORDER.map(cat => {
+      const c = pal[cat] || "#cccccc";
+      return `<div class="palette-swatch" style="background:${c};"></div>`;
+    }).join("");
+    html += `
+      <div class="palette-row${isActive ? " active" : ""}" data-palette-key="${key}">
+        <div class="palette-swatches">${swatches}</div>
+        <div class="palette-name">${escapeHtml(pal.label)}</div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll(".palette-row").forEach(row => {
+    row.addEventListener("click", () => {
+      state.activePalette = row.getAttribute("data-palette-key");
+      try { localStorage.setItem("citeclaw_v4_palette", state.activePalette); } catch {}
+      renderCanvas();
+      renderPalette();
+      renderPalettePicker();
+    });
+  });
+  updatePalettePickerVisibility();
+}
+
+function updatePalettePickerVisibility() {
+  const picker = document.getElementById("palettePicker");
+  const toggle = document.getElementById("paletteToggleBtn");
+  if (state.palettePickerVisible) {
+    picker.classList.remove("hidden");
+    toggle.classList.remove("visible");
+  } else {
+    picker.classList.add("hidden");
+    toggle.classList.add("visible");
+  }
+}
+
+/* =====================================================
+   SECTION F — status bar
+===================================================== */
+function renderStatus() {
+  const blockCount = allSteps(state.pipeline).length;
+  const seedCount = state.selectedSeedIds.size;
+  document.getElementById("statusLeft").textContent =
+    `${blockCount} blocks \u00b7 ${seedCount} seed${seedCount === 1 ? "" : "s"} selected \u00b7 ready to run`;
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+document.getElementById("seedSearch").addEventListener("input", (e) => {
+  state.searchQuery = e.target.value;
+  renderResults();
+});
+document.getElementById("runBtn").addEventListener("click", () => {
+  alert("Would transition to Page 2 in real app");
+});
+document.getElementById("palettePickerBtn").addEventListener("click", () => {
+  state.palettePickerVisible = true;
+  updatePalettePickerVisibility();
+});
+document.getElementById("paletteToggleBtn").addEventListener("click", () => {
+  state.palettePickerVisible = true;
+  updatePalettePickerVisibility();
+});
+document.getElementById("palettePickerClose").addEventListener("click", () => {
+  state.palettePickerVisible = false;
+  updatePalettePickerVisibility();
+});
+
+// Keyboard: Delete / Backspace on selected canvas block
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target && e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if (e.key === "Delete" || e.key === "Backspace") {
+    if (state.selectedBlockId && state.selectedBlockId !== "seeds") {
+      e.preventDefault();
+      deleteStep(state.selectedBlockId);
+    }
+  }
+  // Alt+ArrowUp / ArrowDown would move filter selection in sibling order —
+  // skipped in v4: DnD is the primary mechanism, keyboard is a nice-to-have.
+});
+
+// Close add / type menus when clicking elsewhere
+document.addEventListener("click", (e) => {
+  const inMenu = e.target.closest(".filter-add-menu") ||
+                 e.target.closest(".filter-add-btn") ||
+                 e.target.closest(".filter-type-menu") ||
+                 e.target.closest(".filter-container-type");
+  if (inMenu) return;
+  if (state.openAddMenuId || state.openTypeMenuId) {
+    state.openAddMenuId = null;
+    state.openTypeMenuId = null;
+    if (state.selectedBlockId) {
+      const step = findNode(state.pipeline, state.selectedBlockId);
+      if (step && (step.type === "forward" || step.type === "backward")) {
+        renderFilterTree(state.selectedBlockId);
+      }
+    }
+  }
+});
+
+renderResults();
+renderSeedCount();
+renderCanvas();
+renderConfig();
+renderPalette();
+renderPalettePicker();
+wireDropTarget();
+renderStatus();
+</script>
+</body>
+</html>
