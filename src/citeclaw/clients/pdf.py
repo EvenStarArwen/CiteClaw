@@ -251,16 +251,29 @@ def download_pdf_bytes(
 def parse_pdf_bytes(body: bytes, *, max_chars: int | None = None) -> str | None:
     """Extract reading-order text from a PDF byte string.
 
-    Tries PyMuPDF first (much better column handling on academic PDFs),
-    then pypdf as a fallback. Returns ``None`` if both parsers raise or
-    if the extracted text is empty.
+    Parser chain:
+
+      1. **GROBID** — if ``$CITECLAW_GROBID_URL`` is set, POST the PDF
+         to a GROBID server and return body + structured reference list.
+         GROBID gives cleaner body text (no header/footer noise, no
+         column-break artefacts) and delivers a properly-structured
+         reference list instead of relying on the heuristic splitter
+         downstream. See :mod:`citeclaw.clients.grobid`.
+      2. **PyMuPDF** — falls back to ``pymupdf.get_text("text", sort=True)``
+         for reading-order extraction on two-column scientific PDFs.
+      3. **pypdf** — final fallback if neither of the above is available.
+
+    Returns ``None`` only when ALL parsers fail or the extracted text
+    is empty.
 
     ``max_chars`` truncates the result if non-None — useful for
     LLM-screening callers that need to fit a context window. The
     ``fetch-pdfs`` CLI passes ``None`` so the on-disk ``.txt`` sibling
     contains the full body.
     """
-    text = _try_pymupdf(body)
+    text: str | None = _try_grobid(body)
+    if text is None:
+        text = _try_pymupdf(body)
     if text is None:
         text = _try_pypdf(body)
     if text is None:
@@ -269,6 +282,18 @@ def parse_pdf_bytes(body: bytes, *, max_chars: int | None = None) -> str | None:
     if text and max_chars is not None and len(text) > max_chars:
         text = text[:max_chars]
     return text
+
+
+def _try_grobid(body: bytes) -> str | None:
+    """GROBID path — only runs when ``$CITECLAW_GROBID_URL`` is set."""
+    from citeclaw.clients.grobid import grobid_url, parse_pdf_with_grobid
+    if grobid_url() is None:
+        return None
+    try:
+        return parse_pdf_with_grobid(body)
+    except Exception as exc:  # noqa: BLE001
+        log.info("parse_pdf_bytes: grobid path failed: %s", exc)
+        return None
 
 
 def _try_pymupdf(body: bytes) -> str | None:
