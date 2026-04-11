@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CiteClaw — Pipeline Building (Variant A)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --panel: #fbf9f3;
+    --border: #e4e0d4;
+    --chrome: #faf8f2;
+    --ink-1: #1e2735;
+    --ink-2: #55606d;
+    --ink-3: #7f768c;
+    --accent: #3e3548;
+    --positive: #5a8570;
+    --warning: #8b5a5a;
+    --neutral: #d6ccb8;
+    --btn-border: #c4bcaa;
+    --btn-hover: #f0ecde;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    font-family: 'Inter', sans-serif;
+    color: var(--ink-1);
+    font-size: 13px;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* Section A — top chrome */
+  .section-a {
+    flex: 0 0 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink-1);
+    letter-spacing: -0.2px;
+  }
+  .brand-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+  .brand-sep { color: var(--ink-3); font-weight: 400; margin: 0 4px; }
+  .brand-run { color: var(--ink-3); font-weight: 500; font-size: 13px; }
+
+  .btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-1);
+    background: transparent;
+    border: 1px solid var(--btn-border);
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 120ms, border-color 120ms;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn-run {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-run:hover { background: var(--btn-hover); }
+
+  /* Main grid */
+  .main-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    grid-template-rows: 60% 40%;
+    grid-template-areas: "b c e" "b d e";
+    min-height: 0;
+  }
+  .section-b { grid-area: b; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .section-c { grid-area: c; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .section-d { grid-area: d; background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  .section-e { grid-area: e; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+
+  .panel-header {
+    flex: 0 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--chrome);
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-2);
+  }
+  .panel-meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* Section B */
+  .search-wrap { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .search-input {
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink-1);
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 120ms;
+  }
+  .search-input:focus { border-color: var(--ink-3); }
+  .search-input::placeholder { color: var(--ink-3); }
+  .results-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  .result-row {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    position: relative;
+    transition: background 120ms;
+  }
+  .result-row:hover { background: var(--btn-hover); }
+  .result-row.selected {
+    background: rgba(90, 133, 112, 0.08);
+    border-left: 3px solid var(--positive);
+    padding-left: 11px;
+  }
+  .result-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-1);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .result-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .result-authors {
+    font-size: 11px;
+    color: var(--ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .result-cites {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-2);
+    flex-shrink: 0;
+  }
+  .selected-counter {
+    flex: 0 0 auto;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--ink-2);
+    background: var(--chrome);
+    font-weight: 500;
+  }
+
+  /* Section C */
+  .canvas-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 40px;
+    min-height: 0;
+  }
+  .canvas-svg {
+    display: block;
+    min-width: 100%;
+  }
+  .node-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    fill: #ffffff;
+    pointer-events: none;
+    user-select: none;
+  }
+  .pipeline-node { cursor: pointer; transition: filter 120ms; }
+  .pipeline-node:hover .node-shape { stroke-width: 2.5; }
+  .pipeline-node.selected .node-shape {
+    stroke: #3e3548 !important;
+    stroke-width: 3;
+    filter: url(#shadow);
+  }
+
+  /* Section D */
+  .config-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px;
+  }
+  .cfg-row { margin-bottom: 14px; }
+  .cfg-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    margin-bottom: 5px;
+  }
+  .cfg-value {
+    font-size: 13px;
+    color: var(--ink-1);
+  }
+  .cfg-textarea {
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink-1);
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    resize: none;
+    line-height: 1.5;
+    outline: none;
+  }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-block;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--ink-1);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  .cfg-mono {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .seed-mini-list {
+    border: 1px solid var(--border);
+    background: #fff;
+  }
+  .seed-mini-row {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+  .seed-mini-row:last-child { border-bottom: none; }
+  .seed-mini-title {
+    font-size: 12px;
+    color: var(--ink-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .seed-mini-year {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+    flex-shrink: 0;
+  }
+
+  /* Section E */
+  .palette-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+  }
+  .cat-header {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    margin: 10px 2px 6px 2px;
+  }
+  .cat-header:first-child { margin-top: 0; }
+  .block-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #fbf9f3;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .block-chip:hover { background: var(--btn-hover); }
+  .block-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+  .block-chip-body { flex: 1; min-width: 0; }
+  .block-chip-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 2px;
+  }
+  .block-chip-desc {
+    font-size: 10px;
+    color: var(--ink-3);
+    line-height: 1.35;
+  }
+
+  /* Section F */
+  .section-f {
+    flex: 0 0 32px;
+    background: var(--chrome);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+  }
+  .status-left {
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .status-right {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--positive);
+    display: inline-block;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Section A -->
+  <div class="section-a">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>CiteClaw</span>
+      <span class="brand-sep">·</span>
+      <span class="brand-run">New run</span>
+    </div>
+    <button id="runBtn" class="btn btn-run">Run pipeline</button>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+    <!-- Section B -->
+    <div class="section-b">
+      <div class="panel-header">
+        <div class="panel-title">Seed papers</div>
+      </div>
+      <div class="search-wrap">
+        <input type="text" id="seedSearch" class="search-input" placeholder="Search Semantic Scholar...">
+      </div>
+      <div id="resultsList" class="results-list"></div>
+      <div id="seedCounter" class="selected-counter">0 selected</div>
+    </div>
+
+    <!-- Section C -->
+    <div class="section-c">
+      <div class="panel-header">
+        <div class="panel-title">Pipeline</div>
+        <div class="panel-meta">7 blocks · 2 branches</div>
+      </div>
+      <div class="canvas-wrap">
+        <svg id="pipelineSvg" class="canvas-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+    </div>
+
+    <!-- Section D -->
+    <div class="section-d">
+      <div class="panel-header">
+        <div class="panel-title" id="configTitle">Configuration · Seeds + Topic</div>
+      </div>
+      <div id="configBody" class="config-body"></div>
+    </div>
+
+    <!-- Section E -->
+    <div class="section-e">
+      <div class="panel-header">
+        <div class="panel-title">Building blocks</div>
+      </div>
+      <div id="paletteBody" class="palette-body"></div>
+    </div>
+  </div>
+
+  <!-- Section F -->
+  <div class="section-f">
+    <div class="status-left" id="statusLeft">7 blocks · topic set · 3 seeds selected · ready to run</div>
+    <div class="status-right">
+      <span class="status-dot"></span>
+      <span>Session: demo</span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   CONSTANTS
+===================================================== */
+const BLOCK_COLORS = {
+  seeds:    { fill: "#8aa695", stroke: "#5a7c6b", textOnFill: "#ffffff" },
+  forward:  { fill: "#9c7d8a", stroke: "#755a66", textOnFill: "#ffffff" },
+  backward: { fill: "#6b82a0", stroke: "#48627a", textOnFill: "#ffffff" },
+  rerank:   { fill: "#a89878", stroke: "#7a6b4e", textOnFill: "#ffffff" },
+  rescreen: { fill: "#78688a", stroke: "#584868", textOnFill: "#ffffff" }
+};
+
+const MOCK_PIPELINE = {
+  nodes: [
+    { id: "seeds",    type: "seeds",    label: "Seeds + Topic",        shape: "parallelogram", x: 40,  y: 140 },
+    { id: "fwd1",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 220, y: 140 },
+    { id: "bwd1",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 400, y: 140 },
+    { id: "rerank",   type: "rerank",   label: "Diversified Reranker", shape: "rect",          x: 600, y: 60  },
+    { id: "fwd2",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 800, y: 60  },
+    { id: "bwd2",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 600, y: 220 },
+    { id: "rescreen", type: "rescreen", label: "Rescreener",           shape: "rect",          x: 1000,y: 140 }
+  ],
+  edges: [
+    { from: "seeds",  to: "fwd1" },
+    { from: "fwd1",   to: "bwd1" },
+    { from: "bwd1",   to: "rerank" },
+    { from: "bwd1",   to: "bwd2" },
+    { from: "rerank", to: "fwd2" },
+    { from: "fwd2",   to: "rescreen" },
+    { from: "bwd2",   to: "rescreen" }
+  ]
+};
+
+const MOCK_SEED_RESULTS = [
+  { id: "p1",  title: "Highly accurate protein structure prediction with AlphaFold",             authors: "Jumper, Evans, Pritzel, et al.", year: 2021, venue: "Nature",         citations: 7900 },
+  { id: "p2",  title: "AlphaFold 3: All-atom structure prediction across biomolecules",          authors: "Abramson, Adler, Dunger, et al.",year: 2024, venue: "Nature",         citations: 820  },
+  { id: "p3",  title: "RoseTTAFold: Accurate prediction of protein structures and interactions", authors: "Baek, DiMaio, Anishchenko",      year: 2021, venue: "Science",        citations: 3200 },
+  { id: "p4",  title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure",authors: "Lin, Akin, Rao, et al.",         year: 2023, venue: "Science",        citations: 2100 },
+  { id: "p5",  title: "ColabFold: Making protein folding accessible to all",                     authors: "Mirdita, Schutze, Moriwaki",     year: 2022, venue: "Nature Methods", citations: 2900 },
+  { id: "p6",  title: "OmegaFold: High-resolution de novo structure prediction",                 authors: "Wu, Ding, Wang",                 year: 2022, venue: "bioRxiv",        citations: 520  },
+  { id: "p7",  title: "ProteinMPNN: Robust deep learning based protein sequence design",         authors: "Dauparas, Anishchenko, Bennett", year: 2022, venue: "Science",        citations: 1700 },
+  { id: "p8",  title: "RFdiffusion: Broadly applicable and accurate protein design",             authors: "Watson, Juergens, Bennett",      year: 2023, venue: "Nature",         citations: 1400 },
+  { id: "p9",  title: "Chai-1: Decoding the molecular interactions of life",                     authors: "Boitreaud, Dent, McPartlon",     year: 2024, venue: "bioRxiv",        citations: 310  },
+  { id: "p10", title: "Boltz-1: Democratizing biomolecular interaction modeling",                authors: "Wohlwend, Corso, Passaro",       year: 2024, venue: "bioRxiv",        citations: 240  }
+];
+
+const INITIAL_SELECTED_SEEDS = ["p1", "p3", "p5"];
+
+const BUILDING_BLOCKS_CATALOG = {
+  "SEEDS": [
+    { id: "LoadSeeds",    type: "seeds",    label: "Load Seeds",    desc: "Initialize collection from seed papers" },
+    { id: "ResolveSeeds", type: "seeds",    label: "Resolve Seeds", desc: "Fuzzy-match seed titles via S2" }
+  ],
+  "EXPAND": [
+    { id: "ExpandForward",    type: "forward",  label: "Expand Forward",      desc: "Fetch citers of accepted papers" },
+    { id: "ExpandBackward",   type: "backward", label: "Expand Backward",     desc: "Fetch references of accepted papers" },
+    { id: "ExpandBySearch",   type: "forward",  label: "Expand by Search",    desc: "Iterative LLM search agent" },
+    { id: "ExpandBySemantics",type: "forward",  label: "Expand by Semantics", desc: "SPECTER2 kNN recommendations" },
+    { id: "ExpandByAuthor",   type: "forward",  label: "Expand by Author",    desc: "Top-K authors and their papers" }
+  ],
+  "FILTER": [
+    { id: "Rerank",   type: "rerank",   label: "Rerank",    desc: "Top-K with cluster diversity" },
+    { id: "ReScreen", type: "rescreen", label: "Re-screen", desc: "Apply screener to all accepted" },
+    { id: "Cluster",  type: "rerank",   label: "Cluster",   desc: "Topic-model clusters" }
+  ],
+  "CONTROL": [
+    { id: "Parallel",       type: "forward", label: "Parallel",          desc: "Branch and union results" },
+    { id: "HumanInTheLoop", type: "forward", label: "Human in the Loop", desc: "Interactive quality check" },
+    { id: "MergeDuplicates",type: "forward", label: "Merge Duplicates",  desc: "Preprint-published dedup" }
+  ],
+  "FINALIZE": [
+    { id: "Finalize", type: "rescreen", label: "Finalize", desc: "Write outputs" }
+  ]
+};
+
+const BLOCK_CONFIGS = {
+  "seeds":    { topic: "Deep learning methods for protein structure prediction and design, including AlphaFold-family models and diffusion-based approaches.", seedCount: 3 },
+  "fwd1":     { name: "Forward Screener",  filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "bwd1":     { name: "Backward Screener", filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "rerank":   { metric: "pagerank", k: 3, diversity: "forward_topics" },
+  "fwd2":     { name: "Forward Screener",  filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "bwd2":     { name: "Backward Screener", filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "rescreen": { target: "entire collection", screener: "tight_screener" }
+};
+
+/* =====================================================
+   STATE
+===================================================== */
+const state = {
+  selectedBlockId: "seeds",
+  selectedSeeds: new Set(INITIAL_SELECTED_SEEDS),
+  searchFilter: ""
+};
+
+/* =====================================================
+   SECTION B — SEED SEARCH
+===================================================== */
+function renderResults() {
+  const list = document.getElementById("resultsList");
+  const filter = state.searchFilter.trim().toLowerCase();
+  const filtered = filter
+    ? MOCK_SEED_RESULTS.filter(p => p.title.toLowerCase().includes(filter))
+    : MOCK_SEED_RESULTS;
+
+  list.innerHTML = "";
+  filtered.forEach(p => {
+    const row = document.createElement("div");
+    row.className = "result-row" + (state.selectedSeeds.has(p.id) ? " selected" : "");
+    row.innerHTML = `
+      <div class="result-title">${escapeHtml(p.title)}</div>
+      <div class="result-meta">
+        <div class="result-authors">${escapeHtml(p.authors)} · ${p.year} · ${escapeHtml(p.venue)}</div>
+        <div class="result-cites">${p.citations.toLocaleString()}</div>
+      </div>
+    `;
+    row.addEventListener("click", () => {
+      if (state.selectedSeeds.has(p.id)) state.selectedSeeds.delete(p.id);
+      else state.selectedSeeds.add(p.id);
+      renderResults();
+      renderSeedCounter();
+      renderStatusBar();
+      if (state.selectedBlockId === "seeds") renderConfig();
+    });
+    list.appendChild(row);
+  });
+}
+
+function renderSeedCounter() {
+  document.getElementById("seedCounter").textContent = `${state.selectedSeeds.size} selected`;
+}
+
+/* =====================================================
+   SECTION C — PIPELINE CANVAS (SVG)
+===================================================== */
+const NODE_W = 140;
+const NODE_H = 60;
+const SKEW = 15;
+
+function renderPipeline() {
+  const svg = document.getElementById("pipelineSvg");
+  const nodes = MOCK_PIPELINE.nodes;
+  const edges = MOCK_PIPELINE.edges;
+
+  // Compute viewBox
+  let maxX = 0, maxY = 0;
+  nodes.forEach(n => {
+    maxX = Math.max(maxX, n.x + NODE_W + SKEW);
+    maxY = Math.max(maxY, n.y + NODE_H);
+  });
+  const pad = 40;
+  const vbW = maxX + pad;
+  const vbH = maxY + pad;
+  svg.setAttribute("viewBox", `0 0 ${vbW} ${vbH}`);
+  svg.setAttribute("width", vbW);
+  svg.setAttribute("height", vbH);
+
+  // Defs: arrowhead marker + drop shadow filter
+  let defs = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a7a58"/>
+      </marker>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+        <feOffset dx="0" dy="1" result="offsetblur"/>
+        <feComponentTransfer>
+          <feFuncA type="linear" slope="0.35"/>
+        </feComponentTransfer>
+        <feMerge>
+          <feMergeNode/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+  `;
+
+  // Edges: compute edge-to-edge paths
+  let edgeEls = "";
+  edges.forEach(e => {
+    const a = nodes.find(n => n.id === e.from);
+    const b = nodes.find(n => n.id === e.to);
+    if (!a || !b) return;
+    const [x1, y1, x2, y2] = computeEdgePoints(a, b);
+    edgeEls += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8a7a58" stroke-width="2" marker-end="url(#arrow)"/>`;
+  });
+
+  // Nodes
+  let nodeEls = "";
+  nodes.forEach(n => {
+    const colors = BLOCK_COLORS[n.type];
+    const isSelected = n.id === state.selectedBlockId;
+    const selectedClass = isSelected ? " selected" : "";
+    let shape;
+    if (n.shape === "parallelogram") {
+      const pts = [
+        [n.x + SKEW, n.y],
+        [n.x + NODE_W + SKEW, n.y],
+        [n.x + NODE_W, n.y + NODE_H],
+        [n.x, n.y + NODE_H]
+      ].map(p => p.join(",")).join(" ");
+      shape = `<polygon class="node-shape" points="${pts}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="2"/>`;
+    } else {
+      shape = `<rect class="node-shape" x="${n.x}" y="${n.y}" width="${NODE_W}" height="${NODE_H}" rx="4" ry="4" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="2"/>`;
+    }
+    const cx = n.x + NODE_W / 2 + (n.shape === "parallelogram" ? SKEW / 2 : 0);
+    const cy = n.y + NODE_H / 2;
+    const labelLines = wrapLabel(n.label, 16);
+    let labelSvg;
+    if (labelLines.length === 1) {
+      labelSvg = `<text class="node-label" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[0])}</text>`;
+    } else {
+      labelSvg = `
+        <text class="node-label" x="${cx}" y="${cy - 9}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[0])}</text>
+        <text class="node-label" x="${cx}" y="${cy + 9}" text-anchor="middle" dominant-baseline="central">${escapeHtml(labelLines[1] || "")}</text>
+      `;
+    }
+    nodeEls += `<g class="pipeline-node${selectedClass}" data-id="${n.id}">${shape}${labelSvg}</g>`;
+  });
+
+  svg.innerHTML = defs + edgeEls + nodeEls;
+
+  // Attach click handlers to groups
+  svg.querySelectorAll(".pipeline-node").forEach(g => {
+    g.addEventListener("click", () => {
+      state.selectedBlockId = g.getAttribute("data-id");
+      renderPipeline();
+      renderConfig();
+    });
+  });
+}
+
+function computeEdgePoints(a, b) {
+  // Use rectangle bounds (ignoring skew for simplicity, plus small offset for parallelogram source)
+  const ax = a.x + NODE_W / 2 + (a.shape === "parallelogram" ? SKEW / 2 : 0);
+  const ay = a.y + NODE_H / 2;
+  const bx = b.x + NODE_W / 2 + (b.shape === "parallelogram" ? SKEW / 2 : 0);
+  const by = b.y + NODE_H / 2;
+  // Exit point on a (right/top/bottom edge) — use bounding-rect intersection
+  const p1 = rectEdgePoint(ax, ay, bx, by, NODE_W / 2, NODE_H / 2);
+  const p2 = rectEdgePoint(bx, by, ax, ay, NODE_W / 2, NODE_H / 2);
+  return [p1[0], p1[1], p2[0], p2[1]];
+}
+
+function rectEdgePoint(cx, cy, tx, ty, hw, hh) {
+  const dx = tx - cx;
+  const dy = ty - cy;
+  if (dx === 0 && dy === 0) return [cx, cy];
+  const scaleX = hw / Math.abs(dx || 1);
+  const scaleY = hh / Math.abs(dy || 1);
+  const scale = Math.min(scaleX, scaleY);
+  return [cx + dx * scale, cy + dy * scale];
+}
+
+function wrapLabel(text, maxLen) {
+  if (text.length <= maxLen) return [text];
+  const words = text.split(" ");
+  const lines = [""];
+  words.forEach(w => {
+    if ((lines[lines.length - 1] + " " + w).trim().length > maxLen && lines[lines.length - 1]) {
+      lines.push(w);
+    } else {
+      lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim();
+    }
+  });
+  return lines.slice(0, 2);
+}
+
+/* =====================================================
+   SECTION D — CONFIG PANEL
+===================================================== */
+function renderConfig() {
+  const id = state.selectedBlockId;
+  const node = MOCK_PIPELINE.nodes.find(n => n.id === id);
+  const title = document.getElementById("configTitle");
+  const body = document.getElementById("configBody");
+  title.textContent = `Configuration · ${node.label}`;
+
+  const cfg = BLOCK_CONFIGS[id];
+  let html = "";
+
+  if (id === "seeds") {
+    const selectedList = [...state.selectedSeeds]
+      .map(pid => MOCK_SEED_RESULTS.find(p => p.id === pid))
+      .filter(Boolean);
+    html = `
+      <div class="cfg-row">
+        <div class="cfg-label">Topic description</div>
+        <textarea class="cfg-textarea" rows="4" readonly>${escapeHtml(cfg.topic)}</textarea>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Selected seeds (${selectedList.length})</div>
+        <div class="seed-mini-list">
+          ${selectedList.length === 0
+            ? '<div class="seed-mini-row"><div class="seed-mini-title cfg-mono">(none)</div></div>'
+            : selectedList.map(p => `
+                <div class="seed-mini-row">
+                  <div class="seed-mini-title">${escapeHtml(p.title)}</div>
+                  <div class="seed-mini-year">${p.year}</div>
+                </div>
+              `).join("")}
+        </div>
+      </div>
+    `;
+  } else if (id === "rerank") {
+    html = `
+      <div class="cfg-row">
+        <div class="cfg-label">Metric</div>
+        <div class="cfg-value">${cfg.metric}</div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">K</div>
+        <div class="cfg-value">${cfg.k}</div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Diversity cluster</div>
+        <div class="cfg-value">${cfg.diversity}</div>
+      </div>
+    `;
+  } else if (id === "rescreen") {
+    html = `
+      <div class="cfg-row">
+        <div class="cfg-label">Target</div>
+        <div class="cfg-value">${cfg.target}</div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Screener</div>
+        <div class="cfg-value">${cfg.screener}</div>
+      </div>
+    `;
+  } else {
+    // Screener blocks
+    html = `
+      <div class="cfg-row">
+        <div class="cfg-label">Block name</div>
+        <div class="cfg-value">${escapeHtml(cfg.name)}</div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">Filters</div>
+        <div class="chip-row">
+          ${cfg.filters.map(f => `<span class="chip">${escapeHtml(f)}</span>`).join("")}
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-label">LLM</div>
+        <div class="cfg-mono">Model: ${cfg.model} · reasoning: ${cfg.reasoning}</div>
+      </div>
+    `;
+  }
+  body.innerHTML = html;
+}
+
+/* =====================================================
+   SECTION E — BUILDING BLOCKS PALETTE
+===================================================== */
+function renderPalette() {
+  const body = document.getElementById("paletteBody");
+  let html = "";
+  Object.entries(BUILDING_BLOCKS_CATALOG).forEach(([cat, items]) => {
+    html += `<div class="cat-header">${cat}</div>`;
+    items.forEach(it => {
+      const color = BLOCK_COLORS[it.type].fill;
+      html += `
+        <div class="block-chip" data-id="${it.id}">
+          <div class="block-dot" style="background:${color}"></div>
+          <div class="block-chip-body">
+            <div class="block-chip-label">${escapeHtml(it.label)}</div>
+            <div class="block-chip-desc">${escapeHtml(it.desc)}</div>
+          </div>
+        </div>
+      `;
+    });
+  });
+  body.innerHTML = html;
+  body.querySelectorAll(".block-chip").forEach(el => {
+    el.addEventListener("click", () => {
+      const id = el.getAttribute("data-id");
+      console.log(`Would add ${id} to pipeline`);
+    });
+  });
+}
+
+/* =====================================================
+   SECTION F — STATUS BAR
+===================================================== */
+function renderStatusBar() {
+  const n = state.selectedSeeds.size;
+  document.getElementById("statusLeft").textContent =
+    `7 blocks · topic set · ${n} seed${n === 1 ? "" : "s"} selected · ready to run`;
+}
+
+/* =====================================================
+   UTIL
+===================================================== */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+document.getElementById("seedSearch").addEventListener("input", (e) => {
+  state.searchFilter = e.target.value;
+  renderResults();
+});
+document.getElementById("runBtn").addEventListener("click", () => {
+  alert("Would transition to Page 2 in real app");
+});
+
+renderResults();
+renderSeedCounter();
+renderPipeline();
+renderConfig();
+renderPalette();
+renderStatusBar();
+</script>
+</body>
+</html>

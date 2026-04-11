@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CiteClaw — Page 1 (Build · Variant D)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:         #f5f3ee;
+    --panel:      #fbf9f3;
+    --border:     #e4e0d4;
+    --chrome:     #faf8f2;
+    --ink:        #1e2735;
+    --secondary:  #55606d;
+    --tertiary:   #7f768c;
+    --accent:     #3e3548;
+    --positive:   #5a8570;
+    --warning:    #8b5a5a;
+    --btn-border: #c4bcaa;
+    --btn-hover:  #f0ecde;
+    --pen:        #8a7a58;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  .section-a {
+    flex: 0 0 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px;
+  }
+  .brand {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+  .brand .sep { color: var(--tertiary); margin: 0 8px; font-weight: 400; }
+  .brand .context { color: var(--secondary); font-weight: 500; }
+  .btn {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 14px;
+    background: var(--chrome);
+    color: var(--ink);
+    border: 1px solid var(--btn-border);
+    border-radius: 2px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn-primary {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .btn-primary:hover { background: #ece7f0; }
+
+  .main-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    grid-template-rows: 60% 40%;
+    grid-template-areas: "b c e" "b d e";
+    min-height: 0;
+  }
+  .section-b { grid-area: b; }
+  .section-c { grid-area: c; }
+  .section-d { grid-area: d; }
+  .section-e { grid-area: e; }
+
+  .panel {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .section-e { border-right: none; border-left: 1px solid var(--border); }
+  .section-c { background: var(--bg); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .section-d { background: var(--panel); border-top: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+
+  .phead {
+    flex: 0 0 auto;
+    padding: 10px 14px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tertiary);
+    border-bottom: 1px solid var(--border);
+    background: var(--chrome);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .phead .count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--tertiary);
+  }
+
+  /* Section B — SEEDS */
+  .seeds-search {
+    flex: 0 0 auto;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .seeds-search input {
+    width: 100%;
+    padding: 6px 9px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+  }
+  .seeds-search input:focus { border-color: var(--accent); }
+  .seeds-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  .seed {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+  }
+  .seed:hover { background: #f3efe5; }
+  .seed .cb {
+    flex: 0 0 13px;
+    height: 13px;
+    width: 13px;
+    border: 1px solid var(--btn-border);
+    border-radius: 2px;
+    margin-top: 2px;
+    background: #fff;
+    position: relative;
+  }
+  .seed.selected .cb {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .seed.selected .cb::after {
+    content: "";
+    position: absolute;
+    left: 3px; top: 0px;
+    width: 4px; height: 7px;
+    border: solid #fff;
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+  }
+  .seed-body { flex: 1; min-width: 0; }
+  .seed-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1.35;
+    margin-bottom: 3px;
+  }
+  .seed-meta {
+    font-size: 11px;
+    color: var(--tertiary);
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .seed-meta .venue { color: var(--secondary); }
+  .seed-meta .sep { color: var(--border); }
+
+  /* Section C — CANVAS */
+  .canvas-wrap {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: auto;
+    background:
+      linear-gradient(var(--bg), var(--bg)),
+      radial-gradient(circle at 1px 1px, #d8d3c4 1px, transparent 0);
+    background-size: 100% 100%, 18px 18px;
+    background-blend-mode: multiply;
+  }
+  .canvas-wrap svg { display: block; }
+  .hint {
+    position: absolute;
+    bottom: 10px; right: 14px;
+    font-size: 10px;
+    color: var(--tertiary);
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+  }
+
+  /* Section D — CONFIG */
+  .cfg-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px 16px;
+  }
+  .cfg-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 10px;
+    margin-bottom: 9px;
+    align-items: start;
+  }
+  .cfg-label {
+    font-size: 11px;
+    color: var(--tertiary);
+    font-weight: 500;
+    padding-top: 4px;
+    letter-spacing: 0.02em;
+  }
+  .cfg-val {
+    font-size: 12px;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 5px 8px;
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .cfg-val.readonly { color: var(--secondary); }
+  .cfg-val.prose { font-family: 'Inter', sans-serif; }
+  .cfg-pill-list { display: flex; flex-direction: column; gap: 3px; }
+  .cfg-pill {
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--secondary);
+    background: var(--chrome);
+    border: 1px solid var(--border);
+    padding: 3px 7px;
+    border-radius: 2px;
+  }
+
+  /* Section E — BUILDING BLOCKS */
+  .bb-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0 8px;
+  }
+  .bb-cat {
+    padding: 10px 14px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tertiary);
+  }
+  .bb-chips {
+    display: flex; flex-direction: column;
+    gap: 4px;
+    padding: 0 12px 6px;
+  }
+  .bb-chip {
+    cursor: pointer;
+    padding: 7px 10px;
+    background: var(--chrome);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .bb-chip:hover { background: var(--btn-hover); border-color: var(--btn-border); }
+  .bb-chip .bb-label { font-size: 12px; font-weight: 500; color: var(--ink); }
+  .bb-chip .bb-desc { font-size: 10px; color: var(--tertiary); letter-spacing: 0.01em; }
+
+  .section-f {
+    flex: 0 0 32px;
+    background: var(--chrome);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-size: 11px;
+    color: var(--tertiary);
+  }
+  .status-left { display: flex; align-items: center; gap: 10px; }
+  .status-right { display: flex; align-items: center; gap: 8px; }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--positive);
+    box-shadow: 0 0 0 2px rgba(90, 133, 112, 0.15);
+  }
+  .status-label { font-family: 'IBM Plex Mono', monospace; }
+
+  /* Card hover/select states (SVG) */
+  .node-card { cursor: pointer; transition: filter 0.12s ease; }
+  .node-card:hover { filter: brightness(1.03); }
+  .node-card.selected .card-body { stroke-width: 3; }
+  .node-card text { pointer-events: none; user-select: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- A: top bar -->
+  <header class="section-a">
+    <div class="brand">CiteClaw<span class="sep">·</span><span class="context">New run</span></div>
+    <button class="btn btn-primary" id="run-btn">Run pipeline</button>
+  </header>
+
+  <div class="main-grid">
+    <!-- B: SEEDS -->
+    <aside class="panel section-b">
+      <div class="phead">
+        <span>Seed papers</span>
+        <span class="count" id="seed-count">3/10</span>
+      </div>
+      <div class="seeds-search">
+        <input id="seed-search" type="text" placeholder="Filter seeds..." />
+      </div>
+      <div class="seeds-list" id="seeds-list"></div>
+    </aside>
+
+    <!-- C: CANVAS -->
+    <main class="section-c">
+      <div class="phead">
+        <span>Pipeline</span>
+        <span class="count">7 steps</span>
+      </div>
+      <div class="canvas-wrap" id="canvas-wrap">
+        <svg id="pipeline-svg" width="1320" height="400" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="hint">click a card to configure</div>
+      </div>
+    </main>
+
+    <!-- D: CONFIG -->
+    <section class="section-d">
+      <div class="phead">
+        <span>Configuration · <span id="cfg-label" style="color: var(--secondary); letter-spacing: 0; text-transform: none; font-weight: 500;">Seeds + Topic</span></span>
+        <span class="count mono" id="cfg-type">seeds</span>
+      </div>
+      <div class="cfg-body" id="cfg-body"></div>
+    </section>
+
+    <!-- E: BUILDING BLOCKS -->
+    <aside class="panel section-e">
+      <div class="phead">
+        <span>Building blocks</span>
+        <span class="count">5 cat</span>
+      </div>
+      <div class="bb-body" id="bb-body"></div>
+    </aside>
+  </div>
+
+  <!-- F: status -->
+  <footer class="section-f">
+    <div class="status-left">
+      <span class="dot"></span>
+      <span>Ready · 3 seeds · 7 steps · estimated 18 min</span>
+    </div>
+    <div class="status-right">
+      <span class="status-label">Session: demo</span>
+    </div>
+  </footer>
+</div>
+
+<script>
+/* ---------------- mock data ---------------- */
+const BLOCK_COLORS = {
+  seeds:    { fill: "#8aa695", stroke: "#5a7c6b", textOnFill: "#ffffff" },
+  forward:  { fill: "#9c7d8a", stroke: "#755a66", textOnFill: "#ffffff" },
+  backward: { fill: "#6b82a0", stroke: "#48627a", textOnFill: "#ffffff" },
+  rerank:   { fill: "#a89878", stroke: "#7a6b4e", textOnFill: "#ffffff" },
+  rescreen: { fill: "#78688a", stroke: "#584868", textOnFill: "#ffffff" }
+};
+
+const MOCK_PIPELINE = {
+  nodes: [
+    { id: "seeds",    type: "seeds",    label: "Seeds + Topic",        shape: "parallelogram", x: 40,  y: 140 },
+    { id: "fwd1",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 240, y: 140 },
+    { id: "bwd1",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 440, y: 140 },
+    { id: "rerank",   type: "rerank",   label: "Diversified Reranker", shape: "rect",          x: 660, y: 50  },
+    { id: "fwd2",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 880, y: 50  },
+    { id: "bwd2",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 660, y: 230 },
+    { id: "rescreen", type: "rescreen", label: "Rescreener",           shape: "rect",          x: 1100,y: 140 }
+  ],
+  edges: [
+    { from: "seeds", to: "fwd1" }, { from: "fwd1", to: "bwd1" }, { from: "bwd1", to: "rerank" },
+    { from: "bwd1", to: "bwd2" }, { from: "rerank", to: "fwd2" }, { from: "fwd2", to: "rescreen" }, { from: "bwd2", to: "rescreen" }
+  ]
+};
+
+const MOCK_SEED_RESULTS = [
+  { id: "p1",  title: "Highly accurate protein structure prediction with AlphaFold",             authors: "Jumper, Evans, Pritzel, et al.", year: 2021, venue: "Nature",         citations: 7900 },
+  { id: "p2",  title: "AlphaFold 3: All-atom structure prediction across biomolecules",          authors: "Abramson, Adler, Dunger, et al.",year: 2024, venue: "Nature",         citations: 820  },
+  { id: "p3",  title: "RoseTTAFold: Accurate prediction of protein structures and interactions", authors: "Baek, DiMaio, Anishchenko",      year: 2021, venue: "Science",        citations: 3200 },
+  { id: "p4",  title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure",authors: "Lin, Akin, Rao, et al.",         year: 2023, venue: "Science",        citations: 2100 },
+  { id: "p5",  title: "ColabFold: Making protein folding accessible to all",                     authors: "Mirdita, Schutze, Moriwaki",     year: 2022, venue: "Nature Methods", citations: 2900 },
+  { id: "p6",  title: "OmegaFold: High-resolution de novo structure prediction",                 authors: "Wu, Ding, Wang",                 year: 2022, venue: "bioRxiv",        citations: 520  },
+  { id: "p7",  title: "ProteinMPNN: Robust deep learning based protein sequence design",         authors: "Dauparas, Anishchenko, Bennett", year: 2022, venue: "Science",        citations: 1700 },
+  { id: "p8",  title: "RFdiffusion: Broadly applicable and accurate protein design",             authors: "Watson, Juergens, Bennett",      year: 2023, venue: "Nature",         citations: 1400 },
+  { id: "p9",  title: "Chai-1: Decoding the molecular interactions of life",                     authors: "Boitreaud, Dent, McPartlon",     year: 2024, venue: "bioRxiv",        citations: 310  },
+  { id: "p10", title: "Boltz-1: Democratizing biomolecular interaction modeling",                authors: "Wohlwend, Corso, Passaro",       year: 2024, venue: "bioRxiv",        citations: 240  }
+];
+const INITIAL_SELECTED_SEEDS = ["p1", "p3", "p5"];
+
+const BUILDING_BLOCKS_CATALOG = {
+  "SEEDS":    [{ id: "LoadSeeds", type: "seeds", label: "Load Seeds", desc: "Initialize collection" }, { id: "ResolveSeeds", type: "seeds", label: "Resolve Seeds", desc: "Fuzzy-match via S2" }],
+  "EXPAND":   [{ id: "ExpandForward", type: "forward", label: "Expand Forward", desc: "Fetch citers" }, { id: "ExpandBackward", type: "backward", label: "Expand Backward", desc: "Fetch references" }, { id: "ExpandBySearch", type: "forward", label: "Expand by Search", desc: "LLM search agent" }, { id: "ExpandBySemantics", type: "forward", label: "Expand by Semantics", desc: "SPECTER2 kNN" }, { id: "ExpandByAuthor", type: "forward", label: "Expand by Author", desc: "Top-K authors" }],
+  "FILTER":   [{ id: "Rerank", type: "rerank", label: "Rerank", desc: "Top-K with diversity" }, { id: "ReScreen", type: "rescreen", label: "Re-screen", desc: "Apply to collection" }, { id: "Cluster", type: "rerank", label: "Cluster", desc: "Topic-model clusters" }],
+  "CONTROL":  [{ id: "Parallel", type: "forward", label: "Parallel", desc: "Branch and union" }, { id: "HumanInTheLoop", type: "forward", label: "Human in the Loop", desc: "Quality check" }, { id: "MergeDuplicates", type: "forward", label: "Merge Duplicates", desc: "Preprint dedup" }],
+  "FINALIZE": [{ id: "Finalize", type: "rescreen", label: "Finalize", desc: "Write outputs" }]
+};
+
+const BLOCK_CONFIGS = {
+  "seeds":    { topic: "Deep learning methods for protein structure prediction and design, including AlphaFold-family models and diffusion-based approaches.", seedCount: 3 },
+  "fwd1":     { name: "Forward Screener",  filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "bwd1":     { name: "Backward Screener", filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "rerank":   { metric: "pagerank", k: 3, diversity: "forward_topics" },
+  "fwd2":     { name: "Forward Screener",  filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "bwd2":     { name: "Backward Screener", filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "rescreen": { target: "entire collection", screener: "tight_screener" }
+};
+
+/* -------------- state -------------- */
+const state = {
+  selectedSeeds: new Set(INITIAL_SELECTED_SEEDS),
+  selectedBlock: "seeds",
+  seedFilter: ""
+};
+
+/* -------------- helpers -------------- */
+const svgNs = "http://www.w3.org/2000/svg";
+function el(ns, tag, attrs = {}, text) {
+  const e = ns ? document.createElementNS(ns, tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+}
+function cardPreview(type) {
+  switch (type) {
+    case "seeds":    return "3 seeds · topic set";
+    case "forward":
+    case "backward": return "3 filters · gemma-4-31b";
+    case "rerank":   return "pagerank · k=3";
+    case "rescreen": return "entire collection";
+    default:         return "";
+  }
+}
+
+/* -------------- seeds panel -------------- */
+function renderSeeds() {
+  const list = document.getElementById("seeds-list");
+  list.innerHTML = "";
+  const q = state.seedFilter.toLowerCase();
+  const filtered = MOCK_SEED_RESULTS.filter(r =>
+    !q || r.title.toLowerCase().includes(q) || r.authors.toLowerCase().includes(q) || r.venue.toLowerCase().includes(q)
+  );
+  for (const r of filtered) {
+    const row = el(null, "div", { class: "seed" + (state.selectedSeeds.has(r.id) ? " selected" : "") });
+    row.appendChild(el(null, "div", { class: "cb" }));
+    const body = el(null, "div", { class: "seed-body" });
+    body.appendChild(el(null, "div", { class: "seed-title" }, r.title));
+    const meta = el(null, "div", { class: "seed-meta" });
+    meta.appendChild(el(null, "span", {}, r.authors));
+    meta.appendChild(el(null, "span", { class: "sep" }, "·"));
+    meta.appendChild(el(null, "span", { class: "venue" }, r.venue + " " + r.year));
+    meta.appendChild(el(null, "span", { class: "sep" }, "·"));
+    meta.appendChild(el(null, "span", {}, r.citations.toLocaleString() + " cits"));
+    body.appendChild(meta);
+    row.appendChild(body);
+    row.addEventListener("click", () => {
+      if (state.selectedSeeds.has(r.id)) state.selectedSeeds.delete(r.id);
+      else state.selectedSeeds.add(r.id);
+      renderSeeds();
+      updateSeedCount();
+    });
+    list.appendChild(row);
+  }
+}
+function updateSeedCount() {
+  document.getElementById("seed-count").textContent =
+    state.selectedSeeds.size + "/" + MOCK_SEED_RESULTS.length;
+}
+
+/* -------------- pipeline canvas -------------- */
+const CARD_W = 180;
+const CARD_H = 96;
+const STRIP_H = 4;
+
+function centerOf(node) {
+  return { cx: node.x + CARD_W / 2, cy: node.y + CARD_H / 2 };
+}
+function rightAnchor(node) {
+  return { x: node.x + CARD_W, y: node.y + CARD_H / 2 };
+}
+function leftAnchor(node) {
+  return { x: node.x, y: node.y + CARD_H / 2 };
+}
+
+function renderPipeline() {
+  const svg = document.getElementById("pipeline-svg");
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // defs: arrow marker + glow filter
+  const defs = el(svgNs, "defs");
+  const marker = el(svgNs, "marker", {
+    id: "arrow", viewBox: "0 -4 8 8", refX: 7, refY: 0,
+    markerWidth: 7, markerHeight: 7, orient: "auto"
+  });
+  marker.appendChild(el(svgNs, "path", { d: "M0,-4 L8,0 L0,4 Z", fill: "#8a7a58" }));
+  defs.appendChild(marker);
+  const glow = el(svgNs, "filter", { id: "selGlow", x: "-20%", y: "-20%", width: "140%", height: "140%" });
+  glow.appendChild(el(svgNs, "feGaussianBlur", { stdDeviation: "2.2", result: "b" }));
+  const merge = el(svgNs, "feMerge");
+  merge.appendChild(el(svgNs, "feMergeNode", { in: "b" }));
+  merge.appendChild(el(svgNs, "feMergeNode", { in: "SourceGraphic" }));
+  glow.appendChild(merge);
+  defs.appendChild(glow);
+  svg.appendChild(defs);
+
+  const nodeById = {};
+  MOCK_PIPELINE.nodes.forEach(n => nodeById[n.id] = n);
+
+  // edges layer (under nodes)
+  const edgeLayer = el(svgNs, "g", { class: "edges" });
+  svg.appendChild(edgeLayer);
+
+  MOCK_PIPELINE.edges.forEach(e => {
+    const a = nodeById[e.from], b = nodeById[e.to];
+    if (!a || !b) return;
+    const start = rightAnchor(a);
+    const end = leftAnchor(b);
+    // small inset on arrow tip so it touches the stroke edge not inside
+    const pad = 6;
+    const dx = end.x - start.x, dy = end.y - start.y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const tx = end.x - (dx / len) * pad;
+    const ty = end.y - (dy / len) * pad;
+    // path: simple straight; bend if source and target differ significantly in y
+    let d;
+    if (Math.abs(dy) > 2) {
+      const midX = start.x + (tx - start.x) / 2;
+      d = `M ${start.x} ${start.y} L ${midX} ${start.y} L ${midX} ${ty} L ${tx} ${ty}`;
+    } else {
+      d = `M ${start.x} ${start.y} L ${tx} ${ty}`;
+    }
+    edgeLayer.appendChild(el(svgNs, "path", {
+      d, fill: "none", stroke: "#8a7a58", "stroke-width": "1.5",
+      "stroke-linecap": "round", "stroke-linejoin": "round",
+      "marker-end": "url(#arrow)"
+    }));
+  });
+
+  // nodes layer
+  MOCK_PIPELINE.nodes.forEach(n => {
+    const color = BLOCK_COLORS[n.type];
+    const isSelected = state.selectedBlock === n.id;
+
+    const g = el(svgNs, "g", {
+      class: "node-card" + (isSelected ? " selected" : ""),
+      transform: `translate(${n.x}, ${n.y})`,
+      "data-id": n.id
+    });
+
+    // shape path — parallelogram for seeds, rounded rect otherwise
+    let bodyPath;
+    if (n.shape === "parallelogram") {
+      const skew = 14;
+      bodyPath = el(svgNs, "path", {
+        class: "card-body",
+        d: `M ${skew} 0
+            L ${CARD_W} 0
+            L ${CARD_W - skew} ${CARD_H}
+            L 0 ${CARD_H} Z`,
+        fill: color.fill,
+        "fill-opacity": "0.1",
+        stroke: color.stroke,
+        "stroke-width": isSelected ? "3" : "2"
+      });
+    } else {
+      bodyPath = el(svgNs, "rect", {
+        class: "card-body",
+        x: 0, y: 0, width: CARD_W, height: CARD_H,
+        rx: 6, ry: 6,
+        fill: color.fill,
+        "fill-opacity": "0.1",
+        stroke: color.stroke,
+        "stroke-width": isSelected ? "3" : "2"
+      });
+    }
+    if (isSelected) bodyPath.setAttribute("filter", "url(#selGlow)");
+    g.appendChild(bodyPath);
+
+    // top strip (category indicator)
+    const stripColor = isSelected ? "#3e3548" : color.fill;
+    if (n.shape === "parallelogram") {
+      const skew = 14;
+      g.appendChild(el(svgNs, "path", {
+        d: `M ${skew} 2 L ${CARD_W - 2} 2 L ${CARD_W - 2 - (skew * STRIP_H / CARD_H)} ${2 + STRIP_H} L ${skew - (skew * STRIP_H / CARD_H)} ${2 + STRIP_H} Z`,
+        fill: stripColor
+      }));
+    } else {
+      // rounded top strip: rect with only top corners rounded via path
+      g.appendChild(el(svgNs, "path", {
+        d: `M 6 2 L ${CARD_W - 6} 2 Q ${CARD_W - 2} 2 ${CARD_W - 2} 6 L ${CARD_W - 2} ${2 + STRIP_H} L 2 ${2 + STRIP_H} L 2 6 Q 2 2 6 2 Z`,
+        fill: stripColor
+      }));
+    }
+
+    // label
+    const labelY = 34;
+    g.appendChild(el(svgNs, "text", {
+      x: CARD_W / 2, y: labelY,
+      "text-anchor": "middle",
+      "font-family": "Inter, sans-serif",
+      "font-size": "13",
+      "font-weight": "600",
+      fill: "#1e2735"
+    }, n.label));
+
+    // type tag (small)
+    g.appendChild(el(svgNs, "text", {
+      x: CARD_W / 2, y: labelY + 16,
+      "text-anchor": "middle",
+      "font-family": "'IBM Plex Mono', monospace",
+      "font-size": "10",
+      fill: "#7f768c",
+      "letter-spacing": "0.04em"
+    }, n.type));
+
+    // hairline rule
+    const ruleY = labelY + 26;
+    g.appendChild(el(svgNs, "line", {
+      x1: 14, y1: ruleY, x2: CARD_W - 14, y2: ruleY,
+      stroke: "#e4e0d4", "stroke-width": "1"
+    }));
+
+    // preview line
+    g.appendChild(el(svgNs, "text", {
+      x: CARD_W / 2, y: ruleY + 14,
+      "text-anchor": "middle",
+      "font-family": "Inter, sans-serif",
+      "font-size": "10",
+      fill: "#7f768c"
+    }, cardPreview(n.type)));
+
+    // bottom micro-info (config count hint)
+    g.appendChild(el(svgNs, "text", {
+      x: CARD_W / 2, y: CARD_H - 8,
+      "text-anchor": "middle",
+      "font-family": "'IBM Plex Mono', monospace",
+      "font-size": "9",
+      fill: "#a89fb0"
+    }, n.id));
+
+    g.addEventListener("click", () => {
+      state.selectedBlock = n.id;
+      renderPipeline();
+      renderConfig();
+    });
+
+    svg.appendChild(g);
+  });
+}
+
+/* -------------- config panel -------------- */
+function renderConfig() {
+  const body = document.getElementById("cfg-body");
+  const label = document.getElementById("cfg-label");
+  const typeEl = document.getElementById("cfg-type");
+  body.innerHTML = "";
+
+  const node = MOCK_PIPELINE.nodes.find(n => n.id === state.selectedBlock);
+  if (!node) return;
+  const cfg = BLOCK_CONFIGS[node.id] || {};
+  label.textContent = node.label;
+  typeEl.textContent = node.type;
+
+  const addRow = (k, v, cls = "") => {
+    const row = el(null, "div", { class: "cfg-row" });
+    row.appendChild(el(null, "div", { class: "cfg-label" }, k));
+    if (Array.isArray(v)) {
+      const wrap = el(null, "div", { class: "cfg-pill-list" });
+      v.forEach(item => wrap.appendChild(el(null, "div", { class: "cfg-pill" }, item)));
+      row.appendChild(wrap);
+    } else {
+      row.appendChild(el(null, "div", { class: "cfg-val " + cls }, v));
+    }
+    body.appendChild(row);
+  };
+
+  if (node.type === "seeds") {
+    addRow("Topic", cfg.topic || "", "prose readonly");
+    const seedTitles = Array.from(state.selectedSeeds).map(id => {
+      const s = MOCK_SEED_RESULTS.find(x => x.id === id);
+      return s ? s.title : id;
+    });
+    addRow("Seeds", seedTitles.length ? seedTitles : ["(none selected)"]);
+    addRow("Count", String(state.selectedSeeds.size), "readonly");
+  } else if (node.type === "forward" || node.type === "backward") {
+    addRow("Name", cfg.name || node.label, "readonly");
+    addRow("Filters", cfg.filters || []);
+    addRow("Model", cfg.model || "", "readonly");
+    addRow("Reasoning", cfg.reasoning || "", "readonly");
+    addRow("Scope", node.type === "forward" ? "citers" : "references", "readonly");
+  } else if (node.type === "rerank") {
+    addRow("Metric", cfg.metric || "", "readonly");
+    addRow("K", String(cfg.k ?? ""), "readonly");
+    addRow("Diversity", cfg.diversity || "", "readonly");
+  } else if (node.type === "rescreen") {
+    addRow("Target", cfg.target || "", "readonly");
+    addRow("Screener", cfg.screener || "", "readonly");
+  }
+}
+
+/* -------------- building blocks -------------- */
+function renderBuildingBlocks() {
+  const body = document.getElementById("bb-body");
+  body.innerHTML = "";
+  Object.entries(BUILDING_BLOCKS_CATALOG).forEach(([cat, items]) => {
+    body.appendChild(el(null, "div", { class: "bb-cat" }, cat));
+    const chips = el(null, "div", { class: "bb-chips" });
+    items.forEach(item => {
+      const chip = el(null, "div", { class: "bb-chip", "data-id": item.id });
+      chip.appendChild(el(null, "div", { class: "bb-label" }, item.label));
+      chip.appendChild(el(null, "div", { class: "bb-desc" }, item.desc));
+      chip.addEventListener("click", () => {
+        console.log("[building-block]", item.id, item);
+      });
+      chips.appendChild(chip);
+    });
+    body.appendChild(chips);
+  });
+}
+
+/* -------------- init -------------- */
+function init() {
+  renderSeeds();
+  updateSeedCount();
+  renderPipeline();
+  renderConfig();
+  renderBuildingBlocks();
+  document.getElementById("seed-search").addEventListener("input", (ev) => {
+    state.seedFilter = ev.target.value;
+    renderSeeds();
+  });
+  document.getElementById("run-btn").addEventListener("click", () => {
+    console.log("[run] pipeline dry-run", {
+      seeds: Array.from(state.selectedSeeds),
+      selectedBlock: state.selectedBlock
+    });
+  });
+}
+init();
+</script>
+</body>
+</html>

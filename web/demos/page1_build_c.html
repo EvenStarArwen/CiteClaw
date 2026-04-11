@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CiteClaw · Page 1 · Variant C (Outlined Only)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --panel: #fbf9f3;
+    --border: #e4e0d4;
+    --chrome: #faf8f2;
+    --ink: #1e2735;
+    --secondary: #55606d;
+    --tertiary: #7f768c;
+    --accent: #3e3548;
+    --positive: #5a8570;
+    --warning: #8b5a5a;
+    --btn-border: #c4bcaa;
+    --btn-hover: #f0ecde;
+    --hairline: #c4bcaa;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* Section A — top chrome */
+  .section-a {
+    flex: 0 0 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+  .brand {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+  .brand .dot {
+    display: inline-block;
+    margin: 0 8px;
+    color: var(--tertiary);
+  }
+  .brand .sub {
+    color: var(--secondary);
+    font-weight: 400;
+  }
+  .btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--btn-border);
+    padding: 6px 14px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: background 80ms ease;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn-accent { border-color: var(--accent); color: var(--accent); }
+
+  /* Main grid */
+  .main-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    grid-template-rows: 60% 40%;
+    grid-template-areas:
+      "b c e"
+      "b d e";
+    min-height: 0;
+  }
+  .section-b { grid-area: b; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .section-c { grid-area: c; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .section-d { grid-area: d; background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  .section-e { grid-area: e; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+
+  .panel-header {
+    padding: 14px 18px 10px 18px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tertiary);
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  /* Section B — Seeds */
+  .seed-search-wrap {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .seed-search {
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 7px 10px;
+    outline: none;
+  }
+  .seed-search::placeholder { color: var(--tertiary); }
+  .seed-search:focus { border-color: var(--btn-border); }
+  .seed-list { padding: 6px 0; }
+  .seed-item {
+    padding: 10px 14px 10px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 80ms ease;
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+  }
+  .seed-item:hover { background: var(--btn-hover); }
+  .seed-check {
+    flex: 0 0 12px;
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--btn-border);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .seed-item.selected .seed-check {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  .seed-item.selected .seed-check::after {
+    content: '';
+    width: 4px;
+    height: 7px;
+    border: solid #fbf9f3;
+    border-width: 0 1.2px 1.2px 0;
+    transform: rotate(45deg) translateY(-1px);
+  }
+  .seed-main { flex: 1; min-width: 0; }
+  .seed-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1.35;
+    margin-bottom: 3px;
+  }
+  .seed-meta {
+    font-size: 11px;
+    color: var(--tertiary);
+    line-height: 1.35;
+  }
+  .seed-meta .venue { color: var(--secondary); }
+
+  /* Section C — Pipeline canvas */
+  .pipeline-wrap {
+    flex: 1;
+    position: relative;
+    overflow: auto;
+    min-height: 0;
+  }
+  .pipeline-svg {
+    display: block;
+  }
+
+  /* Section D — Configuration */
+  .config-body {
+    padding: 16px 20px 20px 20px;
+  }
+  .config-row {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 12px;
+    align-items: baseline;
+  }
+  .config-label {
+    flex: 0 0 108px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tertiary);
+    padding-top: 2px;
+  }
+  .config-value {
+    flex: 1;
+    font-size: 12px;
+    color: var(--ink);
+    line-height: 1.55;
+    word-break: break-word;
+  }
+  .config-value.mono { font-size: 11.5px; color: var(--secondary); }
+  .config-chip {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: var(--secondary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    margin: 0 5px 5px 0;
+  }
+
+  /* Section E — Building blocks */
+  .bb-cat {
+    padding: 12px 16px 4px 16px;
+  }
+  .bb-cat-header {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tertiary);
+    margin-bottom: 8px;
+  }
+  .bb-chip {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 8px 11px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: background 80ms ease;
+  }
+  .bb-chip:hover { background: var(--btn-hover); }
+  .bb-chip-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .bb-chip-desc {
+    font-size: 10.5px;
+    color: var(--tertiary);
+    line-height: 1.35;
+  }
+
+  /* Section F — Status bar */
+  .section-f {
+    flex: 0 0 32px;
+    background: var(--chrome);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    font-size: 11px;
+    color: var(--tertiary);
+  }
+  .status-left { display: flex; align-items: center; gap: 10px; }
+  .status-right { display: flex; align-items: center; gap: 8px; }
+  .status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--positive);
+  }
+
+  /* Scrollbar */
+  .panel-body::-webkit-scrollbar, .pipeline-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
+  .panel-body::-webkit-scrollbar-track, .pipeline-wrap::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb, .pipeline-wrap::-webkit-scrollbar-thumb { background: var(--border); }
+  .panel-body::-webkit-scrollbar-thumb:hover, .pipeline-wrap::-webkit-scrollbar-thumb:hover { background: var(--btn-border); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Section A -->
+  <header class="section-a">
+    <div class="brand">CiteClaw <span class="dot">·</span> <span class="sub">New run</span></div>
+    <button class="btn btn-accent" id="run-btn">Run pipeline</button>
+  </header>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+
+    <!-- Section B — seeds -->
+    <aside class="section-b">
+      <div class="panel-header">Seed papers</div>
+      <div class="seed-search-wrap">
+        <input type="text" class="seed-search" id="seed-search" placeholder="Search seed papers..." />
+      </div>
+      <div class="panel-body">
+        <div class="seed-list" id="seed-list"></div>
+      </div>
+    </aside>
+
+    <!-- Section C — pipeline canvas -->
+    <section class="section-c">
+      <div class="panel-header">Pipeline</div>
+      <div class="pipeline-wrap" id="pipeline-wrap">
+        <svg class="pipeline-svg" id="pipeline-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+    </section>
+
+    <!-- Section D — configuration -->
+    <section class="section-d">
+      <div class="panel-header" id="config-header">Configuration</div>
+      <div class="panel-body">
+        <div class="config-body" id="config-body"></div>
+      </div>
+    </section>
+
+    <!-- Section E — building blocks -->
+    <aside class="section-e">
+      <div class="panel-header">Building blocks</div>
+      <div class="panel-body" id="bb-body"></div>
+    </aside>
+
+  </div>
+
+  <!-- Section F -->
+  <footer class="section-f">
+    <div class="status-left">
+      <span class="mono">page1/build</span>
+      <span>·</span>
+      <span>variant c · outlined only</span>
+    </div>
+    <div class="status-right">
+      <span class="status-dot"></span>
+      <span>Session: demo</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+/* ---------- Mock data ---------- */
+const BLOCK_COLORS = {
+  seeds:    { stroke: "#5a7c6b" },
+  forward:  { stroke: "#755a66" },
+  backward: { stroke: "#48627a" },
+  rerank:   { stroke: "#7a6b4e" },
+  rescreen: { stroke: "#584868" }
+};
+
+const MOCK_PIPELINE = {
+  nodes: [
+    { id: "seeds",    type: "seeds",    label: "Seeds + Topic",        shape: "parallelogram", x: 40,  y: 140 },
+    { id: "fwd1",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 220, y: 140 },
+    { id: "bwd1",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 400, y: 140 },
+    { id: "rerank",   type: "rerank",   label: "Diversified Reranker", shape: "rect",          x: 600, y: 60  },
+    { id: "fwd2",     type: "forward",  label: "Forward Screener",     shape: "rect",          x: 800, y: 60  },
+    { id: "bwd2",     type: "backward", label: "Backward Screener",    shape: "rect",          x: 600, y: 220 },
+    { id: "rescreen", type: "rescreen", label: "Rescreener",           shape: "rect",          x: 1000,y: 140 }
+  ],
+  edges: [
+    { from: "seeds", to: "fwd1" },
+    { from: "fwd1", to: "bwd1" },
+    { from: "bwd1", to: "rerank" },
+    { from: "bwd1", to: "bwd2" },
+    { from: "rerank", to: "fwd2" },
+    { from: "fwd2", to: "rescreen" },
+    { from: "bwd2", to: "rescreen" }
+  ]
+};
+
+const MOCK_SEED_RESULTS = [
+  { id: "p1",  title: "Highly accurate protein structure prediction with AlphaFold",             authors: "Jumper, Evans, Pritzel, et al.", year: 2021, venue: "Nature",         citations: 7900 },
+  { id: "p2",  title: "AlphaFold 3: All-atom structure prediction across biomolecules",          authors: "Abramson, Adler, Dunger, et al.",year: 2024, venue: "Nature",         citations: 820  },
+  { id: "p3",  title: "RoseTTAFold: Accurate prediction of protein structures and interactions", authors: "Baek, DiMaio, Anishchenko",      year: 2021, venue: "Science",        citations: 3200 },
+  { id: "p4",  title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure",authors: "Lin, Akin, Rao, et al.",         year: 2023, venue: "Science",        citations: 2100 },
+  { id: "p5",  title: "ColabFold: Making protein folding accessible to all",                     authors: "Mirdita, Schutze, Moriwaki",     year: 2022, venue: "Nature Methods", citations: 2900 },
+  { id: "p6",  title: "OmegaFold: High-resolution de novo structure prediction",                 authors: "Wu, Ding, Wang",                 year: 2022, venue: "bioRxiv",        citations: 520  },
+  { id: "p7",  title: "ProteinMPNN: Robust deep learning based protein sequence design",         authors: "Dauparas, Anishchenko, Bennett", year: 2022, venue: "Science",        citations: 1700 },
+  { id: "p8",  title: "RFdiffusion: Broadly applicable and accurate protein design",             authors: "Watson, Juergens, Bennett",      year: 2023, venue: "Nature",         citations: 1400 },
+  { id: "p9",  title: "Chai-1: Decoding the molecular interactions of life",                     authors: "Boitreaud, Dent, McPartlon",     year: 2024, venue: "bioRxiv",        citations: 310  },
+  { id: "p10", title: "Boltz-1: Democratizing biomolecular interaction modeling",                authors: "Wohlwend, Corso, Passaro",       year: 2024, venue: "bioRxiv",        citations: 240  }
+];
+const INITIAL_SELECTED_SEEDS = ["p1", "p3", "p5"];
+
+const BUILDING_BLOCKS_CATALOG = {
+  "SEEDS":    [{ id: "LoadSeeds", type: "seeds", label: "Load Seeds", desc: "Initialize collection" }, { id: "ResolveSeeds", type: "seeds", label: "Resolve Seeds", desc: "Fuzzy-match via S2" }],
+  "EXPAND":   [{ id: "ExpandForward", type: "forward", label: "Expand Forward", desc: "Fetch citers" }, { id: "ExpandBackward", type: "backward", label: "Expand Backward", desc: "Fetch references" }, { id: "ExpandBySearch", type: "forward", label: "Expand by Search", desc: "LLM search agent" }, { id: "ExpandBySemantics", type: "forward", label: "Expand by Semantics", desc: "SPECTER2 kNN" }, { id: "ExpandByAuthor", type: "forward", label: "Expand by Author", desc: "Top-K authors" }],
+  "FILTER":   [{ id: "Rerank", type: "rerank", label: "Rerank", desc: "Top-K with diversity" }, { id: "ReScreen", type: "rescreen", label: "Re-screen", desc: "Apply to collection" }, { id: "Cluster", type: "rerank", label: "Cluster", desc: "Topic-model clusters" }],
+  "CONTROL":  [{ id: "Parallel", type: "forward", label: "Parallel", desc: "Branch and union" }, { id: "HumanInTheLoop", type: "forward", label: "Human in the Loop", desc: "Quality check" }, { id: "MergeDuplicates", type: "forward", label: "Merge Duplicates", desc: "Preprint dedup" }],
+  "FINALIZE": [{ id: "Finalize", type: "rescreen", label: "Finalize", desc: "Write outputs" }]
+};
+
+const BLOCK_CONFIGS = {
+  "seeds":    { topic: "Deep learning methods for protein structure prediction and design, including AlphaFold-family models and diffusion-based approaches.", seedCount: 3 },
+  "fwd1":     { name: "Forward Screener",  filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "bwd1":     { name: "Backward Screener", filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "rerank":   { metric: "pagerank", k: 3, diversity: "forward_topics" },
+  "fwd2":     { name: "Forward Screener",  filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "bwd2":     { name: "Backward Screener", filters: ["YearFilter 2018-2025", "CitationFilter beta=30", "LLMFilter topic_match"], model: "gemma-4-31b", reasoning: "medium" },
+  "rescreen": { target: "entire collection", screener: "tight_screener" }
+};
+
+/* ---------- State ---------- */
+const state = {
+  selectedSeeds: new Set(INITIAL_SELECTED_SEEDS),
+  seedQuery: "",
+  selectedBlockId: "seeds",
+  hoverBlockId: null
+};
+
+/* ---------- Section B — seeds ---------- */
+function renderSeeds() {
+  const list = document.getElementById("seed-list");
+  const q = state.seedQuery.trim().toLowerCase();
+  const filtered = MOCK_SEED_RESULTS.filter(p => {
+    if (!q) return true;
+    return (p.title + " " + p.authors + " " + p.venue).toLowerCase().includes(q);
+  });
+  list.innerHTML = "";
+  filtered.forEach(p => {
+    const row = document.createElement("div");
+    row.className = "seed-item" + (state.selectedSeeds.has(p.id) ? " selected" : "");
+    row.innerHTML = `
+      <div class="seed-check"></div>
+      <div class="seed-main">
+        <div class="seed-title">${escapeHtml(p.title)}</div>
+        <div class="seed-meta">${escapeHtml(p.authors)} · <span class="venue">${escapeHtml(p.venue)}</span> · ${p.year} · ${p.citations.toLocaleString()} cit.</div>
+      </div>
+    `;
+    row.addEventListener("click", () => {
+      if (state.selectedSeeds.has(p.id)) state.selectedSeeds.delete(p.id);
+      else state.selectedSeeds.add(p.id);
+      renderSeeds();
+      if (state.selectedBlockId === "seeds") renderConfig();
+    });
+    list.appendChild(row);
+  });
+}
+
+document.getElementById("seed-search").addEventListener("input", (e) => {
+  state.seedQuery = e.target.value;
+  renderSeeds();
+});
+
+/* ---------- Section C — pipeline canvas ---------- */
+const SVG_NS = "http://www.w3.org/2000/svg";
+const BLOCK_W = 140;
+const BLOCK_H = 56;
+const BLOCK_RX = 10;
+const CANVAS_PAD = 40;
+
+function svgEl(name, attrs) {
+  const el = document.createElementNS(SVG_NS, name);
+  if (attrs) for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function nodeCenter(n) {
+  return { cx: n.x + BLOCK_W / 2, cy: n.y + BLOCK_H / 2 };
+}
+
+/* Straight-line connector that enters/exits the bounding box cleanly.
+   We compute intersection of the line segment (src center -> dst center)
+   with the dst block's bounding rect, so the arrow just touches its border. */
+function rectEdgeIntersect(rx, ry, rw, rh, fromCx, fromCy) {
+  // rectangle center
+  const cx = rx + rw / 2;
+  const cy = ry + rh / 2;
+  const dx = fromCx - cx;
+  const dy = fromCy - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const hw = rw / 2;
+  const hh = rh / 2;
+  // slope-based clamp
+  const scaleX = hw / Math.abs(dx || 1e-9);
+  const scaleY = hh / Math.abs(dy || 1e-9);
+  const scale = Math.min(scaleX, scaleY);
+  return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
+function renderPipeline() {
+  const svg = document.getElementById("pipeline-svg");
+  svg.innerHTML = "";
+
+  // compute canvas size
+  let maxX = 0, maxY = 0;
+  MOCK_PIPELINE.nodes.forEach(n => {
+    maxX = Math.max(maxX, n.x + BLOCK_W);
+    maxY = Math.max(maxY, n.y + BLOCK_H);
+  });
+  const width = maxX + CANVAS_PAD * 2;
+  const height = maxY + CANVAS_PAD * 2;
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  // defs — arrowhead (small)
+  const defs = svgEl("defs");
+  const marker = svgEl("marker", {
+    id: "arrow",
+    viewBox: "0 0 6 6",
+    refX: "5",
+    refY: "3",
+    markerWidth: "6",
+    markerHeight: "6",
+    orient: "auto-start-reverse"
+  });
+  const arrowPath = svgEl("path", {
+    d: "M 0 0 L 6 3 L 0 6 z",
+    fill: "#c4bcaa"
+  });
+  marker.appendChild(arrowPath);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  // offset everything by CANVAS_PAD
+  const nodeIndex = Object.fromEntries(MOCK_PIPELINE.nodes.map(n => [n.id, n]));
+
+  // --- draw edges first so they sit under blocks ---
+  const edgeGroup = svgEl("g");
+  MOCK_PIPELINE.edges.forEach(e => {
+    const src = nodeIndex[e.from];
+    const dst = nodeIndex[e.to];
+    if (!src || !dst) return;
+    const srcAbs = { x: src.x + CANVAS_PAD, y: src.y + CANVAS_PAD };
+    const dstAbs = { x: dst.x + CANVAS_PAD, y: dst.y + CANVAS_PAD };
+    const srcCtr = { x: srcAbs.x + BLOCK_W / 2, y: srcAbs.y + BLOCK_H / 2 };
+    const dstCtr = { x: dstAbs.x + BLOCK_W / 2, y: dstAbs.y + BLOCK_H / 2 };
+    const p1 = rectEdgeIntersect(srcAbs.x, srcAbs.y, BLOCK_W, BLOCK_H, dstCtr.x, dstCtr.y);
+    const p2 = rectEdgeIntersect(dstAbs.x, dstAbs.y, BLOCK_W, BLOCK_H, srcCtr.x, srcCtr.y);
+    const line = svgEl("line", {
+      x1: p1.x.toFixed(1),
+      y1: p1.y.toFixed(1),
+      x2: p2.x.toFixed(1),
+      y2: p2.y.toFixed(1),
+      stroke: "#c4bcaa",
+      "stroke-width": "1",
+      "marker-end": "url(#arrow)"
+    });
+    edgeGroup.appendChild(line);
+  });
+  svg.appendChild(edgeGroup);
+
+  // --- draw nodes ---
+  const nodeGroup = svgEl("g");
+  MOCK_PIPELINE.nodes.forEach(n => {
+    const color = BLOCK_COLORS[n.type].stroke;
+    const isSelected = n.id === state.selectedBlockId;
+    const isHover = n.id === state.hoverBlockId;
+
+    const g = svgEl("g", { style: "cursor: pointer;" });
+
+    // selection/hover fill tint (subtle)
+    let bgFill = "none";
+    if (isSelected) bgFill = "rgba(62, 53, 72, 0.04)";
+    else if (isHover) bgFill = "rgba(62, 53, 72, 0.02)";
+
+    // stroke width
+    let strokeW = 2;
+    if (isSelected) strokeW = 3;
+    else if (isHover) strokeW = 2.5;
+
+    // stroke color — selected overrides to aubergine
+    const strokeColor = isSelected ? "#3e3548" : color;
+
+    const ax = n.x + CANVAS_PAD;
+    const ay = n.y + CANVAS_PAD;
+
+    if (n.shape === "parallelogram") {
+      // outlined parallelogram (skew ~12px)
+      const sk = 12;
+      const d = `M ${ax + sk} ${ay} L ${ax + BLOCK_W} ${ay} L ${ax + BLOCK_W - sk} ${ay + BLOCK_H} L ${ax} ${ay + BLOCK_H} Z`;
+      // background tint path (so click area + tint apply)
+      if (bgFill !== "none") {
+        const bgPath = svgEl("path", { d, fill: bgFill, stroke: "none" });
+        g.appendChild(bgPath);
+      }
+      const path = svgEl("path", {
+        d,
+        fill: "none",
+        stroke: strokeColor,
+        "stroke-width": strokeW,
+        "stroke-linejoin": "round"
+      });
+      g.appendChild(path);
+    } else {
+      // outlined rect
+      const rect = svgEl("rect", {
+        x: ax,
+        y: ay,
+        width: BLOCK_W,
+        height: BLOCK_H,
+        rx: BLOCK_RX,
+        ry: BLOCK_RX,
+        fill: bgFill,
+        stroke: strokeColor,
+        "stroke-width": strokeW
+      });
+      g.appendChild(rect);
+    }
+
+    // label — category color normally, aubergine when selected
+    const labelColor = isSelected ? "#3e3548" : color;
+    const text = svgEl("text", {
+      x: ax + BLOCK_W / 2,
+      y: ay + BLOCK_H / 2 + 4,
+      "text-anchor": "middle",
+      "font-family": "Inter, sans-serif",
+      "font-size": "13",
+      "font-weight": "600",
+      fill: labelColor
+    });
+    text.textContent = n.label;
+    g.appendChild(text);
+
+    // hitbox (invisible rect over full block area so hover/click is reliable)
+    const hit = svgEl("rect", {
+      x: ax - 2,
+      y: ay - 2,
+      width: BLOCK_W + 4,
+      height: BLOCK_H + 4,
+      fill: "transparent",
+      stroke: "none"
+    });
+    g.appendChild(hit);
+
+    g.addEventListener("click", () => {
+      state.selectedBlockId = n.id;
+      renderPipeline();
+      renderConfig();
+    });
+    g.addEventListener("mouseenter", () => {
+      state.hoverBlockId = n.id;
+      renderPipeline();
+    });
+    g.addEventListener("mouseleave", () => {
+      if (state.hoverBlockId === n.id) {
+        state.hoverBlockId = null;
+        renderPipeline();
+      }
+    });
+
+    nodeGroup.appendChild(g);
+  });
+  svg.appendChild(nodeGroup);
+}
+
+/* ---------- Section D — configuration ---------- */
+function renderConfig() {
+  const header = document.getElementById("config-header");
+  const body = document.getElementById("config-body");
+  const nodeIdx = Object.fromEntries(MOCK_PIPELINE.nodes.map(n => [n.id, n]));
+  const node = nodeIdx[state.selectedBlockId];
+  const cfg = BLOCK_CONFIGS[state.selectedBlockId];
+  header.textContent = "Configuration · " + (node ? node.label : "");
+
+  if (!cfg) {
+    body.innerHTML = '<div class="config-value" style="color: var(--tertiary);">No configuration.</div>';
+    return;
+  }
+
+  let rows = [];
+
+  if (state.selectedBlockId === "seeds") {
+    rows.push(row("Topic", escapeHtml(cfg.topic)));
+    rows.push(row("Selected", `${state.selectedSeeds.size} paper${state.selectedSeeds.size === 1 ? "" : "s"}`));
+    rows.push(row("Source", "Semantic Scholar"));
+  } else if (cfg.filters) {
+    rows.push(row("Name", escapeHtml(cfg.name)));
+    const chips = cfg.filters.map(f => `<span class="config-chip">${escapeHtml(f)}</span>`).join("");
+    rows.push(row("Filters", chips));
+    rows.push(row("Model", `<span class="mono">${escapeHtml(cfg.model)}</span>`));
+    rows.push(row("Reasoning", `<span class="mono">${escapeHtml(cfg.reasoning)}</span>`));
+  } else if (cfg.metric) {
+    rows.push(row("Metric", `<span class="mono">${escapeHtml(cfg.metric)}</span>`));
+    rows.push(row("Top K", `<span class="mono">${cfg.k}</span>`));
+    rows.push(row("Diversity", `<span class="mono">${escapeHtml(cfg.diversity)}</span>`));
+  } else if (cfg.target) {
+    rows.push(row("Target", escapeHtml(cfg.target)));
+    rows.push(row("Screener", `<span class="mono">${escapeHtml(cfg.screener)}</span>`));
+  }
+
+  body.innerHTML = rows.join("");
+}
+
+function row(label, value) {
+  return `<div class="config-row">
+    <div class="config-label">${label}</div>
+    <div class="config-value">${value}</div>
+  </div>`;
+}
+
+/* ---------- Section E — building blocks ---------- */
+function renderBuildingBlocks() {
+  const body = document.getElementById("bb-body");
+  body.innerHTML = "";
+  Object.keys(BUILDING_BLOCKS_CATALOG).forEach(cat => {
+    const wrap = document.createElement("div");
+    wrap.className = "bb-cat";
+    const header = document.createElement("div");
+    header.className = "bb-cat-header";
+    header.textContent = cat;
+    wrap.appendChild(header);
+    BUILDING_BLOCKS_CATALOG[cat].forEach(bb => {
+      const btn = document.createElement("button");
+      btn.className = "bb-chip";
+      btn.innerHTML = `
+        <div class="bb-chip-label">${escapeHtml(bb.label)}</div>
+        <div class="bb-chip-desc">${escapeHtml(bb.desc)}</div>
+      `;
+      btn.addEventListener("click", () => {
+        // eslint-disable-next-line no-console
+        console.log("building block clicked:", bb);
+      });
+      wrap.appendChild(btn);
+    });
+    body.appendChild(wrap);
+  });
+}
+
+/* ---------- Misc ---------- */
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+document.getElementById("run-btn").addEventListener("click", () => {
+  // eslint-disable-next-line no-console
+  console.log("Run pipeline clicked", { seeds: [...state.selectedSeeds] });
+});
+
+/* ---------- Init ---------- */
+renderSeeds();
+renderPipeline();
+renderConfig();
+renderBuildingBlocks();
+</script>
+</body>
+</html>
