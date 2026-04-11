@@ -48,8 +48,10 @@ USER_TEMPLATE = (
     "## Task\n"
     "Identify all references from the Reference List above that are "
     "relevant to the research topic.  For each, provide the citation "
-    "marker, the full reference entry, the title, verbatim quote(s) "
-    "showing where it is cited, and a relevance explanation.\n"
+    "marker (e.g. \"[23]\" for numbered styles, or \"(Smith et al., 2020)\" "
+    "for author-year styles), the full reference entry, the title, "
+    "verbatim quote(s) showing where it is cited, and a relevance "
+    "explanation.\n"
     "Return JSON with the key \"relevant_references\"."
 )
 
