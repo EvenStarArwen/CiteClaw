@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CiteClaw · Module B · Variant A</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ----- base ----- */
+  :root {
+    --bg:        #f5f3ee;
+    --chrome-bg: #faf8f2;
+    --panel-bg:  #fbf9f3;
+    --border:    #e4e0d4;
+    --ink-1:     #1e2735;
+    --ink-2:     #55606d;
+    --ink-3:     #7f768c;
+    --accent:    #3e3548;
+    --positive:  #5a8570;
+    --warning:   #8b5a5a;
+    --neutral:   #d6ccb8;
+    --hover-bg:  #f0ecde;
+    --btn-border:#c4bcaa;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    height: 100%;
+  }
+  .mono {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .label {
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+
+  /* ----- top bar ----- */
+  .topbar {
+    height: 48px;
+    background: var(--chrome-bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    font-size: 13px;
+    color: var(--ink-1);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .brand .dot {
+    color: var(--ink-3);
+    margin: 0 6px;
+    font-weight: 400;
+  }
+  .brand .variant {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .topbar-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .runmeta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-right: 12px;
+  }
+  button.btn {
+    appearance: none;
+    background: transparent;
+    color: var(--ink-1);
+    border: 1px solid var(--btn-border);
+    padding: 8px 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    border-radius: 2px;
+  }
+  button.btn:hover { background: var(--hover-bg); }
+  button.btn:disabled { color: var(--ink-3); cursor: not-allowed; }
+  button.btn.primary { color: var(--accent); border-color: var(--accent); }
+
+  /* ----- main layout ----- */
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr 320px;
+    height: calc(100vh - 48px);
+    overflow: hidden;
+  }
+  .col {
+    border-right: 1px solid var(--border);
+    background: var(--panel-bg);
+    overflow-y: auto;
+    min-width: 0;
+  }
+  .col:last-child { border-right: none; }
+  .col-center { background: var(--bg); }
+
+  /* ----- column headers ----- */
+  .col-head {
+    padding: 14px 16px 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-bg);
+    position: sticky; top: 0; z-index: 2;
+  }
+  .col-head .title {
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  .col-head .sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-top: 2px;
+  }
+
+  /* ----- step sidebar ----- */
+  .steplist {
+    padding: 6px 0;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 16px 22px 1fr;
+    column-gap: 8px;
+    align-items: start;
+    padding: 10px 14px 10px 13px;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--border);
+    cursor: default;
+  }
+  .step .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 6px;
+    background: var(--neutral);
+    box-shadow: 0 0 0 0 rgba(62, 53, 72, 0);
+  }
+  .step.done .dot     { background: var(--positive); }
+  .step.running .dot  { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+  .step.pending .dot  { background: var(--neutral); }
+  .step .idx {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .step .body { min-width: 0; }
+  .step .name {
+    font-size: 12px;
+    color: var(--ink-1);
+    font-weight: 600;
+  }
+  .step .desc {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: 2px;
+    line-height: 1.35;
+  }
+  .step.current {
+    background: var(--hover-bg);
+    border-left: 3px solid var(--accent);
+  }
+  .step.current .name { color: var(--accent); }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(62, 53, 72, 0.4); }
+    70%  { box-shadow: 0 0 0 6px rgba(62, 53, 72, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(62, 53, 72, 0); }
+  }
+
+  /* ----- center column content ----- */
+  .center-inner {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+  .panel {
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .panel.bare { background: var(--bg); }
+  .panel-head {
+    padding: 12px 16px 8px 16px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-head .title {
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  .panel-head .meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+
+  /* ----- metric grid (3x3) ----- */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 78px;
+  }
+  .metric {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background: var(--panel-bg);
+  }
+  .metric:nth-child(3n) { border-right: none; }
+  .metric:nth-last-child(-n+3) { border-bottom: none; }
+  .metric .label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .metric .label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+  .metric .delta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    color: var(--positive);
+    font-weight: 500;
+  }
+  .metric .delta.neg { color: var(--warning); }
+  .metric .value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--ink-1);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .metric .value .unit {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-weight: 500;
+    margin-left: 3px;
+  }
+  .metric .spark {
+    height: 12px;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  /* ----- progress strip ----- */
+  .progress-strip {
+    padding: 14px 16px 16px 16px;
+    background: var(--panel-bg);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .pbar-block + .pbar-block { margin-top: 12px; }
+  .pbar-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 5px;
+  }
+  .pbar-row .lbl {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  .pbar-row .val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-1);
+    font-weight: 600;
+  }
+  .pbar-row .val .max { color: var(--ink-3); font-weight: 400; }
+  .pbar {
+    height: 6px;
+    background: var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .pbar .fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 240ms ease;
+  }
+  .pbar.outer { height: 8px; }
+  .pbar.inner .fill { background: var(--ink-2); opacity: 0.85; }
+
+  /* ----- rejections ----- */
+  .rejections-wrap {
+    padding: 12px 16px 14px 16px;
+  }
+  .rejection-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 50px;
+    column-gap: 12px;
+    align-items: center;
+    padding: 6px 0;
+  }
+  .rejection-row .cat {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rejection-row .cat .ftype {
+    color: var(--ink-3);
+  }
+  .rbar-track {
+    height: 8px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .rbar-fill {
+    height: 100%;
+    background: var(--warning);
+    width: 0%;
+    transition: width 240ms ease;
+  }
+  .rejection-row .num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    text-align: right;
+    color: var(--ink-1);
+    font-weight: 600;
+  }
+
+  /* ----- cost breakdown ----- */
+  .cost-wrap {
+    padding: 14px 16px 16px 16px;
+  }
+  .cost-bar {
+    display: flex;
+    height: 18px;
+    width: 100%;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .cost-seg {
+    height: 100%;
+    border-right: 1px solid var(--panel-bg);
+  }
+  .cost-seg:last-child { border-right: none; }
+  .cost-legend {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 18px;
+    row-gap: 6px;
+  }
+  .cost-legend .item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .cost-legend .swatch {
+    width: 9px; height: 9px; flex: 0 0 9px;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  .cost-legend .nm {
+    font-family: 'Inter', sans-serif;
+    color: var(--ink-2);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cost-legend .val {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-1);
+    font-weight: 600;
+    font-size: 11px;
+  }
+
+  /* ----- accept stream ----- */
+  .stream {
+    padding: 0;
+  }
+  .accept {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    transition: background 120ms ease;
+  }
+  .accept.fresh {
+    animation: slidein 380ms ease;
+    background: rgba(90, 133, 112, 0.06);
+  }
+  .accept .title {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-1);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .accept .meta {
+    margin-top: 6px;
+    display: grid;
+    grid-template-columns: auto 38px 1fr 52px;
+    column-gap: 8px;
+    align-items: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .accept .meta .citn {
+    color: var(--ink-1);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .accept .meta .yr { color: var(--ink-3); }
+  .accept .meta .vn {
+    color: var(--ink-2);
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .accept .meta .sat {
+    height: 5px;
+    background: var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .accept .meta .sat .satfill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--positive);
+  }
+  @keyframes slidein {
+    0%   { opacity: 0; transform: translateY(-6px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ----- scrollbars ----- */
+  .col::-webkit-scrollbar { width: 8px; }
+  .col::-webkit-scrollbar-track { background: transparent; }
+  .col::-webkit-scrollbar-thumb {
+    background: var(--neutral);
+    border-radius: 4px;
+  }
+  .col::-webkit-scrollbar-thumb:hover { background: var(--btn-border); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">CiteClaw <span class="dot">·</span> Module B <span class="dot">·</span> <span class="variant">Variant A</span></div>
+  <div class="topbar-right">
+    <span class="runmeta" id="runmeta">run_demo_47 · t+00:03:03</span>
+    <button class="btn primary" id="btn-sim">Simulate run</button>
+    <button class="btn" id="btn-pause" disabled>Pause</button>
+    <button class="btn" id="btn-reset">Reset</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- LEFT: STEP SIDEBAR -->
+  <aside class="col col-left">
+    <div class="col-head">
+      <div class="title">Pipeline</div>
+      <div class="sub" id="step-sub">8 steps · 3 done · 1 running</div>
+    </div>
+    <div class="steplist" id="steplist"></div>
+  </aside>
+
+  <!-- CENTER: METRICS / PROGRESS / REJECTIONS / COST -->
+  <main class="col col-center">
+    <div class="center-inner">
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="title">Metrics</div>
+          <div class="meta" id="metrics-meta">live · 1s tick</div>
+        </div>
+        <div class="metric-grid" id="metric-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="title">Progress</div>
+          <div class="meta" id="progress-meta">step 4/8</div>
+        </div>
+        <div class="progress-strip">
+          <div class="pbar-block">
+            <div class="pbar-row">
+              <div class="lbl" id="outer-lbl">Source papers processed</div>
+              <div class="val"><span id="outer-val">47</span><span class="max"> / <span id="outer-max">120</span></span></div>
+            </div>
+            <div class="pbar outer"><div class="fill" id="outer-fill" style="width:39%"></div></div>
+          </div>
+          <div class="pbar-block">
+            <div class="pbar-row">
+              <div class="lbl" id="inner-lbl">Fetching citations of step 3 anchor</div>
+              <div class="val"><span id="inner-val">8</span><span class="max"> / <span id="inner-max">30</span></span></div>
+            </div>
+            <div class="pbar inner"><div class="fill" id="inner-fill" style="width:27%"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="title">Rejections</div>
+          <div class="meta" id="rej-meta">225 total</div>
+        </div>
+        <div class="rejections-wrap" id="rejections"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="title">Cost breakdown</div>
+          <div class="meta"><span id="cost-total">$2.34</span> · <span id="cost-budget">12% of budget</span></div>
+        </div>
+        <div class="cost-wrap">
+          <div class="cost-bar" id="cost-bar"></div>
+          <div class="cost-legend" id="cost-legend"></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- RIGHT: ACCEPTANCE STREAM -->
+  <aside class="col col-right">
+    <div class="col-head">
+      <div class="title" id="accept-head">Accepted (47)</div>
+      <div class="sub" id="accept-sub">most recent first</div>
+    </div>
+    <div class="stream" id="stream"></div>
+  </aside>
+
+</div>
+
+<script>
+// =====================================================================
+// MOCK STATE
+// =====================================================================
+const MOCK_STATE = {
+  run_id: "run_demo_47",
+  started_ago_sec: 183,
+  steps: [
+    { idx: 0, name: "LoadSeeds",       desc: "Load initial seed papers",                    status: "done"    },
+    { idx: 1, name: "ExpandForward",   desc: "Fetch citers of accepted papers",             status: "done"    },
+    { idx: 2, name: "ExpandBackward",  desc: "Fetch references of accepted papers",         status: "done"    },
+    { idx: 3, name: "ExpandForward",   desc: "Second forward pass after rerank",            status: "running" },
+    { idx: 4, name: "Cluster",         desc: "Topic-model cluster of forward papers",       status: "pending" },
+    { idx: 5, name: "Rerank",          desc: "PageRank rerank with cluster diversity",      status: "pending" },
+    { idx: 6, name: "ExpandByAuthor",  desc: "Expand via top-K authors",                    status: "pending" },
+    { idx: 7, name: "Finalize",        desc: "Write outputs",                               status: "pending" }
+  ],
+  current_step_idx: 3,
+  metrics: {
+    llm_input_tokens: 187000,
+    llm_output_tokens: 23400,
+    llm_reasoning_tokens: 56200,
+    llm_calls: 312,
+    s2_requests: 1847,
+    s2_cache_hits: 923,
+    accepted: 47,
+    seen: 312,
+    cost_usd: 2.34,
+    budget_used_pct: 12
+  },
+  rejections: {
+    "LLMFilter:TopicMismatch": 87,
+    "CitationFilter:LowCitations": 45,
+    "YearFilter:OutOfRange": 34,
+    "SimilarityFilter:Unrelated": 28,
+    "LLMFilter:NotNovel": 19,
+    "LLMFilter:Survey": 12
+  },
+  progress: {
+    outer: { value: 47, max: 120, label: "Source papers processed" },
+    inner: { value: 8,  max: 30,  label: "Fetching citations of step 3 anchor" }
+  },
+  cost_breakdown: {
+    "LLMFilter:title":    0.42,
+    "LLMFilter:abstract": 1.08,
+    "ExpandBySearch agent": 0.55,
+    "Annotation":         0.18,
+    "Topic clustering":   0.11
+  },
+  recent_accepts: [
+    { title: "AlphaFold 3: All-atom structure prediction across biomolecules", citations: 820,  year: 2024, venue: "Nature",        saturation: 0.92 },
+    { title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure", citations: 2100, year: 2023, venue: "Science",     saturation: 0.88 },
+    { title: "High-Resolution Image Synthesis with Latent Diffusion", citations: 5200, year: 2022, venue: "CVPR",      saturation: 0.85 },
+    { title: "LLaMA 2: Open Foundation and Fine-Tuned Chat Models", citations: 2600, year: 2023, venue: "arXiv",     saturation: 0.82 },
+    { title: "RFdiffusion: Broadly applicable and accurate protein design", citations: 1400, year: 2023, venue: "Nature",     saturation: 0.79 },
+    { title: "Consistency Models",                                 citations: 1300, year: 2023, venue: "ICML",      saturation: 0.77 },
+    { title: "Graphormer: Do Transformers Really Perform Badly for Graphs",  citations: 1300, year: 2021, venue: "NeurIPS",   saturation: 0.74 },
+    { title: "SDXL: Improving latent diffusion for high-resolution synthesis", citations: 1400, year: 2024, venue: "ICLR",      saturation: 0.72 },
+    { title: "ControlNet: Adding conditional control to text-to-image",     citations: 2300, year: 2023, venue: "ICCV",      saturation: 0.71 },
+    { title: "Mistral 7B",                                         citations: 1500, year: 2023, venue: "arXiv",     saturation: 0.68 },
+    { title: "GPT-4 Technical Report",                             citations: 4200, year: 2023, venue: "arXiv",     saturation: 0.67 },
+    { title: "Chai-1: Decoding the molecular interactions of life",citations: 310,  year: 2024, venue: "bioRxiv",   saturation: 0.64 },
+    { title: "Flow Matching for Generative Modeling",              citations: 1100, year: 2023, venue: "ICLR",      saturation: 0.61 },
+    { title: "DreamBooth: Fine-tuning text-to-image for subject driven generation", citations: 1200, year: 2023, venue: "CVPR", saturation: 0.58 },
+    { title: "PaLM: Scaling Language Modeling with Pathways",      citations: 2100, year: 2023, venue: "JMLR",      saturation: 0.55 }
+  ]
+};
+
+// muted swatches for cost categories — sage / wheat / accent / ink-2 / warning
+const COST_COLORS = ["#3e3548", "#5a8570", "#7f768c", "#d6ccb8", "#8b5a5a"];
+
+// deep clone for reset
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+// formatters
+function fmtInt(n) { return Math.round(n).toLocaleString("en-US"); }
+function fmtK(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+  return String(Math.round(n));
+}
+function fmtUSD(n) { return "$" + n.toFixed(2); }
+function fmtPct(n) { return Math.round(n) + "%"; }
+function fmtTime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return (
+    "t+" +
+    String(h).padStart(2, "0") + ":" +
+    String(m).padStart(2, "0") + ":" +
+    String(s).padStart(2, "0")
+  );
+}
+
+// =====================================================================
+// STATE
+// =====================================================================
+let state = clone(MOCK_STATE);
+let simTimer = null;
+let tickCount = 0;
+const SIM_DURATION_TICKS = 15;   // ~15 ticks of 1s
+
+// =====================================================================
+// RENDER: STEP SIDEBAR
+// =====================================================================
+function renderSteps() {
+  const root = document.getElementById("steplist");
+  root.innerHTML = "";
+  let done = 0, running = 0;
+  state.steps.forEach((s) => {
+    if (s.status === "done") done++;
+    if (s.status === "running") running++;
+    const row = document.createElement("div");
+    row.className = "step " + s.status + (s.idx === state.current_step_idx ? " current" : "");
+    row.innerHTML =
+      '<span class="dot"></span>' +
+      '<span class="idx">' + String(s.idx).padStart(2, "0") + '</span>' +
+      '<div class="body">' +
+        '<div class="name">' + escapeHtml(s.name) + '</div>' +
+        '<div class="desc">' + escapeHtml(s.desc) + '</div>' +
+      '</div>';
+    root.appendChild(row);
+  });
+  document.getElementById("step-sub").textContent =
+    state.steps.length + " steps · " + done + " done · " + running + " running";
+  document.getElementById("progress-meta").textContent =
+    "step " + (state.current_step_idx + 1) + "/" + state.steps.length;
+}
+
+// =====================================================================
+// RENDER: METRIC GRID (3x3)
+// =====================================================================
+function renderMetrics() {
+  const m = state.metrics;
+  const cacheHitPct = m.s2_requests > 0 ? (m.s2_cache_hits / m.s2_requests * 100) : 0;
+  const acceptanceStr = m.accepted + "/" + m.seen;
+  const cells = [
+    { lbl: "LLM IN",       val: fmtK(m.llm_input_tokens),     unit: "tok", delta: "+1.2k" },
+    { lbl: "LLM OUT",      val: fmtK(m.llm_output_tokens),    unit: "tok", delta: "+180" },
+    { lbl: "LLM REASON",   val: fmtK(m.llm_reasoning_tokens), unit: "tok", delta: "+520" },
+    { lbl: "LLM CALLS",    val: fmtInt(m.llm_calls),          unit: "",    delta: "+3"  },
+    { lbl: "S2 REQUESTS",  val: fmtInt(m.s2_requests),        unit: "",    delta: "+12" },
+    { lbl: "S2 CACHE",     val: fmtPct(cacheHitPct),          unit: "",    delta: cacheHitPct > 50 ? "+0.4pt" : "-0.1pt", neg: cacheHitPct <= 50 },
+    { lbl: "ACCEPT/SEEN",  val: acceptanceStr,                unit: "",    delta: "+1" },
+    { lbl: "COST",         val: fmtUSD(m.cost_usd),           unit: "",    delta: "+$0.04" },
+    { lbl: "BUDGET",       val: m.budget_used_pct,            unit: "%",   delta: "+0.3pt" }
+  ];
+  const grid = document.getElementById("metric-grid");
+  grid.innerHTML = "";
+  cells.forEach((c) => {
+    const cell = document.createElement("div");
+    cell.className = "metric";
+    const valStr = (typeof c.val === "number" ? fmtInt(c.val) : c.val);
+    cell.innerHTML =
+      '<div class="label-row">' +
+        '<span class="label">' + c.lbl + '</span>' +
+        '<span class="delta' + (c.neg ? ' neg' : '') + '">' + c.delta + '</span>' +
+      '</div>' +
+      '<div class="value">' + valStr +
+        (c.unit ? '<span class="unit">' + c.unit + '</span>' : '') +
+      '</div>';
+    grid.appendChild(cell);
+  });
+  document.getElementById("metrics-meta").textContent =
+    "live · " + (simTimer ? "ticking" : "snapshot");
+}
+
+// =====================================================================
+// RENDER: PROGRESS
+// =====================================================================
+function renderProgress() {
+  const o = state.progress.outer;
+  const i = state.progress.inner;
+  document.getElementById("outer-lbl").textContent = o.label;
+  document.getElementById("outer-val").textContent = o.value;
+  document.getElementById("outer-max").textContent = o.max;
+  document.getElementById("outer-fill").style.width = (o.value / o.max * 100).toFixed(1) + "%";
+  document.getElementById("inner-lbl").textContent = i.label;
+  document.getElementById("inner-val").textContent = i.value;
+  document.getElementById("inner-max").textContent = i.max;
+  document.getElementById("inner-fill").style.width = (i.value / i.max * 100).toFixed(1) + "%";
+}
+
+// =====================================================================
+// RENDER: REJECTIONS
+// =====================================================================
+function renderRejections() {
+  const root = document.getElementById("rejections");
+  root.innerHTML = "";
+  const entries = Object.entries(state.rejections).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const max = entries.length ? entries[0][1] : 1;
+  let total = 0;
+  entries.forEach(([cat, count]) => {
+    total += count;
+    const [ftype, reason] = cat.split(":");
+    const row = document.createElement("div");
+    row.className = "rejection-row";
+    row.innerHTML =
+      '<div class="cat" title="' + escapeHtml(cat) + '">' +
+        '<span class="ftype">' + escapeHtml(ftype) + ':</span>' +
+        escapeHtml(reason) +
+      '</div>' +
+      '<div class="rbar-track"><div class="rbar-fill" style="width:' +
+        ((count / max) * 100).toFixed(1) + '%"></div></div>' +
+      '<div class="num">' + count + '</div>';
+    root.appendChild(row);
+  });
+  // include all rejections, not just top 6, in total
+  const fullTotal = Object.values(state.rejections).reduce((a, b) => a + b, 0);
+  document.getElementById("rej-meta").textContent = fullTotal + " total";
+}
+
+// =====================================================================
+// RENDER: COST BREAKDOWN
+// =====================================================================
+function renderCost() {
+  const entries = Object.entries(state.cost_breakdown);
+  const total = entries.reduce((a, [, v]) => a + v, 0);
+  const bar = document.getElementById("cost-bar");
+  bar.innerHTML = "";
+  const legend = document.getElementById("cost-legend");
+  legend.innerHTML = "";
+  entries.forEach(([nm, v], i) => {
+    const w = total > 0 ? (v / total * 100) : 0;
+    const color = COST_COLORS[i % COST_COLORS.length];
+    const seg = document.createElement("div");
+    seg.className = "cost-seg";
+    seg.style.width = w.toFixed(2) + "%";
+    seg.style.background = color;
+    seg.title = nm + " " + fmtUSD(v);
+    bar.appendChild(seg);
+
+    const item = document.createElement("div");
+    item.className = "item";
+    item.innerHTML =
+      '<div class="swatch" style="background:' + color + '"></div>' +
+      '<div class="nm" title="' + escapeHtml(nm) + '">' + escapeHtml(nm) + '</div>' +
+      '<div class="val">' + fmtUSD(v) + '</div>';
+    legend.appendChild(item);
+  });
+  document.getElementById("cost-total").textContent = fmtUSD(state.metrics.cost_usd);
+  document.getElementById("cost-budget").textContent = state.metrics.budget_used_pct + "% of budget";
+}
+
+// =====================================================================
+// RENDER: ACCEPT STREAM
+// =====================================================================
+function renderStream(freshIdx /* may be undefined */) {
+  const root = document.getElementById("stream");
+  root.innerHTML = "";
+  state.recent_accepts.forEach((p, i) => {
+    const item = document.createElement("div");
+    item.className = "accept" + (i === freshIdx ? " fresh" : "");
+    const satW = Math.round(p.saturation * 50);
+    item.innerHTML =
+      '<div class="title">' + escapeHtml(p.title) + '</div>' +
+      '<div class="meta">' +
+        '<span class="citn">' + fmtInt(p.citations) + '</span>' +
+        '<span class="yr">' + p.year + '</span>' +
+        '<span class="vn">' + escapeHtml(p.venue) + '</span>' +
+        '<span class="sat" title="saturation ' + p.saturation.toFixed(2) + '">' +
+          '<span class="satfill" style="width:' + satW + 'px"></span>' +
+        '</span>' +
+      '</div>';
+    root.appendChild(item);
+  });
+  document.getElementById("accept-head").textContent = "Accepted (" + state.metrics.accepted + ")";
+}
+
+// =====================================================================
+// MISC
+// =====================================================================
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function renderAll() {
+  renderSteps();
+  renderMetrics();
+  renderProgress();
+  renderRejections();
+  renderCost();
+  renderStream();
+  document.getElementById("runmeta").textContent =
+    state.run_id + " · " + fmtTime(state.started_ago_sec);
+}
+
+// =====================================================================
+// SIMULATION
+// =====================================================================
+function startSim() {
+  if (simTimer) return;
+  document.getElementById("btn-sim").disabled = true;
+  document.getElementById("btn-pause").disabled = false;
+  tickCount = 0;
+  simTimer = setInterval(simTick, 1000);
+  document.getElementById("metrics-meta").textContent = "live · ticking";
+}
+function pauseSim() {
+  if (!simTimer) return;
+  clearInterval(simTimer);
+  simTimer = null;
+  document.getElementById("btn-sim").disabled = false;
+  document.getElementById("btn-pause").disabled = true;
+  document.getElementById("metrics-meta").textContent = "live · paused";
+}
+function resetSim() {
+  pauseSim();
+  state = clone(MOCK_STATE);
+  tickCount = 0;
+  renderAll();
+  document.getElementById("metrics-meta").textContent = "live · snapshot";
+}
+
+function simTick() {
+  tickCount++;
+  state.started_ago_sec += 1;
+
+  // metrics
+  const m = state.metrics;
+  m.llm_input_tokens     += Math.floor(900 + Math.random() * 600);
+  m.llm_output_tokens    += Math.floor(120 + Math.random() * 100);
+  m.llm_reasoning_tokens += Math.floor(380 + Math.random() * 220);
+  m.llm_calls            += (Math.random() < 0.6 ? 2 : 3);
+  m.s2_requests          += Math.floor(8 + Math.random() * 8);
+  m.s2_cache_hits        += Math.floor(4 + Math.random() * 5);
+  if (Math.random() < 0.6) m.accepted += 1;
+  m.seen                 += Math.floor(2 + Math.random() * 4);
+  m.cost_usd              = +(m.cost_usd + 0.03 + Math.random() * 0.04).toFixed(2);
+  m.budget_used_pct       = Math.min(100, +(m.budget_used_pct + 0.3 + Math.random() * 0.2).toFixed(1));
+
+  // rejections grow slightly
+  Object.keys(state.rejections).forEach((k) => {
+    if (Math.random() < 0.5) state.rejections[k] += Math.floor(1 + Math.random() * 3);
+  });
+
+  // progress
+  const p = state.progress;
+  if (p.inner.value < p.inner.max) p.inner.value = Math.min(p.inner.max, p.inner.value + 1);
+  if (Math.random() < 0.5 && p.outer.value < p.outer.max) {
+    p.outer.value = Math.min(p.outer.max, p.outer.value + 1);
+  }
+
+  // cost breakdown grows proportionally-ish
+  const costKeys = Object.keys(state.cost_breakdown);
+  costKeys.forEach((k) => {
+    state.cost_breakdown[k] = +(state.cost_breakdown[k] + 0.01 + Math.random() * 0.025).toFixed(3);
+  });
+
+  // prepend a new accept every tick (cycle through mock pool)
+  const pool = MOCK_STATE.recent_accepts;
+  const fresh = clone(pool[tickCount % pool.length]);
+  // jitter the citations a bit so it doesn't look identical
+  fresh.citations = Math.round(fresh.citations * (0.9 + Math.random() * 0.2));
+  fresh.saturation = Math.max(0.4, Math.min(0.99, fresh.saturation - tickCount * 0.005));
+  state.recent_accepts = [fresh, ...state.recent_accepts].slice(0, 24);
+
+  // re-render everything; the freshly-prepended item is at index 0
+  renderSteps();
+  renderMetrics();
+  renderProgress();
+  renderRejections();
+  renderCost();
+  renderStream(0);
+  document.getElementById("runmeta").textContent =
+    state.run_id + " · " + fmtTime(state.started_ago_sec);
+
+  // stop after duration
+  if (tickCount >= SIM_DURATION_TICKS) {
+    pauseSim();
+    document.getElementById("metrics-meta").textContent = "live · finished";
+  }
+}
+
+// =====================================================================
+// WIRE
+// =====================================================================
+document.getElementById("btn-sim").addEventListener("click", startSim);
+document.getElementById("btn-pause").addEventListener("click", pauseSim);
+document.getElementById("btn-reset").addEventListener("click", resetSim);
+
+renderAll();
+</script>
+
+</body>
+</html>

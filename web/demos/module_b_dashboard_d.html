@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CiteClaw — Live Briefing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #f5f3ee;
+    --chrome:    #faf8f2;
+    --panel:     #fbf9f3;
+    --border:    #e4e0d4;
+    --ink:       #1e2735;
+    --ink-2:     #55606d;
+    --ink-3:     #7f768c;
+    --accent:    #3e3548;
+    --positive:  #5a8570;
+    --warning:   #8b5a5a;
+    --serif:     'Source Serif 4', Georgia, serif;
+    --sans:      'Inter', system-ui, sans-serif;
+    --mono:      'IBM Plex Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ───────────── top chrome ───────────── */
+  .topbar {
+    height: 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .brand .sub {
+    font-family: var(--sans);
+    font-weight: 400;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    margin-left: 8px;
+  }
+  .topbtns { display: flex; gap: 8px; }
+  button.btn {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid #c4bcaa;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-radius: 1px;
+    letter-spacing: 0.02em;
+  }
+  button.btn:hover { background: #f0ecde; }
+  button.btn:disabled { color: var(--ink-3); cursor: default; }
+  button.btn:disabled:hover { background: transparent; }
+
+  /* ───────────── article ───────────── */
+  article.briefing {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 56px 96px 56px;
+  }
+  .kicker {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .kicker .dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--positive);
+    vertical-align: middle;
+    margin-right: 8px;
+    transform: translateY(-1px);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+  }
+  h1.title {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 42px;
+    line-height: 1.15;
+    color: var(--ink);
+    margin: 0 0 14px 0;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 18px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    margin: 0 0 28px 0;
+  }
+  .rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0 0 36px 0;
+  }
+  .rule.short {
+    width: 60px;
+    border-top: 1px solid var(--ink-3);
+    margin: 36px 0;
+  }
+
+  /* ───────────── prose ───────────── */
+  p.prose {
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.75;
+    color: var(--ink);
+    margin: 0 0 28px 0;
+  }
+  p.prose .num {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 15px;
+    color: var(--ink);
+    background: rgba(62, 53, 72, 0.05);
+    padding: 1px 5px;
+    border-radius: 2px;
+    letter-spacing: -0.01em;
+  }
+  p.prose em {
+    font-style: italic;
+    color: var(--ink-2);
+  }
+  .section-mark {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 36px 0 18px 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .section-mark::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ───────────── stacked rejection chart ───────────── */
+  figure.embedded {
+    margin: 24px 0 32px 0;
+    padding: 0;
+  }
+  .stacked-bar {
+    width: 100%;
+    height: 36px;
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+  .stacked-seg {
+    height: 100%;
+    transition: width 0.5s ease;
+    position: relative;
+  }
+  .stacked-seg.acc { background: var(--positive); }
+  .stacked-seg.r1  { background: #3e3548; }
+  .stacked-seg.r2  { background: #55485f; }
+  .stacked-seg.r3  { background: #6b5b76; }
+  .stacked-seg.r4  { background: #826f8d; }
+  .stacked-seg.r5  { background: #9883a3; }
+  .stacked-seg.r6  { background: #ae97b9; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 22px;
+    margin-top: 12px;
+    font-family: var(--serif);
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .legend .swatch {
+    display: inline-block;
+    width: 9px; height: 9px;
+    margin-right: 6px;
+    vertical-align: middle;
+    transform: translateY(-1px);
+  }
+  .legend .ct {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    margin-left: 4px;
+  }
+  figcaption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-top: 14px;
+    line-height: 1.5;
+    padding-left: 14px;
+    border-left: 2px solid var(--border);
+  }
+
+  /* ───────────── tables ───────────── */
+  table.editorial {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 32px 0;
+    font-family: var(--serif);
+    font-size: 15px;
+  }
+  table.editorial thead th {
+    text-align: left;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 10px 12px;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--border);
+  }
+  table.editorial thead th.right { text-align: right; }
+  table.editorial tbody td {
+    padding: 11px 12px;
+    color: var(--ink);
+    border-bottom: 1px solid #ede8db;
+  }
+  table.editorial tbody tr:nth-child(even) td {
+    background: rgba(62, 53, 72, 0.03);
+  }
+  table.editorial tbody tr:last-child td { border-bottom: 1px solid var(--ink); }
+  table.editorial td.num {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  table.editorial td.frac {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    width: 70px;
+  }
+
+  /* ───────────── inline metric row ───────────── */
+  .metric-row {
+    margin: 6px 0 36px 0;
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+    line-height: 1.6;
+  }
+  .metric-row .pair {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .metric-row .lbl {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .metric-row .val {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .metric-row .sep {
+    font-family: var(--serif);
+    font-size: 14px;
+    color: var(--border);
+  }
+
+  /* ───────────── acceptance stream ───────────── */
+  ol.accepts {
+    list-style: none;
+    counter-reset: ac;
+    padding: 0;
+    margin: 8px 0 24px 0;
+    max-height: 470px;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+  ol.accepts::-webkit-scrollbar { width: 6px; }
+  ol.accepts::-webkit-scrollbar-track { background: transparent; }
+  ol.accepts::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ol.accepts li {
+    counter-increment: ac;
+    padding: 14px 0;
+    border-bottom: 1px solid #ede8db;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    position: relative;
+    transition: background 0.6s ease;
+  }
+  ol.accepts li:first-child { padding-top: 8px; }
+  ol.accepts li.fresh { background: rgba(90, 133, 112, 0.07); }
+  ol.accepts li::before {
+    content: counter(ac, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    flex: 0 0 28px;
+    padding-top: 3px;
+  }
+  ol.accepts .body {
+    flex: 1;
+    min-width: 0;
+  }
+  ol.accepts .pt {
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.4;
+    color: var(--ink);
+    font-weight: 400;
+  }
+  ol.accepts .meta {
+    font-family: var(--serif);
+    font-size: 12px;
+    color: var(--ink-3);
+    font-style: italic;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  ol.accepts .meta .cit {
+    font-family: var(--mono);
+    font-style: normal;
+    color: var(--ink);
+    font-size: 11px;
+  }
+  ol.accepts .meta .ven {
+    font-family: var(--sans);
+    font-style: normal;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-right: 4px;
+  }
+  ol.accepts .sat {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 5px;
+  }
+  ol.accepts .sat .pip {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--positive);
+  }
+  ol.accepts .sat .satval {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .pager {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+    text-align: right;
+    margin-top: 4px;
+  }
+  .pager .arrow {
+    font-style: normal;
+    margin-left: 4px;
+  }
+
+  /* ───────────── progress strip ───────────── */
+  .progress-strip {
+    margin: 36px 0 32px 0;
+    padding: 18px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .progress-strip .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .progress-strip .row:last-child { margin-bottom: 0; }
+  .progress-strip .label {
+    flex: 0 0 240px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 11px;
+    color: var(--ink-3);
+    line-height: 1.4;
+  }
+  .progress-strip .bar {
+    flex: 1;
+    height: 5px;
+    background: #ece6d6;
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-strip .fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.5s ease;
+  }
+  .progress-strip .row.inner .fill { background: var(--positive); }
+  .progress-strip .frac {
+    flex: 0 0 70px;
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ───────────── steps strip ───────────── */
+  .steps-strip {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 12px 0 28px 0;
+    padding: 0;
+    flex-wrap: wrap;
+  }
+  .steps-strip .step {
+    font-family: var(--sans);
+    font-size: 10px;
+    color: var(--ink-3);
+    padding: 5px 9px;
+    border: 1px solid transparent;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .steps-strip .step.done { color: var(--ink-2); }
+  .steps-strip .step.running {
+    color: var(--ink);
+    border: 1px solid var(--accent);
+    background: rgba(62, 53, 72, 0.06);
+    font-weight: 600;
+  }
+  .steps-strip .step.pending { color: var(--ink-3); opacity: 0.55; }
+  .steps-strip .arrow {
+    color: var(--ink-3);
+    font-size: 10px;
+    padding: 0 3px;
+    opacity: 0.5;
+  }
+
+  /* ───────────── colophon ───────────── */
+  .colophon {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 11px;
+    color: var(--ink-3);
+    line-height: 1.6;
+    text-align: center;
+  }
+  .colophon .tag {
+    font-family: var(--sans);
+    font-style: normal;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  /* drop cap */
+  .dropcap::first-letter {
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 56px;
+    line-height: 0.9;
+    float: left;
+    padding: 6px 8px 0 0;
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <!-- ───────────── top chrome ───────────── -->
+  <div class="topbar">
+    <div class="brand">CiteClaw <span class="sub">live briefing · editorial</span></div>
+    <div class="topbtns">
+      <button class="btn" id="btnSim">Simulate run</button>
+      <button class="btn" id="btnPause" disabled>Pause</button>
+      <button class="btn" id="btnReset">Reset</button>
+    </div>
+  </div>
+
+  <article class="briefing">
+    <div class="kicker"><span class="dot"></span>filed live · run <span id="runId">run_demo_47</span></div>
+    <h1 class="title" id="hTitle">Run run_demo_47</h1>
+    <p class="subtitle" id="subtitle">A live briefing — started 3 minutes ago, currently executing step 4 of 8.</p>
+    <hr class="rule">
+
+    <div class="steps-strip" id="stepsStrip"></div>
+
+    <p class="prose dropcap" id="prose1">
+      As of this writing, CiteClaw has examined <span class="num" id="np_seen">312</span>
+      candidate papers and accepted <span class="num" id="np_acc">47</span> of them — a selectivity of
+      <span class="num" id="np_sel">15.1%</span>. The pipeline is currently running <em>ExpandForward</em>,
+      its second forward pass after rerank, fetching citations for the rerank-selected anchors.
+    </p>
+
+    <div class="section-mark">Figure 1 — Disposition of candidates</div>
+    <figure class="embedded">
+      <div class="stacked-bar" id="stackedBar"></div>
+      <div class="legend" id="legend"></div>
+      <figcaption id="cap1">
+        Of <span id="cap_seen">312</span> candidate papers retrieved so far, <span id="cap_acc">47</span> were
+        accepted by the screening pipeline. The remaining <span id="cap_rej">265</span> were rejected across
+        six filter categories, the largest being LLM topic mismatch.
+      </figcaption>
+    </figure>
+
+    <p class="prose" id="prose2">
+      Of the <span class="num" id="np_rej">265 rejected</span> papers, the plurality were caught by the LLM
+      topic-match filter (<span class="num" id="np_r1">87</span>), followed by a citation-count threshold
+      (<span class="num" id="np_r2">45</span>) and a year window (<span class="num" id="np_r3">34</span>).
+      The remaining were filtered by similarity, novelty, or survey-detection heuristics.
+    </p>
+
+    <div class="section-mark">Table 1 — Rejection breakdown</div>
+    <table class="editorial" id="rejTable">
+      <thead>
+        <tr><th>Category</th><th class="right">Count</th><th class="right">Share</th></tr>
+      </thead>
+      <tbody id="rejTbody"></tbody>
+    </table>
+
+    <p class="prose" id="prose3">
+      Token usage stands at <span class="num" id="np_tot">266K</span> total LLM tokens (input, output, and
+      reasoning combined), across <span class="num" id="np_calls">312</span> LLM calls. Semantic Scholar
+      has been queried <span class="num" id="np_s2">1,847</span> times with a
+      <span class="num" id="np_cache">50%</span> cache hit rate. Estimated total spend so far:
+      <span class="num" id="np_cost">$2.34</span>.
+    </p>
+
+    <div class="metric-row" id="metricRow"></div>
+
+    <div class="section-mark">Recently accepted</div>
+    <p class="prose" style="margin-bottom:8px;">
+      Most recently accepted papers include the following — listed in order of estimated topical saturation,
+      a soft heuristic that decays as the network grows redundant:
+    </p>
+    <ol class="accepts" id="acList"></ol>
+    <div class="pager">showing 1–<span id="pageShow">15</span> of <span id="pageTot">15</span> <span class="arrow">·  older ›</span></div>
+
+    <hr class="rule short">
+
+    <div class="section-mark">Live progress</div>
+    <div class="progress-strip">
+      <div class="row outer">
+        <div class="label" id="outerLabel">Source papers processed</div>
+        <div class="bar"><div class="fill" id="outerFill" style="width:39%"></div></div>
+        <div class="frac" id="outerFrac">47 / 120</div>
+      </div>
+      <div class="row inner">
+        <div class="label" id="innerLabel">Fetching citations of step 3 anchor</div>
+        <div class="bar"><div class="fill" id="innerFill" style="width:27%"></div></div>
+        <div class="frac" id="innerFrac">8 / 30</div>
+      </div>
+    </div>
+
+    <div class="section-mark">Cost ledger</div>
+    <table class="editorial" id="costTable">
+      <thead>
+        <tr><th>Component</th><th class="right">USD</th><th class="right">Share</th></tr>
+      </thead>
+      <tbody id="costTbody"></tbody>
+    </table>
+
+    <div class="colophon">
+      <span class="tag">Colophon</span>
+      Set in Source Serif 4 with IBM Plex Mono for figures.
+      Briefing compiled live from <span style="font-family:var(--mono);font-style:normal;">Context.metrics</span>;
+      figures regenerate each pipeline tick.
+    </div>
+  </article>
+
+<script>
+"use strict";
+
+const MOCK_STATE = {
+  run_id: "run_demo_47",
+  started_ago_sec: 183,
+  steps: [
+    { idx: 0, name: "LoadSeeds",      desc: "Load initial seed papers",               status: "done"    },
+    { idx: 1, name: "ExpandForward",  desc: "Fetch citers of accepted papers",        status: "done"    },
+    { idx: 2, name: "ExpandBackward", desc: "Fetch references of accepted papers",    status: "done"    },
+    { idx: 3, name: "ExpandForward",  desc: "Second forward pass after rerank",       status: "running" },
+    { idx: 4, name: "Cluster",        desc: "Topic-model cluster of forward papers",  status: "pending" },
+    { idx: 5, name: "Rerank",         desc: "PageRank rerank with cluster diversity", status: "pending" },
+    { idx: 6, name: "ExpandByAuthor", desc: "Expand via top-K authors",               status: "pending" },
+    { idx: 7, name: "Finalize",       desc: "Write outputs",                          status: "pending" }
+  ],
+  current_step_idx: 3,
+  metrics: { llm_input_tokens: 187000, llm_output_tokens: 23400, llm_reasoning_tokens: 56200, llm_calls: 312, s2_requests: 1847, s2_cache_hits: 923, accepted: 47, seen: 312, cost_usd: 2.34, budget_used_pct: 12 },
+  rejections: { "LLMFilter:TopicMismatch": 87, "CitationFilter:LowCitations": 45, "YearFilter:OutOfRange": 34, "SimilarityFilter:Unrelated": 28, "LLMFilter:NotNovel": 19, "LLMFilter:Survey": 12 },
+  progress: { outer: { value: 47, max: 120, label: "Source papers processed" }, inner: { value: 8, max: 30, label: "Fetching citations of step 3 anchor" } },
+  cost_breakdown: { "LLMFilter:title": 0.42, "LLMFilter:abstract": 1.08, "ExpandBySearch agent": 0.55, "Annotation": 0.18, "Topic clustering": 0.11 },
+  recent_accepts: [
+    { title: "AlphaFold 3: All-atom structure prediction across biomolecules",         citations: 820,  year: 2024, venue: "Nature",    saturation: 0.92 },
+    { title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure", citations: 2100, year: 2023, venue: "Science",   saturation: 0.88 },
+    { title: "High-Resolution Image Synthesis with Latent Diffusion",                    citations: 5200, year: 2022, venue: "CVPR",      saturation: 0.85 },
+    { title: "LLaMA 2: Open Foundation and Fine-Tuned Chat Models",                      citations: 2600, year: 2023, venue: "arXiv",     saturation: 0.82 },
+    { title: "RFdiffusion: Broadly applicable and accurate protein design",              citations: 1400, year: 2023, venue: "Nature",    saturation: 0.79 },
+    { title: "Consistency Models",                                                       citations: 1300, year: 2023, venue: "ICML",      saturation: 0.77 },
+    { title: "Graphormer: Do Transformers Really Perform Badly for Graphs",              citations: 1300, year: 2021, venue: "NeurIPS",   saturation: 0.74 },
+    { title: "SDXL: Improving latent diffusion for high-resolution synthesis",           citations: 1400, year: 2024, venue: "ICLR",      saturation: 0.72 },
+    { title: "ControlNet: Adding conditional control to text-to-image",                  citations: 2300, year: 2023, venue: "ICCV",      saturation: 0.71 },
+    { title: "Mistral 7B",                                                               citations: 1500, year: 2023, venue: "arXiv",     saturation: 0.68 },
+    { title: "GPT-4 Technical Report",                                                   citations: 4200, year: 2023, venue: "arXiv",     saturation: 0.67 },
+    { title: "Chai-1: Decoding the molecular interactions of life",                      citations: 310,  year: 2024, venue: "bioRxiv",   saturation: 0.64 },
+    { title: "Flow Matching for Generative Modeling",                                    citations: 1100, year: 2023, venue: "ICLR",      saturation: 0.61 },
+    { title: "DreamBooth: Fine-tuning text-to-image for subject driven generation",      citations: 1200, year: 2023, venue: "CVPR",      saturation: 0.58 },
+    { title: "PaLM: Scaling Language Modeling with Pathways",                            citations: 2100, year: 2023, venue: "JMLR",      saturation: 0.55 }
+  ]
+};
+
+// New papers that "stream in" during simulate
+const FUTURE_ACCEPTS = [
+  { title: "Mamba: Linear-Time Sequence Modeling with Selective State Spaces",   citations: 980,  year: 2024, venue: "ICLR",    saturation: 0.94 },
+  { title: "Diffusion Transformers Scale to Higher Resolutions",                  citations: 410,  year: 2024, venue: "NeurIPS", saturation: 0.91 },
+  { title: "Boltz-1: Democratizing Biomolecular Interaction Modeling",            citations: 220,  year: 2024, venue: "bioRxiv", saturation: 0.89 },
+  { title: "Voyager: An Open-Ended Embodied Agent with Large Language Models",    citations: 760,  year: 2023, venue: "TMLR",    saturation: 0.86 },
+  { title: "Stable Diffusion 3: Scaling Rectified Flow Transformers",             citations: 540,  year: 2024, venue: "arXiv",   saturation: 0.83 },
+  { title: "Direct Preference Optimization: Your Language Model is Secretly...",  citations: 1900, year: 2023, venue: "NeurIPS", saturation: 0.81 }
+];
+
+// ────────────────────────── state ──────────────────────────
+let state = JSON.parse(JSON.stringify(MOCK_STATE));
+let simTimer = null;
+let simTick = 0;
+const SIM_TICKS = 30;       // ~15s at 500ms cadence
+const SIM_INTERVAL = 500;
+let pausedAt = null;        // ticks remaining when paused
+
+// ────────────────────────── helpers ──────────────────────────
+const $ = (id) => document.getElementById(id);
+
+function fmt(n)      { return n.toLocaleString("en-US"); }
+function fmtK(n)     { return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "K" : String(n); }
+function fmtUsd(n)   { return "$" + n.toFixed(2); }
+function fmtPct(n)   { return n.toFixed(1) + "%"; }
+function selectivity(s) { return s.metrics.seen ? (100 * s.metrics.accepted / s.metrics.seen) : 0; }
+function totalRej(s) { return Object.values(s.rejections).reduce((a,b)=>a+b,0); }
+function totalLLM(s) { return s.metrics.llm_input_tokens + s.metrics.llm_output_tokens + s.metrics.llm_reasoning_tokens; }
+function cachePct(s) { return s.metrics.s2_requests ? (100 * s.metrics.s2_cache_hits / s.metrics.s2_requests) : 0; }
+function totalCost(s){ return Object.values(s.cost_breakdown).reduce((a,b)=>a+b,0); }
+function startedAgo(sec) {
+  if (sec < 60) return sec + " seconds ago";
+  const m = Math.floor(sec / 60);
+  if (m < 60) return m + (m === 1 ? " minute ago" : " minutes ago");
+  const h = Math.floor(m / 60);
+  return h + (h === 1 ? " hour ago" : " hours ago");
+}
+function ordinal(n) {
+  const ords = ["first","second","third","fourth","fifth","sixth","seventh","eighth"];
+  return ords[n] || (n+1) + "th";
+}
+
+// ────────────────────────── render ──────────────────────────
+function render() {
+  const s = state;
+
+  // header
+  $("runId").textContent = s.run_id;
+  $("hTitle").textContent = "Run " + s.run_id;
+  const cur = s.steps[s.current_step_idx];
+  $("subtitle").textContent =
+    "A live briefing — started " + startedAgo(s.started_ago_sec) +
+    ", currently executing step " + (s.current_step_idx + 1) + " of " + s.steps.length + ".";
+
+  // steps strip
+  const stripEl = $("stepsStrip");
+  stripEl.innerHTML = "";
+  s.steps.forEach((st, i) => {
+    const span = document.createElement("span");
+    span.className = "step " + st.status;
+    span.textContent = st.name;
+    stripEl.appendChild(span);
+    if (i < s.steps.length - 1) {
+      const arr = document.createElement("span");
+      arr.className = "arrow";
+      arr.textContent = "→";
+      stripEl.appendChild(arr);
+    }
+  });
+
+  // prose 1
+  $("np_seen").textContent = fmt(s.metrics.seen);
+  $("np_acc").textContent  = fmt(s.metrics.accepted);
+  $("np_sel").textContent  = fmtPct(selectivity(s));
+
+  // stacked bar — accepted + 6 rejection categories
+  const accepts = s.metrics.accepted;
+  const rejEntries = Object.entries(s.rejections);
+  const total = accepts + rejEntries.reduce((a, [, v]) => a + v, 0);
+  const bar = $("stackedBar");
+  bar.innerHTML = "";
+  const accSeg = document.createElement("div");
+  accSeg.className = "stacked-seg acc";
+  accSeg.style.width = (100 * accepts / total) + "%";
+  accSeg.title = "Accepted: " + accepts;
+  bar.appendChild(accSeg);
+  rejEntries.forEach(([k, v], i) => {
+    const seg = document.createElement("div");
+    seg.className = "stacked-seg r" + (i + 1);
+    seg.style.width = (100 * v / total) + "%";
+    seg.title = k + ": " + v;
+    bar.appendChild(seg);
+  });
+
+  // legend
+  const lg = $("legend");
+  lg.innerHTML = "";
+  const legendItems = [
+    { cls: "acc", label: "Accepted", count: accepts },
+    ...rejEntries.map(([k, v], i) => ({ cls: "r" + (i + 1), label: prettyRej(k), count: v }))
+  ];
+  legendItems.forEach((it) => {
+    const sp = document.createElement("span");
+    sp.innerHTML =
+      '<span class="swatch" style="background: ' + segColor(it.cls) + ';"></span>' +
+      it.label + ' <span class="ct">' + fmt(it.count) + '</span>';
+    lg.appendChild(sp);
+  });
+
+  $("cap_seen").textContent = fmt(s.metrics.seen);
+  $("cap_acc").textContent  = fmt(accepts);
+  $("cap_rej").textContent  = fmt(totalRej(s));
+
+  // prose 2
+  const r = s.rejections;
+  $("np_rej").textContent = fmt(totalRej(s)) + " rejected";
+  $("np_r1").textContent = fmt(r["LLMFilter:TopicMismatch"]);
+  $("np_r2").textContent = fmt(r["CitationFilter:LowCitations"]);
+  $("np_r3").textContent = fmt(r["YearFilter:OutOfRange"]);
+
+  // rejection table
+  const rt = $("rejTbody");
+  rt.innerHTML = "";
+  const totRej = totalRej(s);
+  Object.entries(r).forEach(([k, v]) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + prettyRej(k) + "</td>" +
+      '<td class="num">' + fmt(v) + "</td>" +
+      '<td class="frac">' + (totRej ? (100 * v / totRej).toFixed(1) + "%" : "—") + "</td>";
+    rt.appendChild(tr);
+  });
+
+  // prose 3
+  $("np_tot").textContent   = fmtK(totalLLM(s));
+  $("np_calls").textContent = fmt(s.metrics.llm_calls);
+  $("np_s2").textContent    = fmt(s.metrics.s2_requests);
+  $("np_cache").textContent = Math.round(cachePct(s)) + "%";
+  $("np_cost").textContent  = fmtUsd(s.metrics.cost_usd);
+
+  // metric row
+  const mr = $("metricRow");
+  mr.innerHTML = "";
+  const pairs = [
+    ["input tokens",     fmtK(s.metrics.llm_input_tokens)],
+    ["output tokens",    fmtK(s.metrics.llm_output_tokens)],
+    ["reasoning tokens", fmtK(s.metrics.llm_reasoning_tokens)],
+    ["LLM calls",        fmt(s.metrics.llm_calls)],
+    ["S2 cache hits",    fmt(s.metrics.s2_cache_hits)],
+    ["budget used",      s.metrics.budget_used_pct + "%"]
+  ];
+  pairs.forEach((p, i) => {
+    if (i > 0) {
+      const sep = document.createElement("span");
+      sep.className = "sep";
+      sep.textContent = "·";
+      mr.appendChild(sep);
+    }
+    const wrap = document.createElement("span");
+    wrap.className = "pair";
+    wrap.innerHTML = '<span class="lbl">' + p[0] + '</span><span class="val">' + p[1] + '</span>';
+    mr.appendChild(wrap);
+  });
+
+  // accepts list
+  const ol = $("acList");
+  ol.innerHTML = "";
+  s.recent_accepts.forEach((p, i) => {
+    const li = document.createElement("li");
+    if (p._fresh) li.classList.add("fresh");
+    li.innerHTML =
+      '<div class="body">' +
+        '<div class="pt">' + escapeHtml(p.title) + '</div>' +
+        '<div class="meta"><span class="ven">' + escapeHtml(p.venue) + '</span>' +
+        '— <span class="cit">' + fmt(p.citations) + ' citations</span> (' + p.year + ')</div>' +
+      '</div>' +
+      '<div class="sat">' +
+        '<span class="pip" style="opacity:' + (0.35 + 0.65 * p.saturation) + '"></span>' +
+        '<span class="satval">' + p.saturation.toFixed(2) + '</span>' +
+      '</div>';
+    ol.appendChild(li);
+  });
+  $("pageShow").textContent = Math.min(15, s.recent_accepts.length);
+  $("pageTot").textContent  = s.recent_accepts.length;
+
+  // progress strip
+  const o = s.progress.outer, ip = s.progress.inner;
+  $("outerLabel").textContent = o.label;
+  $("outerFill").style.width  = (100 * o.value / o.max) + "%";
+  $("outerFrac").textContent  = o.value + " / " + o.max;
+  $("innerLabel").textContent = ip.label;
+  $("innerFill").style.width  = (100 * ip.value / ip.max) + "%";
+  $("innerFrac").textContent  = ip.value + " / " + ip.max;
+
+  // cost table
+  const ct = $("costTbody");
+  ct.innerHTML = "";
+  const totCost = totalCost(s);
+  Object.entries(s.cost_breakdown).forEach(([k, v]) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + escapeHtml(k) + "</td>" +
+      '<td class="num">' + fmtUsd(v) + "</td>" +
+      '<td class="frac">' + (totCost ? (100 * v / totCost).toFixed(1) + "%" : "—") + "</td>";
+    ct.appendChild(tr);
+  });
+  // total row
+  const trT = document.createElement("tr");
+  trT.innerHTML =
+    '<td style="font-style:italic; color:var(--ink-2);">Total</td>' +
+    '<td class="num" style="font-weight:500;">' + fmtUsd(totCost) + "</td>" +
+    '<td class="frac">100%</td>';
+  ct.appendChild(trT);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function segColor(cls) {
+  const m = {
+    acc: "#5a8570",
+    r1:  "#3e3548",
+    r2:  "#55485f",
+    r3:  "#6b5b76",
+    r4:  "#826f8d",
+    r5:  "#9883a3",
+    r6:  "#ae97b9"
+  };
+  return m[cls];
+}
+
+function prettyRej(k) {
+  // "LLMFilter:TopicMismatch" → "LLM filter — topic mismatch"
+  const [filter, reason] = k.split(":");
+  const filterMap = {
+    LLMFilter: "LLM filter",
+    CitationFilter: "Citation filter",
+    YearFilter: "Year filter",
+    SimilarityFilter: "Similarity filter"
+  };
+  const f = filterMap[filter] || filter;
+  const r = reason
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .toLowerCase();
+  return f + " — " + r;
+}
+
+// ────────────────────────── simulate ──────────────────────────
+function tickSim() {
+  if (simTick >= SIM_TICKS) {
+    stopSim(true);
+    return;
+  }
+  simTick += 1;
+  const t = simTick / SIM_TICKS;        // 0..1
+  const dt = 1 / SIM_TICKS;
+
+  const m = state.metrics;
+  m.llm_input_tokens     += Math.round(2200 + Math.random() * 1400);
+  m.llm_output_tokens    += Math.round(280  + Math.random() * 200);
+  m.llm_reasoning_tokens += Math.round(680  + Math.random() * 400);
+  m.llm_calls            += Math.round(3    + Math.random() * 4);
+  m.s2_requests          += Math.round(18   + Math.random() * 14);
+  m.s2_cache_hits        += Math.round(9    + Math.random() * 8);
+  m.cost_usd             += +(0.025 + Math.random() * 0.018).toFixed(4);
+  m.budget_used_pct       = +(m.cost_usd / 20 * 100).toFixed(1);
+
+  // accepts/seen
+  if (Math.random() < 0.55) {
+    m.seen += 1 + Math.floor(Math.random() * 3);
+  }
+  if (Math.random() < 0.35) {
+    m.accepted += 1;
+    addNewAccept();
+  }
+
+  // rejections
+  Object.keys(state.rejections).forEach((k) => {
+    if (Math.random() < 0.4) state.rejections[k] += 1;
+  });
+
+  // progress
+  if (state.progress.inner.value < state.progress.inner.max) {
+    state.progress.inner.value = Math.min(state.progress.inner.max, state.progress.inner.value + 1);
+  }
+  if (state.progress.outer.value < state.progress.outer.max && Math.random() < 0.3) {
+    state.progress.outer.value = Math.min(state.progress.outer.max, state.progress.outer.value + 1);
+  }
+
+  // cost breakdown
+  Object.keys(state.cost_breakdown).forEach((k) => {
+    state.cost_breakdown[k] += +(0.005 + Math.random() * 0.012).toFixed(4);
+  });
+
+  // started ago ticks up
+  state.started_ago_sec += 1;
+
+  render();
+}
+
+function addNewAccept() {
+  // fresh paper from FUTURE_ACCEPTS, fall back to a generated stub
+  let p;
+  const usedTitles = new Set(state.recent_accepts.map(x => x.title));
+  const fresh = FUTURE_ACCEPTS.find(x => !usedTitles.has(x.title));
+  if (fresh) {
+    p = { ...fresh, _fresh: true };
+  } else {
+    p = {
+      title: "Newly accepted candidate #" + (state.metrics.accepted),
+      citations: 100 + Math.floor(Math.random() * 1500),
+      year: 2024,
+      venue: "arXiv",
+      saturation: +(0.5 + Math.random() * 0.4).toFixed(2),
+      _fresh: true
+    };
+  }
+  state.recent_accepts.unshift(p);
+  // strip fresh-class from previous
+  state.recent_accepts.forEach((x, i) => { if (i > 0) delete x._fresh; });
+}
+
+function startSim() {
+  if (simTimer) return;
+  $("btnSim").disabled = true;
+  $("btnSim").textContent = "Running…";
+  $("btnPause").disabled = false;
+  $("btnPause").textContent = "Pause";
+  simTimer = setInterval(tickSim, SIM_INTERVAL);
+}
+
+function pauseSim() {
+  if (!simTimer) {
+    // resume
+    $("btnPause").textContent = "Pause";
+    simTimer = setInterval(tickSim, SIM_INTERVAL);
+  } else {
+    clearInterval(simTimer);
+    simTimer = null;
+    $("btnPause").textContent = "Resume";
+  }
+}
+
+function stopSim(done) {
+  if (simTimer) clearInterval(simTimer);
+  simTimer = null;
+  $("btnSim").disabled = false;
+  $("btnSim").textContent = done ? "Simulate run" : "Simulate run";
+  $("btnPause").disabled = true;
+  $("btnPause").textContent = "Pause";
+}
+
+function resetSim() {
+  stopSim(false);
+  simTick = 0;
+  state = JSON.parse(JSON.stringify(MOCK_STATE));
+  render();
+}
+
+// ────────────────────────── boot ──────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  $("btnSim").addEventListener("click", startSim);
+  $("btnPause").addEventListener("click", pauseSim);
+  $("btnReset").addEventListener("click", resetSim);
+  render();
+});
+</script>
+</body>
+</html>

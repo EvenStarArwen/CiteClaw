@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CiteClaw - Dashboard (Variant E)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #f5f3ee;
+    color: #1e2735;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  /* ============ TOP CHROME ============ */
+  .topbar {
+    height: 48px;
+    background: #faf8f2;
+    border-bottom: 1px solid #e4e0d4;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e2735;
+    letter-spacing: 0.02em;
+  }
+  .brand .dot { color: #7f768c; margin: 0 6px; }
+  .brand .runid { color: #55606d; font-weight: 400; }
+
+  .top-actions { display: flex; gap: 8px; }
+  .btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: #1e2735;
+    background: transparent;
+    border: 1px solid #c4bcaa;
+    border-radius: 4px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .btn:hover { background: #f0ecde; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn:disabled:hover { background: transparent; }
+
+  /* ============ MAIN CONTAINER ============ */
+  .main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    grid-auto-rows: minmax(120px, auto);
+  }
+
+  /* ============ CARD BASE ============ */
+  .card {
+    background: #fbf9f3;
+    border: 1px solid #e4e0d4;
+    border-radius: 8px;
+    padding: 20px 24px;
+    box-shadow: 0 1px 2px rgba(30, 39, 53, 0.04);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .card-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #7f768c;
+    margin-bottom: 12px;
+  }
+
+  .big-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    color: #1e2735;
+    line-height: 1;
+  }
+
+  .small {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: #55606d;
+    line-height: 1.4;
+  }
+
+  .small-mono {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #55606d;
+  }
+
+  /* ============ SPANS ============ */
+  .span-1 { grid-column: span 1; }
+  .span-2 { grid-column: span 2; }
+  .span-4 { grid-column: span 4; }
+  .row-2 { grid-row: span 2; }
+  .row-3 { grid-row: span 3; }
+
+  /* ============ CARD: CURRENT STEP (2x1) ============ */
+  .card-step .step-meta {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #7f768c;
+    margin-bottom: 12px;
+  }
+  .card-step .step-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e2735;
+    margin-bottom: 6px;
+  }
+  .card-step .step-desc {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #55606d;
+    line-height: 1.5;
+  }
+  .card-step .step-status {
+    margin-top: auto;
+    padding-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #5a8570;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+  }
+  .pulse-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: #5a8570;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+  }
+
+  /* ============ CARD: SINGLE METRIC (1x1) ============ */
+  .metric-card .big-num {
+    font-size: 38px;
+    margin-bottom: 8px;
+    margin-top: 4px;
+  }
+  .metric-card .big-num.smaller { font-size: 30px; }
+
+  /* ============ BUDGET BAR (4x1) ============ */
+  .budget-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: #efeadc;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .budget-bar-fill {
+    height: 100%;
+    background: #3e3548;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .budget-legend {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+  .budget-legend .small-mono { font-size: 11px; }
+
+  /* ============ REJECTIONS (2x2) ============ */
+  .rej-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 4px;
+  }
+  .rej-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .rej-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .rej-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: #1e2735;
+    font-weight: 500;
+  }
+  .rej-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #55606d;
+  }
+  .rej-bar-wrap {
+    width: 100%;
+    height: 4px;
+    background: #efeadc;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .rej-bar-fill {
+    height: 100%;
+    background: #8b5a5a;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+    opacity: 0.75;
+  }
+
+  /* ============ COST BREAKDOWN (2x2) ============ */
+  .cost-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 4px;
+  }
+  .cost-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .cost-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .cost-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: #1e2735;
+    font-weight: 500;
+  }
+  .cost-amt {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #1e2735;
+    font-weight: 500;
+  }
+  .cost-bar-wrap {
+    width: 100%;
+    height: 4px;
+    background: #efeadc;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .cost-bar-fill {
+    height: 100%;
+    background: #3e3548;
+    border-radius: 2px;
+    opacity: 0.7;
+    transition: width 0.4s ease;
+  }
+
+  /* ============ ACCEPTANCE STREAM (4x3) ============ */
+  .stream-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+    overflow-y: auto;
+    max-height: 440px;
+    padding-right: 4px;
+  }
+  .stream-list::-webkit-scrollbar { width: 6px; }
+  .stream-list::-webkit-scrollbar-track { background: transparent; }
+  .stream-list::-webkit-scrollbar-thumb {
+    background: #e4e0d4;
+    border-radius: 3px;
+  }
+
+  .stream-item {
+    background: #f7f3e8;
+    border: 1px solid #ece7d7;
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    transition: background 0.2s ease;
+  }
+  .stream-item.fresh {
+    animation: freshIn 0.5s ease-out;
+  }
+  @keyframes freshIn {
+    from { background: #efeadc; transform: translateY(-4px); opacity: 0; }
+    to { background: #f7f3e8; transform: translateY(0); opacity: 1; }
+  }
+  .stream-item-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .stream-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e2735;
+    line-height: 1.4;
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stream-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #7f768c;
+    display: flex;
+    gap: 10px;
+  }
+  .stream-meta .sep { color: #c4bcaa; }
+  .stream-sat {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #55606d;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .sat-bar {
+    width: 40px;
+    height: 3px;
+    background: #efeadc;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .sat-bar-fill {
+    height: 100%;
+    background: #5a8570;
+    opacity: 0.8;
+    border-radius: 2px;
+  }
+
+  /* ============ PROGRESS (4x1) ============ */
+  .progress-block {
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .progress-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .progress-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .progress-row-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: #1e2735;
+  }
+  .progress-row-pct {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #55606d;
+  }
+  .progress-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: #efeadc;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: #3e3548;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .progress-bar-fill.inner {
+    background: #5a8570;
+    opacity: 0.85;
+  }
+
+  /* responsive shrink */
+  @media (max-width: 1100px) {
+    .main { padding: 20px; }
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .span-2, .span-4 { grid-column: span 2; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================ TOP BAR ================ -->
+<header class="topbar">
+  <div class="brand">
+    citeclaw <span class="dot">/</span> dashboard <span class="dot">/</span>
+    <span class="runid" id="brandRunId">run_demo_47</span>
+  </div>
+  <div class="top-actions">
+    <button class="btn" id="btnSimulate">Simulate run</button>
+    <button class="btn" id="btnPause" disabled>Pause</button>
+    <button class="btn" id="btnReset">Reset</button>
+  </div>
+</header>
+
+<!-- ================ MAIN GRID ================ -->
+<main class="main">
+  <div class="grid">
+
+    <!-- CURRENT STEP (2x1) -->
+    <div class="card card-step span-2">
+      <div class="step-meta" id="stepMeta">CURRENT STEP &middot; 4 OF 8</div>
+      <div class="step-name" id="stepName">ExpandForward</div>
+      <div class="step-desc" id="stepDesc">Second forward pass after rerank</div>
+      <div class="step-status">
+        <div class="pulse"></div>
+        <div class="pulse-label">running</div>
+      </div>
+    </div>
+
+    <!-- ACCEPTED (1x1) -->
+    <div class="card metric-card span-1">
+      <div class="card-label">Accepted</div>
+      <div class="big-num" id="mAccepted">47</div>
+      <div class="small" id="mAcceptedSub">of 312 (15.1%)</div>
+    </div>
+
+    <!-- ELAPSED (1x1) -->
+    <div class="card metric-card span-1">
+      <div class="card-label">Elapsed</div>
+      <div class="big-num smaller" id="mElapsed">3m 03s</div>
+      <div class="small">since start</div>
+    </div>
+
+    <!-- LLM TOKENS (1x1) -->
+    <div class="card metric-card span-1">
+      <div class="card-label">LLM Tokens</div>
+      <div class="big-num" id="mTokens">266K</div>
+      <div class="small" id="mTokensSub">187K in &middot; 23K out &middot; 56K think</div>
+    </div>
+
+    <!-- LLM CALLS (1x1) -->
+    <div class="card metric-card span-1">
+      <div class="card-label">LLM Calls</div>
+      <div class="big-num" id="mCalls">312</div>
+      <div class="small">batched dispatches</div>
+    </div>
+
+    <!-- COST (1x1) -->
+    <div class="card metric-card span-1">
+      <div class="card-label">Cost</div>
+      <div class="big-num" id="mCost">$2.34</div>
+      <div class="small" id="mCostSub">12% of budget</div>
+    </div>
+
+    <!-- S2 CACHE HIT (1x1) -->
+    <div class="card metric-card span-1">
+      <div class="card-label">S2 Cache Hit</div>
+      <div class="big-num" id="mCache">50%</div>
+      <div class="small" id="mCacheSub">923 / 1,847 requests</div>
+    </div>
+
+    <!-- BUDGET BAR (4x1) -->
+    <div class="card span-4">
+      <div class="card-label">Budget</div>
+      <div class="budget-bar-wrap">
+        <div class="budget-bar-fill" id="budgetFill" style="width: 12%"></div>
+      </div>
+      <div class="budget-legend">
+        <div class="small-mono" id="budgetUsed">$2.34 used</div>
+        <div class="small-mono" id="budgetPct">12%</div>
+        <div class="small-mono">$20.00 cap</div>
+      </div>
+    </div>
+
+    <!-- REJECTIONS (2x2) -->
+    <div class="card span-2 row-2">
+      <div class="card-label">Rejections</div>
+      <div class="rej-list" id="rejList"></div>
+    </div>
+
+    <!-- COST BREAKDOWN (2x2) -->
+    <div class="card span-2 row-2">
+      <div class="card-label">Cost By Source</div>
+      <div class="cost-list" id="costList"></div>
+    </div>
+
+    <!-- ACCEPTANCE STREAM (4x3) -->
+    <div class="card span-4 row-3">
+      <div class="card-label">Recently Accepted &nbsp;&middot;&nbsp; <span id="streamCount">15</span></div>
+      <div class="stream-list" id="streamList"></div>
+    </div>
+
+    <!-- PROGRESS (4x1) -->
+    <div class="card span-4">
+      <div class="card-label">Progress</div>
+      <div class="progress-block">
+        <div class="progress-row">
+          <div class="progress-row-head">
+            <div class="progress-row-label" id="outerLabel">Source papers processed</div>
+            <div class="progress-row-pct" id="outerPct">47 / 120 &middot; 39%</div>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="outerBar" style="width: 39%"></div>
+          </div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-row-head">
+            <div class="progress-row-label" id="innerLabel">Fetching citations of step 3 anchor</div>
+            <div class="progress-row-pct" id="innerPct">8 / 30 &middot; 27%</div>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill inner" id="innerBar" style="width: 27%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+// =================== MOCK DATA ===================
+const MOCK_STATE = {
+  run_id: "run_demo_47",
+  started_ago_sec: 183,
+  steps: [
+    { idx: 0, name: "LoadSeeds",      desc: "Load initial seed papers",               status: "done"    },
+    { idx: 1, name: "ExpandForward",  desc: "Fetch citers of accepted papers",        status: "done"    },
+    { idx: 2, name: "ExpandBackward", desc: "Fetch references of accepted papers",    status: "done"    },
+    { idx: 3, name: "ExpandForward",  desc: "Second forward pass after rerank",       status: "running" },
+    { idx: 4, name: "Cluster",        desc: "Topic-model cluster of forward papers",  status: "pending" },
+    { idx: 5, name: "Rerank",         desc: "PageRank rerank with cluster diversity", status: "pending" },
+    { idx: 6, name: "ExpandByAuthor", desc: "Expand via top-K authors",               status: "pending" },
+    { idx: 7, name: "Finalize",       desc: "Write outputs",                          status: "pending" }
+  ],
+  current_step_idx: 3,
+  metrics: {
+    llm_input_tokens: 187000, llm_output_tokens: 23400, llm_reasoning_tokens: 56200,
+    llm_calls: 312, s2_requests: 1847, s2_cache_hits: 923,
+    accepted: 47, seen: 312, cost_usd: 2.34, budget_used_pct: 12
+  },
+  rejections: {
+    "LLMFilter:TopicMismatch": 87,
+    "CitationFilter:LowCitations": 45,
+    "YearFilter:OutOfRange": 34,
+    "SimilarityFilter:Unrelated": 28,
+    "LLMFilter:NotNovel": 19,
+    "LLMFilter:Survey": 12
+  },
+  progress: {
+    outer: { value: 47, max: 120, label: "Source papers processed" },
+    inner: { value: 8, max: 30, label: "Fetching citations of step 3 anchor" }
+  },
+  cost_breakdown: {
+    "LLMFilter:title": 0.42,
+    "LLMFilter:abstract": 1.08,
+    "ExpandBySearch agent": 0.55,
+    "Annotation": 0.18,
+    "Topic clustering": 0.11
+  },
+  recent_accepts: [
+    { title: "AlphaFold 3: All-atom structure prediction across biomolecules",         citations: 820,  year: 2024, venue: "Nature",    saturation: 0.92 },
+    { title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure", citations: 2100, year: 2023, venue: "Science",   saturation: 0.88 },
+    { title: "High-Resolution Image Synthesis with Latent Diffusion",                    citations: 5200, year: 2022, venue: "CVPR",      saturation: 0.85 },
+    { title: "LLaMA 2: Open Foundation and Fine-Tuned Chat Models",                      citations: 2600, year: 2023, venue: "arXiv",     saturation: 0.82 },
+    { title: "RFdiffusion: Broadly applicable and accurate protein design",              citations: 1400, year: 2023, venue: "Nature",    saturation: 0.79 },
+    { title: "Consistency Models",                                                       citations: 1300, year: 2023, venue: "ICML",      saturation: 0.77 },
+    { title: "Graphormer: Do Transformers Really Perform Badly for Graphs",              citations: 1300, year: 2021, venue: "NeurIPS",   saturation: 0.74 },
+    { title: "SDXL: Improving latent diffusion for high-resolution synthesis",           citations: 1400, year: 2024, venue: "ICLR",      saturation: 0.72 },
+    { title: "ControlNet: Adding conditional control to text-to-image",                  citations: 2300, year: 2023, venue: "ICCV",      saturation: 0.71 },
+    { title: "Mistral 7B",                                                               citations: 1500, year: 2023, venue: "arXiv",     saturation: 0.68 },
+    { title: "GPT-4 Technical Report",                                                   citations: 4200, year: 2023, venue: "arXiv",     saturation: 0.67 },
+    { title: "Chai-1: Decoding the molecular interactions of life",                      citations: 310,  year: 2024, venue: "bioRxiv",   saturation: 0.64 },
+    { title: "Flow Matching for Generative Modeling",                                    citations: 1100, year: 2023, venue: "ICLR",      saturation: 0.61 },
+    { title: "DreamBooth: Fine-tuning text-to-image for subject driven generation",      citations: 1200, year: 2023, venue: "CVPR",      saturation: 0.58 },
+    { title: "PaLM: Scaling Language Modeling with Pathways",                            citations: 2100, year: 2023, venue: "JMLR",      saturation: 0.55 }
+  ]
+};
+
+// Pool of synthetic accepts for simulation
+const SIM_PAPER_POOL = [
+  { title: "Sparse Mixture of Experts at Scale",                                  citations: 540,  year: 2024, venue: "NeurIPS"  },
+  { title: "Mamba: Linear-Time Sequence Modeling with Selective State Spaces",    citations: 980,  year: 2024, venue: "arXiv"    },
+  { title: "Boltz-1: Democratizing Biomolecular Interaction Modeling",            citations: 220,  year: 2024, venue: "bioRxiv"  },
+  { title: "Diffusion Transformers for Generative Modeling",                      citations: 760,  year: 2023, venue: "ICCV"     },
+  { title: "Direct Preference Optimization",                                       citations: 1200, year: 2024, venue: "NeurIPS"  },
+  { title: "Toolformer: Language Models Can Teach Themselves to Use Tools",       citations: 880,  year: 2023, venue: "NeurIPS"  },
+  { title: "RetNet: A Successor to Transformer for Large Language Models",        citations: 410,  year: 2023, venue: "arXiv"    },
+  { title: "CRISPR-Cas12 base editing across kingdoms",                            citations: 350,  year: 2024, venue: "Cell"     },
+  { title: "ProteinMPNN: Robust deep learning-based protein sequence design",     citations: 720,  year: 2022, venue: "Science"  }
+];
+
+// =================== STATE ===================
+let state = JSON.parse(JSON.stringify(MOCK_STATE));
+let simTimer = null;
+let simTick = 0;
+let simPaused = false;
+const SIM_TICKS = 30;
+const SIM_INTERVAL = 500;
+
+// =================== HELPERS ===================
+const $ = (id) => document.getElementById(id);
+
+function fmtNum(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000)     return (n / 1_000).toFixed(0) + "K";
+  return String(n);
+}
+function fmtComma(n) { return n.toLocaleString("en-US"); }
+function fmtElapsed(sec) {
+  sec = Math.floor(sec);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+function fmtMoney(v) { return "$" + v.toFixed(2); }
+function pct(num, den) { return den === 0 ? 0 : (num / den) * 100; }
+
+// =================== RENDERS ===================
+function renderStep() {
+  const idx = state.current_step_idx;
+  const step = state.steps[idx];
+  $("stepMeta").textContent = `CURRENT STEP \u00b7 ${idx + 1} OF ${state.steps.length}`;
+  $("stepName").textContent = step.name;
+  $("stepDesc").textContent = step.desc;
+}
+
+function renderMetrics() {
+  const m = state.metrics;
+  $("mAccepted").textContent = m.accepted;
+  $("mAcceptedSub").textContent = `of ${m.seen} (${pct(m.accepted, m.seen).toFixed(1)}%)`;
+
+  $("mElapsed").textContent = fmtElapsed(state.started_ago_sec);
+
+  const totalTok = m.llm_input_tokens + m.llm_output_tokens + m.llm_reasoning_tokens;
+  $("mTokens").textContent = fmtNum(totalTok);
+  $("mTokensSub").textContent =
+    `${fmtNum(m.llm_input_tokens)} in \u00b7 ${fmtNum(m.llm_output_tokens)} out \u00b7 ${fmtNum(m.llm_reasoning_tokens)} think`;
+
+  $("mCalls").textContent = fmtComma(m.llm_calls);
+
+  $("mCost").textContent = fmtMoney(m.cost_usd);
+  $("mCostSub").textContent = `${m.budget_used_pct}% of budget`;
+
+  const cachePct = pct(m.s2_cache_hits, m.s2_requests);
+  $("mCache").textContent = cachePct.toFixed(0) + "%";
+  $("mCacheSub").textContent = `${fmtComma(m.s2_cache_hits)} / ${fmtComma(m.s2_requests)} requests`;
+
+  // budget bar
+  $("budgetFill").style.width = m.budget_used_pct + "%";
+  $("budgetUsed").textContent = `${fmtMoney(m.cost_usd)} used`;
+  $("budgetPct").textContent = m.budget_used_pct + "%";
+}
+
+function renderRejections() {
+  const list = $("rejList");
+  list.innerHTML = "";
+  const entries = Object.entries(state.rejections);
+  const max = Math.max(...entries.map(([, v]) => v), 1);
+  for (const [name, count] of entries) {
+    const row = document.createElement("div");
+    row.className = "rej-row";
+    row.innerHTML = `
+      <div class="rej-row-head">
+        <div class="rej-name">${name}</div>
+        <div class="rej-count">${count}</div>
+      </div>
+      <div class="rej-bar-wrap"><div class="rej-bar-fill" style="width: ${(count / max) * 100}%"></div></div>
+    `;
+    list.appendChild(row);
+  }
+}
+
+function renderCostBreakdown() {
+  const list = $("costList");
+  list.innerHTML = "";
+  const entries = Object.entries(state.cost_breakdown);
+  const total = entries.reduce((a, [, v]) => a + v, 0) || 1;
+  for (const [name, amt] of entries) {
+    const row = document.createElement("div");
+    row.className = "cost-row";
+    row.innerHTML = `
+      <div class="cost-row-head">
+        <div class="cost-name">${name}</div>
+        <div class="cost-amt">${fmtMoney(amt)}</div>
+      </div>
+      <div class="cost-bar-wrap"><div class="cost-bar-fill" style="width: ${(amt / total) * 100}%"></div></div>
+    `;
+    list.appendChild(row);
+  }
+}
+
+function renderStream(freshIdx = -1) {
+  const list = $("streamList");
+  list.innerHTML = "";
+  state.recent_accepts.forEach((p, i) => {
+    const item = document.createElement("div");
+    item.className = "stream-item" + (i === freshIdx ? " fresh" : "");
+    item.innerHTML = `
+      <div class="stream-item-main">
+        <div class="stream-title" title="${p.title}">${p.title}</div>
+        <div class="stream-meta">
+          <span>${p.venue}</span><span class="sep">/</span>
+          <span>${p.year}</span><span class="sep">/</span>
+          <span>${fmtComma(p.citations)} cites</span>
+        </div>
+      </div>
+      <div class="stream-sat">
+        <span>${p.saturation.toFixed(2)}</span>
+        <div class="sat-bar"><div class="sat-bar-fill" style="width: ${p.saturation * 100}%"></div></div>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+  $("streamCount").textContent = state.recent_accepts.length;
+}
+
+function renderProgress() {
+  const o = state.progress.outer;
+  const inn = state.progress.inner;
+  const oPct = pct(o.value, o.max);
+  const iPct = pct(inn.value, inn.max);
+  $("outerLabel").textContent = o.label;
+  $("outerPct").textContent = `${o.value} / ${o.max} \u00b7 ${oPct.toFixed(0)}%`;
+  $("outerBar").style.width = oPct + "%";
+  $("innerLabel").textContent = inn.label;
+  $("innerPct").textContent = `${inn.value} / ${inn.max} \u00b7 ${iPct.toFixed(0)}%`;
+  $("innerBar").style.width = iPct + "%";
+}
+
+function renderAll() {
+  renderStep();
+  renderMetrics();
+  renderRejections();
+  renderCostBreakdown();
+  renderStream();
+  renderProgress();
+  $("brandRunId").textContent = state.run_id;
+}
+
+// =================== SIMULATION ===================
+function tickSim() {
+  if (simPaused) return;
+  simTick++;
+  const m = state.metrics;
+
+  // Tokens
+  m.llm_input_tokens     += Math.floor(2200 + Math.random() * 1800);
+  m.llm_output_tokens    += Math.floor(280  + Math.random() * 220);
+  m.llm_reasoning_tokens += Math.floor(700  + Math.random() * 600);
+  m.llm_calls            += Math.floor(2 + Math.random() * 4);
+  m.s2_requests          += Math.floor(8 + Math.random() * 12);
+  m.s2_cache_hits        += Math.floor(4 + Math.random() * 6);
+  m.cost_usd             += 0.04 + Math.random() * 0.06;
+  m.budget_used_pct      = Math.min(100, Math.round((m.cost_usd / 20) * 100));
+
+  // Elapsed
+  state.started_ago_sec += 0.5;
+
+  // Rejection growth
+  for (const k of Object.keys(state.rejections)) {
+    if (Math.random() < 0.55) state.rejections[k] += 1 + Math.floor(Math.random() * 2);
+  }
+
+  // Cost breakdown growth
+  state.cost_breakdown["LLMFilter:abstract"]    += 0.012 + Math.random() * 0.018;
+  state.cost_breakdown["LLMFilter:title"]       += 0.006 + Math.random() * 0.010;
+  state.cost_breakdown["ExpandBySearch agent"]  += 0.008 + Math.random() * 0.014;
+  state.cost_breakdown["Annotation"]            += 0.003 + Math.random() * 0.005;
+  state.cost_breakdown["Topic clustering"]      += 0.002 + Math.random() * 0.004;
+
+  // Progress
+  if (Math.random() < 0.7 && state.progress.outer.value < state.progress.outer.max) {
+    state.progress.outer.value += 1;
+  }
+  if (state.progress.inner.value < state.progress.inner.max) {
+    state.progress.inner.value += 1;
+  } else {
+    state.progress.inner.value = 0;
+  }
+
+  // Maybe accept a paper
+  let freshIdx = -1;
+  if (Math.random() < 0.45) {
+    m.accepted += 1;
+    m.seen += 2 + Math.floor(Math.random() * 3);
+    const tmpl = SIM_PAPER_POOL[Math.floor(Math.random() * SIM_PAPER_POOL.length)];
+    const newP = {
+      ...tmpl,
+      saturation: Math.max(0.30, 0.95 - simTick * 0.018 - Math.random() * 0.06)
+    };
+    state.recent_accepts.unshift(newP);
+    if (state.recent_accepts.length > 18) state.recent_accepts.pop();
+    freshIdx = 0;
+  } else {
+    m.seen += 1 + Math.floor(Math.random() * 2);
+  }
+
+  renderMetrics();
+  renderRejections();
+  renderCostBreakdown();
+  renderProgress();
+  renderStream(freshIdx);
+
+  if (simTick >= SIM_TICKS) stopSim(true);
+}
+
+function startSim() {
+  if (simTimer) return;
+  simTick = 0;
+  simPaused = false;
+  $("btnSimulate").disabled = true;
+  $("btnPause").disabled = false;
+  $("btnPause").textContent = "Pause";
+  simTimer = setInterval(tickSim, SIM_INTERVAL);
+}
+function stopSim(finished) {
+  if (simTimer) clearInterval(simTimer);
+  simTimer = null;
+  $("btnSimulate").disabled = false;
+  $("btnPause").disabled = true;
+  $("btnPause").textContent = "Pause";
+  if (finished) $("btnSimulate").textContent = "Simulate run";
+}
+function pauseSim() {
+  if (!simTimer) return;
+  simPaused = !simPaused;
+  $("btnPause").textContent = simPaused ? "Resume" : "Pause";
+}
+function resetSim() {
+  stopSim(false);
+  state = JSON.parse(JSON.stringify(MOCK_STATE));
+  renderAll();
+}
+
+// =================== INIT ===================
+$("btnSimulate").addEventListener("click", startSim);
+$("btnPause").addEventListener("click", pauseSim);
+$("btnReset").addEventListener("click", resetSim);
+
+renderAll();
+</script>
+
+</body>
+</html>

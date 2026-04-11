@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CiteClaw Dashboard B — Hero Metric</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;0,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #f5f3ee;
+    --chrome:       #faf8f2;
+    --border:       #e4e0d4;
+    --panel:        #fbf9f3;
+    --ink-1:        #1e2735;
+    --ink-2:        #55606d;
+    --ink-3:        #7f768c;
+    --accent:       #3e3548;
+    --positive:     #5a8570;
+    --warning:      #8b5a5a;
+    --neutral:      #d6ccb8;
+    --hover:        #f0ecde;
+    --hairline:     #eae5d6;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ───────── top chrome ───────── */
+  .topbar {
+    height: 48px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+    color: var(--ink-1);
+  }
+  .brand .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin: 0 6px 2px 0;
+    vertical-align: middle;
+  }
+  .brand .sub {
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-left: 10px;
+    letter-spacing: 0.01em;
+  }
+  .topbar .actions { margin-left: auto; display: flex; gap: 8px; }
+  .btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-1);
+    background: transparent;
+    border: 1px solid #c4bcaa;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    letter-spacing: 0.01em;
+  }
+  .btn:hover { background: var(--hover); }
+  .btn:disabled {
+    color: var(--ink-3);
+    cursor: not-allowed;
+    background: transparent;
+  }
+  .btn:disabled:hover { background: transparent; }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: #efeaf0; }
+
+  /* ───────── main container ───────── */
+  .main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 56px 40px 80px 40px;
+  }
+
+  /* ───────── hero ───────── */
+  .hero {
+    min-height: 200px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 40px;
+    padding-bottom: 40px;
+  }
+  .hero-left { flex: 1 1 auto; min-width: 0; }
+  .hero-eyebrow {
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--ink-3);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hero-eyebrow .pulse {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--positive);
+    box-shadow: 0 0 0 0 rgba(90, 133, 112, 0.55);
+    animation: pulse 1.8s ease-out infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(90, 133, 112, 0.55); }
+    70%  { box-shadow: 0 0 0 8px rgba(90, 133, 112, 0); }
+    100% { box-shadow: 0 0 0 0   rgba(90, 133, 112, 0); }
+  }
+  .hero-headline {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 700;
+    font-size: 54px;
+    line-height: 1.0;
+    color: var(--ink-1);
+    letter-spacing: -0.025em;
+  }
+  .hero-headline .accepted-num {
+    font-size: 78px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    font-feature-settings: "lnum" 1, "tnum" 0;
+  }
+  .hero-headline .of-num {
+    font-family: 'Inter', sans-serif;
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--ink-3);
+    letter-spacing: 0;
+    margin-left: 10px;
+    vertical-align: 18px;
+  }
+  .hero-subtitle {
+    margin-top: 18px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--ink-2);
+    line-height: 1.55;
+    letter-spacing: 0.005em;
+  }
+  .hero-subtitle .step-pill {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    background: #efeaf0;
+    border: 1px solid #d8cfdc;
+    padding: 2px 7px;
+    border-radius: 2px;
+    margin-right: 10px;
+    letter-spacing: 0.02em;
+  }
+  .hero-subtitle .sep {
+    display: inline-block;
+    color: var(--ink-3);
+    margin: 0 8px;
+  }
+
+  .hero-right {
+    flex: 0 0 auto;
+    text-align: right;
+    min-width: 200px;
+  }
+  .hero-spark-label {
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    color: var(--ink-3);
+    margin-bottom: 8px;
+  }
+  .hero-spark-wrap {
+    display: inline-block;
+    text-align: right;
+  }
+  .hero-spark {
+    display: block;
+    width: 130px;
+    height: 36px;
+  }
+  .hero-spark-foot {
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .hero-spark-foot .delta {
+    color: var(--positive);
+    font-weight: 500;
+  }
+
+  /* ───────── separator ───────── */
+  .rule {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 0;
+  }
+
+  /* ───────── 4-col metric row ───────── */
+  .metric-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin: 32px 0 0 0;
+  }
+  .metric-cell {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 20px 22px 22px 22px;
+    min-height: 102px;
+    position: relative;
+  }
+  .metric-label {
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    margin-bottom: 12px;
+  }
+  .metric-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--ink-1);
+    line-height: 1.0;
+    letter-spacing: -0.01em;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+  }
+  .metric-foot {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--ink-2);
+    margin-top: 8px;
+  }
+  .metric-foot .mono {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-2);
+  }
+
+  /* ───────── 2-col split ───────── */
+  .split {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 24px;
+    margin-top: 28px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 22px 24px 24px 24px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .panel-title {
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    color: var(--ink-3);
+  }
+  .panel-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  /* rejection bars */
+  .rej-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 48px;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 0;
+  }
+  .rej-row + .rej-row { border-top: 1px dashed var(--hairline); }
+  .rej-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink-1);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rej-name .filter-tag {
+    color: var(--ink-3);
+    font-weight: 400;
+  }
+  .rej-track {
+    height: 6px;
+    background: var(--border);
+    position: relative;
+  }
+  .rej-fill {
+    height: 100%;
+    background: var(--warning);
+    transition: width 380ms ease;
+  }
+  .rej-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-1);
+    text-align: right;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+  }
+
+  /* cost panel */
+  .cost-bar-wrap {
+    margin-bottom: 18px;
+  }
+  .cost-stack {
+    display: flex;
+    width: 100%;
+    height: 14px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .cost-seg {
+    height: 100%;
+    transition: width 380ms ease;
+  }
+  .cost-total {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .cost-total .mono {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-1);
+  }
+  .cost-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .legend-row {
+    display: grid;
+    grid-template-columns: 12px 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .legend-swatch {
+    width: 10px; height: 10px;
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  .legend-name {
+    color: var(--ink-1);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .legend-pct {
+    color: var(--ink-3);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+  }
+  .legend-amt {
+    color: var(--ink-1);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    width: 52px;
+    text-align: right;
+  }
+
+  /* ───────── acceptance stream ───────── */
+  .stream-section {
+    margin-top: 32px;
+  }
+  .stream-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+  }
+  .stream-list {
+    max-height: 460px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--neutral) transparent;
+  }
+  .stream-list::-webkit-scrollbar { width: 8px; }
+  .stream-list::-webkit-scrollbar-thumb {
+    background: var(--neutral);
+    border-radius: 4px;
+  }
+  .stream-item {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 16px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--hairline);
+    transition: background 120ms ease;
+    cursor: default;
+  }
+  .stream-item:last-child { border-bottom: none; }
+  .stream-item:hover { background: var(--hover); }
+  .stream-item.fresh {
+    animation: fadeIn 600ms ease-out;
+  }
+  @keyframes fadeIn {
+    from { background: #ece6d4; opacity: 0; transform: translateY(-4px); }
+    to   { background: var(--panel); opacity: 1; transform: translateY(0); }
+  }
+  .stream-idx {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+    padding-top: 2px;
+    text-align: right;
+  }
+  .stream-body { min-width: 0; }
+  .stream-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-1);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 0 0 8px 0;
+    letter-spacing: -0.005em;
+  }
+  .stream-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink-2);
+    flex-wrap: wrap;
+  }
+  .stream-meta .mono {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-1);
+    font-feature-settings: "lnum" 1, "tnum" 1;
+  }
+  .stream-meta .sep {
+    color: var(--ink-3);
+    margin: 0 -6px;
+  }
+  .stream-meta .venue {
+    font-family: 'Inter', sans-serif;
+    font-style: italic;
+    color: var(--ink-2);
+  }
+  .stream-meta .sat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .sat-track {
+    width: 86px;
+    height: 4px;
+    background: var(--border);
+    position: relative;
+  }
+  .sat-fill {
+    height: 100%;
+    background: var(--accent);
+  }
+  .sat-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  /* ───────── progress footer ───────── */
+  .progress-footer {
+    margin-top: 36px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 22px 26px 24px 26px;
+  }
+  .progress-block + .progress-block { margin-top: 18px; }
+  .progress-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .progress-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink-1);
+    font-weight: 500;
+  }
+  .progress-label .secondary {
+    color: var(--ink-3);
+    font-weight: 400;
+    margin-left: 8px;
+  }
+  .progress-pct {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-1);
+    font-feature-settings: "lnum" 1, "tnum" 1;
+  }
+  .progress-pct .ratio {
+    color: var(--ink-3);
+    margin-left: 6px;
+  }
+  .progress-track {
+    height: 8px;
+    background: var(--border);
+    position: relative;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 380ms ease;
+  }
+  .progress-fill.inner {
+    background: var(--positive);
+  }
+
+  /* ───────── footer note ───────── */
+  .footer-note {
+    margin-top: 28px;
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span>CiteClaw
+    <span class="sub">Dashboard · run_demo_47</span>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="btn-sim">Simulate run</button>
+    <button class="btn" id="btn-pause" disabled>Pause</button>
+    <button class="btn" id="btn-reset">Reset</button>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- ─── HERO ─── -->
+  <section class="hero">
+    <div class="hero-left">
+      <div class="hero-eyebrow"><span class="pulse"></span>Live · pipeline running</div>
+      <div class="hero-headline">
+        Accepted <span class="accepted-num" id="hero-accepted">47</span>
+        <span class="of-num">of <span id="hero-seen">312</span> papers</span>
+      </div>
+      <div class="hero-subtitle">
+        <span class="step-pill" id="hero-step-pill">STEP 04 / 08</span>
+        <span id="hero-step-name">ExpandForward</span>
+        <span class="sep">·</span>
+        <span id="hero-step-desc">Second forward pass after rerank</span>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-spark-label">ACCEPTANCE RATE</div>
+      <div class="hero-spark-wrap">
+        <svg class="hero-spark" id="hero-spark" viewBox="0 0 130 36" preserveAspectRatio="none"></svg>
+        <div class="hero-spark-foot">
+          <span class="mono" id="hero-rate">15.1%</span>
+          <span class="delta" id="hero-delta">▲ 0.4%</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- ─── 4-COL METRIC ROW ─── -->
+  <section class="metric-row">
+    <div class="metric-cell">
+      <div class="metric-label">LLM TOKENS USED</div>
+      <div class="metric-value" id="m-tokens">266K</div>
+      <div class="metric-foot">
+        <span class="mono" id="m-tokens-foot">187K in · 23K out · 56K think</span>
+      </div>
+    </div>
+    <div class="metric-cell">
+      <div class="metric-label">S2 REQUESTS</div>
+      <div class="metric-value" id="m-s2">1,847</div>
+      <div class="metric-foot">
+        <span class="mono" id="m-s2-foot">50% cache · 312 LLM calls</span>
+      </div>
+    </div>
+    <div class="metric-cell">
+      <div class="metric-label">COST SO FAR</div>
+      <div class="metric-value" id="m-cost">$2.34</div>
+      <div class="metric-foot">
+        <span class="mono" id="m-cost-foot">12% of budget used</span>
+      </div>
+    </div>
+    <div class="metric-cell">
+      <div class="metric-label">ELAPSED</div>
+      <div class="metric-value" id="m-elapsed">3m 03s</div>
+      <div class="metric-foot">
+        <span class="mono" id="m-elapsed-foot">step 4 of 8 in flight</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 2-COL SPLIT (rejections + cost) ─── -->
+  <section class="split">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Rejection Breakdown</div>
+        <div class="panel-meta"><span id="rej-total-meta">225</span> rejected</div>
+      </div>
+      <div id="rej-list"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Cost by Source</div>
+        <div class="panel-meta">$<span id="cost-total-mono">2.34</span></div>
+      </div>
+      <div class="cost-bar-wrap">
+        <div class="cost-stack" id="cost-stack"></div>
+        <div class="cost-total">
+          <span>5 sources</span>
+          <span class="mono" id="cost-total-foot">100%</span>
+        </div>
+      </div>
+      <div class="cost-legend" id="cost-legend"></div>
+    </div>
+  </section>
+
+  <!-- ─── ACCEPTANCE STREAM ─── -->
+  <section class="stream-section">
+    <div class="panel-header" style="margin-bottom: 14px;">
+      <div class="panel-title">Recent Accepts (last <span id="stream-count">15</span>)</div>
+      <div class="panel-meta" id="stream-meta">streaming · newest first</div>
+    </div>
+    <div class="stream-card">
+      <div class="stream-list" id="stream-list"></div>
+    </div>
+  </section>
+
+  <!-- ─── PROGRESS FOOTER ─── -->
+  <section class="progress-footer">
+    <div class="progress-block">
+      <div class="progress-head">
+        <div class="progress-label">
+          Source papers processed
+          <span class="secondary">outer loop</span>
+        </div>
+        <div class="progress-pct">
+          <span id="outer-pct">39%</span>
+          <span class="ratio" id="outer-ratio">47 / 120</span>
+        </div>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="outer-fill" style="width: 39%"></div>
+      </div>
+    </div>
+    <div class="progress-block">
+      <div class="progress-head">
+        <div class="progress-label">
+          Fetching citations of step 3 anchor
+          <span class="secondary">inner loop</span>
+        </div>
+        <div class="progress-pct">
+          <span id="inner-pct">27%</span>
+          <span class="ratio" id="inner-ratio">8 / 30</span>
+        </div>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill inner" id="inner-fill" style="width: 27%"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer-note">CITECLAW · DASHBOARD VARIANT B · HERO METRIC + SUPPORT PANELS</div>
+
+</main>
+
+<script>
+/* ───────── mock state ───────── */
+const MOCK_STATE = {
+  run_id: "run_demo_47",
+  started_ago_sec: 183,
+  steps: [
+    { idx: 0, name: "LoadSeeds",      desc: "Load initial seed papers",               status: "done"    },
+    { idx: 1, name: "ExpandForward",  desc: "Fetch citers of accepted papers",        status: "done"    },
+    { idx: 2, name: "ExpandBackward", desc: "Fetch references of accepted papers",    status: "done"    },
+    { idx: 3, name: "ExpandForward",  desc: "Second forward pass after rerank",       status: "running" },
+    { idx: 4, name: "Cluster",        desc: "Topic-model cluster of forward papers",  status: "pending" },
+    { idx: 5, name: "Rerank",         desc: "PageRank rerank with cluster diversity", status: "pending" },
+    { idx: 6, name: "ExpandByAuthor", desc: "Expand via top-K authors",               status: "pending" },
+    { idx: 7, name: "Finalize",       desc: "Write outputs",                          status: "pending" }
+  ],
+  current_step_idx: 3,
+  metrics: {
+    llm_input_tokens: 187000, llm_output_tokens: 23400, llm_reasoning_tokens: 56200,
+    llm_calls: 312, s2_requests: 1847, s2_cache_hits: 923, accepted: 47, seen: 312,
+    cost_usd: 2.34, budget_used_pct: 12
+  },
+  rejections: {
+    "LLMFilter:TopicMismatch":    87,
+    "CitationFilter:LowCitations": 45,
+    "YearFilter:OutOfRange":       34,
+    "SimilarityFilter:Unrelated":  28,
+    "LLMFilter:NotNovel":          19,
+    "LLMFilter:Survey":            12
+  },
+  progress: {
+    outer: { value: 47, max: 120, label: "Source papers processed" },
+    inner: { value: 8,  max: 30,  label: "Fetching citations of step 3 anchor" }
+  },
+  cost_breakdown: {
+    "LLMFilter:title":      0.42,
+    "LLMFilter:abstract":   1.08,
+    "ExpandBySearch agent": 0.55,
+    "Annotation":           0.18,
+    "Topic clustering":     0.11
+  },
+  recent_accepts: [
+    { title: "AlphaFold 3: All-atom structure prediction across biomolecules",         citations: 820,  year: 2024, venue: "Nature",    saturation: 0.92 },
+    { title: "ESMFold: Evolutionary-scale prediction of atomic-level protein structure", citations: 2100, year: 2023, venue: "Science",   saturation: 0.88 },
+    { title: "High-Resolution Image Synthesis with Latent Diffusion",                    citations: 5200, year: 2022, venue: "CVPR",      saturation: 0.85 },
+    { title: "LLaMA 2: Open Foundation and Fine-Tuned Chat Models",                      citations: 2600, year: 2023, venue: "arXiv",     saturation: 0.82 },
+    { title: "RFdiffusion: Broadly applicable and accurate protein design",              citations: 1400, year: 2023, venue: "Nature",    saturation: 0.79 },
+    { title: "Consistency Models",                                                       citations: 1300, year: 2023, venue: "ICML",      saturation: 0.77 },
+    { title: "Graphormer: Do Transformers Really Perform Badly for Graphs",              citations: 1300, year: 2021, venue: "NeurIPS",   saturation: 0.74 },
+    { title: "SDXL: Improving latent diffusion for high-resolution synthesis",           citations: 1400, year: 2024, venue: "ICLR",      saturation: 0.72 },
+    { title: "ControlNet: Adding conditional control to text-to-image",                  citations: 2300, year: 2023, venue: "ICCV",      saturation: 0.71 },
+    { title: "Mistral 7B",                                                               citations: 1500, year: 2023, venue: "arXiv",     saturation: 0.68 },
+    { title: "GPT-4 Technical Report",                                                   citations: 4200, year: 2023, venue: "arXiv",     saturation: 0.67 },
+    { title: "Chai-1: Decoding the molecular interactions of life",                      citations: 310,  year: 2024, venue: "bioRxiv",   saturation: 0.64 },
+    { title: "Flow Matching for Generative Modeling",                                    citations: 1100, year: 2023, venue: "ICLR",      saturation: 0.61 },
+    { title: "DreamBooth: Fine-tuning text-to-image for subject driven generation",      citations: 1200, year: 2023, venue: "CVPR",      saturation: 0.58 },
+    { title: "PaLM: Scaling Language Modeling with Pathways",                            citations: 2100, year: 2023, venue: "JMLR",      saturation: 0.55 }
+  ]
+};
+
+/* state container, deep-cloned each reset */
+let STATE = null;
+let timer = null;
+let tick = 0;
+let paused = false;
+
+/* spark history (acceptance rate over time) */
+let sparkHistory = [];
+
+/* ───────── helpers ───────── */
+const $ = id => document.getElementById(id);
+
+function fmtNum(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1000)      return (n / 1000).toFixed(n >= 100000 ? 0 : 1) + "K";
+  return String(n);
+}
+function fmtCount(n) { return n.toLocaleString("en-US"); }
+function fmtUSD(n)   { return "$" + n.toFixed(2); }
+function fmtElapsed(s) {
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${m}m ${String(ss).padStart(2, "0")}s`;
+}
+function fmtStepPill(idx, total) {
+  return `STEP ${String(idx + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
+}
+
+function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+
+/* ───────── render functions ───────── */
+function renderHero() {
+  const m = STATE.metrics;
+  $("hero-accepted").textContent = m.accepted;
+  $("hero-seen").textContent = m.seen;
+  const step = STATE.steps[STATE.current_step_idx];
+  $("hero-step-pill").textContent = fmtStepPill(STATE.current_step_idx, STATE.steps.length);
+  $("hero-step-name").textContent = step.name;
+  $("hero-step-desc").textContent = step.desc;
+
+  const rate = m.seen > 0 ? (m.accepted / m.seen * 100) : 0;
+  $("hero-rate").textContent = rate.toFixed(1) + "%";
+
+  // delta versus prior history point
+  let delta = 0;
+  if (sparkHistory.length >= 2) {
+    delta = rate - sparkHistory[sparkHistory.length - 2];
+  }
+  const arrow = delta >= 0 ? "▲" : "▼";
+  const sign = delta >= 0 ? "+" : "";
+  $("hero-delta").textContent = `${arrow} ${sign}${delta.toFixed(1)}%`;
+  $("hero-delta").style.color = delta >= 0 ? "var(--positive)" : "var(--warning)";
+}
+
+function renderSparkline() {
+  const svg = $("hero-spark");
+  const w = 130, h = 36, pad = 3;
+  if (sparkHistory.length === 0) { svg.innerHTML = ""; return; }
+
+  const data = sparkHistory.slice(-40);
+  const min = Math.min(...data) - 1;
+  const max = Math.max(...data) + 1;
+  const rng = Math.max(0.5, max - min);
+
+  const xs = (i) => pad + (i / Math.max(1, data.length - 1)) * (w - pad * 2);
+  const ys = (v) => h - pad - ((v - min) / rng) * (h - pad * 2);
+
+  let d = "";
+  data.forEach((v, i) => {
+    d += (i === 0 ? "M" : "L") + xs(i).toFixed(2) + "," + ys(v).toFixed(2) + " ";
+  });
+
+  // baseline area
+  let area = d + `L${xs(data.length - 1).toFixed(2)},${(h - pad).toFixed(2)} L${xs(0).toFixed(2)},${(h - pad).toFixed(2)} Z`;
+
+  const lastX = xs(data.length - 1).toFixed(2);
+  const lastY = ys(data[data.length - 1]).toFixed(2);
+
+  svg.innerHTML = `
+    <path d="${area}" fill="rgba(62, 53, 72, 0.08)" stroke="none"/>
+    <path d="${d}" fill="none" stroke="#7f768c" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${lastX}" cy="${lastY}" r="2.6" fill="#3e3548" stroke="#fbf9f3" stroke-width="1"/>
+  `;
+}
+
+function renderMetrics() {
+  const m = STATE.metrics;
+  const total_tokens = m.llm_input_tokens + m.llm_output_tokens + m.llm_reasoning_tokens;
+  $("m-tokens").textContent = fmtNum(total_tokens);
+  $("m-tokens-foot").textContent =
+    `${fmtNum(m.llm_input_tokens)} in · ${fmtNum(m.llm_output_tokens)} out · ${fmtNum(m.llm_reasoning_tokens)} think`;
+
+  $("m-s2").textContent = fmtCount(m.s2_requests);
+  const cachePct = m.s2_requests > 0 ? Math.round(m.s2_cache_hits / m.s2_requests * 100) : 0;
+  $("m-s2-foot").textContent = `${cachePct}% cache · ${fmtCount(m.llm_calls)} LLM calls`;
+
+  $("m-cost").textContent = fmtUSD(m.cost_usd);
+  $("m-cost-foot").textContent = `${m.budget_used_pct}% of budget used`;
+
+  const elapsed = STATE.started_ago_sec;
+  $("m-elapsed").textContent = fmtElapsed(elapsed);
+  $("m-elapsed-foot").textContent = `step ${STATE.current_step_idx + 1} of ${STATE.steps.length} in flight`;
+}
+
+function renderRejections() {
+  const list = $("rej-list");
+  list.innerHTML = "";
+  const entries = Object.entries(STATE.rejections);
+  const max = Math.max(...entries.map(e => e[1]), 1);
+  let total = 0;
+  entries.forEach(([k, v]) => {
+    total += v;
+    const [filter, reason] = k.split(":");
+    const pct = (v / max) * 100;
+    const row = document.createElement("div");
+    row.className = "rej-row";
+    row.innerHTML = `
+      <div class="rej-name" title="${k}">
+        <span class="filter-tag">${filter}:</span>${reason}
+      </div>
+      <div class="rej-track"><div class="rej-fill" style="width: ${pct.toFixed(1)}%"></div></div>
+      <div class="rej-count">${v}</div>
+    `;
+    list.appendChild(row);
+  });
+  $("rej-total-meta").textContent = total;
+}
+
+function renderCost() {
+  const cb = STATE.cost_breakdown;
+  const entries = Object.entries(cb);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+
+  // muted palette for cost segments — cool, no warm/bright
+  const palette = ["#3e3548", "#5a8570", "#7f768c", "#55606d", "#a89880"];
+
+  // stack
+  const stack = $("cost-stack");
+  stack.innerHTML = "";
+  entries.forEach(([name, v], i) => {
+    const seg = document.createElement("div");
+    seg.className = "cost-seg";
+    seg.style.width = ((v / total) * 100).toFixed(2) + "%";
+    seg.style.background = palette[i % palette.length];
+    seg.title = `${name}: ${fmtUSD(v)}`;
+    stack.appendChild(seg);
+  });
+
+  // legend
+  const legend = $("cost-legend");
+  legend.innerHTML = "";
+  entries.forEach(([name, v], i) => {
+    const pct = ((v / total) * 100).toFixed(0);
+    const row = document.createElement("div");
+    row.className = "legend-row";
+    row.innerHTML = `
+      <div class="legend-swatch" style="background: ${palette[i % palette.length]}"></div>
+      <div class="legend-name">${name}</div>
+      <div class="legend-pct">${pct}%</div>
+      <div class="legend-amt">${fmtUSD(v)}</div>
+    `;
+    legend.appendChild(row);
+  });
+
+  $("cost-total-mono").textContent = total.toFixed(2);
+  $("cost-total-foot").textContent = "100%";
+}
+
+function renderStream(animateFirst = false) {
+  const list = $("stream-list");
+  list.innerHTML = "";
+  STATE.recent_accepts.forEach((p, i) => {
+    const item = document.createElement("div");
+    item.className = "stream-item" + (animateFirst && i === 0 ? " fresh" : "");
+    const satPct = (p.saturation * 100).toFixed(0);
+    item.innerHTML = `
+      <div class="stream-idx">#${String(STATE.recent_accepts.length - i).padStart(2, "0")}</div>
+      <div class="stream-body">
+        <div class="stream-title">${p.title}</div>
+        <div class="stream-meta">
+          <span class="mono">${fmtCount(p.citations)}</span> citations
+          <span class="sep">·</span>
+          <span class="mono">${p.year}</span>
+          <span class="sep">·</span>
+          <span class="venue">${p.venue}</span>
+          <span class="sat">
+            <span class="sat-track"><span class="sat-fill" style="width: ${satPct}%"></span></span>
+            <span class="sat-val">${satPct}%</span>
+          </span>
+        </div>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+  $("stream-count").textContent = STATE.recent_accepts.length;
+}
+
+function renderProgress() {
+  const o = STATE.progress.outer;
+  const ip = STATE.progress.inner;
+  const oPct = (o.value / o.max) * 100;
+  const iPct = (ip.value / ip.max) * 100;
+  $("outer-fill").style.width = oPct.toFixed(1) + "%";
+  $("inner-fill").style.width = iPct.toFixed(1) + "%";
+  $("outer-pct").textContent = Math.round(oPct) + "%";
+  $("inner-pct").textContent = Math.round(iPct) + "%";
+  $("outer-ratio").textContent = `${o.value} / ${o.max}`;
+  $("inner-ratio").textContent = `${ip.value} / ${ip.max}`;
+}
+
+function renderAll(animateFirst = false) {
+  renderHero();
+  renderSparkline();
+  renderMetrics();
+  renderRejections();
+  renderCost();
+  renderStream(animateFirst);
+  renderProgress();
+}
+
+/* ───────── reset & init ───────── */
+function reset() {
+  if (timer) { clearInterval(timer); timer = null; }
+  paused = false;
+  tick = 0;
+  STATE = deepClone(MOCK_STATE);
+  // seed history with fake recent rates
+  sparkHistory = [];
+  const baseRate = STATE.metrics.accepted / STATE.metrics.seen * 100;
+  for (let i = -8; i <= 0; i++) {
+    sparkHistory.push(baseRate + (Math.sin(i * 0.7) * 1.2) + (Math.random() * 0.6 - 0.3));
+  }
+  $("btn-sim").disabled = false;
+  $("btn-sim").textContent = "Simulate run";
+  $("btn-pause").disabled = true;
+  $("btn-pause").textContent = "Pause";
+  renderAll(false);
+}
+
+/* ───────── simulation ───────── */
+const SAMPLE_NEW_PAPERS = [
+  { title: "Unified Reasoning over Knowledge Graphs and Language Models",            venue: "EMNLP",   year: 2024 },
+  { title: "Diffusion Forcing: Next-Token Prediction Meets Full-Sequence Diffusion", venue: "NeurIPS", year: 2024 },
+  { title: "Mamba: Linear-Time Sequence Modeling with Selective State Spaces",       venue: "arXiv",   year: 2023 },
+  { title: "Stable Video Diffusion: Scaling Latent Video Diffusion Models",          venue: "arXiv",   year: 2023 },
+  { title: "Boltz-1: Democratizing biomolecular interaction modeling",               venue: "bioRxiv", year: 2024 },
+  { title: "Mixtral of Experts",                                                     venue: "arXiv",   year: 2024 },
+  { title: "Direct Preference Optimization: Your LM is secretly a reward model",     venue: "NeurIPS", year: 2023 },
+  { title: "Tree-of-Thoughts: Deliberate Problem Solving with Large Language Models",venue: "NeurIPS", year: 2023 },
+  { title: "Chain-of-Thought reasoning with reinforcement-style search",             venue: "ICLR",    year: 2024 },
+  { title: "RoPE: Enhanced Transformer with Rotary Position Embedding",              venue: "Neurocomputing", year: 2024 }
+];
+
+const REJECTION_KEYS = Object.keys(MOCK_STATE.rejections);
+
+function simStep() {
+  if (paused) return;
+  tick++;
+  const m = STATE.metrics;
+
+  // ── tick metrics
+  m.llm_input_tokens     += Math.floor(2200 + Math.random() * 1800);
+  m.llm_output_tokens    += Math.floor(280  + Math.random() * 220);
+  m.llm_reasoning_tokens += Math.floor(700  + Math.random() * 600);
+  m.llm_calls            += Math.floor(2 + Math.random() * 3);
+  m.s2_requests          += Math.floor(8 + Math.random() * 14);
+  m.s2_cache_hits        += Math.floor(4 + Math.random() * 8);
+  m.cost_usd             += 0.04 + Math.random() * 0.06;
+  m.budget_used_pct       = Math.min(100, Math.round(m.cost_usd / 19.5 * 100));
+
+  // ── seen always grows; accepted grows sometimes
+  const newSeen = Math.floor(3 + Math.random() * 5);
+  m.seen += newSeen;
+  let newAccepts = 0;
+  if (Math.random() < 0.65) {
+    newAccepts = 1;
+    m.accepted += 1;
+  }
+  // distribute the rejected portion across rejection categories
+  const rejectedNow = newSeen - newAccepts;
+  for (let i = 0; i < rejectedNow; i++) {
+    const k = REJECTION_KEYS[Math.floor(Math.random() * REJECTION_KEYS.length)];
+    STATE.rejections[k] += 1;
+  }
+
+  // ── elapsed
+  STATE.started_ago_sec += 1;
+
+  // ── progress bars
+  STATE.progress.outer.value = Math.min(STATE.progress.outer.max, STATE.progress.outer.value + (Math.random() < 0.7 ? 1 : 0));
+  STATE.progress.inner.value = Math.min(STATE.progress.inner.max, STATE.progress.inner.value + 1);
+  if (STATE.progress.inner.value >= STATE.progress.inner.max) {
+    STATE.progress.inner.value = 0;
+  }
+
+  // ── cost breakdown grows proportionally
+  const costKeys = Object.keys(STATE.cost_breakdown);
+  costKeys.forEach(k => {
+    STATE.cost_breakdown[k] += (0.005 + Math.random() * 0.02);
+  });
+
+  // ── new accept on cadence
+  if (newAccepts > 0 || tick % 3 === 0) {
+    const sample = SAMPLE_NEW_PAPERS[Math.floor(Math.random() * SAMPLE_NEW_PAPERS.length)];
+    const newP = {
+      title: sample.title,
+      citations: Math.floor(180 + Math.random() * 2400),
+      year: sample.year,
+      venue: sample.venue,
+      saturation: 0.42 + Math.random() * 0.55
+    };
+    STATE.recent_accepts.unshift(newP);
+    if (STATE.recent_accepts.length > 30) STATE.recent_accepts.pop();
+  }
+
+  // ── advance step occasionally
+  if (tick === 8) {
+    STATE.steps[3].status = "done";
+    STATE.steps[4].status = "running";
+    STATE.current_step_idx = 4;
+  }
+  if (tick === 13) {
+    STATE.steps[4].status = "done";
+    STATE.steps[5].status = "running";
+    STATE.current_step_idx = 5;
+  }
+
+  // ── update spark history
+  const rate = m.seen > 0 ? (m.accepted / m.seen * 100) : 0;
+  sparkHistory.push(rate);
+  if (sparkHistory.length > 60) sparkHistory.shift();
+
+  renderAll(true);
+
+  // stop after ~15s of ticks
+  if (tick >= 15) {
+    clearInterval(timer);
+    timer = null;
+    $("btn-sim").disabled = false;
+    $("btn-sim").textContent = "Simulate run";
+    $("btn-pause").disabled = true;
+  }
+}
+
+function startSim() {
+  if (timer) return;
+  $("btn-sim").disabled = true;
+  $("btn-sim").textContent = "Running…";
+  $("btn-pause").disabled = false;
+  paused = false;
+  tick = 0;
+  timer = setInterval(simStep, 1000);
+}
+
+function togglePause() {
+  paused = !paused;
+  $("btn-pause").textContent = paused ? "Resume" : "Pause";
+}
+
+/* ───────── wire buttons ───────── */
+$("btn-sim").addEventListener("click", startSim);
+$("btn-pause").addEventListener("click", togglePause);
+$("btn-reset").addEventListener("click", reset);
+
+/* ───────── go ───────── */
+reset();
+</script>
+
+</body>
+</html>
