@@ -105,12 +105,37 @@ def _refs_start_number(refs: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+def _looks_like_bibliography(text_after: str, max_chars: int = 3000) -> bool:
+    """Check if *text_after* looks like a bibliography section.
+
+    Used to validate a candidate reference-section heading when it sits
+    earlier than expected (e.g. before the 40 % mark): papers with long
+    appendices can push references into the middle of the document.
+    Returns ``True`` if the first ``max_chars`` after the heading contain
+    either a cluster of numbered entries or several author-year style
+    entries (e.g. ``Smith, J., Jones, K.``).
+    """
+    sample = text_after[:max_chars]
+    # Numbered entries: "1. Author..." or "[1] Author..."
+    numbered = len(_NUMBERED_BIB_RE.findall(sample))
+    if numbered >= _MIN_BIB_ENTRIES:
+        return True
+    # Author-year entries: lines starting with "Lastname, F." pattern.
+    author_entries = len(re.findall(
+        r"(?:^|\n)\s*[A-Z][a-zA-Z\-']+,\s+[A-Z]\.?",
+        sample,
+    ))
+    return author_entries >= _MIN_BIB_ENTRIES
+
+
 def split_references(text: str) -> tuple[str, str]:
     """Split paper text into ``(body, reference_list)``.
 
-    **Strategy 1** — heading match: finds the *last* occurrence of a
-    references-section heading (``References``, ``References and Notes``,
-    ``Bibliography``, …) in the latter 60 % of the document.
+    **Strategy 1** — heading match: finds a references-section heading
+    (``References``, ``References and Notes``, ``Bibliography``, …).
+    Accepts headings at ≥ 40 % of the document, or at ≥ 30 % when the
+    content immediately after looks like a bibliography (catches
+    papers with long appendices after the reference list).
 
     **Strategy 2** — numbered-entry fallback: if no heading is found,
     detects a cluster of numbered bibliography entries (``1. Author``,
@@ -119,27 +144,38 @@ def split_references(text: str) -> tuple[str, str]:
     Returns ``(full_text, "")`` only when both strategies fail.
     """
     matches = list(_REF_HEADING_RE.finditer(text))
-    # Accept the last match that sits past the 40 % mark.
+    # Prefer headings at ≥ 40 %, but also accept ≥ 30 % when followed
+    # by bibliography-like content (papers with long appendices push
+    # the reference list into the middle of the document).
     for last in reversed(matches):
-        if last.start() >= len(text) * 0.4:
-            body = text[: last.start()].rstrip()
-            refs = text[last.end() :].lstrip()
-            # Sanity check: if the refs start at a suspiciously high
-            # number (e.g. ≥ 10), we likely found a supplementary-
-            # materials heading instead of the main bibliography.
-            # Look for the actual start of refs via numbered entries.
-            start_num = _refs_start_number(refs)
-            if start_num >= 10:
-                earlier = _find_numbered_bib_start(text, search_from=0.35)
-                if earlier is not None and earlier < last.start():
-                    log.debug(
-                        "split_references: heading split started at ref #%d; "
-                        "found earlier bibliography at char %d",
-                        start_num, earlier,
-                    )
-                    body = text[:earlier].rstrip()
-                    refs = text[earlier:].lstrip()
-            return body, refs
+        pos_fraction = last.start() / max(len(text), 1)
+        if pos_fraction >= 0.40:
+            pass  # trusted position
+        elif pos_fraction >= 0.30 and _looks_like_bibliography(text[last.end():]):
+            log.debug(
+                "split_references: accepted early heading at %.0f%% after content validation",
+                pos_fraction * 100,
+            )
+        else:
+            continue
+
+        body = text[: last.start()].rstrip()
+        refs = text[last.end() :].lstrip()
+        # Sanity check: if the refs start at a suspiciously high
+        # number (e.g. ≥ 10), we likely found a supplementary-
+        # materials heading instead of the main bibliography.
+        start_num = _refs_start_number(refs)
+        if start_num >= 10:
+            earlier = _find_numbered_bib_start(text, search_from=0.35)
+            if earlier is not None and earlier < last.start():
+                log.debug(
+                    "split_references: heading split started at ref #%d; "
+                    "found earlier bibliography at char %d",
+                    start_num, earlier,
+                )
+                body = text[:earlier].rstrip()
+                refs = text[earlier:].lstrip()
+        return body, refs
 
     # Fallback: detect numbered bibliography entries near the end.
     bib_start = _find_numbered_bib_start(text)
