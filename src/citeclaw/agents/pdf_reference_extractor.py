@@ -301,17 +301,29 @@ def extract_pdf_references(
 
     raw_reasoning = getattr(resp, "reasoning_content", "") or ""
 
+    # Clean up response text: strip markdown code fences that the model
+    # may wrap around the JSON when structured output is not enforced.
+    resp_text = (resp.text or "").strip()
+    if resp_text.startswith("```"):
+        # Remove opening fence (```json or ```) and closing fence
+        lines = resp_text.split("\n")
+        if lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        resp_text = "\n".join(lines).strip()
+
     try:
-        decoded = json.loads(resp.text)
+        decoded = json.loads(resp_text)
     except (json.JSONDecodeError, TypeError, ValueError):
         # Try to salvage truncated JSON — the LLM may have hit the
         # token limit mid-output.  Look for complete reference entries.
-        decoded = _try_salvage_json(resp.text or "")
+        decoded = _try_salvage_json(resp_text)
         if decoded is None:
             log.warning(
                 "PDF extraction: LLM returned invalid JSON (len=%d): %.120s",
-                len(resp.text) if resp.text else 0,
-                resp.text or "",
+                len(resp_text),
+                resp_text,
             )
             return PdfExtractionResult(raw_reasoning=raw_reasoning)
 
@@ -334,13 +346,28 @@ def extract_pdf_references(
                         relevance=str(m.get("relevance", "")),
                     )
                 )
+        # Tolerate schema-variant field names the model may use when
+        # structured output is bypassed (e.g. "reference" vs
+        # "reference_text", "explanation" vs "relevance_explanation").
+        ref_text = (
+            item.get("reference_text")
+            or item.get("reference")
+            or item.get("ref_text")
+            or ""
+        )
+        rel_expl = (
+            item.get("relevance_explanation")
+            or item.get("explanation")
+            or item.get("relevance")
+            or ""
+        )
         extracted.append(
             ExtractedReference(
                 citation_marker=str(item.get("citation_marker", "")),
-                reference_text=str(item.get("reference_text", "")),
+                reference_text=str(ref_text),
                 title=title,
                 mentions=mentions,
-                relevance_explanation=str(item.get("relevance_explanation", "")),
+                relevance_explanation=str(rel_expl),
             )
         )
 
