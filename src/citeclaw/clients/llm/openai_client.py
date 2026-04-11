@@ -50,6 +50,16 @@ _EFFORT_THINKING_BUDGET: dict[str, int] = {
     "low": 4096,
 }
 
+# Hard ceiling on total completion (thinking + content).  The soft
+# ``thinking_budget`` in chat_template_kwargs is only a hint that the
+# model can ignore; ``max_completion_tokens`` is enforced by vLLM's
+# sampler and will truncate generation at this limit.  We use 3× the
+# thinking budget: empirically Gemma 4 can exceed the soft hint by
+# 2–3× on complex prompts, and we need headroom for the actual
+# content output (structured JSON).  3× prevents 100K+ runaway
+# (observed on 128K context) while rarely truncating useful output.
+_COMPLETION_HEADROOM_FACTOR = 3.0
+
 
 def _custom_endpoint_reasoning_kwargs(
     reasoning_effort: str,
@@ -101,11 +111,15 @@ def _custom_endpoint_reasoning_kwargs(
     # ``thinking_budget`` inside ``chat_template_kwargs`` — this is a
     # Gemma 4 chat-template feature that limits the thinking trace
     # without requiring vLLM's ``--reasoning-config`` server flag.
+    # NOTE: this is a *soft hint* — the model may exceed it.  The hard
+    # ceiling is ``max_completion_tokens`` set in the returned dict.
     budget = thinking_budget or _EFFORT_THINKING_BUDGET.get(effort, 16384)
     extra_body["chat_template_kwargs"]["thinking_budget"] = budget
     return {
         "reasoning_effort": effort,
         "extra_body": extra_body,
+        # Hard ceiling: thinking budget + headroom for content output.
+        "max_completion_tokens": int(budget * _COMPLETION_HEADROOM_FACTOR),
     }
 
 
@@ -261,11 +275,27 @@ class OpenAIClient:
         # Structured output: when a schema is provided *and* the operator
         # hasn't disabled it, pass ``response_format={"type": "json_schema", ...}``
         # so the model is constrained at decode time instead of relying on
-        # post-hoc JSON parsing. Applies to both SaaS OpenAI and custom
-        # endpoints (vLLM/Ollama/etc.) — the kill switch
-        # ``structured_output_enabled`` in Settings lets users opt out of
-        # the latter if their endpoint doesn't honor the flag.
-        if response_schema is not None and self._config.structured_output_enabled:
+        # post-hoc JSON parsing.
+        #
+        # EXCEPTION: skip structured output when the custom endpoint has
+        # thinking enabled.  vLLM's guided decoding interacts badly with
+        # reasoning-mode generation — the guided decoder counts rejected
+        # candidate tokens toward ``max_completion_tokens``, causing the
+        # model to exhaust its budget on decoding overhead and truncate
+        # the actual JSON output.  The model is perfectly capable of
+        # producing valid JSON without guided decoding; the JSON salvage
+        # code in ``pdf_reference_extractor`` handles edge cases.
+        thinking_active = (
+            self._is_custom
+            and self._reasoning_effort
+            and self._reasoning_effort.strip().lower()
+            not in ("off", "none", "false", "disable", "disabled", "")
+        )
+        if (
+            response_schema is not None
+            and self._config.structured_output_enabled
+            and not thinking_active
+        ):
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
