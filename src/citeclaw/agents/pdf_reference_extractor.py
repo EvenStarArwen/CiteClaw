@@ -83,20 +83,26 @@ def _try_salvage_json(text: str) -> dict | None:
     return None
 
 
-def _find_numbered_bib_start(text: str) -> int | None:
+def _find_numbered_bib_start(text: str, search_from: float = 0.40) -> int | None:
     """Find the start of a numbered bibliography in the tail of *text*.
 
     Looks for a cluster of consecutive numbered entries (``1. Author``,
-    ``[1] Author``) in the latter 45 % of the document.  Returns the
-    character offset of the first entry, or ``None`` if fewer than
-    :data:`_MIN_BIB_ENTRIES` are found.
+    ``[1] Author``) starting from *search_from* fraction of the document.
+    Returns the character offset of the first entry, or ``None`` if
+    fewer than :data:`_MIN_BIB_ENTRIES` are found.
     """
-    threshold = int(len(text) * 0.55)
+    threshold = int(len(text) * search_from)
     tail = text[threshold:]
     hits = list(_NUMBERED_BIB_RE.finditer(tail))
     if len(hits) < _MIN_BIB_ENTRIES:
         return None
     return threshold + hits[0].start()
+
+
+def _refs_start_number(refs: str) -> int:
+    """Return the first reference number found in *refs*, or 0."""
+    m = re.match(r"\s*(?:\[?(\d+)[\]\.\)])", refs)
+    return int(m.group(1)) if m else 0
 
 
 def split_references(text: str) -> tuple[str, str]:
@@ -118,6 +124,21 @@ def split_references(text: str) -> tuple[str, str]:
         if last.start() >= len(text) * 0.4:
             body = text[: last.start()].rstrip()
             refs = text[last.end() :].lstrip()
+            # Sanity check: if the refs start at a suspiciously high
+            # number (e.g. ≥ 10), we likely found a supplementary-
+            # materials heading instead of the main bibliography.
+            # Look for the actual start of refs via numbered entries.
+            start_num = _refs_start_number(refs)
+            if start_num >= 10:
+                earlier = _find_numbered_bib_start(text, search_from=0.35)
+                if earlier is not None and earlier < last.start():
+                    log.debug(
+                        "split_references: heading split started at ref #%d; "
+                        "found earlier bibliography at char %d",
+                        start_num, earlier,
+                    )
+                    body = text[:earlier].rstrip()
+                    refs = text[earlier:].lstrip()
             return body, refs
 
     # Fallback: detect numbered bibliography entries near the end.
