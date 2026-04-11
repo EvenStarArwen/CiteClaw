@@ -269,22 +269,31 @@ class ExpandByPDF:
         ref: ExtractedReference,
         ctx: Any,
     ) -> str | None:
-        """Resolve an extracted reference title to an S2 paperId.
+        """Resolve an extracted reference to an S2 paperId.
 
-        Uses ``search_match`` (best single-match endpoint). Returns
-        ``None`` if resolution fails — the reference is silently
+        Uses ``search_match`` with the title when available, falling
+        back to the full ``reference_text`` when the bibliography
+        style doesn't expose a distinct title (e.g. SignalP 5.0's
+        ``Author, Journal Vol, Pages (Year)`` entries). Returns
+        ``None`` if both paths fail — the reference is silently
         dropped (logged at DEBUG).
         """
         title = ref.title.strip()
-        if not title or len(title) < 8:
+        query = title if len(title) >= 8 else ""
+        if not query:
+            # Fall back to the full bibliography entry. S2's
+            # search_match is text-based and can often recover a
+            # paper from ``Author, Journal Vol, Pages (Year)``.
+            query = ref.reference_text.strip()
+        if not query or len(query) < 12:
             return None
         try:
-            match = ctx.s2.search_match(title)
+            match = ctx.s2.search_match(query)
         except Exception as exc:  # noqa: BLE001
-            log.debug("S2 search_match failed for %r: %s", title[:60], exc)
+            log.debug("S2 search_match failed for %r: %s", query[:60], exc)
             return None
         if match is None:
-            log.debug("S2 search_match: no result for %r", title[:60])
+            log.debug("S2 search_match: no result for %r", query[:60])
             return None
         pid = match.get("paperId")
         if not pid:

@@ -133,9 +133,11 @@ def split_references(text: str) -> tuple[str, str]:
 
     **Strategy 1** — heading match: finds a references-section heading
     (``References``, ``References and Notes``, ``Bibliography``, …).
-    Accepts headings at ≥ 40 % of the document, or at ≥ 30 % when the
+    Accepts headings at ≥ 40 % of the document, or at ≥ 15 % when the
     content immediately after looks like a bibliography (catches
-    papers with long appendices after the reference list).
+    Nature-style papers with huge supplementary material where the
+    main refs live earlier — e.g. Seurat v4 has refs at 20 % and 80 %
+    supplementary after).
 
     **Strategy 2** — numbered-entry fallback: if no heading is found,
     detects a cluster of numbered bibliography entries (``1. Author``,
@@ -144,14 +146,15 @@ def split_references(text: str) -> tuple[str, str]:
     Returns ``(full_text, "")`` only when both strategies fail.
     """
     matches = list(_REF_HEADING_RE.finditer(text))
-    # Prefer headings at ≥ 40 %, but also accept ≥ 30 % when followed
-    # by bibliography-like content (papers with long appendices push
-    # the reference list into the middle of the document).
+    # Prefer headings at ≥ 40 %, but also accept ≥ 15 % when followed
+    # by bibliography-like content (papers with huge supplementary
+    # material push the main reference list into the first third of
+    # the document — Seurat v4's refs are at 20 % of the doc).
     for last in reversed(matches):
         pos_fraction = last.start() / max(len(text), 1)
         if pos_fraction >= 0.40:
             pass  # trusted position
-        elif pos_fraction >= 0.30 and _looks_like_bibliography(text[last.end():]):
+        elif pos_fraction >= 0.15 and _looks_like_bibliography(text[last.end():]):
             log.debug(
                 "split_references: accepted early heading at %.0f%% after content validation",
                 pos_fraction * 100,
@@ -397,8 +400,12 @@ def extract_pdf_references(
         if not isinstance(item, dict):
             continue
         title = str(item.get("title", "")).strip()
-        if not title:
-            continue  # Can't resolve without a title.
+        # Empty title is tolerated — some bibliography styles emit
+        # ``Author, Journal Vol, Pages (Year)`` with no distinct title
+        # (SignalP 5.0, old Nature papers). The S2 resolution step
+        # (``ExpandByPDF._resolve_reference``) will fall back to the
+        # full ``reference_text`` when the title is empty, so the
+        # agent's extraction still carries useful information.
         mentions = []
         for m in item.get("mentions", []):
             if isinstance(m, dict) and m.get("quote"):
