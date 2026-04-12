@@ -192,14 +192,16 @@ def screen_expand_candidates(
         new_records.append(rec)
         ctx.seen.add(rec.paper_id)
 
-    # 5. Source-less filter context.
-    fctx = FilterContext(
-        ctx=ctx, source=None, source_refs=None, source_citers=None,
-    )
-
-    # 6-7. Apply screener cascade and record rejections.
-    passed, rejected = apply_block(new_records, screener, fctx)
-    record_rejections(rejected, fctx)
+    # 5-7. Screening (skip when no screener — accept all novel records).
+    if screener is not None:
+        fctx = FilterContext(
+            ctx=ctx, source=None, source_refs=None, source_citers=None,
+        )
+        passed, rejected = apply_block(new_records, screener, fctx)
+        record_rejections(rejected, fctx)
+    else:
+        passed = new_records
+        rejected = []
 
     # 8. Survivors → collection.
     for p in passed:

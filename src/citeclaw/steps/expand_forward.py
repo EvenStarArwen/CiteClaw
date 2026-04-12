@@ -21,9 +21,6 @@ class ExpandForward:
         self.screener = screener
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
-        if self.screener is None:
-            return StepResult(signal=[], in_count=len(signal), stats={"reason": "no screener"})
-
         dash = ctx.dashboard
         dash.enable_outer_bar(total=len(signal), description="source papers")
 
@@ -77,12 +74,14 @@ class ExpandForward:
             ctx.s2.enrich_with_abstracts(records)
             dash.tick_inner(1)
 
-            fctx = FilterContext(
-                ctx=ctx, source=source, source_refs=source_refs, source_citers=source_citers,
-            )
-            # apply_block drives the inner bar through the screener cascade.
-            passed, rejected = apply_block(records, self.screener, fctx)
-            record_rejections(rejected, fctx)
+            if self.screener is not None:
+                fctx = FilterContext(
+                    ctx=ctx, source=source, source_refs=source_refs, source_citers=source_citers,
+                )
+                passed, rejected = apply_block(records, self.screener, fctx)
+                record_rejections(rejected, fctx)
+            else:
+                passed = records
             for p in passed:
                 p.llm_verdict = "accept"
                 ctx.collection[p.paper_id] = p

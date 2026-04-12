@@ -47,6 +47,9 @@ def _is_retryable(exc: BaseException) -> bool:
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
 BATCH_URL = "https://api.semanticscholar.org/graph/v1/paper/batch"
 PAGE_SIZE = 100
+# S2 returns 400 Bad Request for citation/reference offsets above ~9999.
+# Stop before that to avoid crashing on highly-cited papers.
+_MAX_OFFSET = 9900
 
 
 def _retry_message(rs, kind: str) -> None:
@@ -182,6 +185,12 @@ class S2Http:
         results: list[dict[str, Any]] = []
         offset = 0
         while True:
+            if offset >= _MAX_OFFSET:
+                log.info(
+                    "paginate(%s/%s): stopping at offset %d (S2 cap)",
+                    paper_id[:20], edge, offset,
+                )
+                break
             data = self.get(
                 f"/paper/{paper_id}/{edge}",
                 params={"fields": fields, "limit": PAGE_SIZE, "offset": offset},

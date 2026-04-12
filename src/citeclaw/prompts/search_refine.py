@@ -97,6 +97,9 @@ MANDATORY RULES (not heuristics)
   C. SATURATION STOP: NEW < 5 in BOTH the latest turn AND the turn before → MUST set should_stop=true. There is NO target count; quality beats quantity. 30 high-precision papers > 200 noisy ones.
   D. Otherwise refine direction: new anchor concept, new filter, or "-" exclusion of a crowding near-neighbour.
 
+BREADTH CONTROL
+  The bulk endpoint returns up to 1000 results per call — that is plenty. If a turn reports total_in_corpus > 5 000, the query is far too broad: add year/fieldsOfStudy/minCitationCount filters or replace a generic phrase with a more specific one. Never rely on one or two bare common words ("attention", "transformer", "learning") — they match hundreds of thousands of papers and bury real signal in noise.
+
 FIRST TURN
 No transcript yet. Use the SHORTEST 2-3 word phrase that uniquely names the topic in this subfield, drawn verbatim from anchor titles. Add one or two obvious field-of-study filters.
 

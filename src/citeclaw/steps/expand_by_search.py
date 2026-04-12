@@ -80,13 +80,6 @@ class ExpandBySearch:
         self.apply_local_query_args = apply_local_query_args or None
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
-        if self.screener is None:
-            return StepResult(
-                signal=[],
-                in_count=len(signal),
-                stats={"reason": "no screener"},
-            )
-
         # 1. Idempotency.
         fp = fingerprint_signal(
             self.name, signal,

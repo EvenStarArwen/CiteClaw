@@ -124,9 +124,6 @@ class ExpandBackward:
         self.headless = headless
 
     def run(self, signal: list[PaperRecord], ctx: Any) -> StepResult:
-        if self.screener is None:
-            return StepResult(signal=[], in_count=len(signal), stats={"reason": "no screener"})
-
         dash = ctx.dashboard
         dash.enable_outer_bar(total=len(signal), description="source papers")
 
@@ -177,9 +174,12 @@ class ExpandBackward:
             ctx.s2.enrich_with_abstracts(cands)
             dash.tick_inner(1)
 
-            fctx = FilterContext(ctx=ctx, source=source)
-            passed, rejected = apply_block(cands, self.screener, fctx)
-            record_rejections(rejected, fctx)
+            if self.screener is not None:
+                fctx = FilterContext(ctx=ctx, source=source)
+                passed, rejected = apply_block(cands, self.screener, fctx)
+                record_rejections(rejected, fctx)
+            else:
+                passed = cands
             for p in passed:
                 p.llm_verdict = "accept"
                 ctx.collection[p.paper_id] = p

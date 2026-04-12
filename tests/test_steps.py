@@ -174,12 +174,12 @@ class TestExpandForward:
         LoadSeeds().run([], ctx)
         return list(ctx.collection.values())
 
-    def test_no_screener_is_empty_signal(self, ctx):
+    def test_no_screener_accepts_all(self, ctx):
         seeds = self._ctx_with_seed(ctx)
         step = ExpandForward(max_citations=10, screener=None)
         result = step.run(seeds, ctx)
-        assert result.signal == []
-        assert result.stats["reason"] == "no screener"
+        # Without a screener every candidate passes through unfiltered.
+        assert len(result.signal) >= 1
 
     def test_expand_forward_with_stub_llm(self, ctx):
         seeds = self._ctx_with_seed(ctx)
@@ -236,12 +236,13 @@ class TestExpandBackward:
         assert {"REF1", "REF2"}.issubset(accepted)
         assert "SEED" in ctx.expanded_backward
 
-    def test_no_screener_is_empty(self, ctx):
+    def test_no_screener_accepts_all(self, ctx):
         ctx.config.seed_papers = [SeedPaper(paper_id="SEED")]
         seeds = LoadSeeds().run([], ctx).signal
         step = ExpandBackward(screener=None)
         result = step.run(seeds, ctx)
-        assert result.signal == []
+        # Without a screener every reference passes through unfiltered.
+        assert len(result.signal) >= 1
 
     def test_screener_can_reject(self, ctx):
         ctx.config.seed_papers = [SeedPaper(paper_id="SEED")]
