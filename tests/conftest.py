@@ -35,6 +35,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "live_s2: hits the real Semantic Scholar API; opt in with CITECLAW_LIVE_S2=1",
     )
+    config.addinivalue_line(
+        "markers",
+        "live_smoke: real S2 + real LLM smoke tests; opt in with CITECLAW_LIVE_SMOKE=1",
+    )
 
 
 @pytest.fixture(autouse=True)
