@@ -24,8 +24,12 @@ class ExpandForward:
         dash = ctx.dashboard
         dash.enable_outer_bar(total=len(signal), description="source papers")
 
+        max_total = ctx.config.max_papers_total
+
         accepted: list[PaperRecord] = []
         for source in signal:
+            if len(ctx.collection) >= max_total:
+                break
             if source.paper_id in ctx.expanded_forward:
                 dash.advance_outer(1)
                 continue
@@ -83,13 +87,11 @@ class ExpandForward:
             else:
                 passed = records
             for p in passed:
+                if len(ctx.collection) >= max_total:
+                    break
                 p.llm_verdict = "accept"
                 ctx.collection[p.paper_id] = p
                 accepted.append(p)
-                # Saturation: cache-only ref lookup so we never trigger
-                # surprise S2 calls for the metric. Will be None for any
-                # paper whose references aren't already cached (e.g.
-                # because the screener didn't include a CitSim/RefSim).
                 dash.paper_accepted(p, saturation=saturation_for_paper(p, ctx))
 
             dash.advance_outer(1)

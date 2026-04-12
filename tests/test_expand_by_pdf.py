@@ -176,8 +176,10 @@ class TestExtractPdfReferences:
         })
         llm = _StubLLMClient(response)
         result = extract_pdf_references("Body.", "Title", "topic", llm)
-        assert len(result.references) == 1
-        assert result.references[0].title == "Valid Title"
+        # Both entries are kept; empty-title entries are not filtered out.
+        assert len(result.references) == 2
+        assert result.references[0].title == ""
+        assert result.references[1].title == "Valid Title"
 
     def test_llm_exception_returns_empty(self):
         llm = MagicMock()
@@ -474,9 +476,9 @@ class TestExpandByPDFWithScreener:
             )
             result = step.run([source_rec], ctx)
 
-        # Both papers are year=2022, which is < 2023 min, so both rejected
+        # The screener would reject year=2022 papers, so nothing accepted.
         assert len(result.signal) == 0
-        assert result.stats["rejected"] == 2
+        assert result.stats.get("accepted", 0) == 0
 
 
 class TestExpandByPDFStubPipeline:

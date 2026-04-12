@@ -127,10 +127,14 @@ class ExpandBackward:
         dash = ctx.dashboard
         dash.enable_outer_bar(total=len(signal), description="source papers")
 
+        max_total = ctx.config.max_papers_total
+
         accepted: list[PaperRecord] = []
         pdf_fallback_count = 0
 
         for source in signal:
+            if len(ctx.collection) >= max_total:
+                break
             if source.paper_id in ctx.expanded_backward:
                 dash.advance_outer(1)
                 continue
@@ -181,6 +185,8 @@ class ExpandBackward:
             else:
                 passed = cands
             for p in passed:
+                if len(ctx.collection) >= max_total:
+                    break
                 p.llm_verdict = "accept"
                 ctx.collection[p.paper_id] = p
                 accepted.append(p)

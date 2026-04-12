@@ -203,15 +203,20 @@ def screen_expand_candidates(
         passed = new_records
         rejected = []
 
-    # 8. Survivors → collection.
+    # 8. Survivors → collection (respect max_papers_total).
+    max_total = ctx.config.max_papers_total
+    committed: list[PaperRecord] = []
     for p in passed:
+        if len(ctx.collection) >= max_total:
+            break
         p.llm_verdict = "accept"
         ctx.collection[p.paper_id] = p
+        committed.append(p)
 
     return ExpandScreenResult(
         hydrated=hydrated,
         novel=new_records,
-        passed=passed,
+        passed=committed,
         rejected=rejected,
         base_stats={
             "raw_hits": len(raw_hits or []),

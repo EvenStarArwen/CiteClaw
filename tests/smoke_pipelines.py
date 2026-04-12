@@ -81,7 +81,7 @@ def pipeline_search_only(topic: SmokeTestTopic) -> dict:
                 "agent": {
                     "max_iterations": 1,
                     "target_count": 10,
-                    "search_limit_per_iter": 10,
+
                     "reasoning_effort": None,
                 },
             },
@@ -510,7 +510,7 @@ def pipeline_full_kitchen_sink(topic: SmokeTestTopic) -> dict:
                 "agent": {
                     "max_iterations": 1,
                     "target_count": 10,
-                    "search_limit_per_iter": 10,
+
                     "reasoning_effort": None,
                 },
             },

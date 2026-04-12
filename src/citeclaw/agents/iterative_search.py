@@ -62,7 +62,6 @@ class AgentConfig:
     max_iterations: int = 4
     max_llm_tokens: int = 200_000
     target_count: int = 200
-    search_limit_per_iter: int = 500
     summarize_sample: int = 20
     model: str | None = None
     reasoning_effort: str | None = "high"
@@ -88,7 +87,7 @@ class AgentTurn:
 
     PH-03: ``total_in_corpus`` is what S2 reports as the total matching
     paper count for this query (vs ``n_results`` which is what we
-    actually fetched, capped by ``search_limit_per_iter``). When
+    actually fetched — up to 1000 per S2 bulk page). When
     ``total_in_corpus > n_results`` the agent is only seeing the first
     page of a much larger result set and MUST narrow with filters
     rather than synonyms — broadening into a 5000-paper corpus just
@@ -278,8 +277,7 @@ def run_iterative_search(
     3. Parse the JSON response and extract ``thinking`` / ``query`` /
        ``agent_decision`` / ``reasoning``.
     4. Issue ``ctx.s2.search_bulk`` with the agent's query (text +
-       optional filters/sort), capped at
-       ``config.search_limit_per_iter``.
+       optional filters/sort).
     5. Dedup the new hits into the cumulative hit set by ``paperId``.
     6. Sample up to ``config.summarize_sample`` of the new hits, hydrate
        them via ``ctx.s2.enrich_batch``, and summarize unique venues,
@@ -409,7 +407,6 @@ def run_iterative_search(
             query_text,
             filters=query_filters,
             sort=query_sort,
-            limit=config.search_limit_per_iter,
         )
         new_papers: list[dict[str, Any]] = []
         total_in_corpus = 0
