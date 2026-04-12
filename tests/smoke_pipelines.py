@@ -61,17 +61,22 @@ def pipeline_search_only(topic: SmokeTestTopic) -> dict:
     """3. LoadSeeds → ExpandBySearch(3 iters) → Finalize"""
     return {
         "blocks": {
-            "pass_all": {"type": "YearFilter", "min": 1900, "max": 2100},
+            "search_screener": {
+                "type": "Sequential",
+                "layers": ["year_gate", "cit_gate"],
+            },
+            "year_gate": {"type": "YearFilter", "min": 2020, "max": 2026},
+            "cit_gate": {"type": "CitationFilter", "beta": 5},
         },
         "pipeline": [
             {"step": "LoadSeeds"},
             {
                 "step": "ExpandBySearch",
-                "screener": "pass_all",
+                "screener": "search_screener",
                 "agent": {
                     "max_iterations": 3,
                     "target_count": 10,
-                    "search_limit_per_iter": 20,
+                    "search_limit_per_iter": 10,
                     "reasoning_effort": None,
                 },
             },
@@ -500,7 +505,7 @@ def pipeline_full_kitchen_sink(topic: SmokeTestTopic) -> dict:
                 "agent": {
                     "max_iterations": 3,
                     "target_count": 10,
-                    "search_limit_per_iter": 20,
+                    "search_limit_per_iter": 10,
                     "reasoning_effort": None,
                 },
             },
