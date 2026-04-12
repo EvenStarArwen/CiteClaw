@@ -58,15 +58,20 @@ def pipeline_backward_only(topic: SmokeTestTopic) -> dict:
 
 
 def pipeline_search_only(topic: SmokeTestTopic) -> dict:
-    """3. LoadSeeds → ExpandBySearch(3 iters) → Finalize"""
+    """3. LoadSeeds → ExpandBySearch(1 iter) → Finalize
+
+    S2 bulk search ignores the limit param (returns up to 1000/page),
+    so we cap at 1 iteration and use an aggressive screener to keep
+    the collection small enough for fast finalize.
+    """
     return {
         "blocks": {
             "search_screener": {
                 "type": "Sequential",
                 "layers": ["year_gate", "cit_gate"],
             },
-            "year_gate": {"type": "YearFilter", "min": 2020, "max": 2026},
-            "cit_gate": {"type": "CitationFilter", "beta": 5},
+            "year_gate": {"type": "YearFilter", "min": 2023, "max": 2026},
+            "cit_gate": {"type": "CitationFilter", "beta": 20},
         },
         "pipeline": [
             {"step": "LoadSeeds"},
@@ -74,7 +79,7 @@ def pipeline_search_only(topic: SmokeTestTopic) -> dict:
                 "step": "ExpandBySearch",
                 "screener": "search_screener",
                 "agent": {
-                    "max_iterations": 3,
+                    "max_iterations": 1,
                     "target_count": 10,
                     "search_limit_per_iter": 10,
                     "reasoning_effort": None,
@@ -501,9 +506,9 @@ def pipeline_full_kitchen_sink(topic: SmokeTestTopic) -> dict:
             {"step": "ReScreen", "screener": "strict_screener"},
             {
                 "step": "ExpandBySearch",
-                "screener": "basic_screener",
+                "screener": "strict_screener",
                 "agent": {
-                    "max_iterations": 3,
+                    "max_iterations": 1,
                     "target_count": 10,
                     "search_limit_per_iter": 10,
                     "reasoning_effort": None,
