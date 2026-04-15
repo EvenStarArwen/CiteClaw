@@ -24,6 +24,19 @@ log = logging.getLogger("citeclaw.llm.openai")
 _OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4")
 _THINK_TAG_RE = re.compile(r"<think\b[^>]*>.*?</think>", re.DOTALL | re.IGNORECASE)
 
+# ``reasoning_parser`` discriminator values that activate each dispatch
+# shape. Empty string is treated as "vllm" for backward compatibility —
+# registry entries from the vLLM-only era didn't set the field. See
+# :func:`_custom_endpoint_reasoning_kwargs` for the actual dispatch.
+_VLLM_PARSERS = frozenset({"", "vllm", "gemma4", "qwen3", "deepseek_r1", "deepseek-r1"})
+# Providers whose OpenAI-compatible endpoint accepts ``reasoning_effort``
+# as a native top-level kwarg the same way OpenAI's o-series does: xAI
+# Grok 3/4, DeepSeek-reasoner via OpenAI-compat, Mistral Magistral.
+_NATIVE_REASONING_PARSERS = frozenset({"openai", "grok", "xai", "mistral", "magistral"})
+# Explicit opt-out: the endpoint is OpenAI-compatible but the model
+# doesn't support reasoning — used e.g. for plain Together AI models.
+_NO_REASONING_PARSERS = frozenset({"none", "off", "disabled"})
+
 
 def _strip_think_tags(text: str) -> str:
     """Remove leftover ``<think>...</think>`` blocks from a response."""
@@ -64,9 +77,31 @@ _COMPLETION_HEADROOM_FACTOR = 3.0
 def _custom_endpoint_reasoning_kwargs(
     reasoning_effort: str,
     thinking_budget: int = 0,
+    reasoning_parser: str = "",
 ) -> dict[str, Any]:
-    """Map ``reasoning_effort`` to OSS chat-template kwargs.
+    """Map ``reasoning_effort`` to provider-specific request kwargs.
 
+    Dispatch is driven by ``reasoning_parser`` (from
+    ``ModelEndpoint.reasoning_parser``). This is what lets a single
+    OpenAIClient serve vLLM-hosted Gemma 4, xAI Grok, Together AI
+    Llama, and Mistral Magistral correctly — each provider has its
+    own wire shape for thinking / reasoning.
+
+    Dispatch table
+    --------------
+    ``reasoning_parser`` empty / ``vllm`` / ``gemma4`` / ``qwen3`` /
+    ``deepseek_r1``: vLLM chat-template shape (see below).
+
+    ``reasoning_parser = openai`` / ``grok`` / ``xai`` / ``mistral`` /
+    ``magistral``: native OpenAI-style ``reasoning_effort`` kwarg —
+    the provider interprets it on the server side.
+
+    ``reasoning_parser = none`` / ``off`` / ``disabled``: no reasoning
+    kwargs are sent (the endpoint is OpenAI-compatible but the model
+    doesn't support reasoning — e.g. plain Together AI Llama).
+
+    vLLM chat-template shape
+    ------------------------
     Two interlocked knobs are required for Gemma 4 thinking mode to
     actually surface clean content + separate reasoning:
 
@@ -98,6 +133,27 @@ def _custom_endpoint_reasoning_kwargs(
     effort = (reasoning_effort or "").strip().lower()
     if not effort:
         return {}
+
+    parser = (reasoning_parser or "").strip().lower()
+
+    # Explicit opt-out: send nothing so plain OpenAI-compatible
+    # endpoints (e.g. Together AI Llama-3) don't receive kwargs they
+    # reject.
+    if parser in _NO_REASONING_PARSERS:
+        return {}
+
+    # Native ``reasoning_effort`` dispatch — same shape OpenAI o-series
+    # and xAI Grok expect. The provider maps the string onto its own
+    # internal thinking budget.
+    if parser in _NATIVE_REASONING_PARSERS:
+        if effort in ("off", "none", "false", "disable", "disabled"):
+            return {}
+        return {"reasoning_effort": effort}
+
+    # Default / vLLM path (empty, ``vllm``, or any of the parser names
+    # vLLM's reasoning-parser framework recognises). This preserves the
+    # historical behaviour for Modal Gemma / Qwen3 / DeepSeek-R1
+    # deployments.
     extra_body: dict[str, Any] = {
         "chat_template_kwargs": {"enable_thinking": False},
         # See docstring above — must be False to keep the channel markers
@@ -200,6 +256,7 @@ class OpenAIClient:
         endpoint_timeout: float | None = None,
         served_model_name: str | None = None,
         thinking_budget: int = 0,
+        reasoning_parser: str = "",
     ) -> None:
         self._config = config
         self._budget = budget
@@ -212,6 +269,7 @@ class OpenAIClient:
             reasoning_effort if reasoning_effort is not None else config.reasoning_effort
         )
         self._thinking_budget = thinking_budget
+        self._reasoning_parser = reasoning_parser or ""
         # Custom-endpoint paths (registry alias OR legacy llm_base_url) skip
         # the OpenAI o-series reasoning detection — those endpoints host OSS
         # models that take ``chat_template_kwargs`` instead of
@@ -267,7 +325,9 @@ class OpenAIClient:
                 kwargs["logprobs"] = True
         if self._is_custom:
             kwargs.update(_custom_endpoint_reasoning_kwargs(
-                self._reasoning_effort, self._thinking_budget,
+                self._reasoning_effort,
+                self._thinking_budget,
+                self._reasoning_parser,
             ))
         elif self._is_reasoning and self._reasoning_effort:
             kwargs["reasoning_effort"] = self._reasoning_effort
@@ -278,18 +338,21 @@ class OpenAIClient:
         # post-hoc JSON parsing.
         #
         # EXCEPTION: skip structured output when the custom endpoint has
-        # thinking enabled.  vLLM's guided decoding interacts badly with
-        # reasoning-mode generation — the guided decoder counts rejected
+        # *vLLM* thinking enabled.  vLLM's guided decoding interacts badly
+        # with reasoning-mode generation — the guided decoder counts rejected
         # candidate tokens toward ``max_completion_tokens``, causing the
         # model to exhaust its budget on decoding overhead and truncate
-        # the actual JSON output.  The model is perfectly capable of
-        # producing valid JSON without guided decoding; the JSON salvage
-        # code in ``pdf_reference_extractor`` handles edge cases.
+        # the actual JSON output.  Providers with native reasoning support
+        # (OpenAI o-series, xAI Grok, Mistral Magistral) handle structured
+        # output correctly during thinking, so this exception is scoped to
+        # the vLLM parsers.
+        parser = (self._reasoning_parser or "").strip().lower()
         thinking_active = (
             self._is_custom
             and self._reasoning_effort
             and self._reasoning_effort.strip().lower()
             not in ("off", "none", "false", "disable", "disabled", "")
+            and parser in _VLLM_PARSERS
         )
         if (
             response_schema is not None

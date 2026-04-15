@@ -47,6 +47,7 @@ def _build_registry_client(
         endpoint_timeout=entry.request_timeout,
         served_model_name=entry.served_model_name or alias,
         thinking_budget=entry.thinking_budget,
+        reasoning_parser=entry.reasoning_parser,
     )
 
 

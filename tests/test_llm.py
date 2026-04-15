@@ -489,6 +489,216 @@ class TestModelEndpointRegistry:
         # No extra_body at all in this case (the function returns {} early).
         assert "extra_body" not in create_call or "skip_special_tokens" not in create_call.get("extra_body", {})
 
+    # ------------------------------------------------------------------
+    # Per-provider reasoning dispatch: registry entries for xAI Grok,
+    # Together AI, Mistral, and explicit ``none`` opt-outs route through
+    # OpenAIClient but MUST NOT send vLLM-specific ``chat_template_kwargs``.
+    # ------------------------------------------------------------------
+
+    def test_grok_registry_sends_native_reasoning_effort_only(
+        self, tmp_path, monkeypatch,
+    ):
+        """xAI Grok accepts ``reasoning_effort`` as a native top-level
+        kwarg, like OpenAI o-series. A registry entry flagged
+        ``reasoning_parser: grok`` must send *only* that kwarg — no
+        ``extra_body.chat_template_kwargs`` (which Grok rejects)."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="grok-4",
+            models={
+                "grok-4": ModelEndpoint(
+                    base_url="https://api.x.ai/v1",
+                    served_model_name="grok-4",
+                    api_key_env="XAI_API_KEY",
+                    reasoning_parser="grok",
+                ),
+            },
+        )
+        monkeypatch.setenv("XAI_API_KEY", "fake-grok-key")
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="high")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        assert create_call.get("reasoning_effort") == "high"
+        # Native dispatch must NOT pollute the request with vLLM kwargs.
+        assert "extra_body" not in create_call
+        assert "max_completion_tokens" not in create_call
+
+    def test_openai_reasoning_parser_sends_native_reasoning_effort(
+        self, tmp_path, monkeypatch,
+    ):
+        """``reasoning_parser: openai`` is the alias that tells the
+        OpenAIClient to send native ``reasoning_effort`` — useful for any
+        OpenAI-compatible endpoint that mirrors the o-series surface
+        (Mistral Magistral, DeepSeek-reasoner behind an OpenAI-compat
+        proxy, etc.)."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="magistral",
+            models={
+                "magistral": ModelEndpoint(
+                    base_url="https://api.mistral.ai/v1",
+                    served_model_name="magistral-medium-latest",
+                    api_key_env="MISTRAL_API_KEY",
+                    reasoning_parser="openai",
+                ),
+            },
+        )
+        monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key")
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="medium")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        assert create_call.get("reasoning_effort") == "medium"
+        assert "extra_body" not in create_call
+
+    def test_together_no_reasoning_parser_ignores_reasoning_effort(
+        self, tmp_path, monkeypatch,
+    ):
+        """``reasoning_parser: none`` is the explicit opt-out for
+        OpenAI-compatible endpoints whose models don't support reasoning
+        (e.g. plain Together AI Llama). The client must drop the
+        reasoning_effort silently so the endpoint doesn't reject the
+        request with ``unknown parameter``."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="together-llama",
+            models={
+                "together-llama": ModelEndpoint(
+                    base_url="https://api.together.xyz/v1",
+                    served_model_name="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                    api_key_env="TOGETHER_API_KEY",
+                    reasoning_parser="none",
+                ),
+            },
+        )
+        monkeypatch.setenv("TOGETHER_API_KEY", "fake-together-key")
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="high")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        assert "reasoning_effort" not in create_call
+        assert "extra_body" not in create_call
+        assert "max_completion_tokens" not in create_call
+
+    def test_grok_off_effort_drops_reasoning_effort(
+        self, tmp_path, monkeypatch,
+    ):
+        """``reasoning_effort: off`` on a native-reasoning provider drops
+        the kwarg entirely — sending ``reasoning_effort='off'`` to OpenAI
+        o-series or xAI Grok would 400 with ``invalid parameter value``."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="grok-4",
+            models={
+                "grok-4": ModelEndpoint(
+                    base_url="https://api.x.ai/v1",
+                    served_model_name="grok-4",
+                    api_key_env="XAI_API_KEY",
+                    reasoning_parser="grok",
+                ),
+            },
+        )
+        monkeypatch.setenv("XAI_API_KEY", "fake-grok-key")
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="off")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        assert "reasoning_effort" not in create_call
+
+    def test_structured_output_allowed_for_native_reasoning(
+        self, tmp_path, monkeypatch,
+    ):
+        """vLLM thinking mode disables structured output because guided
+        decoding eats the thinking budget. Native-reasoning providers
+        (OpenAI o-series, Grok) don't have that issue — structured output
+        MUST stay on when a schema is provided."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="grok-4",
+            models={
+                "grok-4": ModelEndpoint(
+                    base_url="https://api.x.ai/v1",
+                    served_model_name="grok-4",
+                    api_key_env="XAI_API_KEY",
+                    reasoning_parser="grok",
+                ),
+            },
+        )
+        monkeypatch.setenv("XAI_API_KEY", "fake-grok-key")
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="high")
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        client.call("sys", "usr", category="t", response_schema=schema)
+        create_call = captured["create_calls"][0]
+        # Schema flows through when the provider handles reasoning natively.
+        assert create_call.get("response_format", {}).get("type") == "json_schema"
+
+    def test_structured_output_disabled_for_vllm_thinking(
+        self, tmp_path, monkeypatch,
+    ):
+        """Complement to the test above: vLLM thinking mode must skip
+        ``response_format`` because vLLM's guided decoder counts rejected
+        candidate tokens toward ``max_completion_tokens``, causing the
+        model to exhaust its budget on decoding overhead."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                    reasoning_parser="gemma4",
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="high")
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        client.call("sys", "usr", category="t", response_schema=schema)
+        create_call = captured["create_calls"][0]
+        # Schema dropped when vLLM thinking is active.
+        assert "response_format" not in create_call
+
+    def test_vllm_registry_without_reasoning_parser_stays_backward_compatible(
+        self, tmp_path, monkeypatch,
+    ):
+        """Registry entries that omit ``reasoning_parser`` (the legacy
+        Modal Gemma setup) still get the vLLM chat-template shape. This
+        preserves backward compat for all existing YAML configs and
+        pre-existing tests."""
+        from citeclaw.config import ModelEndpoint
+
+        captured = self._captured_sdk(monkeypatch)
+        cfg = Settings(
+            data_dir=tmp_path,
+            screening_model="gemma-4-31b",
+            models={
+                "gemma-4-31b": ModelEndpoint(
+                    base_url="https://example.modal.run/v1",
+                    served_model_name="google/gemma-4-31B-it",
+                    # reasoning_parser intentionally empty — legacy default
+                ),
+            },
+        )
+        client = build_llm_client(cfg, BudgetTracker(), reasoning_effort="high")
+        client.call("sys", "usr", category="t")
+        create_call = captured["create_calls"][0]
+        # Still vLLM shape when unspecified.
+        assert create_call["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
+
 
 # ---------------------------------------------------------------------------
 # llm_runner._parse and _parse_matches
