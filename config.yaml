@@ -41,6 +41,67 @@ graph_label_instruction: >
   is a survey/review. Do not invent names.
 
 # =================================================================
+# MODELS REGISTRY (optional — uncomment to enable multi-provider)
+# =================================================================
+# Each entry maps a YAML alias to an OpenAI-compatible endpoint plus the
+# provider-specific reasoning_parser. A block's ``model:`` field picks an
+# alias; the factory routes through the corresponding endpoint. Any alias
+# not in the registry falls through to legacy routing (Gemini auto-detect,
+# llm_base_url, OpenAI SaaS) so plain configs keep working unchanged.
+#
+# API keys come from environment variables only — the ``api_key_env`` field
+# names the variable to read; the key itself never appears in YAML.
+#
+# reasoning_parser dispatch:
+#   ""/vllm/gemma4/qwen3/deepseek_r1 → vLLM chat_template_kwargs shape
+#   openai/grok/xai/mistral/magistral → native reasoning_effort kwarg
+#   none/off → no reasoning kwargs (for providers/models without reasoning)
+#
+# models:
+#   # Self-hosted vLLM (Modal Gemma). Default ``screening_model`` target.
+#   gemma-4-31b:
+#     base_url: "https://you--citeclaw-vllm-gemma-serve.modal.run/v1"
+#     served_model_name: "google/gemma-4-31B-it"
+#     api_key_env: "CITECLAW_VLLM_API_KEY"
+#     reasoning_parser: "gemma4"
+#     thinking_budget: 12288
+#
+#   # xAI Grok — OpenAI-compatible, native reasoning_effort.
+#   grok-4:
+#     base_url: "https://api.x.ai/v1"
+#     served_model_name: "grok-4"
+#     api_key_env: "XAI_API_KEY"
+#     reasoning_parser: "grok"
+#
+#   # Together AI — OpenAI-compatible; most hosted models have no reasoning.
+#   together-llama-70b:
+#     base_url: "https://api.together.xyz/v1"
+#     served_model_name: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+#     api_key_env: "TOGETHER_API_KEY"
+#     reasoning_parser: "none"
+#
+#   # Together AI with a reasoning model (DeepSeek-R1 via OpenAI-compat).
+#   together-deepseek-r1:
+#     base_url: "https://api.together.xyz/v1"
+#     served_model_name: "deepseek-ai/DeepSeek-R1"
+#     api_key_env: "TOGETHER_API_KEY"
+#     reasoning_parser: "openai"   # Together exposes reasoning_effort natively
+#
+#   # Mistral — OpenAI-compatible at /v1. Use "magistral" parser for
+#   # Mistral's reasoning models, "none" for plain chat models.
+#   mistral-large:
+#     base_url: "https://api.mistral.ai/v1"
+#     served_model_name: "mistral-large-latest"
+#     api_key_env: "MISTRAL_API_KEY"
+#     reasoning_parser: "none"
+#
+#   magistral-medium:
+#     base_url: "https://api.mistral.ai/v1"
+#     served_model_name: "magistral-medium-latest"
+#     api_key_env: "MISTRAL_API_KEY"
+#     reasoning_parser: "magistral"
+
+# =================================================================
 # BLOCKS
 # =================================================================
 blocks:

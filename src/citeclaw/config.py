@@ -52,10 +52,28 @@ class ModelEndpoint(BaseModel):
         at startup. Empty means "use ``CITECLAW_VLLM_API_KEY`` if set,
         otherwise no auth".
     reasoning_parser : str
-        Hint for downstream tooling that the endpoint understands a
-        specific reasoning parser (``gemma4``, ``qwen3``, ``deepseek_r1``,
-        ...). The vLLM server is started with this parser at deploy time;
-        the client uses the field as documentation only.
+        Discriminator that selects how ``reasoning_effort`` is sent over
+        the wire. This is what lets one OpenAI-compatible client serve
+        multiple very different providers correctly.
+
+        Accepted values:
+
+        * ``""`` (default) / ``"vllm"`` / ``"gemma4"`` / ``"qwen3"`` /
+          ``"deepseek_r1"``: vLLM chat-template shape —
+          ``extra_body={"chat_template_kwargs": {"enable_thinking": ...,
+          "thinking_budget": ...}, "skip_special_tokens": False}`` plus
+          ``reasoning_effort`` and ``max_completion_tokens``. Use for
+          any self-hosted vLLM deployment (Modal Gemma, vLLM Qwen3, ...).
+          The vLLM server is started with the matching
+          ``--reasoning-parser`` flag at deploy time.
+        * ``"openai"`` / ``"grok"`` / ``"xai"`` / ``"mistral"`` /
+          ``"magistral"``: native ``reasoning_effort`` top-level kwarg
+          only. Use for xAI Grok 3/4, Mistral Magistral, OpenAI-compat
+          proxies for OpenAI o-series, or any provider whose API mirrors
+          the o-series reasoning-effort surface.
+        * ``"none"`` / ``"off"`` / ``"disabled"``: no reasoning kwargs
+          are sent. Use for OpenAI-compatible endpoints whose models
+          don't support reasoning (e.g. plain Together AI Llama).
     request_timeout : float | None
         Per-endpoint override for ``llm_request_timeout``. ``None`` falls
         back to the global setting. Useful when one endpoint (e.g. a
