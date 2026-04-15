@@ -1,8 +1,9 @@
 """LLM-guided PDF finder — reasoning agent for unknown publishers.
 
 A mini-agent that drives the browser to find and download a paper's
-PDF. Unlike the hardcoded recipes, this uses an LLM (Modal Gemma or
-any OpenAI-compatible endpoint) to REASON about what to do:
+PDF. Unlike the hardcoded recipes, this uses an LLM (Modal Gemma, xAI
+Grok, Together AI, Mistral, Gemini, or any OpenAI-compatible endpoint)
+to REASON about what to do:
 
   1. Look at the page's links
   2. Decide which one to try (fetch or navigate)
@@ -17,10 +18,19 @@ tokens + ~100 output tokens (with reasoning).
 
 Max 5 turns per paper. Most papers need 1-2.
 
-Env vars:
-  PDFCLAW_LLM_BASE_URL   — OpenAI-compatible endpoint
-  PDFCLAW_LLM_API_KEY or CITECLAW_VLLM_API_KEY — bearer token
-  PDFCLAW_LLM_MODEL       — model name (default: google/gemma-4-31B-it)
+LLM routing now goes through the unified :mod:`citeclaw.clients.llm`
+factory so every provider CiteClaw supports — including xAI Grok,
+Together AI, and Mistral — is automatically available here too. The
+env-var chain below is preserved as a convenience bootstrap for
+standalone pdfclaw runs where no YAML is loaded.
+
+Env vars (detection order):
+  PDFCLAW_LLM_BASE_URL + PDFCLAW_LLM_API_KEY [+ PDFCLAW_LLM_MODEL]
+      Any OpenAI-compatible endpoint (Grok / Together / Mistral / vLLM).
+  GEMINI_API_KEY
+      Routes to the native Gemini client (uses google-genai SDK).
+  CITECLAW_VLLM_API_KEY + CITECLAW_VLLM_BASE_URL
+      Modal Gemma — the CiteClaw default.
 """
 
 from __future__ import annotations
@@ -32,8 +42,6 @@ import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-import httpx
-
 from pdfclaw.publishers.base import (
     STATUS_ERROR,
     STATUS_NOT_FOUND,
@@ -43,6 +51,7 @@ from pdfclaw.publishers.base import (
 )
 
 if TYPE_CHECKING:
+    from citeclaw.clients.llm.base import LLMClient
     from playwright.sync_api import BrowserContext, Page
 
 log = logging.getLogger("pdfclaw.llm_finder")
@@ -84,33 +93,62 @@ Available links on this page:
 What should we do next? Respond with a JSON object."""
 
 
-def _get_llm_config() -> tuple[str, str, str] | None:
-    """Detect LLM config from env vars. Priority:
-    1. Explicit PDFCLAW_LLM_* vars (any OpenAI-compatible endpoint)
-    2. GEMINI_API_KEY (auto-configures Google's OpenAI-compatible endpoint)
-    3. CITECLAW_VLLM_* vars (Modal Gemma)
+def _build_llm_client() -> tuple["LLMClient", str] | None:
+    """Build an :class:`LLMClient` for the PDF finder agent.
+
+    Routes through ``citeclaw.clients.llm.build_llm_client`` so every
+    provider CiteClaw supports (OpenAI / Gemini / xAI Grok / Together AI /
+    Mistral / self-hosted vLLM) is available here automatically — add a
+    provider to the CiteClaw registry once and pdfclaw picks it up too.
+
+    Env-var detection order (preserved from the legacy standalone path):
+
+      1. ``PDFCLAW_LLM_BASE_URL`` + ``PDFCLAW_LLM_API_KEY``
+         (+ optional ``PDFCLAW_LLM_MODEL``) — any OpenAI-compatible endpoint.
+      2. ``GEMINI_API_KEY`` — native Gemini client.
+      3. ``CITECLAW_VLLM_API_KEY`` + ``CITECLAW_VLLM_BASE_URL`` — Modal Gemma.
+
+    Returns ``(client, model_name)`` for logging, or ``None`` when no
+    credentials are configured.
     """
-    # Option 1: explicit config
+    from citeclaw.clients.llm import build_llm_client
+    from citeclaw.config import BudgetTracker, Settings
+
+    # Option 1: explicit PDFCLAW_LLM_* (any OpenAI-compatible endpoint).
     base_url = os.environ.get("PDFCLAW_LLM_BASE_URL") or ""
     api_key = os.environ.get("PDFCLAW_LLM_API_KEY") or ""
-    model = os.environ.get("PDFCLAW_LLM_MODEL") or ""
+    model_override = os.environ.get("PDFCLAW_LLM_MODEL") or ""
     if base_url and api_key:
-        return base_url, api_key, model or "google/gemma-4-31B-it"
+        model = model_override or "google/gemma-4-31B-it"
+        cfg = Settings(
+            screening_model=model,
+            llm_base_url=base_url,
+            llm_api_key=api_key,
+        )
+        return build_llm_client(cfg, BudgetTracker()), model
 
-    # Option 2: Gemini (auto-detect from GEMINI_API_KEY)
+    # Option 2: Gemini auto-detect — routes to the native GeminiClient,
+    # which is more capable than the old OpenAI-compat shim.
     gemini_key = os.environ.get("GEMINI_API_KEY") or ""
     if gemini_key:
-        return (
-            "https://generativelanguage.googleapis.com/v1beta/openai",
-            gemini_key,
-            model or "gemini-3.1-flash-lite-preview",
+        model = model_override or "gemini-3.1-flash-lite-preview"
+        cfg = Settings(
+            screening_model=model,
+            gemini_api_key=gemini_key,
         )
+        return build_llm_client(cfg, BudgetTracker()), model
 
-    # Option 3: Modal Gemma (CITECLAW_VLLM_* vars)
+    # Option 3: Modal Gemma (CITECLAW_VLLM_* vars).
     vllm_key = os.environ.get("CITECLAW_VLLM_API_KEY") or ""
-    vllm_base = os.environ.get("PDFCLAW_LLM_BASE_URL") or os.environ.get("CITECLAW_VLLM_BASE_URL") or ""
+    vllm_base = os.environ.get("CITECLAW_VLLM_BASE_URL") or ""
     if vllm_key and vllm_base:
-        return vllm_base, vllm_key, model or "google/gemma-4-31B-it"
+        model = model_override or "google/gemma-4-31B-it"
+        cfg = Settings(
+            screening_model=model,
+            llm_base_url=vllm_base,
+            llm_api_key=vllm_key,
+        )
+        return build_llm_client(cfg, BudgetTracker()), model
 
     return None
 
@@ -227,42 +265,27 @@ def _format_candidates(candidates: list[dict]) -> str:
     return "\n".join(lines) if lines else "(no relevant links found)"
 
 
-def _call_llm(
-    base_url: str, api_key: str, model: str,
-    system: str, user: str,
-) -> dict | None:
+def _call_llm(client: "LLMClient", system: str, user: str) -> dict | None:
+    """Run one LLM turn through the unified :class:`LLMClient`.
+
+    Robust to provider differences: accepts a JSON object anywhere in the
+    response text (some models prefix with prose like "Reasoning: ..." or
+    fence the JSON in a markdown block). Returns ``None`` on network,
+    parse, or schema failure so the caller can log a history line and
+    move on.
+    """
     try:
-        resp = httpx.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "max_tokens": 256,
-                "temperature": 0,
-            },
-            timeout=60.0,
-        )
-    except Exception as exc:  # noqa: BLE001
+        resp = client.call(system, user, category="pdfclaw_agent")
+    except Exception as exc:  # noqa: BLE001 - unified retries already exhausted
         log.warning("LLM call failed: %s", exc)
         return None
 
-    if resp.status_code != 200:
-        log.warning("LLM returned HTTP %d: %s", resp.status_code, resp.text[:200])
+    raw = (resp.text or "").strip()
+    if not raw:
+        log.warning("LLM returned empty response")
         return None
 
-    try:
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError):
-        return None
-
-    # Extract JSON from the response (model might wrap it in markdown)
+    # Extract JSON from the response — models might wrap it in markdown.
     json_match = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
     if not json_match:
         log.warning("LLM response has no JSON: %s", raw[:200])
@@ -292,8 +315,8 @@ class LLMPdfFinderRecipe:
         browser_page: "Page | None" = None,
         http=None,  # noqa: ARG002
     ) -> FetchResult:
-        config = _get_llm_config()
-        if config is None:
+        built = _build_llm_client()
+        if built is None:
             return FetchResult(
                 paper_id=paper_id, doi=doi, status=STATUS_NOT_FOUND,
                 fetched_via=self.name,
@@ -306,7 +329,7 @@ class LLMPdfFinderRecipe:
                 fetched_via=self.name, error="needs browser_page",
             )
 
-        base_url, api_key, model = config
+        client, model = built
         page = browser_page
         context: BrowserContext = page.context
 
@@ -349,7 +372,7 @@ class LLMPdfFinderRecipe:
                 candidates=_format_candidates(candidates),
             )
 
-            decision = _call_llm(base_url, api_key, model, SYSTEM_PROMPT, prompt)
+            decision = _call_llm(client, SYSTEM_PROMPT, prompt)
             if decision is None:
                 return FetchResult(
                     paper_id=paper_id, doi=doi, status=STATUS_ERROR,
