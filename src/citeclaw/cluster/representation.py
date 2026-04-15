@@ -13,8 +13,10 @@ Three pieces:
 2. :func:`select_representative_papers` — pick the n papers per cluster
    closest to the cluster centroid in embedding space. Used as the
    "representative documents" input to the LLM naming prompt.
-3. :func:`name_topics_via_llm` — concurrent LLM calls (one per cluster)
-   that fill in ``ClusterMetadata.label`` and ``ClusterMetadata.summary``.
+3. :func:`name_topics_via_llm` — batched LLM calls that fill in
+   ``ClusterMetadata.label`` and ``ClusterMetadata.summary``. Up to
+   ``batch_size`` clusters per prompt, with structured JSON output so
+   the model is constrained to produce one result per cluster_id.
    Routes through the standard :class:`~citeclaw.clients.llm.base.LLMClient`
    protocol — no bespoke provider sniffing.
 """
@@ -30,6 +32,15 @@ from typing import TYPE_CHECKING
 
 from citeclaw.cluster.base import ClusterMetadata
 from citeclaw.models import BudgetExhaustedError, PaperRecord
+from citeclaw.prompts.topic_naming import (
+    BATCH_SYSTEM as _NAMING_BATCH_SYSTEM,
+)
+from citeclaw.prompts.topic_naming import (
+    BATCH_USER_TEMPLATE as _NAMING_BATCH_USER,
+)
+from citeclaw.prompts.topic_naming import (
+    CLUSTER_BLOCK_TEMPLATE as _CLUSTER_BLOCK,
+)
 from citeclaw.prompts.topic_naming import SYSTEM as _NAMING_SYSTEM
 from citeclaw.prompts.topic_naming import USER_TEMPLATE as _NAMING_USER
 
@@ -215,10 +226,12 @@ def select_representative_papers(
 
 
 def _parse_naming_response(text: str) -> tuple[str, str] | None:
-    """Parse a topic-naming LLM response into (label, summary).
+    """Parse a single-cluster topic-naming LLM response into (label, summary).
 
     Tolerates code-fenced JSON and slightly malformed responses. Returns
     None on parse failure so the caller can fall back to keyword-only naming.
+    Kept for backward compatibility with tests / callers that still issue
+    single-cluster prompts.
     """
     text = text.strip()
     m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
@@ -237,6 +250,75 @@ def _parse_naming_response(text: str) -> tuple[str, str] | None:
     return label, summary
 
 
+def _parse_naming_batch(text: str) -> dict[int, tuple[str, str]] | None:
+    """Parse a batched topic-naming LLM response.
+
+    Accepts the structured-output shape
+    ``{"results": [{"cluster_id": int, "topic_label": str, "summary": str}, ...]}``
+    AND the bare-array shape ``[{"cluster_id": ..., ...}, ...]`` for models
+    that ignore the wrapping envelope. Returns ``{cluster_id: (label, summary)}``
+    with out-of-range / malformed entries silently dropped, or ``None`` if
+    the whole payload is unparseable.
+    """
+    text = text.strip()
+    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    try:
+        data = json.loads(text)
+    except Exception:
+        return None
+    if isinstance(data, dict) and "results" in data:
+        data = data["results"]
+    if not isinstance(data, list):
+        return None
+    out: dict[int, tuple[str, str]] = {}
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        cid = entry.get("cluster_id")
+        if not isinstance(cid, (int, float)) or isinstance(cid, bool):
+            continue
+        label = str(entry.get("topic_label") or entry.get("label") or "").strip()
+        summary = str(entry.get("summary") or "").strip()
+        if not label and not summary:
+            continue
+        out[int(cid)] = (label, summary)
+    return out if out else None
+
+
+def _topic_naming_batch_schema() -> dict:
+    """JSON Schema for a batched topic-naming response.
+
+    Shape::
+
+        {"results": [
+            {"cluster_id": int, "topic_label": str, "summary": str},
+            ...
+        ]}
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "cluster_id": {"type": "integer"},
+                        "topic_label": {"type": "string"},
+                        "summary": {"type": "string"},
+                    },
+                    "required": ["cluster_id", "topic_label", "summary"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["results"],
+        "additionalProperties": False,
+    }
+
+
 def _format_documents(papers: dict[str, PaperRecord], paper_ids: list[str]) -> str:
     """Format representative papers as bullet points for the LLM prompt."""
     lines: list[str] = []
@@ -249,28 +331,53 @@ def _format_documents(papers: dict[str, PaperRecord], paper_ids: list[str]) -> s
     return "\n".join(lines) if lines else "(no representative documents)"
 
 
+def _apply_fallback_labels(
+    metadata: dict[int, ClusterMetadata], cluster_ids: list[int],
+) -> None:
+    """Build keyword-based labels for clusters the LLM didn't name.
+
+    Shared by the normal parse-failure path and the budget-exhausted path
+    so unlabeled clusters never ship with a blank string when they had
+    usable keywords.
+    """
+    for cid in cluster_ids:
+        m = metadata[cid]
+        if m.label:
+            continue
+        if m.keywords:
+            m.label = " ".join(m.keywords[:5])
+
+
 def name_topics_via_llm(
     metadata: dict[int, ClusterMetadata],
     papers: dict[str, PaperRecord],
     *,
     client: "LLMClient",
     max_workers: int = 4,
+    batch_size: int = 5,
     category: str = "llm_topic_naming",
 ) -> None:
     """Mutate ``metadata`` in place: fill ``label`` and ``summary`` per cluster.
 
-    For each cluster with at least one keyword (or representative paper),
-    issues one LLM call via the unified ``LLMClient`` protocol with the
-    topic-naming prompt and parses the JSON response. Failed calls log a
+    Batched LLM dispatch — up to ``batch_size`` clusters per prompt, with
+    a JSON Schema constraining the response to one entry per input
+    ``cluster_id``. Concurrent batches via ThreadPoolExecutor
+    (``max_workers``) parallelise across groups. Failed parses log a
     warning and fall back to ``label = " ".join(keywords[:5])``.
 
-    Concurrency: a small ThreadPoolExecutor (default ``max_workers=4``)
-    fans out cluster naming since clusters are independent. Budget
-    exhaustion stops the loop early — already-named clusters keep their
-    labels.
+    Budget exhaustion (e.g. ``BudgetExhaustedError``) stops the dispatch
+    loop early — already-named clusters keep their labels; the rest get
+    the keyword-based fallback.
 
-    Each cluster only issues a call if it has at least one keyword OR at
+    Each cluster only participates if it has at least one keyword OR at
     least one representative paper. Empty clusters are silently skipped.
+
+    ``batch_size = 1`` reproduces the previous per-cluster dispatch shape
+    (without the batched prompt); useful as a fallback for very long
+    representative-paper lists that would blow the context window when
+    batched. Default ``5`` picks a conservative middle ground — each
+    cluster contributes a keyword list + ~5 paper titles, so 5 clusters
+    per prompt stays well under any reasonable model's context.
     """
     if not metadata:
         return
@@ -285,38 +392,70 @@ def name_topics_via_llm(
     if not work:
         return
 
-    def _name_one(cid: int) -> tuple[int, str | None, str | None]:
-        m = metadata[cid]
-        keywords_str = ", ".join(m.keywords) if m.keywords else "(no keywords)"
-        documents_str = _format_documents(papers, m.representative_papers)
-        user = _NAMING_USER.format(keywords=keywords_str, documents=documents_str)
+    # Stable ordering: by cluster id ascending. Keeps the prompt
+    # deterministic run-to-run so cache hits work.
+    work.sort()
+    batch_size = max(1, batch_size)
+    batches: list[list[int]] = [
+        work[i:i + batch_size] for i in range(0, len(work), batch_size)
+    ]
+    schema = _topic_naming_batch_schema()
+
+    def _name_batch(cluster_ids: list[int]) -> tuple[list[int], dict[int, tuple[str, str]] | None]:
+        blocks = []
+        for cid in cluster_ids:
+            m = metadata[cid]
+            keywords_str = ", ".join(m.keywords) if m.keywords else "(no keywords)"
+            documents_str = _format_documents(papers, m.representative_papers)
+            blocks.append(_CLUSTER_BLOCK.format(
+                cid=cid, keywords=keywords_str, documents=documents_str,
+            ))
+        user = _NAMING_BATCH_USER.format(n=len(cluster_ids), clusters="\n".join(blocks))
         try:
-            resp = client.call(_NAMING_SYSTEM, user, category=category)
+            resp = client.call(
+                _NAMING_BATCH_SYSTEM, user,
+                category=category,
+                response_schema=schema,
+            )
         except BudgetExhaustedError:
-            return cid, None, None
+            return cluster_ids, None
+        except TypeError:
+            # Older client fakes that don't accept response_schema — fall
+            # back to the bare call signature.
+            try:
+                resp = client.call(_NAMING_BATCH_SYSTEM, user, category=category)
+            except BudgetExhaustedError:
+                return cluster_ids, None
+            except Exception as exc:
+                log.warning("topic naming batched LLM call failed: %s", exc)
+                return cluster_ids, None
         except Exception as exc:  # pragma: no cover - defensive
-            log.warning("topic naming LLM call failed for cluster %d: %s", cid, exc)
-            return cid, None, None
-        parsed = _parse_naming_response(resp.text or "")
-        if parsed is None:
-            return cid, None, None
-        label, summary = parsed
-        return cid, label, summary
+            log.warning("topic naming batched LLM call failed: %s", exc)
+            return cluster_ids, None
+        parsed = _parse_naming_batch(resp.text or "")
+        return cluster_ids, parsed
 
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
-        futures = {pool.submit(_name_one, cid): cid for cid in work}
+        futures = {pool.submit(_name_batch, b): b for b in batches}
         for fut in as_completed(futures):
-            cid, label, summary = fut.result()
-            m = metadata[cid]
-            if label is None and summary is None:
-                # Fallback: build a label from the top keywords.
-                if m.keywords:
-                    m.label = " ".join(m.keywords[:5])
+            cluster_ids, parsed = fut.result()
+            if parsed is None:
+                _apply_fallback_labels(metadata, cluster_ids)
                 continue
-            if label:
-                m.label = label
-            if summary:
-                m.summary = summary
+            for cid in cluster_ids:
+                entry = parsed.get(cid)
+                if entry is None:
+                    # LLM omitted this cluster — use keyword fallback.
+                    m = metadata[cid]
+                    if m.keywords:
+                        m.label = " ".join(m.keywords[:5])
+                    continue
+                label, summary = entry
+                m = metadata[cid]
+                if label:
+                    m.label = label
+                if summary:
+                    m.summary = summary
 
 
 __all__ = [

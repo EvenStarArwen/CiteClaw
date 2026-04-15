@@ -11,8 +11,12 @@ output schema and returns matching JSON with deterministic verdicts:
     flat-array shape so older callers keep working.
   - Re-screen scope (``{"index": N, "reject": false}``) → reject=false
   - LLM reranker   (``{"index": N, "score": <int>}``)   → score=3
-  - Topic naming   (``{"topic_label": ..., "summary": ...}``)
-                                                        → label="stub-topic", summary="stub summary"
+  - Topic naming — two shapes:
+      * Single-cluster legacy prompt ``{"topic_label": ..., "summary": ...}``
+        → label="stub-topic", summary="stub summary"
+      * Batched prompt (detected by ``cluster_id=`` markers in the user
+        text) → ``{"results": [{"cluster_id": N, "topic_label": ..., "summary": ...}, ...]}``
+        with one entry per cluster found in the prompt.
   - Iterative search agent (``{"thinking": ..., "query": ..., "agent_decision": ..., "reasoning": ...}``)
                                                         → three-state lifecycle initial → refine → satisfied,
     advanced by counting prior ``"query":`` JSON keys in the transcript.
@@ -29,6 +33,7 @@ from citeclaw.clients.llm.base import LLMResponse
 from citeclaw.config import BudgetTracker, Settings
 
 _RE_EXACTLY_N = re.compile(r"exactly\s+(\d+)\s+objects", re.IGNORECASE)
+_RE_CLUSTER_ID = re.compile(r"cluster_id=(-?\d+)")
 
 
 def _extract_n(user: str) -> int:
@@ -59,6 +64,22 @@ def stub_respond(system: str, user: str) -> str:
             ]
         })
     if '"topic_label"' in user:
+        # Batched form (see citeclaw.prompts.topic_naming.BATCH_USER_TEMPLATE)
+        # embeds ``cluster_id=<int>`` markers — one per cluster. When we
+        # see them, return the structured-output shape with one entry per
+        # cluster found in the prompt.
+        cluster_ids = _RE_CLUSTER_ID.findall(user)
+        if cluster_ids:
+            return json.dumps({
+                "results": [
+                    {
+                        "cluster_id": int(cid),
+                        "topic_label": "stub-topic",
+                        "summary": "stub summary",
+                    }
+                    for cid in cluster_ids
+                ]
+            })
         return json.dumps({"topic_label": "stub-topic", "summary": "stub summary"})
     if '"agent_decision"' in user or '"should_stop"' in user:
         # Iterative search agent (citeclaw.agents.iterative_search). Each

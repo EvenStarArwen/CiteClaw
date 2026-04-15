@@ -6,6 +6,7 @@ import pytest
 
 from citeclaw.cluster.base import ClusterMetadata
 from citeclaw.cluster.representation import (
+    _parse_naming_batch,
     _parse_naming_response,
     extract_keywords_ctfidf,
     name_topics_via_llm,
@@ -212,12 +213,161 @@ class TestNameTopicsViaLlm:
                 representative_papers=["p1"],
             )
         }
-        # Force the parser to return None.
+        # Force the batched parser to return None — simulates the LLM
+        # returning unparseable JSON for every batch.
         monkeypatch.setattr(
-            "citeclaw.cluster.representation._parse_naming_response",
+            "citeclaw.cluster.representation._parse_naming_batch",
             lambda text: None,
         )
         client = self._build_client(ctx)
         name_topics_via_llm(metadata, {"p1": _paper("p1", "x")}, client=client)
         # Fallback label is the top keywords joined by spaces.
         assert metadata[0].label == "alpha beta gamma"
+
+
+# ---------------------------------------------------------------------------
+# _parse_naming_batch — the batched structured-output parser
+# ---------------------------------------------------------------------------
+
+
+class TestParseNamingBatch:
+    def test_wrapped_results(self):
+        raw = (
+            '{"results": ['
+            '{"cluster_id": 0, "topic_label": "ml", "summary": "A"},'
+            '{"cluster_id": 1, "topic_label": "bio", "summary": "B"}'
+            "]}"
+        )
+        out = _parse_naming_batch(raw)
+        assert out == {0: ("ml", "A"), 1: ("bio", "B")}
+
+    def test_bare_array(self):
+        """Some providers skip the ``{"results": ...}`` envelope even with
+        structured output; parser must accept both shapes."""
+        raw = (
+            '['
+            '{"cluster_id": 2, "topic_label": "x", "summary": "y"}'
+            "]"
+        )
+        out = _parse_naming_batch(raw)
+        assert out == {2: ("x", "y")}
+
+    def test_code_fenced(self):
+        raw = '```json\n{"results": [{"cluster_id": 5, "topic_label": "l", "summary": "s"}]}\n```'
+        assert _parse_naming_batch(raw) == {5: ("l", "s")}
+
+    def test_invalid_json_returns_none(self):
+        assert _parse_naming_batch("not json at all") is None
+
+    def test_empty_list_returns_none(self):
+        """A well-formed but empty response shouldn't crash — but it also
+        isn't useful, so return None to trigger the fallback path."""
+        assert _parse_naming_batch('{"results": []}') is None
+
+    def test_entries_without_cluster_id_dropped(self):
+        raw = (
+            '{"results": ['
+            '{"topic_label": "no id", "summary": "s"},'
+            '{"cluster_id": 3, "topic_label": "good", "summary": "ok"}'
+            "]}"
+        )
+        out = _parse_naming_batch(raw)
+        assert out == {3: ("good", "ok")}
+
+    def test_entries_with_empty_label_and_summary_dropped(self):
+        raw = '{"results": [{"cluster_id": 1, "topic_label": "", "summary": ""}]}'
+        assert _parse_naming_batch(raw) is None
+
+    def test_label_alias_honored(self):
+        """Like the single-cluster parser, accept ``label`` as a fallback
+        for ``topic_label`` — some models normalize the key."""
+        raw = '{"results": [{"cluster_id": 7, "label": "x", "summary": "y"}]}'
+        assert _parse_naming_batch(raw) == {7: ("x", "y")}
+
+
+# ---------------------------------------------------------------------------
+# Batched dispatch in name_topics_via_llm — verifies one LLM call per
+# batch, stable ordering, and correct assignment of results back to
+# metadata when multiple clusters are packed per prompt.
+# ---------------------------------------------------------------------------
+
+
+class TestNameTopicsViaLlmBatching:
+    def _three_clusters(self):
+        """Three independent clusters with keywords AND representative papers
+        so they all qualify for the LLM dispatch loop."""
+        papers = {
+            f"p{i}": _paper(f"p{i}", f"Title {i}")
+            for i in range(6)
+        }
+        metadata = {
+            0: ClusterMetadata(size=2, keywords=["alpha"], representative_papers=["p0", "p1"]),
+            1: ClusterMetadata(size=2, keywords=["beta"], representative_papers=["p2", "p3"]),
+            2: ClusterMetadata(size=2, keywords=["gamma"], representative_papers=["p4", "p5"]),
+        }
+        return metadata, papers
+
+    def test_three_clusters_one_batch_one_call(self, ctx):
+        """With batch_size >= 3, all three clusters fit in a single LLM
+        call. The stub returns the wrapped ``{"results": [...]}`` shape
+        and every cluster gets its label."""
+        from citeclaw.clients.llm import build_llm_client
+
+        metadata, papers = self._three_clusters()
+        client = build_llm_client(ctx.config, ctx.budget)
+
+        calls: list[str] = []
+        original_call = client.call
+
+        def spy(system, user, **kw):
+            calls.append(user)
+            return original_call(system, user, **kw)
+
+        client.call = spy  # type: ignore[method-assign]
+        name_topics_via_llm(metadata, papers, client=client, batch_size=3)
+        assert len(calls) == 1
+        assert all(m.label == "stub-topic" for m in metadata.values())
+        assert all(m.summary == "stub summary" for m in metadata.values())
+
+    def test_three_clusters_batch_size_two_uses_two_calls(self, ctx):
+        """batch_size=2 over 3 clusters → two calls (2 + 1). The stub
+        still names every cluster because each batch contains its own
+        cluster_id markers."""
+        from citeclaw.clients.llm import build_llm_client
+
+        metadata, papers = self._three_clusters()
+        client = build_llm_client(ctx.config, ctx.budget)
+
+        calls: list[str] = []
+        original_call = client.call
+
+        def spy(system, user, **kw):
+            calls.append(user)
+            return original_call(system, user, **kw)
+
+        client.call = spy  # type: ignore[method-assign]
+        name_topics_via_llm(metadata, papers, client=client, batch_size=2, max_workers=1)
+        assert len(calls) == 2
+        # Every cluster still has a label from the stub.
+        assert all(m.label == "stub-topic" for m in metadata.values())
+
+    def test_partial_parse_uses_keyword_fallback_for_missing_entries(self, ctx, monkeypatch):
+        """When the LLM returns only some of the requested cluster_ids,
+        the absent ones get the keyword-based fallback label."""
+        from citeclaw.clients.llm import build_llm_client
+
+        metadata, papers = self._three_clusters()
+        client = build_llm_client(ctx.config, ctx.budget)
+
+        # Only cluster 0 is present in the parsed response.
+        def fake_parse(text):
+            return {0: ("from-llm", "summary-0")}
+
+        monkeypatch.setattr(
+            "citeclaw.cluster.representation._parse_naming_batch",
+            fake_parse,
+        )
+        name_topics_via_llm(metadata, papers, client=client, batch_size=3)
+        assert metadata[0].label == "from-llm"
+        assert metadata[1].label == "beta"   # keyword fallback
+        assert metadata[2].label == "gamma"  # keyword fallback
