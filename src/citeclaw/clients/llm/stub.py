@@ -34,6 +34,9 @@ from citeclaw.config import BudgetTracker, Settings
 
 _RE_EXACTLY_N = re.compile(r"exactly\s+(\d+)\s+objects", re.IGNORECASE)
 _RE_CLUSTER_ID = re.compile(r"cluster_id=(-?\d+)")
+# Matches the per-paper marker in citeclaw.prompts.annotation.PAPER_BLOCK_TEMPLATE.
+_RE_PAPER_INDEX = re.compile(r"Paper index=(-?\d+)")
+_RE_TITLE_LINE = re.compile(r"Title:\s*(.+)")
 
 
 def _extract_n(user: str) -> int:
@@ -132,7 +135,21 @@ def stub_respond(system: str, user: str) -> str:
         return json.dumps(
             {"results": [{"index": i, "match": True} for i in range(1, n + 1)]}
         )
-    if "Label:" in user or system.startswith("You are labelling"):
+    if system.startswith("You are labelling") or "Label:" in user:
+        # Batched annotation (see citeclaw.prompts.annotation.BATCH_USER_TEMPLATE)
+        # interleaves ``Paper index=<int>`` and ``Title: <str>`` blocks —
+        # one per paper. Walk the user text and match them in order so each
+        # index gets the title from *its* block rather than the first one.
+        indices = [int(x) for x in _RE_PAPER_INDEX.findall(user)]
+        titles = [m.group(1).strip() for m in _RE_TITLE_LINE.finditer(user)]
+        if indices and len(titles) >= len(indices):
+            results = []
+            for idx, title in zip(indices, titles):
+                words = (title or "stub").split()
+                label = (" ".join(words[:2])[:30]) or "stub"
+                results.append({"index": idx, "label": label})
+            return json.dumps({"results": results})
+        # Legacy single-paper path (USER_TEMPLATE ends with "Label:").
         m = re.search(r"Title:\s*(.+)", user)
         title = (m.group(1).strip() if m else "stub").split()
         return " ".join(title[:2])[:30] or "stub"

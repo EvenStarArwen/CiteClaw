@@ -8,26 +8,107 @@ deterministic stub strings. All real provider routing (OpenAI / custom
 endpoint / Gemini) goes through the standard
 :func:`citeclaw.clients.llm.build_llm_client` factory so this module no
 longer carries its own provider sniffing logic.
+
+Batched LLM dispatch: ``annotate_graph`` packs up to
+``ctx.config.llm_batch_size`` papers per LLM call with a JSON schema
+constraining the response to one label per input index. Falls back to
+per-paper ``_label_one`` on parse failure so a single malformed batch
+doesn't wipe out the rest.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 from citeclaw.clients.llm import build_llm_client
 from citeclaw.config import BudgetTracker
 from citeclaw.models import BudgetExhaustedError
 from citeclaw.progress import console
+from citeclaw.prompts.annotation import BATCH_SYSTEM as _BATCH_SYSTEM
+from citeclaw.prompts.annotation import BATCH_USER_TEMPLATE as _BATCH_USER
+from citeclaw.prompts.annotation import PAPER_BLOCK_TEMPLATE as _PAPER_BLOCK
 from citeclaw.prompts.annotation import SYSTEM as _SYSTEM
 from citeclaw.prompts.annotation import USER_TEMPLATE as _USER
 
 log = logging.getLogger("citeclaw.annotate")
 
 
+def _annotation_batch_schema() -> dict[str, Any]:
+    """JSON Schema for a batched annotation response.
+
+    Shape: ``{"results": [{"index": int, "label": str}, ...]}``
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer"},
+                        "label": {"type": "string"},
+                    },
+                    "required": ["index", "label"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["results"],
+        "additionalProperties": False,
+    }
+
+
+def _clean_label(text: str) -> str:
+    """Normalise a model's label output: strip quotes, whitespace, newlines."""
+    return (text or "").strip().strip('"\'').strip().replace("\n", " ")
+
+
+def _parse_annotation_batch(raw: str) -> dict[int, str] | None:
+    """Parse a batched annotation response into ``{index: label}``.
+
+    Accepts the structured-output shape ``{"results": [{"index": int,
+    "label": str}, ...]}`` and the bare-array shape for providers that
+    drop the wrapper. Returns ``None`` on parse failure so the caller
+    can fall back to per-paper single-call dispatch.
+    """
+    text = (raw or "").strip()
+    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    try:
+        data = json.loads(text)
+    except Exception:
+        return None
+    if isinstance(data, dict) and "results" in data:
+        data = data["results"]
+    if not isinstance(data, list):
+        return None
+    out: dict[int, str] = {}
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        if not isinstance(idx, (int, float)) or isinstance(idx, bool):
+            continue
+        label = _clean_label(str(entry.get("label") or ""))
+        if not label:
+            continue
+        out[int(idx)] = label
+    return out if out else None
+
+
 def _label_one(client, instruction: str, title: str, abstract: str) -> str:
-    """Single-paper labelling round-trip through the unified LLMClient."""
+    """Single-paper labelling round-trip through the unified LLMClient.
+
+    Kept for legacy callers and as the per-paper fallback when a batch
+    response is unparseable or missing entries.
+    """
     user = _USER.format(
         instruction=instruction,
         title=title,
@@ -40,7 +121,53 @@ def _label_one(client, instruction: str, title: str, abstract: str) -> str:
     except Exception as exc:  # pragma: no cover - defensive
         log.warning("annotate LLM call failed: %s", exc)
         return ""
-    return (resp.text or "").strip().strip('"\'').strip()
+    return _clean_label(resp.text)
+
+
+def _label_batch(
+    client,
+    instruction: str,
+    items: list[tuple[int, str, str]],
+) -> dict[int, str]:
+    """Label a batch of papers in a single LLM call.
+
+    ``items`` is a list of ``(index, title, abstract)`` tuples. Returns
+    ``{index: label}`` covering whichever entries the LLM named. Missing
+    indices (parse failure, omitted entries, budget exhaustion) come
+    back empty; the caller falls back to ``_label_one`` for them.
+    """
+    if not items:
+        return {}
+    block = "\n".join(
+        _PAPER_BLOCK.format(
+            idx=idx, title=title, abstract=abstract or "(no abstract)",
+        )
+        for idx, title, abstract in items
+    )
+    user = _BATCH_USER.format(instruction=instruction, n=len(items), papers=block)
+    schema = _annotation_batch_schema()
+    try:
+        resp = client.call(
+            _BATCH_SYSTEM, user,
+            category="annotate",
+            response_schema=schema,
+        )
+    except BudgetExhaustedError:
+        return {}
+    except TypeError:
+        # Legacy fake clients without response_schema.
+        try:
+            resp = client.call(_BATCH_SYSTEM, user, category="annotate")
+        except BudgetExhaustedError:
+            return {}
+        except Exception as exc:
+            log.warning("annotate batched LLM call failed: %s", exc)
+            return {}
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("annotate batched LLM call failed: %s", exc)
+        return {}
+    parsed = _parse_annotation_batch(resp.text or "")
+    return parsed or {}
 
 
 def annotate_graph(
@@ -112,22 +239,41 @@ def annotate_graph(
 
     labels: list[str] = [(t or "?")[:40] for t, _ in nodes]
 
-    def _do_one(idx: int) -> tuple[int, str]:
-        title, abstract = nodes[idx]
-        return idx, _label_one(client, instruction, title, abstract)
+    # Batched dispatch: pack batch_size papers per LLM call. Entries the
+    # batch misses (parse failure, omitted by the model) fall back to
+    # per-paper ``_label_one`` so a single bad batch doesn't blank out
+    # many rows.
+    batch_size = max(1, cfg.llm_batch_size)
+    indices = list(range(n_to_label))
+    batches: list[list[int]] = [
+        indices[i:i + batch_size] for i in range(0, n_to_label, batch_size)
+    ]
+
+    def _do_batch(batch: list[int]) -> list[tuple[int, str]]:
+        items = [(i, nodes[i][0], nodes[i][1]) for i in batch]
+        parsed = _label_batch(client, instruction, items)
+        out: list[tuple[int, str]] = []
+        for i in batch:
+            lbl = parsed.get(i)
+            if lbl:
+                out.append((i, lbl))
+                continue
+            # Per-paper fallback — only for the indices the batch missed.
+            out.append((i, _label_one(client, instruction, nodes[i][0], nodes[i][1])))
+        return out
 
     max_workers = 1 if is_stub else 16
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futs = [pool.submit(_do_one, i) for i in range(n_to_label)]
+        futs = [pool.submit(_do_batch, b) for b in batches]
         done = 0
         for fut in as_completed(futs):
-            idx, lbl = fut.result()
-            if lbl:
-                labels[idx] = lbl
-            done += 1
-            console.print(
-                f"  [dim][{done}/{n_to_label}][/] {nodes[idx][0][:60]}  →  [bold]{lbl}[/]"
-            )
+            for idx, lbl in fut.result():
+                if lbl:
+                    labels[idx] = lbl
+                done += 1
+                console.print(
+                    f"  [dim][{done}/{n_to_label}][/] {nodes[idx][0][:60]}  →  [bold]{lbl}[/]"
+                )
 
     if "title" in g.vs.attributes():
         g.vs["original_title"] = g.vs["title"]
