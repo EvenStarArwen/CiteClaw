@@ -167,9 +167,9 @@ rerank-then-forward while another sees the original input untouched.
 | `YearFilter`        | Pass if `year` is in `[min, max]`.                                                     |
 | `CitationFilter`    | Pass if citation count is high enough relative to `beta` and paper age.                |
 | `LLMFilter`         | Batched LLM screening; `scope:` is `title` / `title_abstract` / `venue` / `full_text`. Single-prompt or Boolean formula mode. `full_text` reads parsed PDFs from the `paper_full_text` cache. |
-| `TitleKeywordFilter`    | Plain substring search over the paper's **title**. Single `keyword:` or Boolean `formula:` over named `keywords:` (operators `& | !`). Knobs: `case_sensitive`, `whole_word`. |
+| `TitleKeywordFilter`    | Plain string search over the paper's **title**. Single `keyword:` or Boolean `formula:` over named `keywords:` (operators `& | !`). Knobs: `case_sensitive`, `match: substring \| whole_word \| starts_with`. |
 | `AbstractKeywordFilter` | Same DSL as `TitleKeywordFilter`, applied to the paper's **abstract**. Missing/None abstracts are treated as empty (negations like `!survey` still pass). |
-| `VenueKeywordFilter`    | Same DSL as `TitleKeywordFilter`, applied to the paper's **venue**. Pair with `whole_word: true` for hard journal allow-lists (so `Cell` doesn't match `Cellulose`). |
+| `VenueKeywordFilter`    | Same DSL as `TitleKeywordFilter`, applied to the paper's **venue**. Use `match: starts_with` for hard journal allow-lists like "venue starts with Nature / Science / Cell" — accepts `Cell Reports`, rejects `Cellulose`, `Stem Cell Reports`, and `Royal Society Open Science`. |
 
 ### Clusterers
 

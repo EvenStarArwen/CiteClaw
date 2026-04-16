@@ -313,7 +313,7 @@ class TestTitleKeywordFilter:
         assert f.check(p2, _fctx(ctx)).passed
 
     def test_whole_word(self, ctx):
-        f = TitleKeywordFilter(keyword="learn", whole_word=True)
+        f = TitleKeywordFilter(keyword="learn", match="whole_word")
         # 'learn' is a substring of 'learning' but not a standalone word
         assert not f.check(
             PaperRecord(paper_id="p", title="deep learning"), _fctx(ctx)
@@ -321,6 +321,26 @@ class TestTitleKeywordFilter:
         assert f.check(
             PaperRecord(paper_id="p", title="we learn fast"), _fctx(ctx)
         ).passed
+
+    def test_starts_with(self, ctx):
+        f = TitleKeywordFilter(keyword="Survey", match="starts_with")
+        assert f.check(
+            PaperRecord(paper_id="p", title="Survey of deep learning"), _fctx(ctx)
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="survey of methods"), _fctx(ctx)
+        ).passed  # case-insensitive by default
+        assert not f.check(
+            PaperRecord(paper_id="p", title="A Survey of deep learning"), _fctx(ctx)
+        ).passed
+        # Word boundary defends against prefix-substring traps
+        assert not f.check(
+            PaperRecord(paper_id="p", title="Surveying methods"), _fctx(ctx)
+        ).passed
+
+    def test_invalid_match_mode_raises(self):
+        with pytest.raises(ValueError, match="'match' must be one of"):
+            TitleKeywordFilter(keyword="x", match="bogus")
 
     def test_empty_title_rejects(self, ctx):
         f = TitleKeywordFilter(keyword="ml")
@@ -469,7 +489,7 @@ class TestAbstractKeywordFilter:
         assert f.check(p, _fctx(ctx)).passed
 
     def test_whole_word_in_abstract(self, ctx):
-        f = AbstractKeywordFilter(keyword="bio", whole_word=True)
+        f = AbstractKeywordFilter(keyword="bio", match="whole_word")
         # 'bio' is part of 'biology' but not a standalone word
         assert not f.check(
             PaperRecord(paper_id="p", title="T", abstract="biology paper"),
@@ -494,14 +514,14 @@ class TestVenueKeywordFilter:
 
     def test_substring_default_admits_substring_journals(self, ctx):
         # Default substring mode: 'Cell' matches 'Cellulose' — that's why
-        # whole_word=True exists. Pin the loose default explicitly.
+        # the richer match modes exist. Pin the loose default explicitly.
         f = VenueKeywordFilter(keyword="Cell")
         assert f.check(
             PaperRecord(paper_id="p", title="T", venue="Cellulose"), _fctx(ctx)
         ).passed
 
     def test_whole_word_excludes_substring_journals(self, ctx):
-        f = VenueKeywordFilter(keyword="Cell", whole_word=True)
+        f = VenueKeywordFilter(keyword="Cell", match="whole_word")
         assert not f.check(
             PaperRecord(paper_id="p", title="T", venue="Cellulose"), _fctx(ctx)
         ).passed
@@ -511,27 +531,55 @@ class TestVenueKeywordFilter:
         assert f.check(
             PaperRecord(paper_id="p", title="T", venue="Cell"), _fctx(ctx)
         ).passed
+        # whole_word still accepts mid-string matches
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", venue="Stem Cell Reports"), _fctx(ctx)
+        ).passed
 
-    def test_formula_or_for_journal_allowlist(self, ctx):
+    def test_starts_with_for_strict_journal_allowlist(self, ctx):
         f = VenueKeywordFilter(
             formula="nature | science | cell",
             keywords={"nature": "Nature", "science": "Science", "cell": "Cell"},
-            whole_word=True,
+            match="starts_with",
         )
-        assert f.check(
-            PaperRecord(paper_id="p", title="T", venue="Nature Methods"), _fctx(ctx)
-        ).passed
-        assert f.check(
-            PaperRecord(paper_id="p", title="T", venue="Science Advances"), _fctx(ctx)
-        ).passed
-        assert f.check(
-            PaperRecord(paper_id="p", title="T", venue="Cell Reports"), _fctx(ctx)
-        ).passed
-        out = f.check(
-            PaperRecord(paper_id="p", title="T", venue="PLoS ONE"), _fctx(ctx)
-        )
-        assert not out.passed
-        assert out.category == "venue_keyword"
+        # Nature / Science / Cell families — venue starts with the keyword.
+        for venue in [
+            "Nature", "Nature Methods", "Nature Catalysis",
+            "Science", "Science Advances", "Science Robotics",
+            "Cell", "Cell Reports", "Cell Stem Cell",
+        ]:
+            assert f.check(
+                PaperRecord(paper_id="p", title="T", venue=venue), _fctx(ctx)
+            ).passed, venue
+
+        # The exact false positives the user reported on a previous run —
+        # all contain Nature / Science / Cell *somewhere*, but none of
+        # them BEGIN with it. starts_with rejects all of them.
+        for venue in [
+            "Royal Society Open Science",
+            "Chemical Science",
+            "Energy & Environmental Science",
+            "Journal of Materials Science",
+            "Science of the Total Environment",  # starts with "Science" but
+            # is NOT a Nature/Science/Cell journal — caveat: this slips
+            # through too. starts_with is necessary but not sufficient
+            # for perfect filtering; rely on downstream LLM to catch it.
+            "Stem Cell Reports",                  # Cell Press but doesn't begin with Cell
+            "Cellulose",
+            "PLoS ONE",
+            "arXiv",
+            "Advancement of science",
+            "Photon Science",
+            "Machine Learning: Science and Technology",
+        ]:
+            out = f.check(
+                PaperRecord(paper_id="p", title="T", venue=venue), _fctx(ctx)
+            )
+            # Pin only those that should really be rejected by starts_with.
+            should_reject = venue not in ("Science of the Total Environment",)
+            if should_reject:
+                assert not out.passed, f"expected reject: {venue}"
+                assert out.category == "venue_keyword"
 
     def test_missing_venue_rejects(self, ctx):
         f = VenueKeywordFilter(keyword="Nature")

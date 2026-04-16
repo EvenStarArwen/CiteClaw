@@ -84,7 +84,7 @@ class TestAtomBlocks:
         assert f.name == "tk"
         assert f.keyword == "deep learning"
         assert f.case_sensitive is False
-        assert f.whole_word is False
+        assert f.match == "substring"
 
     def test_venue_keyword_filter_allowlist(self):
         built = build_blocks(
@@ -97,13 +97,13 @@ class TestAtomBlocks:
                         "science": "Science",
                         "cell": "Cell",
                     },
-                    "whole_word": True,
+                    "match": "starts_with",
                 }
             }
         )
         f = built["vk"]
         assert isinstance(f, VenueKeywordFilter)
-        assert f.whole_word is True
+        assert f.match == "starts_with"
         assert set(f.keywords.keys()) == {"nature", "science", "cell"}
 
     def test_abstract_keyword_filter_formula(self):
@@ -118,7 +118,7 @@ class TestAtomBlocks:
                         "survey": "survey",
                     },
                     "case_sensitive": True,
-                    "whole_word": True,
+                    "match": "whole_word",
                 }
             }
         )
@@ -126,7 +126,7 @@ class TestAtomBlocks:
         assert isinstance(f, AbstractKeywordFilter)
         assert f.formula_expr == "(ml | dl) & !survey"
         assert f.case_sensitive is True
-        assert f.whole_word is True
+        assert f.match == "whole_word"
         assert set(f.keywords.keys()) == {"ml", "dl", "survey"}
 
 

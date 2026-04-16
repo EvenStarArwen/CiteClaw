@@ -31,9 +31,21 @@ for in the field.
 
 Knobs:
     ``case_sensitive`` — default ``False``. Match exact case when ``True``.
-    ``whole_word``     — default ``False``. When ``True``, a keyword only
-                         matches at word boundaries (``\\b<kw>\\b``) so
-                         ``"learn"`` will not match ``"learning"``.
+    ``match``          — default ``"substring"``. Match strategy:
+                         ``"substring"``    plain ``kw in text``;
+                         ``"whole_word"``   ``\\b<kw>\\b`` regex, so
+                                            ``"learn"`` won't match
+                                            ``"learning"``;
+                         ``"starts_with"``  ``^<kw>\\b`` regex (anchored
+                                            at the start of the field
+                                            with a word boundary), so
+                                            ``"Cell"`` matches
+                                            ``"Cell Reports"`` but not
+                                            ``"Stem Cell Reports"`` or
+                                            ``"Cellulose"``. Use this
+                                            for journal allow-lists like
+                                            "venue starts with Nature /
+                                            Science / Cell".
 
 Missing / empty fields are treated as the empty string. A required
 keyword (e.g. ``ml``) won't match against an empty field, but a negation
@@ -61,6 +73,8 @@ class _KeywordFilterBase:
     _scope_label: str = "field"
     _category: str = "keyword"
 
+    _MATCH_MODES = ("substring", "whole_word", "starts_with")
+
     def __init__(
         self,
         name: str,
@@ -69,11 +83,16 @@ class _KeywordFilterBase:
         formula: str | None = None,
         keywords: dict[str, str] | None = None,
         case_sensitive: bool = False,
-        whole_word: bool = False,
+        match: str = "substring",
     ) -> None:
         self.name = name
         self.case_sensitive = bool(case_sensitive)
-        self.whole_word = bool(whole_word)
+        if match not in self._MATCH_MODES:
+            raise ValueError(
+                f"{type(self).__name__}: 'match' must be one of "
+                f"{self._MATCH_MODES}, got {match!r}"
+            )
+        self.match = match
 
         cls_name = type(self).__name__
         if keyword is not None and formula is not None:
@@ -138,7 +157,13 @@ class _KeywordFilterBase:
     def _match_one(self, kw: str, text: str) -> bool:
         if not text:
             return False
-        if self.whole_word:
+        if self.match == "starts_with":
+            flags = 0 if self.case_sensitive else re.IGNORECASE
+            # ``re.match`` is anchored at the start of the string.
+            # ``\b`` after the keyword forbids matches like Cell→Cellulose.
+            # ``lstrip`` defends against stray leading whitespace in venue.
+            return re.match(rf"{re.escape(kw)}\b", text.lstrip(), flags) is not None
+        if self.match == "whole_word":
             flags = 0 if self.case_sensitive else re.IGNORECASE
             return re.search(rf"\b{re.escape(kw)}\b", text, flags) is not None
         if self.case_sensitive:
@@ -195,9 +220,12 @@ class AbstractKeywordFilter(_KeywordFilterBase):
 class VenueKeywordFilter(_KeywordFilterBase):
     """Pass papers whose venue satisfies a keyword (or Boolean formula).
 
-    Pair with ``whole_word: true`` for hard journal allow-lists — e.g.
-    matching ``"Cell"`` as a standalone word so it accepts ``Cell Reports``
-    but rejects ``Cellulose``.
+    Pair with ``match: starts_with`` for hard journal allow-lists like
+    "venue starts with Nature / Science / Cell" — that accepts
+    ``Nature Methods``, ``Science Advances``, and ``Cell Reports`` but
+    rejects ``Royal Society Open Science``, ``Chemical Science``,
+    ``Energy & Environmental Science``, ``Stem Cell Reports``, and
+    ``Cellulose`` (none of which begin with the keyword).
     """
 
     _scope_label = "venue"
