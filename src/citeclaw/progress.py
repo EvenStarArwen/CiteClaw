@@ -521,27 +521,22 @@ class Dashboard(NullDashboard):
         """Print a ✓ paper line above the live region.
 
         ``saturation`` (the fraction of the paper's refs that are already
-        in the collection) is computed by the calling step — passing it
-        in keeps the dashboard from needing direct access to the S2 cache.
-        Aggregated as a running mean displayed in the metric grid.
+        in the collection) is computed by the calling step. It is no
+        longer printed per-paper (visual noise) but is still aggregated
+        as a running mean shown in the metric grid + end-of-run summary.
         """
         title = (getattr(paper, "title", None) or "")[:55].ljust(55)
         cit = getattr(paper, "citation_count", None) or 0
         year = getattr(paper, "year", None) or "—"
         venue = (getattr(paper, "venue", None) or "")[:24] or "—"
-        # Open-access PDF marker — green dot if S2 reports an
-        # ``openAccessPdf.url``, dim dot otherwise. Sits between the year
-        # and venue so the eye can scan the column at a glance.
         has_pdf = bool(getattr(paper, "pdf_url", None))
         pdf_mark = "[paper.pdf_yes]●[/]" if has_pdf else "[paper.pdf_no]○[/]"
-        sat_str = f"  [dim]sat={saturation:.2f}[/]" if saturation is not None else ""
         self._console.print(
             f"  [ok]✓[/]  {title}  "
             f"[paper.cit]{cit:>8,}[/] cit · "
             f"[paper.year]{year}[/] · "
             f"{pdf_mark} · "
             f"[paper.venue]{venue}[/]"
-            f"{sat_str}"
         )
         self._step_accepted += 1
         self._n_accepted += 1
