@@ -297,7 +297,14 @@ class OpenAIClient:
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         before_sleep=lambda rs: logging.getLogger("citeclaw.llm.openai").warning(
-            "LLM call failed (attempt %d), retrying...", rs.attempt_number
+            "LLM call failed (attempt %d): %s — retrying",
+            rs.attempt_number,
+            (
+                f"{type(rs.outcome.exception()).__name__}: "
+                f"{str(rs.outcome.exception())[:400]}"
+                if rs.outcome and rs.outcome.exception() is not None
+                else "unknown"
+            ),
         ),
     )
     def call(
