@@ -148,7 +148,7 @@ rerank-then-forward while another sees the original input untouched.
 | `Rerank`            | Score-based top-K (with optional cluster-aware diversity). Non-destructive — only filters the signal. |
 | `ReScreen`          | Apply a screener block to the entire `ctx.collection` (minus seeds), removing rejected papers.        |
 | `Cluster`           | Run a clusterer over the signal once, store the `ClusterResult` in `ctx.clusters[<store_as>]`.        |
-| `MergeDuplicates`   | Detect and merge preprint↔published duplicates via DOI/ArXiv ID + title sim + SPECTER2 cosine.        |
+| `MergeDuplicates`   | Detect and merge preprint↔published duplicates via DOI/ArXiv ID + title sim + SPECTER2 cosine. **Auto-injected before `Finalize` if you don't list it explicitly** — listing it manually only matters if you want dedup to run earlier in the pipeline. |
 | `HumanInTheLoop`    | Opt-in interactive screener-quality check: balanced sample by rejection category, per-filter agreement report, can `stop_pipeline`. |
 | `Parallel`          | Broadcast the signal to N branches, run each independently, union outputs by `paper_id`.             |
 | `Finalize`          | Write `literature_collection.json` / `.bib`, `citation_network.graphml`, `run_state.json`.            |
