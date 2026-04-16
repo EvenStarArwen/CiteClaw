@@ -672,6 +672,96 @@ class TestRunIterativeSearchIntegration:
         state.transcript.append(self._turn(n_results=10, n_novel=3))
         assert not state.is_saturated()
 
+    def test_agent_turn_carries_error_field_default_empty(self):
+        """``AgentTurn.error`` defaults to empty so existing turns
+        constructed without the new field still work."""
+        turn = AgentTurn(
+            iteration=1, thinking="", query={}, n_results=10, n_novel=10,
+            total_in_corpus=10, unique_venues=[], year_range=(None, None),
+            sample_titles=[], decision="refine", reasoning="",
+        )
+        assert turn.error == ""
+
+    def test_render_transcript_includes_error_line_when_set(self):
+        from citeclaw.agents.iterative_search import _render_transcript
+        turn = AgentTurn(
+            iteration=1, thinking="t", query={"text": "q"}, n_results=0,
+            n_novel=0, total_in_corpus=0, unique_venues=[],
+            year_range=(None, None), sample_titles=[], decision="refine",
+            reasoning="r", error="HTTP 400: bad fieldsOfStudy value 'CS'",
+        )
+        rendered = _render_transcript([turn])
+        assert "Error: HTTP 400: bad fieldsOfStudy value 'CS'" in rendered
+
+    def test_render_transcript_omits_error_line_when_empty(self):
+        from citeclaw.agents.iterative_search import _render_transcript
+        turn = AgentTurn(
+            iteration=1, thinking="t", query={"text": "q"}, n_results=3,
+            n_novel=3, total_in_corpus=3, unique_venues=[],
+            year_range=(None, None), sample_titles=[], decision="refine",
+            reasoning="r",
+        )
+        rendered = _render_transcript([turn])
+        assert "Error:" not in rendered
+
+    def test_format_s2_error_unwraps_retry_error(self):
+        from tenacity import RetryError
+        from unittest.mock import MagicMock
+
+        from citeclaw.agents.iterative_search import _format_s2_error
+
+        inner = ValueError("S2 said no")
+        last_attempt = MagicMock()
+        last_attempt.exception.return_value = inner
+        retry_err = RetryError(last_attempt)
+        msg = _format_s2_error(retry_err)
+        assert "ValueError" in msg
+        assert "S2 said no" in msg
+        # Bare exception path also works.
+        assert "S2 said no" in _format_s2_error(inner)
+
+    def test_search_failure_surfaces_as_turn_error_not_crash(
+        self, ctx: Context, llm: StubClient,
+    ):
+        """When ``s2.search_bulk`` raises, the agent records an error
+        on that turn and continues — it must NOT crash the whole run."""
+        import httpx
+
+        class _FlakyS2(_BudgetAwareFakeS2):
+            def __init__(self, budget: BudgetTracker, fail_iters: set[int]):
+                super().__init__(budget)
+                self.fail_iters = fail_iters
+                self.search_call_count = 0
+
+            def search_bulk(self, *args: Any, **kwargs: Any):
+                self.search_call_count += 1
+                if self.search_call_count in self.fail_iters:
+                    request = httpx.Request("GET", "https://api.semanticscholar.org/x")
+                    response = httpx.Response(400, text="bad fieldsOfStudy value", request=request)
+                    raise httpx.HTTPStatusError("400", request=request, response=response)
+                return super().search_bulk(*args, **kwargs)
+
+        flaky = _FlakyS2(ctx.budget, fail_iters={1})
+        # Re-register the same canned papers so the non-failing call still works.
+        initial, narrowed = _stub_canned_papers()
+        flaky.register_search_bulk("test topic", initial)
+        flaky.register_search_bulk("test topic narrowed", narrowed)
+        for p in initial + narrowed:
+            flaky.add(p)
+        ctx.s2 = flaky
+
+        config = AgentConfig(max_iterations=3)
+        result = run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        # Run completed without crashing.
+        assert isinstance(result, SearchAgentResult)
+        # First turn recorded the error and produced no hits.
+        assert result.transcript[0].error.startswith("HTTP 400")
+        assert result.transcript[0].n_results == 0
+        # Subsequent turns succeeded normally.
+        assert result.transcript[1].error == ""
+        assert result.transcript[1].n_results > 0
+
     def test_dashboard_receives_per_turn_notes(
         self, ctx: Context, llm: StubClient,
     ):

@@ -31,8 +31,12 @@ budget bookkeeping stays consistent.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+import httpx
+from tenacity import RetryError
 
 from citeclaw.models import PaperRecord
 from citeclaw.prompts.search_refine import (
@@ -40,6 +44,8 @@ from citeclaw.prompts.search_refine import (
     SYSTEM,
     USER_TEMPLATE,
 )
+
+log = logging.getLogger("citeclaw.agents.iterative_search")
 
 if TYPE_CHECKING:
     from citeclaw.clients.llm.base import LLMClient
@@ -102,6 +108,12 @@ class AgentTurn:
     only — the prompt-design loop reads it to understand why the
     agent made a particular query / decision. Empty string when the
     provider doesn't expose native reasoning.
+
+    ``error`` is populated when the S2 search call for this turn
+    raised (HTTP 400 from a malformed query, retry-exhausted transport
+    error, …). When set, ``n_results == 0`` and the message is rendered
+    back to the agent in the next turn's transcript so it can fix the
+    query rather than treat the empty result as saturation.
     """
 
     iteration: int
@@ -116,6 +128,7 @@ class AgentTurn:
     decision: str
     reasoning: str
     raw_reasoning: str = ""
+    error: str = ""
 
 
 @dataclass
@@ -231,6 +244,29 @@ def _render_anchor_papers(anchor_papers: list[PaperRecord]) -> str:
     return "\n".join(lines)
 
 
+def _format_s2_error(exc: BaseException) -> str:
+    """Render an S2 exception as a one-line message safe to feed back
+    into the agent's transcript.
+
+    Unwraps :class:`tenacity.RetryError` to surface the underlying
+    cause (so the agent sees ``HTTPStatusError 400`` instead of an
+    opaque ``RetryError[<Future …>]``) and trims long bodies — a
+    multi-MB HTML error page would otherwise blow up the next prompt's
+    token count.
+    """
+    if isinstance(exc, RetryError) and exc.last_attempt is not None:
+        try:
+            inner = exc.last_attempt.exception()
+        except Exception:
+            inner = None
+        if inner is not None:
+            exc = inner
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        body = (exc.response.text or "").strip()
+        return f"HTTP {exc.response.status_code}: {body[:200]}"
+    return f"{type(exc).__name__}: {str(exc)[:200]}"
+
+
 def _render_transcript(turns: list[AgentTurn]) -> str:
     """Render the transcript section for the next iteration's user prompt.
 
@@ -274,13 +310,18 @@ def _render_transcript(turns: list[AgentTurn]) -> str:
             )
         else:
             count_phrase = f"{turn.n_results} matching in the S2 corpus"
+        # When the S2 call raised, surface the error verbatim before
+        # ``Sample titles:`` so the agent reasons about "fix the query"
+        # rather than misinterpreting an empty result set as saturation.
+        error_line = f"\n  Error: {turn.error}" if turn.error else ""
         block = (
             f"Turn {turn.iteration}:\n"
             f"  Thinking: {turn.thinking}\n"
             f"  Query: {query_envelope}\n"
             f"  Observed: {count_phrase}, "
             f"{turn.n_novel} NEW since previous turns, "
-            f"years {year_str}, venues {venues_str}\n"
+            f"years {year_str}, venues {venues_str}"
+            f"{error_line}\n"
             f"  Sample titles: {titles_str}\n"
             f"  Decision: {turn.decision} — {turn.reasoning}"
         )
@@ -469,12 +510,29 @@ def run_iterative_search(
         )
         dash.tick_inner(1)
 
-        search_payload = ctx.s2.search_bulk(
-            query_text,
-            filters=query_filters,
-            sort=query_sort,
-            limit=config.search_limit_per_iter,
-        )
+        # Catch S2 errors here so a single bad query (HTTP 400 from
+        # malformed Lucene, retry-exhausted transport blip) doesn't
+        # crash the whole agent run. We surface the error to the next
+        # turn via ``AgentTurn.error`` + the rendered transcript so
+        # the model can fix the query instead of misreading an empty
+        # result as saturation. ``S2OutageError`` extends
+        # ``BaseException`` and intentionally bypasses this except
+        # clause — outage is the "stop the pipeline" signal.
+        search_error = ""
+        try:
+            search_payload = ctx.s2.search_bulk(
+                query_text,
+                filters=query_filters,
+                sort=query_sort,
+                limit=config.search_limit_per_iter,
+            )
+        except (httpx.HTTPError, RetryError) as exc:
+            search_payload = {}
+            search_error = _format_s2_error(exc)
+            log.info(
+                "search agent iter %d: S2 call failed (%s); surfacing to next turn",
+                iteration, search_error,
+            )
         dash.tick_inner(1)
         new_papers: list[dict[str, Any]] = []
         total_in_corpus = 0
@@ -521,6 +579,7 @@ def run_iterative_search(
                 decision=agent_decision,
                 reasoning=reasoning,
                 raw_reasoning=raw_reasoning,
+                error=search_error,
             )
         )
 
@@ -528,10 +587,11 @@ def run_iterative_search(
         # user a running log of what the agent saw at each step.
         decision_label = agent_decision or ("stop" if should_stop else "refine")
         partial_marker = " (PARTIAL)" if total_in_corpus > len(new_papers) else ""
+        error_marker = f" · ERROR: {search_error[:60]}" if search_error else ""
         dash.note(
             f"search iter {iteration}/{config.max_iterations} · "
             f"{len(new_papers)} hits{partial_marker} · "
-            f"{n_novel_this_turn} new · → {decision_label}"
+            f"{n_novel_this_turn} new · → {decision_label}{error_marker}"
         )
 
         if should_stop:
