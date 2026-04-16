@@ -137,6 +137,76 @@ class SearchAgentResult:
     s2_requests_used: int = 0
 
 
+@dataclass
+class AgentState:
+    """Mutable state threaded through one ``run_iterative_search`` call.
+
+    Bundles the four parallel locals (``transcript``,
+    ``cumulative_hits``, ``seen_ids``, ``final_decision``) plus the two
+    budget snapshots into a single typed object. Passing one ``state``
+    through the loop instead of mutating four locals makes it harder
+    to drift them out of sync as the agent grows new stages — e.g. a
+    Reflexion-style critique pass between turns, or an inner
+    sub-agent that proposes filter pivots — both of which need to
+    read/write the same memory the main loop already owns.
+
+    Lives only for the duration of one search run; the immutable
+    snapshot returned to callers is :class:`SearchAgentResult`.
+    """
+
+    transcript: list[AgentTurn] = field(default_factory=list)
+    cumulative_hits: list[dict[str, Any]] = field(default_factory=list)
+    seen_ids: set[str] = field(default_factory=set)
+    final_decision: str = ""
+    start_tokens: int = 0
+    start_s2_requests: int = 0
+
+    def add_novel_hits(self, papers: list[dict[str, Any]]) -> int:
+        """Add this turn's hits that weren't seen in earlier turns.
+
+        Returns the count of novel papers (used by the caller for the
+        per-turn ``n_novel`` signal that drives the saturation check
+        + transcript display). Hits with no ``paperId`` or a non-string
+        id are silently dropped — they would never be retrievable
+        downstream anyway.
+        """
+        n_novel = 0
+        for paper in papers:
+            pid = paper.get("paperId")
+            if isinstance(pid, str) and pid and pid not in self.seen_ids:
+                self.seen_ids.add(pid)
+                self.cumulative_hits.append(paper)
+                n_novel += 1
+        return n_novel
+
+    def is_saturated(self) -> bool:
+        """PH-08 deterministic saturation guardrail.
+
+        Fires when the last two completed turns BOTH returned results
+        AND BOTH had ``n_novel == 0`` — i.e. the agent has seen the
+        same hit set twice in a row. The ``n_results > 0`` clause
+        distinguishes genuine saturation from a broken query (zero
+        results from a syntax error or bad filter), where another
+        attempt with a fixed query is still productive.
+
+        ``n_novel == 0`` (rather than ``< 5``) is intentional: the
+        prompt's "<5 novel for two turns" rule is a soft hint the
+        model should act on, but the deterministic backstop catches
+        only the unambiguous "literally zero new papers" case so it
+        doesn't false-positive on small or niche corpora where 1–3
+        new papers per turn is real progress.
+        """
+        if len(self.transcript) < 2:
+            return False
+        last, prev = self.transcript[-1], self.transcript[-2]
+        return (
+            last.n_results > 0
+            and prev.n_results > 0
+            and last.n_novel == 0
+            and prev.n_novel == 0
+        )
+
+
 # ---------------------------------------------------------------------------
 # Loop body
 # ---------------------------------------------------------------------------
@@ -294,13 +364,11 @@ def run_iterative_search(
     builds its own LLM client — callers pass one in, so the same
     instance (and its budget bookkeeping) is reused across iterations.
     """
-    start_tokens = ctx.budget.llm_total_tokens
-    start_s2_requests = ctx.budget.s2_requests
+    state = AgentState(
+        start_tokens=ctx.budget.llm_total_tokens,
+        start_s2_requests=ctx.budget.s2_requests,
+    )
     anchor_block = _render_anchor_papers(anchor_papers)
-    transcript_turns: list[AgentTurn] = []
-    cumulative_hits: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    final_decision = ""
 
     # Dashboard hook: drive a "phase A → phase B → phase C" inner bar
     # per iteration so the live panel never stares blank during the
@@ -312,50 +380,14 @@ def run_iterative_search(
         dash = NullDashboard()
 
     for iteration in range(1, config.max_iterations + 1):
-        # PH-08 v2 deterministic saturation guardrail (safety net for
-        # the prompt's MANDATORY rule C). The prompt tells the model to
-        # set should_stop=true when the corpus is exhausted (n_novel < 5
-        # in two turns), but the model's optimism sometimes overrides
-        # the rule and it tries one more pivot. The guardrail is a
-        # STRICTER deterministic backstop:
-        #
-        #   if the last two completed turns BOTH had n_results > 0
-        #   AND BOTH had n_novel == 0
-        #   → forced stop, no LLM call, no S2 call
-        #
-        # The ``n_results > 0`` clause is critical: it distinguishes
-        # genuine saturation (the agent found the same papers twice in a
-        # row) from a broken query (zero results from a syntax error or
-        # bad filter). PH-08 testing surfaced cases where the agent used
-        # an invalid fieldsOfStudy abbreviation and got 0 results for two
-        # turns straight; without this clause the guardrail fired and
-        # killed the run before the agent could correct the typo.
-        #
-        # The threshold uses ``n_novel == 0`` (not <5) because:
-        #   - The prompt's <5 rule is a soft signal the model should act
-        #     on; the guardrail catches only the unambiguous "literally
-        #     zero new papers for two turns straight" case.
-        #   - <5 would false-positive on small test corpora and on
-        #     legitimate niche topics where each turn finds 1-3 new
-        #     relevant papers — those are still valuable progress.
-        #
-        # The check needs at least 2 prior turns (no-op for iter 1 and
-        # iter 2). When the guardrail fires, ``final_decision`` records
-        # a distinct ``"saturated_guardrail"`` so callers can tell this
-        # apart from a model-driven satisfied stop.
-        if len(transcript_turns) >= 2:
-            last = transcript_turns[-1]
-            prev = transcript_turns[-2]
-            if (
-                last.n_results > 0
-                and prev.n_results > 0
-                and last.n_novel == 0
-                and prev.n_novel == 0
-            ):
-                final_decision = "saturated_guardrail"
-                break
+        # Saturation backstop: see :meth:`AgentState.is_saturated`. When
+        # it fires, ``final_decision="saturated_guardrail"`` distinguishes
+        # this from a model-driven ``"satisfied"`` stop in the result.
+        if state.is_saturated():
+            state.final_decision = "saturated_guardrail"
+            break
 
-        transcript_text = _render_transcript(transcript_turns)
+        transcript_text = _render_transcript(state.transcript)
         # PH-08 v2: target_count is no longer surfaced to the model.
         # The v1 prompt embedded it as "Target: {target_count} papers"
         # and the model anchored on it as a hard requirement, refusing
@@ -464,13 +496,7 @@ def run_iterative_search(
         else:
             total_in_corpus = len(new_papers)
 
-        n_novel_this_turn = 0
-        for paper in new_papers:
-            pid = paper.get("paperId")
-            if isinstance(pid, str) and pid and pid not in seen_ids:
-                seen_ids.add(pid)
-                cumulative_hits.append(paper)
-                n_novel_this_turn += 1
+        n_novel_this_turn = state.add_novel_hits(new_papers)
 
         dash.begin_phase(
             f"search iter {iteration}/{config.max_iterations} · summarising hits",
@@ -481,7 +507,7 @@ def run_iterative_search(
         )
         dash.tick_inner(1)
 
-        transcript_turns.append(
+        state.transcript.append(
             AgentTurn(
                 iteration=iteration,
                 thinking=thinking,
@@ -509,21 +535,21 @@ def run_iterative_search(
         )
 
         if should_stop:
-            final_decision = "satisfied"
+            state.final_decision = "satisfied"
             break
         if agent_decision == "abort":
-            final_decision = "abort"
+            state.final_decision = "abort"
             break
-        if ctx.budget.llm_total_tokens - start_tokens >= config.max_llm_tokens:
-            final_decision = "budget"
+        if ctx.budget.llm_total_tokens - state.start_tokens >= config.max_llm_tokens:
+            state.final_decision = "budget"
             break
     else:
-        final_decision = "max_iterations"
+        state.final_decision = "max_iterations"
 
     return SearchAgentResult(
-        hits=cumulative_hits,
-        transcript=transcript_turns,
-        final_decision=final_decision,
-        tokens_used=ctx.budget.llm_total_tokens - start_tokens,
-        s2_requests_used=ctx.budget.s2_requests - start_s2_requests,
+        hits=state.cumulative_hits,
+        transcript=state.transcript,
+        final_decision=state.final_decision,
+        tokens_used=ctx.budget.llm_total_tokens - state.start_tokens,
+        s2_requests_used=ctx.budget.s2_requests - state.start_s2_requests,
     )

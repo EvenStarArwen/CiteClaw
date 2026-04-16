@@ -15,8 +15,9 @@ from __future__ import annotations
 
 from citeclaw.agents.iterative_search import (
     AgentConfig,
+    AgentState,
     AgentTurn,
     SearchAgentResult,
 )
 
-__all__ = ["AgentConfig", "AgentTurn", "SearchAgentResult"]
+__all__ = ["AgentConfig", "AgentState", "AgentTurn", "SearchAgentResult"]

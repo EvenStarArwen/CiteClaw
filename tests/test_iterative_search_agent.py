@@ -27,6 +27,7 @@ import pytest
 
 from citeclaw.agents.iterative_search import (
     AgentConfig,
+    AgentState,
     AgentTurn,
     SearchAgentResult,
     run_iterative_search,
@@ -614,6 +615,62 @@ class TestRunIterativeSearchIntegration:
         assert [t.reasoning for t in result.transcript] == [
             "stub initial", "stub refine", "stub satisfied",
         ]
+
+    def test_agent_state_dedups_hits_across_turns(self):
+        """``add_novel_hits`` only counts + appends previously-unseen ids."""
+        state = AgentState()
+        n1 = state.add_novel_hits([{"paperId": "a"}, {"paperId": "b"}])
+        assert n1 == 2
+        assert len(state.cumulative_hits) == 2
+        n2 = state.add_novel_hits([{"paperId": "b"}, {"paperId": "c"}])
+        assert n2 == 1
+        assert len(state.cumulative_hits) == 3
+        assert state.seen_ids == {"a", "b", "c"}
+
+    def test_agent_state_skips_entries_with_bad_paper_id(self):
+        state = AgentState()
+        n = state.add_novel_hits([
+            {"paperId": "a"},
+            {},                      # missing
+            {"paperId": ""},         # empty
+            {"paperId": 42},         # non-str
+            {"paperId": None},
+        ])
+        assert n == 1
+        assert state.cumulative_hits == [{"paperId": "a"}]
+
+    def _turn(self, n_results: int, n_novel: int) -> AgentTurn:
+        return AgentTurn(
+            iteration=1, thinking="", query={}, n_results=n_results,
+            n_novel=n_novel, total_in_corpus=n_results, unique_venues=[],
+            year_range=(None, None), sample_titles=[], decision="refine",
+            reasoning="",
+        )
+
+    def test_agent_state_not_saturated_with_fewer_than_two_turns(self):
+        state = AgentState()
+        assert not state.is_saturated()
+        state.transcript.append(self._turn(n_results=10, n_novel=0))
+        assert not state.is_saturated()
+
+    def test_agent_state_saturated_when_last_two_turns_zero_novel(self):
+        state = AgentState()
+        state.transcript.append(self._turn(n_results=10, n_novel=0))
+        state.transcript.append(self._turn(n_results=20, n_novel=0))
+        assert state.is_saturated()
+
+    def test_agent_state_not_saturated_when_results_zero(self):
+        """A broken query returning 0 results must not count as saturation."""
+        state = AgentState()
+        state.transcript.append(self._turn(n_results=0, n_novel=0))
+        state.transcript.append(self._turn(n_results=0, n_novel=0))
+        assert not state.is_saturated()
+
+    def test_agent_state_not_saturated_when_novel_nonzero(self):
+        state = AgentState()
+        state.transcript.append(self._turn(n_results=10, n_novel=0))
+        state.transcript.append(self._turn(n_results=10, n_novel=3))
+        assert not state.is_saturated()
 
     def test_dashboard_receives_per_turn_notes(
         self, ctx: Context, llm: StubClient,
