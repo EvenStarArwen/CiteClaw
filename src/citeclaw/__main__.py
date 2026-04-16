@@ -11,6 +11,7 @@ from citeclaw.config import SeedPaper, load_settings
 from citeclaw.logging_config import setup_logging
 from citeclaw.models import BudgetExhaustedError, CiteClawError, S2OutageError
 from citeclaw.pipeline import build_context, finalize_partial, run_pipeline
+from citeclaw.preflight import find_missing_api_keys
 from citeclaw.steps.checkpoint import load_checkpoint
 from citeclaw.steps.finalize import write_graphs
 
@@ -91,9 +92,14 @@ def _validate_config(config) -> None:
         errors.append("At least one seed paper is required.")
     if not config.pipeline:
         errors.append("'pipeline' section is required.")
+    errors.extend(find_missing_api_keys(config))
     if errors:
         for e in errors:
             log.error("Config error: %s", e)
+        log.error(
+            "Set the missing env vars and re-run. "
+            "API keys are intentionally never read from YAML.",
+        )
         sys.exit(1)
 
 
