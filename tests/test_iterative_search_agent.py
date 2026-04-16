@@ -614,3 +614,41 @@ class TestRunIterativeSearchIntegration:
         assert [t.reasoning for t in result.transcript] == [
             "stub initial", "stub refine", "stub satisfied",
         ]
+
+    def test_dashboard_receives_per_turn_notes(
+        self, ctx: Context, llm: StubClient,
+    ):
+        """The agent must surface a one-line note + phase update per
+        turn so the live panel doesn't sit empty during long LLM/S2
+        round-trips."""
+
+        class _RecordingDash:
+            is_null = False
+
+            def __init__(self) -> None:
+                self.notes: list[str] = []
+                self.phases: list[str] = []
+
+            def begin_phase(self, description: str, total: int) -> None:
+                self.phases.append(description)
+
+            def tick_inner(self, n: int = 1) -> None: ...
+
+            def note(self, msg: str) -> None:
+                self.notes.append(msg)
+
+        dash = _RecordingDash()
+        ctx.dashboard = dash
+        config = AgentConfig(max_iterations=3)
+        run_iterative_search("topic", _five_anchors(), llm, ctx, config)
+
+        # 3 iterations × 3 phases ("designing query", "S2 bulk search",
+        # "summarising hits") = 9 begin_phase calls.
+        assert len(dash.phases) == 9
+        assert all("designing query" in p for p in dash.phases[::3])
+        # 3 iterations × 2 notes ("query=...", "N hits ...") + final
+        # ExpandBySearch note is added by the wrapping step, not the
+        # agent — so 6 notes from the agent itself.
+        assert len(dash.notes) == 6
+        assert any('query="test topic"' in n for n in dash.notes)
+        assert any("→ satisfied" in n for n in dash.notes)

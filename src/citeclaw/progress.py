@@ -188,6 +188,9 @@ class NullDashboard:
     def clear_retry_status(self) -> None: ...
     def warn(self, msg: str) -> None:
         console.print(f"  [warn]![/] {msg}")
+    def note(self, msg: str) -> None:
+        """Print an informational line above the live region."""
+        console.print(f"  [dim]·[/] {msg}")
     def finalize(self) -> None: ...
 
 
@@ -552,10 +555,19 @@ class Dashboard(NullDashboard):
     def clear_retry_status(self) -> None:
         self._retry_status = ""
 
-    # ── warnings (route through console) ─────────────────────────────────
+    # ── warnings + info (route through console) ──────────────────────────
 
     def warn(self, msg: str) -> None:
         self._console.print(f"  [warn]![/] {msg}")
+
+    def note(self, msg: str) -> None:
+        """Print an informational line above the live region.
+
+        Useful for steps whose work isn't a clean "n of m" progress
+        signal — e.g. the iterative search agent, which surfaces one
+        line per turn ("iter 2/4 · 30 results · 5 new · refine").
+        """
+        self._console.print(f"  [dim]·[/] {msg}")
 
     # ── helpers ──────────────────────────────────────────────────────────
 

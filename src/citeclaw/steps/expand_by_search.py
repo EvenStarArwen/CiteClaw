@@ -145,6 +145,14 @@ class ExpandBySearch:
                 },
             )
 
+        # Surface the agent's exit reason so the user knows whether the
+        # loop terminated because the corpus was saturated or because
+        # the iteration / token cap was hit.
+        ctx.dashboard.note(
+            f"search agent done · {len(result.transcript)} turns · "
+            f"{len(result.hits)} unique hits · → {result.final_decision or 'unknown'}"
+        )
+
         # 5. Shared screening pipeline. ``apply_local_query`` runs as
         # the post-hydrate trim so the screener only sees post-trim
         # candidates (matches the previous behaviour).

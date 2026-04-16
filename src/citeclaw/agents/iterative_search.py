@@ -302,6 +302,15 @@ def run_iterative_search(
     seen_ids: set[str] = set()
     final_decision = ""
 
+    # Dashboard hook: drive a "phase A → phase B → phase C" inner bar
+    # per iteration so the live panel never stares blank during the
+    # multi-second LLM + S2 round-trip. Falls back to a no-op
+    # NullDashboard when the run is non-interactive (tests / CI / piped).
+    dash = getattr(ctx, "dashboard", None)
+    if dash is None:
+        from citeclaw.progress import NullDashboard
+        dash = NullDashboard()
+
     for iteration in range(1, config.max_iterations + 1):
         # PH-08 v2 deterministic saturation guardrail (safety net for
         # the prompt's MANDATORY rule C). The prompt tells the model to
@@ -361,12 +370,17 @@ def run_iterative_search(
             iteration=iteration,
             max_iterations=config.max_iterations,
         )
+        dash.begin_phase(
+            f"search iter {iteration}/{config.max_iterations} · designing query",
+            total=3,
+        )
         resp = llm_client.call(
             SYSTEM,
             user_prompt,
             category="meta_search_agent",
             response_schema=RESPONSE_SCHEMA,
         )
+        dash.tick_inner(1)
         # PH-08: capture native reasoning_content (the gemma4 parser
         # exposes this when the request set skip_special_tokens=False).
         # Stored on the AgentTurn for diagnosis; not fed back into the
@@ -405,12 +419,31 @@ def run_iterative_search(
         raw_sort = query.get("sort")
         query_sort = raw_sort if isinstance(raw_sort, str) else None
 
+        # Surface the actual query and filters above the live region so
+        # the user can watch the agent's reasoning unfold instead of
+        # staring at a frozen panel for 30+ seconds per turn.
+        filter_str = (
+            " · filters=" + ",".join(f"{k}={v}" for k, v in (query_filters or {}).items())
+            if query_filters
+            else ""
+        )
+        dash.note(
+            f"search iter {iteration}/{config.max_iterations} · "
+            f'query="{query_text[:80]}"{filter_str}'
+        )
+        dash.begin_phase(
+            f"search iter {iteration}/{config.max_iterations} · S2 bulk search",
+            total=3,
+        )
+        dash.tick_inner(1)
+
         search_payload = ctx.s2.search_bulk(
             query_text,
             filters=query_filters,
             sort=query_sort,
             limit=config.search_limit_per_iter,
         )
+        dash.tick_inner(1)
         new_papers: list[dict[str, Any]] = []
         total_in_corpus = 0
         if isinstance(search_payload, dict):
@@ -439,9 +472,14 @@ def run_iterative_search(
                 cumulative_hits.append(paper)
                 n_novel_this_turn += 1
 
+        dash.begin_phase(
+            f"search iter {iteration}/{config.max_iterations} · summarising hits",
+            total=3,
+        )
         unique_venues, year_range, sample_titles = _summarize_results(
             new_papers, ctx, config.summarize_sample,
         )
+        dash.tick_inner(1)
 
         transcript_turns.append(
             AgentTurn(
@@ -458,6 +496,16 @@ def run_iterative_search(
                 reasoning=reasoning,
                 raw_reasoning=raw_reasoning,
             )
+        )
+
+        # One-line per-turn summary above the live region — gives the
+        # user a running log of what the agent saw at each step.
+        decision_label = agent_decision or ("stop" if should_stop else "refine")
+        partial_marker = " (PARTIAL)" if total_in_corpus > len(new_papers) else ""
+        dash.note(
+            f"search iter {iteration}/{config.max_iterations} · "
+            f"{len(new_papers)} hits{partial_marker} · "
+            f"{n_novel_this_turn} new · → {decision_label}"
         )
 
         if should_stop:
