@@ -99,6 +99,51 @@ class TestCitationFilter:
         out = f.check(p, _fctx(ctx))
         assert not out.passed
 
+    def test_exemption_zero_passes_anchor_year(self, ctx):
+        """exemption_years=0 lets papers from reference_year skip the check."""
+        f = CitationFilter(beta=50, exemption_years=0, reference_year=2026)
+        p = PaperRecord(paper_id="p", year=2026, citation_count=0)
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_exemption_zero_does_not_pass_prior_year(self, ctx):
+        f = CitationFilter(beta=50, exemption_years=0, reference_year=2026)
+        p = PaperRecord(paper_id="p", year=2025, citation_count=1)
+        out = f.check(p, _fctx(ctx))
+        assert not out.passed
+        assert out.category == "citation"
+
+    def test_exemption_one_passes_prior_year(self, ctx):
+        """exemption_years=1, reference_year=2026 → 2025+ are exempt."""
+        f = CitationFilter(beta=50, exemption_years=1, reference_year=2026)
+        p = PaperRecord(paper_id="p", year=2025, citation_count=0)
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_exemption_one_rejects_two_years_back(self, ctx):
+        f = CitationFilter(beta=50, exemption_years=1, reference_year=2026)
+        p = PaperRecord(paper_id="p", year=2024, citation_count=1)
+        out = f.check(p, _fctx(ctx))
+        assert not out.passed
+
+    def test_exemption_default_none_preserves_strict_behaviour(self, ctx):
+        """Default exemption_years=None must NOT exempt current-year papers."""
+        f = CitationFilter(beta=50, reference_year=2026)
+        p = PaperRecord(paper_id="p", year=2026, citation_count=1)
+        out = f.check(p, _fctx(ctx))
+        assert not out.passed
+
+    def test_exemption_negative_raises(self):
+        with pytest.raises(ValueError, match="exemption_years must be >= 0"):
+            CitationFilter(beta=5, exemption_years=-1)
+
+    def test_reference_year_used_for_age_math(self, ctx):
+        """Pinning reference_year affects threshold = (ref - year) * beta."""
+        f = CitationFilter(beta=10, reference_year=2026)
+        # 2020 paper, anchor 2026 → 6-year-old → threshold = 60.
+        p_pass = PaperRecord(paper_id="p", year=2020, citation_count=60)
+        assert f.check(p_pass, _fctx(ctx)).passed
+        p_fail = PaperRecord(paper_id="p", year=2020, citation_count=59)
+        assert not f.check(p_fail, _fctx(ctx)).passed
+
 
 # ---------------------------------------------------------------------------
 # LLMFilter (stub dispatch path)
