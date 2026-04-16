@@ -7,6 +7,7 @@ from datetime import datetime
 import pytest
 
 from citeclaw.filters.atoms.citation import CitationFilter
+from citeclaw.filters.atoms.keyword import AbstractKeywordFilter, TitleKeywordFilter
 from citeclaw.filters.atoms.llm_query import LLMFilter
 from citeclaw.filters.atoms.predicates import CitAtLeast, VenueIn, YearAtLeast
 from citeclaw.filters.atoms.year import YearFilter
@@ -274,3 +275,203 @@ class TestYearAtLeast:
         assert pred.check(PaperRecord(paper_id="p", year=2021), _fctx(ctx)).passed
         assert not pred.check(PaperRecord(paper_id="p", year=2019), _fctx(ctx)).passed
         assert not pred.check(PaperRecord(paper_id="p", year=None), _fctx(ctx)).passed
+
+
+# ---------------------------------------------------------------------------
+# TitleKeywordFilter
+# ---------------------------------------------------------------------------
+
+
+class TestTitleKeywordFilter:
+    def test_simple_match(self, ctx):
+        f = TitleKeywordFilter(keyword="deep learning")
+        p = PaperRecord(paper_id="p", title="Deep Learning for Biology")
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_simple_no_match(self, ctx):
+        f = TitleKeywordFilter(keyword="quantum")
+        p = PaperRecord(paper_id="p", title="Deep Learning for Biology")
+        out = f.check(p, _fctx(ctx))
+        assert not out.passed
+        assert out.category == "title_keyword"
+        assert "quantum" in out.reason
+
+    def test_case_insensitive_default(self, ctx):
+        f = TitleKeywordFilter(keyword="DEEP LEARNING")
+        p = PaperRecord(paper_id="p", title="deep learning works")
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_case_sensitive_opt(self, ctx):
+        f = TitleKeywordFilter(keyword="DEEP", case_sensitive=True)
+        p = PaperRecord(paper_id="p", title="deep learning")
+        assert not f.check(p, _fctx(ctx)).passed
+        p2 = PaperRecord(paper_id="p", title="DEEP learning")
+        assert f.check(p2, _fctx(ctx)).passed
+
+    def test_whole_word(self, ctx):
+        f = TitleKeywordFilter(keyword="learn", whole_word=True)
+        # 'learn' is a substring of 'learning' but not a standalone word
+        assert not f.check(
+            PaperRecord(paper_id="p", title="deep learning"), _fctx(ctx)
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="we learn fast"), _fctx(ctx)
+        ).passed
+
+    def test_empty_title_rejects(self, ctx):
+        f = TitleKeywordFilter(keyword="ml")
+        assert not f.check(PaperRecord(paper_id="p", title=""), _fctx(ctx)).passed
+
+    def test_formula_and(self, ctx):
+        f = TitleKeywordFilter(
+            formula="dl & bio",
+            keywords={"dl": "deep learning", "bio": "biology"},
+        )
+        assert f.check(
+            PaperRecord(paper_id="p", title="Deep Learning for Biology"),
+            _fctx(ctx),
+        ).passed
+        assert not f.check(
+            PaperRecord(paper_id="p", title="Deep Learning Survey"), _fctx(ctx)
+        ).passed
+
+    def test_formula_or(self, ctx):
+        f = TitleKeywordFilter(
+            formula="ml | rl",
+            keywords={"ml": "machine learning", "rl": "reinforcement learning"},
+        )
+        assert f.check(
+            PaperRecord(paper_id="p", title="Machine Learning Methods"),
+            _fctx(ctx),
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="Reinforcement Learning Agents"),
+            _fctx(ctx),
+        ).passed
+        assert not f.check(
+            PaperRecord(paper_id="p", title="Quantum Computing"), _fctx(ctx)
+        ).passed
+
+    def test_formula_not(self, ctx):
+        f = TitleKeywordFilter(
+            formula="ml & !survey",
+            keywords={"ml": "machine learning", "survey": "survey"},
+        )
+        assert f.check(
+            PaperRecord(paper_id="p", title="Machine Learning Methods"),
+            _fctx(ctx),
+        ).passed
+        assert not f.check(
+            PaperRecord(paper_id="p", title="A Survey of Machine Learning"),
+            _fctx(ctx),
+        ).passed
+
+    def test_formula_complex(self, ctx):
+        f = TitleKeywordFilter(
+            formula="(dl | transformer) & !survey",
+            keywords={
+                "dl": "deep learning",
+                "transformer": "transformer",
+                "survey": "survey",
+            },
+        )
+        assert f.check(
+            PaperRecord(paper_id="p", title="Transformer Networks"), _fctx(ctx)
+        ).passed
+        assert not f.check(
+            PaperRecord(paper_id="p", title="Survey of Transformers"), _fctx(ctx)
+        ).passed
+        assert not f.check(
+            PaperRecord(paper_id="p", title="Quantum Computing"), _fctx(ctx)
+        ).passed
+
+    def test_no_keyword_or_formula_raises(self):
+        with pytest.raises(ValueError, match="provide either"):
+            TitleKeywordFilter()
+
+    def test_both_keyword_and_formula_raises(self):
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            TitleKeywordFilter(keyword="x", formula="a", keywords={"a": "a"})
+
+    def test_keywords_without_formula_raises(self):
+        with pytest.raises(ValueError, match="only valid together with"):
+            TitleKeywordFilter(keyword="x", keywords={"a": "a"})
+
+    def test_formula_missing_keywords_raises(self):
+        with pytest.raises(ValueError, match="undefined keywords"):
+            TitleKeywordFilter(formula="a & b", keywords={"a": "x"})
+
+    def test_empty_keyword_raises(self):
+        with pytest.raises(ValueError, match="non-empty string"):
+            TitleKeywordFilter(keyword="")
+        with pytest.raises(ValueError, match="non-empty string"):
+            TitleKeywordFilter(keyword="   ")
+
+    def test_empty_keyword_value_in_formula_raises(self):
+        with pytest.raises(ValueError, match="non-empty string"):
+            TitleKeywordFilter(formula="a", keywords={"a": "  "})
+
+    def test_bad_formula_raises(self):
+        with pytest.raises(ValueError, match="bad formula"):
+            TitleKeywordFilter(formula="a &", keywords={"a": "x"})
+
+
+# ---------------------------------------------------------------------------
+# AbstractKeywordFilter
+# ---------------------------------------------------------------------------
+
+
+class TestAbstractKeywordFilter:
+    def test_simple_match(self, ctx):
+        f = AbstractKeywordFilter(keyword="machine learning")
+        p = PaperRecord(
+            paper_id="p", title="T", abstract="We propose a new machine learning method."
+        )
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_simple_no_match(self, ctx):
+        f = AbstractKeywordFilter(keyword="quantum")
+        p = PaperRecord(paper_id="p", title="T", abstract="Just classical methods here.")
+        out = f.check(p, _fctx(ctx))
+        assert not out.passed
+        assert out.category == "abstract_keyword"
+
+    def test_missing_abstract_required_keyword_rejects(self, ctx):
+        f = AbstractKeywordFilter(keyword="ml")
+        p = PaperRecord(paper_id="p", title="T", abstract=None)
+        assert not f.check(p, _fctx(ctx)).passed
+
+    def test_missing_abstract_negation_passes(self, ctx):
+        # !survey is True when 'survey' isn't found — empty abstract has no
+        # 'survey', so the formula evaluates True.
+        f = AbstractKeywordFilter(formula="!survey", keywords={"survey": "survey"})
+        p = PaperRecord(paper_id="p", title="T", abstract=None)
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_formula_in_abstract(self, ctx):
+        f = AbstractKeywordFilter(
+            formula="dl & bio",
+            keywords={"dl": "deep learning", "bio": "biology"},
+        )
+        p = PaperRecord(
+            paper_id="p", title="T",
+            abstract="We apply deep learning to biology problems at scale.",
+        )
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_case_insensitive_default(self, ctx):
+        f = AbstractKeywordFilter(keyword="MACHINE")
+        p = PaperRecord(paper_id="p", title="T", abstract="machine learning works")
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_whole_word_in_abstract(self, ctx):
+        f = AbstractKeywordFilter(keyword="bio", whole_word=True)
+        # 'bio' is part of 'biology' but not a standalone word
+        assert not f.check(
+            PaperRecord(paper_id="p", title="T", abstract="biology paper"),
+            _fctx(ctx),
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", abstract="bio research"),
+            _fctx(ctx),
+        ).passed

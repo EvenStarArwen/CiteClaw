@@ -167,6 +167,8 @@ rerank-then-forward while another sees the original input untouched.
 | `YearFilter`        | Pass if `year` is in `[min, max]`.                                                     |
 | `CitationFilter`    | Pass if citation count is high enough relative to `beta` and paper age.                |
 | `LLMFilter`         | Batched LLM screening; `scope:` is `title` / `title_abstract` / `venue` / `full_text`. Single-prompt or Boolean formula mode. `full_text` reads parsed PDFs from the `paper_full_text` cache. |
+| `TitleKeywordFilter`    | Plain substring search over the paper's **title**. Single `keyword:` or Boolean `formula:` over named `keywords:` (operators `& | !`). Knobs: `case_sensitive`, `whole_word`. |
+| `AbstractKeywordFilter` | Same DSL as `TitleKeywordFilter`, applied to the paper's **abstract**. Missing/None abstracts are treated as empty (negations like `!survey` still pass). |
 
 ### Clusterers
 
@@ -207,6 +209,16 @@ blocks:
   year_layer:   {type: YearFilter, min: 2018, max: 2026}
   cit_base:     {type: CitationFilter, beta: 30}
 
+  # Cheap zero-cost keyword pre-filters: drop obviously off-topic papers
+  # before they reach similarity / LLM screening.
+  abstract_topic_kw:
+    type: AbstractKeywordFilter
+    formula: "(ml | bio) & !erratum"
+    keywords:
+      ml:      "machine learning"
+      bio:     "biology"
+      erratum: "erratum"
+
   similarity:
     type: SimilarityFilter
     threshold: 0.025
@@ -226,7 +238,7 @@ blocks:
 
   forward_screener:
     type: Sequential
-    layers: [year_layer, cit_base, similarity, topic_llm]
+    layers: [year_layer, cit_base, abstract_topic_kw, similarity, topic_llm]
 
 pipeline:
   - step: LoadSeeds

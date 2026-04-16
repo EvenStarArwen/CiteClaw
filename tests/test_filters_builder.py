@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from citeclaw.filters.atoms.citation import CitationFilter
+from citeclaw.filters.atoms.keyword import AbstractKeywordFilter, TitleKeywordFilter
 from citeclaw.filters.atoms.llm_query import LLMFilter
 from citeclaw.filters.atoms.year import YearFilter
 from citeclaw.filters.blocks.any_block import Any_
@@ -69,6 +70,40 @@ class TestAtomBlocks:
     def test_missing_type_raises(self):
         with pytest.raises(ValueError, match="missing 'type'"):
             build_blocks({"x": {}})
+
+    def test_title_keyword_filter_simple(self):
+        built = build_blocks(
+            {"tk": {"type": "TitleKeywordFilter", "keyword": "deep learning"}}
+        )
+        f = built["tk"]
+        assert isinstance(f, TitleKeywordFilter)
+        assert f.name == "tk"
+        assert f.keyword == "deep learning"
+        assert f.case_sensitive is False
+        assert f.whole_word is False
+
+    def test_abstract_keyword_filter_formula(self):
+        built = build_blocks(
+            {
+                "ak": {
+                    "type": "AbstractKeywordFilter",
+                    "formula": "(ml | dl) & !survey",
+                    "keywords": {
+                        "ml": "machine learning",
+                        "dl": "deep learning",
+                        "survey": "survey",
+                    },
+                    "case_sensitive": True,
+                    "whole_word": True,
+                }
+            }
+        )
+        f = built["ak"]
+        assert isinstance(f, AbstractKeywordFilter)
+        assert f.formula_expr == "(ml | dl) & !survey"
+        assert f.case_sensitive is True
+        assert f.whole_word is True
+        assert set(f.keywords.keys()) == {"ml", "dl", "survey"}
 
 
 class TestCompositeBlocks:
