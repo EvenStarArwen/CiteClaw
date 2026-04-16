@@ -15,7 +15,7 @@ from citeclaw.filters.atoms.keyword import (
     VenueKeywordFilter,
 )
 from citeclaw.filters.atoms.llm_query import LLMFilter
-from citeclaw.filters.atoms.predicates import CitAtLeast, VenueIn, YearAtLeast
+from citeclaw.filters.atoms.predicates import CitAtLeast, VenueIn, VenuePreset, YearAtLeast
 from citeclaw.filters.atoms.year import YearFilter
 from citeclaw.filters.blocks.any_block import Any_
 from citeclaw.filters.blocks.not_block import Not_
@@ -35,6 +35,7 @@ ATOM_TYPES = {
 
 PREDICATE_KEYS = {
     "venue_in": VenueIn,
+    "venue_preset": VenuePreset,
     "cit_at_least": CitAtLeast,
     "year_at_least": YearAtLeast,
 }
@@ -49,6 +50,8 @@ def _build_predicate(d: dict) -> Any:
         raise ValueError(f"Unknown predicate {key!r}")
     if key == "venue_in":
         return cls(name=key, values=list(val))
+    if key == "venue_preset":
+        return cls(name=key, presets=list(val))
     return cls(name=key, n=int(val))
 
 

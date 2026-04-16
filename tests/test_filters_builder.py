@@ -221,6 +221,28 @@ class TestRouteBlock:
                 },
             })
 
+    def test_route_venue_preset_predicate(self):
+        from citeclaw.filters.atoms.predicates import VenuePreset
+
+        built = build_blocks({
+            "cit_strict": {"type": "CitationFilter", "beta": 60},
+            "cit_loose": {"type": "CitationFilter", "beta": 20},
+            "r": {
+                "type": "Route",
+                "routes": [
+                    {"if": {"venue_preset": ["nature", "science", "cell"]},
+                     "pass_to": "cit_loose"},
+                    {"if": {"venue_preset": ["preprint"]},
+                     "pass_to": "cit_strict"},
+                    {"default": "cit_loose"},
+                ],
+            },
+        })
+        r = built["r"]
+        assert len(r.cases) == 3
+        assert isinstance(r.cases[0].predicate, VenuePreset)
+        assert isinstance(r.cases[1].predicate, VenuePreset)
+
 
 class TestSimilarityBuilder:
     def test_all_measure_types(self):

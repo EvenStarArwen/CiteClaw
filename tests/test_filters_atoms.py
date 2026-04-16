@@ -13,7 +13,7 @@ from citeclaw.filters.atoms.keyword import (
     VenueKeywordFilter,
 )
 from citeclaw.filters.atoms.llm_query import LLMFilter
-from citeclaw.filters.atoms.predicates import CitAtLeast, VenueIn, YearAtLeast
+from citeclaw.filters.atoms.predicates import CitAtLeast, VenueIn, VenuePreset, YearAtLeast
 from citeclaw.filters.atoms.year import YearFilter
 from citeclaw.filters.base import FilterContext
 from citeclaw.models import PaperRecord
@@ -263,6 +263,73 @@ class TestVenueIn:
         pred = VenueIn(values=["arXiv"])
         p = PaperRecord(paper_id="p", venue=None)
         assert not pred.check(p, _fctx(ctx)).passed
+
+
+class TestVenuePreset:
+    def test_nature_family_match(self, ctx):
+        pred = VenuePreset(presets=["nature"])
+        assert pred.check(
+            PaperRecord(paper_id="p", venue="Nature Chemistry"), _fctx(ctx)
+        ).passed
+        assert pred.check(
+            PaperRecord(paper_id="p", venue="Nature"), _fctx(ctx)
+        ).passed
+
+    def test_case_insensitive(self, ctx):
+        pred = VenuePreset(presets=["science"])
+        assert pred.check(
+            PaperRecord(paper_id="p", venue="SCIENCE ADVANCES"), _fctx(ctx)
+        ).passed
+
+    def test_whitespace_normalized(self, ctx):
+        pred = VenuePreset(presets=["cell"])
+        assert pred.check(
+            PaperRecord(paper_id="p", venue="  Cell   Reports  "), _fctx(ctx)
+        ).passed
+
+    def test_exact_match_rejects_false_positive(self, ctx):
+        # Substring match on "Nature" would false-positive here; exact
+        # match must reject.
+        pred = VenuePreset(presets=["nature"])
+        out = pred.check(
+            PaperRecord(paper_id="p", venue="Nature-Inspired Computing"),
+            _fctx(ctx),
+        )
+        assert not out.passed
+        assert out.category == "venue_preset"
+
+    def test_no_match(self, ctx):
+        pred = VenuePreset(presets=["nature", "science"])
+        assert not pred.check(
+            PaperRecord(paper_id="p", venue="Journal of Chemical Physics"),
+            _fctx(ctx),
+        ).passed
+
+    def test_empty_venue(self, ctx):
+        pred = VenuePreset(presets=["nature"])
+        assert not pred.check(
+            PaperRecord(paper_id="p", venue=None), _fctx(ctx)
+        ).passed
+
+    def test_preprint_preset(self, ctx):
+        pred = VenuePreset(presets=["preprint"])
+        for v in ("arXiv", "bioRxiv", "medRxiv", "ChemRxiv"):
+            assert pred.check(
+                PaperRecord(paper_id="p", venue=v), _fctx(ctx)
+            ).passed, v
+
+    def test_multiple_presets_union(self, ctx):
+        pred = VenuePreset(presets=["nature", "cell"])
+        assert pred.check(
+            PaperRecord(paper_id="p", venue="Nature Methods"), _fctx(ctx)
+        ).passed
+        assert pred.check(
+            PaperRecord(paper_id="p", venue="Cell Systems"), _fctx(ctx)
+        ).passed
+
+    def test_unknown_preset_raises(self):
+        with pytest.raises(ValueError, match="Unknown venue preset"):
+            VenuePreset(presets=["nonexistent_preset"])
 
 
 class TestCitAtLeast:
