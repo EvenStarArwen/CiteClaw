@@ -166,5 +166,20 @@ class SemanticScholarAPIError(CiteClawError):
     """Raised on non-retryable Semantic Scholar API errors."""
 
 
+class S2OutageError(BaseException):
+    """Raised when the S2 API has failed N consecutive calls in a row.
+
+    Indicates a sustained outage (rate limit, networking, S2 down) rather
+    than a single transient blip — every transient failure is already
+    absorbed by tenacity's per-call retry.
+
+    Subclasses :class:`BaseException` (NOT :class:`Exception`) so that the
+    many ``except Exception`` clauses in expansion steps and S2 batch
+    helpers (which exist to keep one bad paper from crashing the whole
+    run) do not swallow this signal. The CLI entry point catches it
+    explicitly, finalises the partial run, and exits 1.
+    """
+
+
 class BudgetExhaustedError(CiteClawError):
     """Raised when a safety cap (tokens or requests) is reached."""

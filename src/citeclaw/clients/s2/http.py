@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 from tenacity import (
+    RetryError,
     retry,
     retry_if_exception,
     stop_after_attempt,
@@ -18,6 +19,7 @@ from tenacity import (
 )
 
 from citeclaw.config import BudgetTracker, Settings
+from citeclaw.models import S2OutageError
 
 log = logging.getLogger("citeclaw.s2.http")
 
@@ -86,13 +88,23 @@ def _retry_message(rs, kind: str) -> None:
 
 
 class S2Http:
-    """Throttled HTTP wrapper around the S2 graph API."""
+    """Throttled HTTP wrapper around the S2 graph API.
+
+    Tracks consecutive retry-exhausted failures across every method
+    (``get`` / ``get_url`` / ``post``); once they exceed
+    ``Settings.s2_max_consecutive_failures``, the next failure is
+    converted into an :class:`S2OutageError` so the pipeline runner can
+    bail out cleanly instead of grinding through the full retry budget
+    on every paper. Any successful call resets the counter.
+    """
 
     def __init__(self, config: Settings, budget: BudgetTracker) -> None:
         self._config = config
         self._budget = budget
         self._min_interval = 1.0 / config.s2_rps
         self._last_request_time = 0.0
+        self._consecutive_failures = 0
+        self._max_consecutive_failures = max(0, config.s2_max_consecutive_failures)
 
         headers: dict[str, str] = {"Accept": "application/json"}
         if config.s2_api_key:
@@ -115,13 +127,37 @@ class S2Http:
         except Exception:
             pass
 
+    def _record_success(self) -> None:
+        self._consecutive_failures = 0
+
+    def _record_failure(self, exc: BaseException) -> None:
+        """Bump the consecutive-failure counter; raise outage if exceeded.
+
+        Called from the outer wrapper when the inner retry-decorated
+        helper has exhausted all attempts. Tenacity raises ``RetryError``
+        when it gives up; transport errors that escape the retry guard
+        (rare; would mean the predicate said "don't retry") count too.
+        """
+        self._consecutive_failures += 1
+        if (
+            self._max_consecutive_failures
+            and self._consecutive_failures >= self._max_consecutive_failures
+        ):
+            raise S2OutageError(
+                f"S2 API hit max retries on {self._consecutive_failures} "
+                f"consecutive calls (limit={self._max_consecutive_failures}). "
+                f"Last error: {type(exc).__name__}: {str(exc)[:200]}"
+            ) from exc
+
     @retry(
         retry=retry_if_exception(_is_retryable),
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(6),
         before_sleep=lambda rs: _retry_message(rs, "request"),
     )
-    def get(self, path: str, params: dict[str, Any] | None = None, *, req_type: str = "other") -> dict[str, Any]:
+    def _get_with_retries(
+        self, path: str, params: dict[str, Any] | None, req_type: str,
+    ) -> dict[str, Any]:
         self._throttle()
         self._budget.record_s2(req_type)
         resp = self._http.get(f"{BASE_URL}{path}", params=params or {})
@@ -129,18 +165,24 @@ class S2Http:
         self._clear_retry()
         return resp.json()
 
+    def get(self, path: str, params: dict[str, Any] | None = None, *, req_type: str = "other") -> dict[str, Any]:
+        try:
+            result = self._get_with_retries(path, params, req_type)
+        except (RetryError, httpx.HTTPError) as exc:
+            self._record_failure(exc)
+            raise
+        self._record_success()
+        return result
+
     @retry(
         retry=retry_if_exception(_is_retryable),
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(6),
         before_sleep=lambda rs: _retry_message(rs, "request"),
     )
-    def get_url(
-        self, url: str, params: dict[str, Any] | None = None, *, req_type: str = "other",
+    def _get_url_with_retries(
+        self, url: str, params: dict[str, Any] | None, req_type: str,
     ) -> dict[str, Any]:
-        """Like :meth:`get` but accepts a full URL instead of a ``/graph/v1``
-        relative path. Used by endpoints outside the graph API (e.g.
-        ``/recommendations/v1``)."""
         self._throttle()
         self._budget.record_s2(req_type)
         resp = self._http.get(url, params=params or {})
@@ -148,12 +190,36 @@ class S2Http:
         self._clear_retry()
         return resp.json()
 
+    def get_url(
+        self, url: str, params: dict[str, Any] | None = None, *, req_type: str = "other",
+    ) -> dict[str, Any]:
+        """Like :meth:`get` but accepts a full URL instead of a ``/graph/v1``
+        relative path. Used by endpoints outside the graph API (e.g.
+        ``/recommendations/v1``)."""
+        try:
+            result = self._get_url_with_retries(url, params, req_type)
+        except (RetryError, httpx.HTTPError) as exc:
+            self._record_failure(exc)
+            raise
+        self._record_success()
+        return result
+
     @retry(
         retry=retry_if_exception(_is_retryable),
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(6),
         before_sleep=lambda rs: _retry_message(rs, "batch"),
     )
+    def _post_with_retries(
+        self, url: str, params: dict[str, Any] | None, json_body: Any, req_type: str,
+    ) -> Any:
+        self._throttle()
+        self._budget.record_s2(req_type)
+        resp = self._http.post(url, params=params or {}, json=json_body)
+        resp.raise_for_status()
+        self._clear_retry()
+        return resp.json()
+
     def post(
         self,
         url: str,
@@ -162,12 +228,13 @@ class S2Http:
         *,
         req_type: str = "batch",
     ) -> Any:
-        self._throttle()
-        self._budget.record_s2(req_type)
-        resp = self._http.post(url, params=params or {}, json=json_body)
-        resp.raise_for_status()
-        self._clear_retry()
-        return resp.json()
+        try:
+            result = self._post_with_retries(url, params, json_body, req_type)
+        except (RetryError, httpx.HTTPError) as exc:
+            self._record_failure(exc)
+            raise
+        self._record_success()
+        return result
 
     def paginate(
         self,

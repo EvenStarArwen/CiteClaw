@@ -161,6 +161,15 @@ class Settings(BaseSettings):
     max_llm_tokens: int = 50_000_000
     max_s2_requests: int = 100_000
     max_papers_total: int = 2000
+    # Hard ceiling on the number of consecutive S2 calls (across endpoints)
+    # that may exhaust their tenacity retry budget before we declare the
+    # API down and abort the pipeline. Each `_is_retryable` failure burns
+    # 6 attempts × backoff before counting as one "failure" here, so the
+    # default 10 means "10 papers in a row that all required a full
+    # retry cascade and still didn't make it" — a clean signal of a
+    # sustained outage rather than transient hiccups. Set to 0 to
+    # disable the auto-abort.
+    s2_max_consecutive_failures: int = 10
 
     # Topic + IO
     topic_description: str = ""

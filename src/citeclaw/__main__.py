@@ -9,7 +9,7 @@ from pathlib import Path
 
 from citeclaw.config import SeedPaper, load_settings
 from citeclaw.logging_config import setup_logging
-from citeclaw.models import BudgetExhaustedError, CiteClawError
+from citeclaw.models import BudgetExhaustedError, CiteClawError, S2OutageError
 from citeclaw.pipeline import build_context, finalize_partial, run_pipeline
 from citeclaw.steps.checkpoint import load_checkpoint
 from citeclaw.steps.finalize import write_graphs
@@ -138,6 +138,13 @@ def _run_snowball(argv: list[str]) -> None:
     except BudgetExhaustedError as exc:
         log.warning("Budget exhausted: %s", exc)
         finalize_partial(ctx)
+    except S2OutageError as exc:
+        log.error(
+            "S2 API appears to be down or rate-limiting hard — %s. "
+            "Saving partial collection and exiting.", exc,
+        )
+        finalize_partial(ctx)
+        sys.exit(1)
     except CiteClawError as exc:
         log.error("CiteClaw error: %s", exc)
         sys.exit(1)
