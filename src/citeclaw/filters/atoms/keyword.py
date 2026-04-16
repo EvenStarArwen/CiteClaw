@@ -1,9 +1,10 @@
-"""Keyword-based filters over paper title / abstract.
+"""Keyword-based filters over paper title / abstract / venue.
 
-Two atoms share the same DSL: :class:`TitleKeywordFilter` checks the paper's
-title, :class:`AbstractKeywordFilter` checks the abstract. Both run a plain
-substring search per keyword and combine the per-keyword booleans with the
-same Boolean formula DSL used by :class:`LLMFilter`
+Three atoms share the same DSL: :class:`TitleKeywordFilter` checks the
+paper's title, :class:`AbstractKeywordFilter` checks the abstract,
+:class:`VenueKeywordFilter` checks the venue. All three run a plain
+substring search per keyword and combine the per-keyword booleans with
+the same Boolean formula DSL used by :class:`LLMFilter`
 (:mod:`citeclaw.screening.formula`).
 
 **Simple mode** — single keyword or phrase::
@@ -189,3 +190,21 @@ class AbstractKeywordFilter(_KeywordFilterBase):
 
     def _content(self, paper: PaperRecord) -> str:
         return paper.abstract or ""
+
+
+class VenueKeywordFilter(_KeywordFilterBase):
+    """Pass papers whose venue satisfies a keyword (or Boolean formula).
+
+    Pair with ``whole_word: true`` for hard journal allow-lists — e.g.
+    matching ``"Cell"`` as a standalone word so it accepts ``Cell Reports``
+    but rejects ``Cellulose``.
+    """
+
+    _scope_label = "venue"
+    _category = "venue_keyword"
+
+    def __init__(self, name: str = "venue_keyword", **kwargs: Any) -> None:
+        super().__init__(name, **kwargs)
+
+    def _content(self, paper: PaperRecord) -> str:
+        return paper.venue or ""

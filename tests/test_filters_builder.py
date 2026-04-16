@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from citeclaw.filters.atoms.citation import CitationFilter
-from citeclaw.filters.atoms.keyword import AbstractKeywordFilter, TitleKeywordFilter
+from citeclaw.filters.atoms.keyword import (
+    AbstractKeywordFilter,
+    TitleKeywordFilter,
+    VenueKeywordFilter,
+)
 from citeclaw.filters.atoms.llm_query import LLMFilter
 from citeclaw.filters.atoms.year import YearFilter
 from citeclaw.filters.blocks.any_block import Any_
@@ -81,6 +85,26 @@ class TestAtomBlocks:
         assert f.keyword == "deep learning"
         assert f.case_sensitive is False
         assert f.whole_word is False
+
+    def test_venue_keyword_filter_allowlist(self):
+        built = build_blocks(
+            {
+                "vk": {
+                    "type": "VenueKeywordFilter",
+                    "formula": "nature | science | cell",
+                    "keywords": {
+                        "nature": "Nature",
+                        "science": "Science",
+                        "cell": "Cell",
+                    },
+                    "whole_word": True,
+                }
+            }
+        )
+        f = built["vk"]
+        assert isinstance(f, VenueKeywordFilter)
+        assert f.whole_word is True
+        assert set(f.keywords.keys()) == {"nature", "science", "cell"}
 
     def test_abstract_keyword_filter_formula(self):
         built = build_blocks(

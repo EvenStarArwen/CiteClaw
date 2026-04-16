@@ -7,7 +7,11 @@ from datetime import datetime
 import pytest
 
 from citeclaw.filters.atoms.citation import CitationFilter
-from citeclaw.filters.atoms.keyword import AbstractKeywordFilter, TitleKeywordFilter
+from citeclaw.filters.atoms.keyword import (
+    AbstractKeywordFilter,
+    TitleKeywordFilter,
+    VenueKeywordFilter,
+)
 from citeclaw.filters.atoms.llm_query import LLMFilter
 from citeclaw.filters.atoms.predicates import CitAtLeast, VenueIn, YearAtLeast
 from citeclaw.filters.atoms.year import YearFilter
@@ -475,3 +479,61 @@ class TestAbstractKeywordFilter:
             PaperRecord(paper_id="p", title="T", abstract="bio research"),
             _fctx(ctx),
         ).passed
+
+
+# ---------------------------------------------------------------------------
+# VenueKeywordFilter
+# ---------------------------------------------------------------------------
+
+
+class TestVenueKeywordFilter:
+    def test_simple_match(self, ctx):
+        f = VenueKeywordFilter(keyword="Nature")
+        p = PaperRecord(paper_id="p", title="T", venue="Nature")
+        assert f.check(p, _fctx(ctx)).passed
+
+    def test_substring_default_admits_substring_journals(self, ctx):
+        # Default substring mode: 'Cell' matches 'Cellulose' — that's why
+        # whole_word=True exists. Pin the loose default explicitly.
+        f = VenueKeywordFilter(keyword="Cell")
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", venue="Cellulose"), _fctx(ctx)
+        ).passed
+
+    def test_whole_word_excludes_substring_journals(self, ctx):
+        f = VenueKeywordFilter(keyword="Cell", whole_word=True)
+        assert not f.check(
+            PaperRecord(paper_id="p", title="T", venue="Cellulose"), _fctx(ctx)
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", venue="Cell Reports"), _fctx(ctx)
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", venue="Cell"), _fctx(ctx)
+        ).passed
+
+    def test_formula_or_for_journal_allowlist(self, ctx):
+        f = VenueKeywordFilter(
+            formula="nature | science | cell",
+            keywords={"nature": "Nature", "science": "Science", "cell": "Cell"},
+            whole_word=True,
+        )
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", venue="Nature Methods"), _fctx(ctx)
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", venue="Science Advances"), _fctx(ctx)
+        ).passed
+        assert f.check(
+            PaperRecord(paper_id="p", title="T", venue="Cell Reports"), _fctx(ctx)
+        ).passed
+        out = f.check(
+            PaperRecord(paper_id="p", title="T", venue="PLoS ONE"), _fctx(ctx)
+        )
+        assert not out.passed
+        assert out.category == "venue_keyword"
+
+    def test_missing_venue_rejects(self, ctx):
+        f = VenueKeywordFilter(keyword="Nature")
+        p = PaperRecord(paper_id="p", title="T", venue=None)
+        assert not f.check(p, _fctx(ctx)).passed

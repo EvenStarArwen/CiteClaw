@@ -9,7 +9,11 @@ from __future__ import annotations
 from typing import Any
 
 from citeclaw.filters.atoms.citation import CitationFilter
-from citeclaw.filters.atoms.keyword import AbstractKeywordFilter, TitleKeywordFilter
+from citeclaw.filters.atoms.keyword import (
+    AbstractKeywordFilter,
+    TitleKeywordFilter,
+    VenueKeywordFilter,
+)
 from citeclaw.filters.atoms.llm_query import LLMFilter
 from citeclaw.filters.atoms.predicates import CitAtLeast, VenueIn, YearAtLeast
 from citeclaw.filters.atoms.year import YearFilter
@@ -26,6 +30,7 @@ ATOM_TYPES = {
     "LLMFilter": LLMFilter,
     "TitleKeywordFilter": TitleKeywordFilter,
     "AbstractKeywordFilter": AbstractKeywordFilter,
+    "VenueKeywordFilter": VenueKeywordFilter,
 }
 
 PREDICATE_KEYS = {

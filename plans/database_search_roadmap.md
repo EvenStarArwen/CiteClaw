@@ -57,16 +57,16 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
-- 2026-04-11 00:26 — completed PE-10 ✅ (web_server.py + `python -m citeclaw web` CLI subcommand + `[web]` extras in pyproject.toml; /health, /, /api/configs all 200; 807 tests passed; Phase E DONE)
-- 2026-04-10 23:14 — completed PE-09 ✅ (HitlGate sync primitive + EventSink.hitl_request + web-mode _collect_labels_web path in HumanInTheLoop + POST /api/runs/{id}/hitl backend endpoint + HitlModal.tsx frontend component + Zustand hitl state; 33 tests green, pnpm build green)
-- 2026-04-10 22:08 — completed PE-08 ✅ (PaperPanel with TanStack Query paper fetch, source badges, author chips, citation metrics, S2/DOI/PDF links; RunControls with start/reset, live step list, budget summary, shape table; wired into Layout.tsx; pnpm build green)
-- 2026-04-10 21:00 — completed PE-07 ✅ (React Flow pipeline builder with block library, step node canvas, settings sidebar, YAML save/load; pnpm build green)
-- 2026-04-10 19:54 — completed PE-06 ✅ (WebSocket hook usePipelineRun.ts + LiveNodeAnimator bounce animation + StepBanner toast in Graph.tsx; expanded Zustand store with pipeline run state; pnpm build green)
-- 2026-04-10 18:50 — completed PE-05 ✅ (Sigma.js graph component with ForceAtlas 2 layout, cluster/source coloring, node click selection; pnpm build green)
-- 2026-04-10 15:30 — completed PE-04 ✅ (React Router v6 routing, 3-pane resizable layout, dark mode toggle, Zustand store, TanStack Query provider; pnpm build green)
-- 2026-04-10 14:26 — completed PE-02 ✅ (added REST endpoints: GET/POST /api/configs, GET /api/papers/{id}, GET /api/runs/{id}, POST /api/runs; verified curl returns JSON)
-- 2026-04-10 13:22 — completed PE-01 ✅ (installed pnpm via npm, installed fastapi/uvicorn via pip; scaffolded web/backend with FastAPI /health endpoint + .env.example; scaffolded web/frontend via pnpm create vite react-ts + Tailwind v4; "Hello CiteClaw" page; both verify steps green)
-- 2026-04-10 12:21 — no actionable tasks ⛔ (toolchain unchanged: Python 3.9.6, no pnpm, no pytest, no fastapi/uvicorn; PE-01..PE-10 blocked; Phase F HUMAN-GATED; **user action needed** to unblock)
+- 2026-04-16 11:36 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-16 10:35 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 22:38 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 21:38 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 20:37 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 16:36 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 15:36 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 14:35 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 13:34 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
+- 2026-04-15 12:34 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; Phase F is human-gated, no work to do)
 
 ---
 
