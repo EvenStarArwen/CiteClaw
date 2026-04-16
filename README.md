@@ -384,6 +384,74 @@ ArXiv fallback: if primary DOI chain fails and paper has an arXiv ID in S2's
 
 ---
 
+## Supported LLM providers
+
+`screening_model:`, `search_model:`, and any per-block `model:` override
+all accept the same alias surface. Routing is decided by
+`citeclaw.clients.llm.factory.build_llm_client` in this order:
+
+| Alias prefix / value          | Provider                                           | Required env var                                                    |
+| ----------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| `stub` (case-insensitive)     | Deterministic offline stub (tests / dev runs)      | none                                                                |
+| any key in `models:` registry | OpenAI-compatible endpoint at the registered URL   | the entry's `api_key_env` (e.g. `CITECLAW_VLLM_API_KEY`, `XAI_API_KEY`) |
+| `gemini-*`                    | Gemini 2.5 / 3.x via the `google-genai` SDK        | `GEMINI_API_KEY`                                                    |
+| `o1*`, `o3*`, `o4*`           | OpenAI o-series reasoning models                   | `OPENAI_API_KEY`                                                    |
+| `gpt-*`                       | OpenAI chat models                                 | `OPENAI_API_KEY`                                                    |
+| `claude-*`                    | Routed via OpenAI SaaS proxy by default            | `OPENAI_API_KEY` (override with a `models:` entry for native API)   |
+| (anything else)               | Falls through to OpenAI SaaS                       | `OPENAI_API_KEY`                                                    |
+
+`SEMANTIC_SCHOLAR_API_KEY` (or `S2_API_KEY`) is **always required** —
+the pre-flight validator refuses to start without it.
+
+The pre-flight validator walks the pipeline + every filter block and
+reports each missing env var up-front, so a stub-only run never
+demands an OpenAI key and a Gemma-via-vLLM run never demands a
+Gemini key.
+
+### `reasoning_effort:`
+
+Top-level setting + per-filter override on `LLMFilter` (and
+per-step override on `ExpandBySearch.agent`). Accepted values:
+
+| Value      | Meaning                                          | Sent as (per provider)                                                              |
+| ---------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `""` (default) | No thinking — model returns content only        | nothing on the wire                                                                  |
+| `low`      | Short thinking trace                             | OpenAI / xAI Grok / Mistral: `reasoning_effort="low"`. Gemini: `thinking_level="low"`. vLLM: `enable_thinking=True` + `thinking_budget=4096`. |
+| `medium`   | Default for capable models                       | same shape, `medium` / `thinking_budget=8192`                                       |
+| `high`     | Long thinking trace                              | same shape, `high` / `thinking_budget=16384`                                        |
+| `minimal`  | Gemini-only — minimal reasoning tokens          | Gemini `thinking_level="minimal"`. Other providers treat as empty.                  |
+| `off` / `none` / `disabled` | Explicitly turn thinking off       | nothing on the wire (forces a non-thinking call)                                    |
+
+Set `thinking_budget: <int>` on a `models:` registry entry to override
+the effort-based default for vLLM endpoints (Gemma 4 / Qwen3 / DeepSeek-R1).
+
+### xAI Grok 3 / 4
+
+xAI's API mirrors OpenAI's chat-completions surface (with native
+`reasoning_effort`), so Grok plugs in via the `models:` registry — no
+new code required. Example:
+
+```yaml
+models:
+  grok-4:
+    base_url: "https://api.x.ai/v1"
+    served_model_name: "grok-4-latest"
+    api_key_env: "XAI_API_KEY"
+    reasoning_parser: "grok"      # use native reasoning_effort kwarg
+
+screening_model: "grok-4"
+reasoning_effort: "medium"
+```
+
+`reasoning_parser: "grok"` (also `"xai"`) selects the native
+`reasoning_effort` wire shape rather than the vLLM
+`chat_template_kwargs.enable_thinking` path used for self-hosted
+OSS models. The same registry mechanism covers Mistral Magistral
+(`reasoning_parser: "mistral"`) and any other OpenAI-compat
+provider that supports `reasoning_effort` natively.
+
+---
+
 ## Self-hosted LLM (Modal vLLM)
 
 `modal_vllm_server.py` (project root) wraps `vllm serve` with an
