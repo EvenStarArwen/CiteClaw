@@ -230,7 +230,11 @@ def _handle_fetch_results(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
     # Enrich via batch metadata.
     hydrated = d.ctx.s2.enrich_batch([{"paper_id": pid} for pid in paper_ids])
 
-    # Build a DataFrame.
+    # Build a DataFrame. Always construct with explicit columns so an
+    # empty fetch still produces a well-shaped (0-row) DataFrame —
+    # downstream tools that iterate df["paper_id"] then gracefully
+    # return empty results instead of raising KeyError.
+    columns = ["paper_id", "title", "abstract", "year", "venue", "citations"]
     rows = []
     for rec in hydrated:
         rows.append({
@@ -241,7 +245,7 @@ def _handle_fetch_results(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
             "venue": rec.venue or "",
             "citations": rec.citation_count if rec.citation_count is not None else 0,
         })
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows, columns=columns)
 
     df_id = f"df_{d.worker_id}_{angle.fingerprint[7:15]}_t{d.state.turn_index}"
     d.store.put(df_id, df, worker_id=d.worker_id, metadata={
