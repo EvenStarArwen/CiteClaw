@@ -102,13 +102,16 @@ class TestNormalizeS2Id:
         "raw, expected",
         [
             ("0123456789abcdef0123456789abcdef01234567", "0123456789abcdef0123456789abcdef01234567"),
-            ("DOI:10.1/abc", "DOI:10.1/abc"),
+            ("DOI:10.1234/abc", "DOI:10.1234/abc"),
+            ("DOI:10.1038/s41586-021-03819-2", "DOI:10.1038/s41586-021-03819-2"),
+            ("DOI:10.48550/arXiv.2301.00001", "DOI:10.48550/arXiv.2301.00001"),
             ("CorpusId:12345", "CorpusId:12345"),
             ("ArXiv:2201.00001", "ArXiv:2201.00001"),
             ("PMID:999", "PMID:999"),
             ("MAG:1", "MAG:1"),
             ("ACL:p21", "ACL:p21"),
             ("10.1234/foo", "DOI:10.1234/foo"),
+            ("10.1145/3534678.3539092", "DOI:10.1145/3534678.3539092"),
         ],
     )
     def test_valid(self, raw, expected):
@@ -118,8 +121,26 @@ class TestNormalizeS2Id:
     def test_invalid(self, raw):
         assert normalize_s2_id(raw) is None
 
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "DOI:10.1/abc",            # registrant too short (< 4 digits)
+            "DOI:10.12/abc",           # ditto
+            "DOI:10.1234",             # missing suffix after /
+            "DOI:10.1234/",            # empty suffix
+            "DOI:foo/bar",             # non-numeric registrant
+            "10.1/abc",                # bare, too-short registrant
+            "10.12",                   # bare, no suffix
+            "10.invalid/abc",          # non-numeric
+        ],
+    )
+    def test_malformed_doi_rejected(self, raw):
+        """Strict validation: malformed DOIs must return None instead of
+        sneaking through to S2 and failing opaquely downstream."""
+        assert normalize_s2_id(raw) is None
+
     def test_whitespace_stripped(self):
-        assert normalize_s2_id("  DOI:10.1/abc  ") == "DOI:10.1/abc"
+        assert normalize_s2_id("  DOI:10.1234/abc  ") == "DOI:10.1234/abc"
 
 
 class TestNormalizeOpenAlexId:
