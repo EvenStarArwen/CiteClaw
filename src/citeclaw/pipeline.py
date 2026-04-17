@@ -371,6 +371,15 @@ def run_pipeline(
             (cfg.data_dir / "shape_summary.txt").write_text(rendered + "\n")
         except Exception as exc:
             dashboard.warn(f"could not write shape_summary.txt: {exc}")
+        # Machine-readable companion — downstream analytics (run comparison,
+        # pipeline-health monitoring) can't usefully parse the text table.
+        try:
+            import json
+            (cfg.data_dir / "shape_summary.json").write_text(
+                json.dumps(shape.to_dicts(), indent=2) + "\n"
+            )
+        except Exception as exc:
+            dashboard.warn(f"could not write shape_summary.json: {exc}")
 
         log.debug(
             "Done. accepted=%d rejected=%d seen=%d",

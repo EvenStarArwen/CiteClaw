@@ -134,6 +134,16 @@ def test_full_pipeline_round_trip(tmp_path: Path):
     assert (data_dir / "citation_network.graphml").exists()
     assert (data_dir / "collaboration_network.graphml").exists()
     assert (data_dir / "shape_summary.txt").exists()
+    assert (data_dir / "shape_summary.json").exists()
+
+    # shape_summary.json should be a list of dicts with the same step sequence
+    # as the rendered text table — enables programmatic run comparison.
+    shape_json = json.loads((data_dir / "shape_summary.json").read_text())
+    assert isinstance(shape_json, list)
+    assert all({"step", "in", "out", "delta_collection", "stats"} <= r.keys() for r in shape_json)
+    step_names = [r["step"] for r in shape_json]
+    assert "LoadSeeds" in step_names
+    assert "Finalize" in step_names
 
     # Verify the collection JSON is well-formed and contains every accepted paper.
     coll_json = json.loads((data_dir / "literature_collection.json").read_text())

@@ -22,6 +22,24 @@ class ShapeLog:
     def record(self, name: str, in_count: int, out_count: int, delta_coll: int, stats: dict) -> None:
         self.rows.append(_Row(name, in_count, out_count, delta_coll, stats))
 
+    def to_dicts(self) -> list[dict[str, Any]]:
+        """Return the shape rows as a list of plain dicts, suitable for
+        JSON serialisation alongside the pretty-printed ``render()`` text.
+
+        Branch sub-rows are preserved under ``stats.branches`` unchanged —
+        they're already JSON-friendly in :meth:`citeclaw.steps.parallel.Parallel.run`.
+        """
+        return [
+            {
+                "step": r.name,
+                "in": r.in_count,
+                "out": r.out_count,
+                "delta_collection": r.delta_collection,
+                "stats": dict(r.stats),
+            }
+            for r in self.rows
+        ]
+
     def render(self) -> str:
         header = f"{'Step':<22}| {'In':>6} | {'Out':>6} | {'Δcoll':>6} | Notes"
         sep = "-" * len(header)
