@@ -366,12 +366,21 @@ class OpenAIClient:
             and self._config.structured_output_enabled
             and not thinking_active
         ):
+            # Honour an optional ``_strict_openai`` sentinel on the
+            # schema (default True). Set to False for polymorphic
+            # schemas where ``tool_args`` is an open object — OpenAI
+            # strict mode requires ``additionalProperties: false`` on
+            # every nested object, which breaks our 14-tool dispatcher
+            # schema. The key is popped before the schema is sent so
+            # the wire payload stays clean.
+            schema_copy = dict(response_schema)
+            strict = bool(schema_copy.pop("_strict_openai", True))
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "citeclaw_screening_results",
-                    "strict": True,
-                    "schema": response_schema,
+                    "strict": strict,
+                    "schema": schema_copy,
                 },
             }
 

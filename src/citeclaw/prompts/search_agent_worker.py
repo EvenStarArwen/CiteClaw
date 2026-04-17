@@ -283,6 +283,12 @@ def render_structural_priors(priors: dict) -> str:
 
 RESPONSE_SCHEMA = {
     "type": "object",
+    # tool_args is polymorphic per tool, which OpenAI strict mode
+    # rejects (it requires every nested object to declare
+    # additionalProperties: false + exhaustive required-properties
+    # list). Non-strict still constrains reasoning/tool_name/tool_args
+    # shape via json_schema, which is enough for our parser.
+    "_strict_openai": False,
     "properties": {
         "reasoning": {"type": "string"},
         "tool_name": {

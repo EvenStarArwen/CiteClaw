@@ -41,7 +41,14 @@ def _strip_additional_properties(schema: Any) -> Any:
         return {
             k: _strip_additional_properties(v)
             for k, v in schema.items()
-            if k not in ("additionalProperties", "additional_properties")
+            if k not in (
+                "additionalProperties",
+                "additional_properties",
+                # Not a JSON Schema keyword — our provider-routing
+                # sentinel for OpenAI strict mode; irrelevant to
+                # Gemini and rejected by its schema validator.
+                "_strict_openai",
+            )
         }
     if isinstance(schema, list):
         return [_strip_additional_properties(v) for v in schema]

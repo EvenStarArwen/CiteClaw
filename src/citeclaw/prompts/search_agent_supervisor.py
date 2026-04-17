@@ -187,6 +187,9 @@ def render_seed_block(seed_papers: list[dict]) -> str:
 
 RESPONSE_SCHEMA = {
     "type": "object",
+    # Polymorphic tool_args — see search_agent_worker.RESPONSE_SCHEMA
+    # for the matching sentinel rationale (OpenAI strict mode).
+    "_strict_openai": False,
     "properties": {
         "reasoning": {
             "type": "string",
