@@ -39,6 +39,7 @@ YAML example::
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from citeclaw.agents.pdf_reference_extractor import (
@@ -264,26 +265,69 @@ class ExpandByPDF:
         """PDF text budget — generous for fetching, the LLM agent truncates internally."""
         return max(self.max_input_chars * 4, 80_000)
 
-    @staticmethod
+    # Strict DOI pattern matching :mod:`citeclaw.models`. ``\S+`` is the
+    # suffix; we anchor with word boundaries so a trailing "." or ")"
+    # from the reference text doesn't poison the match.
+    _DOI_EXTRACT_RE = re.compile(r"\b(10\.\d{4,9}/[^\s,;)\]]+)")
+
+    @classmethod
+    def _extract_doi(cls, ref: ExtractedReference) -> str | None:
+        """Pull a DOI out of the reference text (or title) if one is present.
+
+        Checks both ``reference_text`` and ``title`` — some extractors
+        put the DOI in the title field when the reference is fragmentary.
+        Strips common trailing punctuation (``.``, ``)``, etc.) that
+        aren't part of a DOI but often appear right after one in
+        bibliography entries.
+        """
+        for source in (ref.reference_text, ref.title):
+            if not source:
+                continue
+            m = cls._DOI_EXTRACT_RE.search(source)
+            if m:
+                doi = m.group(1).rstrip(".,;)]")
+                if doi:
+                    return doi
+        return None
+
+    @classmethod
     def _resolve_reference(
+        cls,
         ref: ExtractedReference,
         ctx: Any,
     ) -> str | None:
         """Resolve an extracted reference to an S2 paperId.
 
-        Uses ``search_match`` with the title when available, falling
-        back to the full ``reference_text`` when the bibliography
-        style doesn't expose a distinct title (e.g. SignalP 5.0's
-        ``Author, Journal Vol, Pages (Year)`` entries). Returns
-        ``None`` if both paths fail — the reference is silently
-        dropped (logged at DEBUG).
+        Cascade:
+
+          1. Regex-extract a DOI from ``reference_text`` / ``title``.
+             When found, try ``s2.fetch_metadata("DOI:<doi>")``. DOI
+             lookups are structurally reliable — a cleanly-extracted
+             DOI resolves the paper unambiguously, even if the title
+             is missing or mangled.
+          2. Fall back to ``s2.search_match`` on the title (≥ 8 chars)
+             or the full reference text (≥ 12 chars). This is the
+             historical path; useful when the reference has no DOI.
+
+        Returns ``None`` when both paths fail — the reference is
+        silently dropped (logged at DEBUG).
         """
+        # Path 1: DOI-first.
+        doi = cls._extract_doi(ref)
+        if doi:
+            try:
+                record = ctx.s2.fetch_metadata(f"DOI:{doi}")
+            except Exception as exc:  # noqa: BLE001
+                log.debug("DOI lookup failed for %r: %s", doi, exc)
+            else:
+                pid = getattr(record, "paper_id", None)
+                if pid:
+                    return pid
+
+        # Path 2: title/text search_match (existing behaviour).
         title = ref.title.strip()
         query = title if len(title) >= 8 else ""
         if not query:
-            # Fall back to the full bibliography entry. S2's
-            # search_match is text-based and can often recover a
-            # paper from ``Author, Journal Vol, Pages (Year)``.
             query = ref.reference_text.strip()
         if not query or len(query) < 12:
             return None

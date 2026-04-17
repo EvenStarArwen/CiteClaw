@@ -432,6 +432,126 @@ class TestExtractAllRefTitles:
         assert titles == []
 
 
+class TestResolveReferenceDoiFirst:
+    """Cover the DOI-first resolution path in ExpandByPDF._resolve_reference."""
+
+    def _ref(self, title="", text=""):
+        return ExtractedReference(
+            citation_marker="[1]",
+            reference_text=text,
+            title=title,
+            mentions=[Mention(quote="q", relevance="r")],
+            relevance_explanation="e",
+        )
+
+    def test_extract_doi_from_reference_text(self):
+        ref = self._ref(text="Smith et al. Nature 555 (2018). doi:10.1038/nature12345")
+        assert ExpandByPDF._extract_doi(ref) == "10.1038/nature12345"
+
+    def test_extract_doi_strips_trailing_punctuation(self):
+        ref = self._ref(text="See 10.1038/abc123). Nature.")
+        assert ExpandByPDF._extract_doi(ref) == "10.1038/abc123"
+
+    def test_extract_doi_from_title_fallback(self):
+        ref = self._ref(title="Paper 10.1145/3534678.3539092")
+        assert ExpandByPDF._extract_doi(ref) == "10.1145/3534678.3539092"
+
+    def test_extract_doi_none_when_absent(self):
+        ref = self._ref(title="No DOI here", text="Smith. Nature. 2020.")
+        assert ExpandByPDF._extract_doi(ref) is None
+
+    def test_extract_doi_ignores_short_registrant(self):
+        # 10.1 is too short (registrants are 4-9 digits).
+        ref = self._ref(text="Fake 10.1/abc reference")
+        assert ExpandByPDF._extract_doi(ref) is None
+
+    def test_resolve_uses_doi_before_search_match(self):
+        """When a DOI is present, fetch_metadata is called with DOI:…
+        before search_match. The title path never runs in that case."""
+
+        class _SpyS2:
+            def __init__(self):
+                self.fetch_metadata_calls: list[str] = []
+                self.search_match_calls: list[str] = []
+
+            def fetch_metadata(self, pid: str) -> PaperRecord:
+                self.fetch_metadata_calls.append(pid)
+                return PaperRecord(paper_id="RESOLVED", title="Resolved")
+
+            def search_match(self, query: str):
+                self.search_match_calls.append(query)
+                return {"paperId": "TITLE_MATCH"}
+
+        class _Ctx:
+            def __init__(self, s2):
+                self.s2 = s2
+
+        spy = _SpyS2()
+        ref = self._ref(
+            title="Some Paper Title",
+            text="Smith et al. Nature 2020. doi:10.1038/nature12345",
+        )
+        pid = ExpandByPDF._resolve_reference(ref, _Ctx(spy))
+        assert pid == "RESOLVED"
+        assert spy.fetch_metadata_calls == ["DOI:10.1038/nature12345"]
+        assert spy.search_match_calls == []  # never fell through
+
+    def test_resolve_falls_back_to_search_match_when_doi_fails(self):
+        """fetch_metadata raising (e.g. S2 has no record for this DOI)
+        must fall through to the title-based search_match path."""
+
+        class _FlakyS2:
+            def __init__(self):
+                self.search_match_calls: list[str] = []
+
+            def fetch_metadata(self, pid: str) -> PaperRecord:
+                raise RuntimeError("not in S2")
+
+            def search_match(self, query: str):
+                self.search_match_calls.append(query)
+                return {"paperId": "TITLE_MATCH"}
+
+        class _Ctx:
+            def __init__(self, s2):
+                self.s2 = s2
+
+        spy = _FlakyS2()
+        ref = self._ref(
+            title="Some Paper Title",
+            text="Smith et al. doi:10.1038/abc456",
+        )
+        pid = ExpandByPDF._resolve_reference(ref, _Ctx(spy))
+        assert pid == "TITLE_MATCH"
+        assert spy.search_match_calls == ["Some Paper Title"]
+
+    def test_resolve_search_match_when_no_doi(self):
+        """No DOI present → skip DOI path, go straight to search_match."""
+
+        class _SpyS2:
+            def __init__(self):
+                self.fetch_metadata_calls: list[str] = []
+                self.search_match_calls: list[str] = []
+
+            def fetch_metadata(self, pid: str):  # should not be called
+                self.fetch_metadata_calls.append(pid)
+                raise AssertionError("should not be reached")
+
+            def search_match(self, query: str):
+                self.search_match_calls.append(query)
+                return {"paperId": "TITLE_MATCH"}
+
+        class _Ctx:
+            def __init__(self, s2):
+                self.s2 = s2
+
+        spy = _SpyS2()
+        ref = self._ref(title="Some Paper Title", text="No doi here")
+        pid = ExpandByPDF._resolve_reference(ref, _Ctx(spy))
+        assert pid == "TITLE_MATCH"
+        assert spy.fetch_metadata_calls == []
+        assert spy.search_match_calls == ["Some Paper Title"]
+
+
 class TestExpandByPDFWithScreener:
     """Test ExpandByPDF with a screener that filters candidates."""
 
