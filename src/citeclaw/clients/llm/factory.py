@@ -48,6 +48,7 @@ def _build_registry_client(
         served_model_name=entry.served_model_name or alias,
         thinking_budget=entry.thinking_budget,
         reasoning_parser=entry.reasoning_parser,
+        max_model_len=entry.max_model_len,
     )
 
 

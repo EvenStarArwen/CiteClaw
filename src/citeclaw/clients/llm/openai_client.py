@@ -73,11 +73,24 @@ _EFFORT_THINKING_BUDGET: dict[str, int] = {
 # (observed on 128K context) while rarely truncating useful output.
 _COMPLETION_HEADROOM_FACTOR = 3.0
 
+# Tokens we reserve for the prompt portion of the context window when
+# clamping ``max_completion_tokens`` against a vLLM endpoint's
+# ``--max-model-len``. vLLM enforces ``prompt + completion ≤ max_model_len``
+# at the sampler; if our ``max_completion_tokens`` alone equals (or
+# exceeds) ``max_model_len`` the server rejects the request with HTTP
+# 400 before the model sees it. The agent prompts in CiteClaw top out
+# around 6–7 K tokens on continue-turns that carry a full
+# ``fetch_results`` digest (12 K chars ≈ 3 K tokens of tool result plus
+# ~3 K of SYSTEM + state). 8 K is a safe pad that leaves room for
+# longer SYSTEM rewrites without falling off the cliff.
+_INPUT_RESERVE_TOKENS = 8192
+
 
 def _custom_endpoint_reasoning_kwargs(
     reasoning_effort: str,
     thinking_budget: int = 0,
     reasoning_parser: str = "",
+    max_model_len: int = 0,
 ) -> dict[str, Any]:
     """Map ``reasoning_effort`` to provider-specific request kwargs.
 
@@ -170,12 +183,25 @@ def _custom_endpoint_reasoning_kwargs(
     # NOTE: this is a *soft hint* — the model may exceed it.  The hard
     # ceiling is ``max_completion_tokens`` set in the returned dict.
     budget = thinking_budget or _EFFORT_THINKING_BUDGET.get(effort, 16384)
+    desired_completion = int(budget * _COMPLETION_HEADROOM_FACTOR)
+    # Clamp against the endpoint's ``--max-model-len`` when it is known.
+    # vLLM rejects with HTTP 400 if ``max_completion_tokens`` alone
+    # exceeds ``max_model_len`` (it has to leave room for the prompt).
+    # If the ceiling squeezes the completion, proportionally shrink the
+    # soft thinking_budget hint too — the 3× headroom is a shared pool
+    # between thought and content, so keeping the ratio preserves the
+    # content margin the model needs to emit structured JSON.
+    if max_model_len > 0:
+        safe_ceiling = max(1024, max_model_len - _INPUT_RESERVE_TOKENS)
+        if desired_completion > safe_ceiling:
+            desired_completion = safe_ceiling
+            budget = min(budget, int(desired_completion / _COMPLETION_HEADROOM_FACTOR))
     extra_body["chat_template_kwargs"]["thinking_budget"] = budget
     return {
         "reasoning_effort": effort,
         "extra_body": extra_body,
         # Hard ceiling: thinking budget + headroom for content output.
-        "max_completion_tokens": int(budget * _COMPLETION_HEADROOM_FACTOR),
+        "max_completion_tokens": desired_completion,
     }
 
 
@@ -257,6 +283,7 @@ class OpenAIClient:
         served_model_name: str | None = None,
         thinking_budget: int = 0,
         reasoning_parser: str = "",
+        max_model_len: int = 0,
     ) -> None:
         self._config = config
         self._budget = budget
@@ -270,6 +297,11 @@ class OpenAIClient:
         )
         self._thinking_budget = thinking_budget
         self._reasoning_parser = reasoning_parser or ""
+        # Server-side context-window hint from ``ModelEndpoint.max_model_len``.
+        # Used by :func:`_custom_endpoint_reasoning_kwargs` to clamp the
+        # ``max_completion_tokens`` the SDK sends so vLLM doesn't reject
+        # the request with ``max_completion_tokens > max_model_len``.
+        self._max_model_len = max_model_len
         # Custom-endpoint paths (registry alias OR legacy llm_base_url) skip
         # the OpenAI o-series reasoning detection — those endpoints host OSS
         # models that take ``chat_template_kwargs`` instead of
@@ -335,6 +367,7 @@ class OpenAIClient:
                 self._reasoning_effort,
                 self._thinking_budget,
                 self._reasoning_parser,
+                self._max_model_len,
             ))
         elif self._is_reasoning and self._reasoning_effort:
             kwargs["reasoning_effort"] = self._reasoning_effort

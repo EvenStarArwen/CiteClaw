@@ -85,6 +85,17 @@ class ModelEndpoint(BaseModel):
         Setting this caps the model's thinking trace without affecting
         content output — prevents Gemma 4 / Qwen3 from burning 100 K
         tokens on a single call.
+    max_model_len : int
+        Server-side context window (prompt + completion) of the deployed
+        model, in tokens. Used to clamp ``max_completion_tokens`` so the
+        request cannot exceed the endpoint's context. ``0`` (default)
+        means no clamp — behaviour is unchanged for SaaS providers and
+        large-context self-hosted endpoints. Set this when your vLLM
+        deployment uses ``--max-model-len`` smaller than ``3 ×
+        thinking_budget`` (the unclamped completion default). Example:
+        Gemma 4 31B on a 32K Modal deployment with ``reasoning_effort:
+        high`` would request 49K completion tokens and 400-fail without
+        this field set to ``32768``.
     """
 
     base_url: str
@@ -93,6 +104,7 @@ class ModelEndpoint(BaseModel):
     reasoning_parser: str = ""
     request_timeout: float | None = None
     thinking_budget: int = 0
+    max_model_len: int = 0
 
     @property
     def resolved_api_key(self) -> str:
