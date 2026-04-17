@@ -349,6 +349,12 @@ MODEL_PRICING: dict[str, tuple[float, float, float]] = {
     "claude-haiku-4":                        (0.80,  4.00,  4.00),
     # Stub for tests / dev runs
     "stub":                                  (0.0,   0.0,   0.0),
+    # Self-hosted via Modal / vLLM — compute billed by infrastructure,
+    # not per-token, so the token-based estimate should be zero. Modal
+    # charges GPU-hours for the B200 running the server; see the
+    # Modal billing dashboard for actual USD.
+    "gemma-4-31b":                           (0.0,   0.0,   0.0),
+    "gemma-4":                               (0.0,   0.0,   0.0),
     # Catch-all for unknown models — set to mid-range Gemini Flash so
     # estimates are reasonable rather than zero.
     "GENERIC":                               (0.30,  2.50,  2.50),
