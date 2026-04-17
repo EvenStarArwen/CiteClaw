@@ -84,45 +84,123 @@ def stub_respond(system: str, user: str) -> str:
                 ]
             })
         return json.dumps({"topic_label": "stub-topic", "summary": "stub summary"})
-    if '"agent_decision"' in user or '"should_stop"' in user:
-        # Iterative search agent (citeclaw.agents.iterative_search). Each
-        # iteration's user prompt embeds the prior turns' raw JSON in the
-        # transcript section, so the count of ``"query":`` JSON keys grows
-        # by exactly 1 per completed iteration. Map that count to a
-        # deterministic three-state lifecycle:
-        #
-        #   0 prior queries → "initial"  (first turn)
-        #   1 prior query   → "refine"   (narrow after seeing first results)
-        #  ≥2 prior queries → "satisfied" (terminate the loop)
-        #
-        # PH-08: the trigger now matches BOTH the v1 schema (which had
-        # ``agent_decision`` as a top-level field) and the v2 schema
-        # (which has ``should_stop`` as a top-level boolean). The
-        # response carries the v1 fields (thinking + agent_decision) so
-        # the existing test suite — which asserts on those exact field
-        # names — keeps passing. The agent code's backward-compat
-        # fallback in iterative_search.py reads agent_decision when
-        # should_stop is missing.
-        n_prior_queries = user.count('"query":')
-        if n_prior_queries == 0:
+    if "SUPERVISOR" in system and "set_strategy" in system:
+        # v2 ExpandBySearch supervisor. Three-state lifecycle driven by
+        # what the most recent user message says:
+        #   1. No prior strategy set   → set_strategy (1 sub-topic)
+        #   2. Strategy set, nothing dispatched → dispatch worker
+        #   3. Worker dispatched → done()
+        if '"acknowledged": true' in user and "n_sub_topics" in user and "sub_topic_ids" in user:
+            # set_strategy result is in the user message; dispatch next.
+            m = re.search(r'"sub_topic_ids":\s*\[\s*"([^"]+)"', user)
+            spec_id = m.group(1) if m else "stub_sub_topic"
             return json.dumps({
-                "thinking": "stub: initial exploration",
-                "query": {"text": "test topic"},
-                "agent_decision": "initial",
-                "reasoning": "stub initial",
+                "reasoning": "stub: dispatching the one sub-topic",
+                "tool_name": "dispatch_sub_topic_worker",
+                "tool_args": {"spec_id": spec_id},
             })
-        if n_prior_queries == 1:
+        if '"status":' in user and ('"success"' in user or '"failed"' in user or '"budget_exhausted"' in user):
+            # Worker result seen — close the run.
             return json.dumps({
-                "thinking": "stub: prior was too broad, narrowing",
-                "query": {"text": "test topic narrowed"},
-                "agent_decision": "refine",
-                "reasoning": "stub refine",
+                "reasoning": "stub: wrapping up",
+                "tool_name": "done",
+                "tool_args": {"summary": "stub supervisor: 1 worker dispatched"},
             })
+        # Fresh run — lock in a minimal strategy.
         return json.dumps({
-            "thinking": "stub: results saturated",
-            "query": {"text": "test topic narrowed"},
-            "agent_decision": "satisfied",
-            "reasoning": "stub satisfied",
+            "reasoning": "stub: one-shot strategy for e2e test",
+            "tool_name": "set_strategy",
+            "tool_args": {
+                "structural_priors": {},
+                "sub_topics": [
+                    {
+                        "id": "stub_sub_topic",
+                        "description": "stub sub-topic for e2e test",
+                        "initial_query_sketch": "test topic",
+                        "reference_papers": [],
+                    }
+                ],
+            },
+        })
+    if "WORKER" in system and "check_query_size" in system and "fetch_results" in system:
+        # v2 ExpandBySearch sub-topic worker. Drive the checklist to
+        # completion by inspecting the previous tool's result in the user
+        # message and picking the next step.
+        #
+        # The continuation user message renders the previous call as
+        # ``**Previous call**: `<tool_name>` `` (backticks), then the
+        # result dict inline. We match on the backtick-wrapped form so
+        # the ladder actually advances.
+        last_df_match = re.search(r'"df_id":\s*"([^"]+)"', user)
+        last_df = last_df_match.group(1) if last_df_match else None
+        has_prev = "Previous call" in user
+        # Most recent tool name, derived from the marker line.
+        m_prev = re.search(r"Previous call\*?\*?:\s*`([^`]+)`", user)
+        last_tool = m_prev.group(1) if m_prev else ""
+        last_strategy_match = re.search(r'"strategy":\s*"([^"]+)"', user)
+        # Decision ladder in order of checklist.
+        if not has_prev:
+            return json.dumps({
+                "reasoning": "stub: initial size check",
+                "tool_name": "check_query_size",
+                "tool_args": {"query": "test topic"},
+            })
+        if last_tool == "check_query_size":
+            return json.dumps({
+                "reasoning": "stub: fetch what we just sized",
+                "tool_name": "fetch_results",
+                "tool_args": {"query": "test topic"},
+            })
+        if last_tool == "fetch_results":
+            return json.dumps({
+                "reasoning": "stub: sample top cited",
+                "tool_name": "sample_titles",
+                "tool_args": {"df_id": last_df, "strategy": "top_cited", "n": 10},
+            })
+        if last_tool == "sample_titles" and last_strategy_match and last_strategy_match.group(1) == "top_cited":
+            return json.dumps({
+                "reasoning": "stub: sample random",
+                "tool_name": "sample_titles",
+                "tool_args": {"df_id": last_df, "strategy": "random", "n": 10},
+            })
+        if last_tool == "sample_titles" and last_strategy_match and last_strategy_match.group(1) == "random":
+            return json.dumps({
+                "reasoning": "stub: year dist",
+                "tool_name": "year_distribution",
+                "tool_args": {"df_id": last_df},
+            })
+        if last_tool == "year_distribution":
+            return json.dumps({
+                "reasoning": "stub: resolve reference title",
+                "tool_name": "search_match",
+                "tool_args": {"title": "Stub Reference Paper"},
+            })
+        if last_tool == "search_match":
+            return json.dumps({
+                "reasoning": "stub: check containment",
+                "tool_name": "contains",
+                "tool_args": {"paper_id": "stub_ref_paper"},
+            })
+        if last_tool == "contains" and '"contains": false' in user:
+            return json.dumps({
+                "reasoning": "stub: accept gap",
+                "tool_name": "diagnose_miss",
+                "tool_args": {
+                    "target_title": "Stub Reference Paper",
+                    "hypotheses": ["stub S2 coverage gap"],
+                    "action_taken": "accept_gap",
+                    "query_angles_used": ["test topic"],
+                },
+            })
+        # Default: close.
+        return json.dumps({
+            "reasoning": "stub: done",
+            "tool_name": "done",
+            "tool_args": {
+                "paper_ids": [],
+                "coverage_assessment": "acceptable",
+                "summary": "stub worker: one angle covered",
+            },
         })
     if '"score"' in user:
         n = _extract_n(user)

@@ -276,7 +276,8 @@ def _build_pipeline_dict() -> list[dict]:
          "max_citations": 10, "screener": "permissive"},
         {"step": "Rerank", "metric": "citation", "k": 10},
         {"step": "ExpandBySearch",
-         "agent": {"max_iterations": 3, "target_count": 50},
+         "agent": {"worker_max_turns": 15, "supervisor_max_turns": 6,
+                   "max_angles_per_worker": 2},
          "screener": "permissive"},
         {"step": "ExpandBySemantics",
          "max_anchor_papers": 2, "limit": 10,
@@ -416,12 +417,21 @@ class TestExpandFamilyEndToEnd:
             f"missing 'author_papers' s2_api entry; have {dict(api)}"
         )
 
-    def test_budget_llm_tokens_meta_search_agent_recorded(self, e2e_ctx: Context):
-        """The iterative search agent must spend its LLM tokens under
-        the ``meta_search_agent`` category so cost tracking attributes
-        the spend to the right place."""
+    def test_budget_llm_tokens_expand_by_search_agents_recorded(self, e2e_ctx: Context):
+        """The v2 supervisor + worker must spend their LLM tokens under
+        their own categories so cost tracking attributes spend
+        correctly. Categories:
+          - expand_by_search_supervisor
+          - expand_by_search_worker:<spec_id>
+        """
         run_pipeline(e2e_ctx)
-        assert e2e_ctx.budget._llm_tokens.get("meta_search_agent", 0) > 0
+        by_cat = e2e_ctx.budget._llm_tokens
+        assert by_cat.get("expand_by_search_supervisor", 0) > 0, (
+            f"supervisor tokens not recorded; have {dict(by_cat)}"
+        )
+        worker_cats = [k for k in by_cat if k.startswith("expand_by_search_worker:")]
+        assert worker_cats, f"no worker categories recorded; have {dict(by_cat)}"
+        assert sum(by_cat[c] for c in worker_cats) > 0
 
     def test_rerunning_pipeline_is_a_no_op(self, e2e_ctx: Context):
         """Re-running the same pipeline through ``run_pipeline`` on the
