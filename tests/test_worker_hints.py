@@ -1,11 +1,11 @@
-"""Tests for :func:`_compute_relevant_hints` — the per-turn situational
-guidance that replaces the v1 static TOTAL-SIZE HEURISTICS table."""
+"""Tests for :func:`_compute_relevant_hints` — the per-turn
+situational guidance that replaces the static rules table."""
 
 from __future__ import annotations
 
 import pytest
 
-from citeclaw.agents.state import AgentConfig, AngleState, WorkerState
+from citeclaw.agents.state import AgentConfig, QueryMeta, WorkerState
 from citeclaw.agents.worker import _compute_relevant_hints
 
 
@@ -24,7 +24,7 @@ def test_hint_when_total_zero():
     )
     assert len(hints) == 1
     assert "over-constrained" in hints[0]
-    assert "STAY" in hints[0]  # no sub-topic switching
+    assert "STAY" in hints[0]
 
 
 def test_hint_when_total_very_thin():
@@ -57,49 +57,45 @@ def test_hint_when_total_large_but_under_cap():
     assert any("Narrow with a structural filter" in h for h in hints)
 
 
-def test_angle_cap_hit_surfaces_hint():
-    cfg = AgentConfig(max_angles_per_worker=3)
+def test_query_cap_hit_surfaces_hint():
+    cfg = AgentConfig(max_queries_per_worker=3)
     st = _state()
     for i in range(3):
-        st.angles[f"fp{i}"] = AngleState(
+        st.queries[f"fp{i}"] = QueryMeta(
             fingerprint=f"fp{i}", query=f"q{i}", filters={},
         )
     hints = _compute_relevant_hints("", None, st, cfg)
-    # Cap-hit hint is always surfaced, regardless of prior tool.
-    assert any("cap reached" in h for h in hints)
+    assert any("cap\n    reached" in h or "cap reached" in h for h in hints)
 
 
-def test_last_angle_slot_warning():
-    cfg = AgentConfig(max_angles_per_worker=4)
+def test_last_query_slot_warning():
+    cfg = AgentConfig(max_queries_per_worker=4)
     st = _state()
     for i in range(3):
-        st.angles[f"fp{i}"] = AngleState(
+        st.queries[f"fp{i}"] = QueryMeta(
             fingerprint=f"fp{i}", query=f"q{i}", filters={},
         )
     hints = _compute_relevant_hints("", None, st, cfg)
-    # "one slot left" warning.
     assert any("one slot left" in h for h in hints)
 
 
-def test_refinement_cap_hit_hint():
-    cfg = AgentConfig(max_refinement_per_angle=1)
+def test_pending_miss_hint():
+    """When the auto-verifier flags misses, the hint prompts the
+    agent to diagnose them before closing."""
     st = _state()
-    angle = AngleState(fingerprint="fp", query="q", filters={})
-    angle.refinement_count = 1
-    st.angles["fp"] = angle
-    st.active_fingerprint = "fp"
-    hints = _compute_relevant_hints("", None, st, cfg)
-    assert any("at cap" in h for h in hints)
-    assert any("NEW angle" in h for h in hints)
+    st.pending_miss_titles = ["Ref paper 1", "Ref paper 2"]
+    # 2 misses, 0 diagnosed → 2 pending
+    hints = _compute_relevant_hints("fetch_results", {}, st, AgentConfig())
+    assert any("2 auto-detected reference miss" in h for h in hints)
+    # Diagnose one — 1 pending remains.
+    st.miss_diagnoses.append({"target_title": "Ref paper 1"})
+    hints = _compute_relevant_hints("fetch_results", {}, st, AgentConfig())
+    assert any("1 auto-detected reference miss" in h for h in hints)
 
 
 def test_non_size_check_tool_does_not_produce_size_hint():
-    """Only ``check_query_size`` results trigger size-band hints.
-
-    Otherwise every turn would spam stale totals from earlier calls.
-    """
+    """Only ``check_query_size`` results trigger size-band hints."""
     hints = _compute_relevant_hints(
-        "inspect_angle", {"n_fetched": 300}, _state(), AgentConfig(),
+        "fetch_results", {"n_fetched": 300}, _state(), AgentConfig(),
     )
-    # No 'total=' string — other hint categories can still fire but not size-band.
     assert not any("total=" in h for h in hints)

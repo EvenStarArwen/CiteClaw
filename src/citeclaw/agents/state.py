@@ -3,33 +3,29 @@
 These classes are pure data carriers — no behaviour, no IO. They are
 the skeleton that the supervisor / worker loops fill in as a run
 progresses, and they are what ``SubTopicResult`` captures for
-postmortem analysis (see ``QueryAngleResult`` for per-angle detail).
+postmortem analysis (see ``QueryResult`` for per-query detail).
 
-Key design points:
+Post-refactor notes (simplified tool surface):
 
-- An **angle** is uniquely identified by its
-  :func:`query_fingerprint` over ``(query, filters)``. The dispatcher
-  uses the fingerprint for object-consistency enforcement (a
-  ``fetch_results`` call is only accepted if its recomputed
-  fingerprint matches one already registered by
-  ``check_query_size``). This is the v2 replacement for the v1
-  "fetch_results must follow check_query_size within the last 2
-  turns" temporal rule, which had both false-accept and false-reject
-  failure modes.
+- **No more "angle"**. The v1 AngleState + per-angle checklist
+  (checked_top_cited / checked_random / checked_years /
+  checked_topic_model / refinement_count) was scaffolding for tools
+  the LLM was forced to orchestrate. Inspection is now automatic
+  inside ``fetch_results`` — the worker just decides *which* query
+  to run, not how to unpack it. What remains of the old abstraction:
 
-- Per-angle checklist enforcement lives on :class:`AngleState`. The
-  worker dispatcher flips the ``checked_*`` flags as tools run against
-  that angle's ``df_id``; both ``done()`` and the angle-transition
-  hook read them.
+  - ``query_fingerprint(query, filters)`` still uniquely IDs a
+    (query, filters) pair. Used to dedupe DataFrames.
+  - :class:`QueryMeta` holds the minimal per-query record
+    (fingerprint, query, filters, total, df_id, n_fetched). No
+    checklist flags.
 
-- :class:`WorkerState` owns the union of all angles plus the
-  worker-cumulative paper id set. The cumulative set is what
-  ``contains(paper_id)`` queries — verification is a worker-level
-  invariant, not an angle-level one.
+- ``WorkerState.queries: dict[fingerprint, QueryMeta]`` is the
+  dedup cache. ``active_fingerprint`` is just the most recently
+  size-checked query — no transition semantics.
 
-- :class:`SubTopicResult` is the only thing the supervisor ever sees
-  from a worker. The full tool-call transcript is archived to disk
-  (see ``search_logging``), not consumed by the supervisor's prompt.
+- :class:`SubTopicResult.query_results: list[QueryResult]` — one
+  entry per distinct query the worker ran.
 """
 
 from __future__ import annotations
@@ -51,9 +47,9 @@ def query_fingerprint(query: str, filters: dict[str, Any] | None) -> str:
     Normalises filter dict keys by sorting so callers that happen to
     build the same filter dict in different key orders still hash the
     same. Filters are serialised through ``json.dumps(sort_keys=True)``
-    for the same reason. Used by the dispatcher to enforce object
-    consistency across :func:`check_query_size` → :func:`fetch_results`
-    without a temporal window.
+    for the same reason. Used by the dispatcher to dedupe DataFrames
+    (two identical check_query_size calls resolve to the same
+    fingerprint; ``fetch_results`` reuses an existing df).
     """
     payload = {"query": query, "filters": filters or {}}
     blob = json.dumps(payload, sort_keys=True).encode("utf-8")
@@ -116,12 +112,13 @@ class SubTopicSpec:
     """One sub-topic the supervisor dispatches to a worker.
 
     ``reference_papers`` are **diagnostic anchors**, not test targets.
-    The worker's verification step (Step 6) uses them to check whether
-    its cumulative fetch covered a few known-relevant papers; a miss
-    triggers a ``diagnose_miss`` reasoning step, NOT a "keep refining
-    until this paper appears" loop. Rationale: forcing a reference
-    paper in via OR-clause gymnastics overfits to a tiny test set and
-    degrades precision across the full topic.
+    The worker's auto-verification step (inside ``fetch_results``) uses
+    them to check whether its cumulative fetch covered a few
+    known-relevant papers; a miss triggers a ``diagnose_miss``
+    reasoning step, NOT a "keep refining until this paper appears"
+    loop. Rationale: forcing a reference paper in via OR-clause
+    gymnastics overfits to a tiny test set and degrades precision
+    across the full topic.
     """
 
     id: str
@@ -139,73 +136,36 @@ class SearchStrategy:
 
 
 # ---------------------------------------------------------------------------
-# Worker-side state: angles + cumulative set
+# Worker-side state: query cache + cumulative set
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class AngleState:
-    """Per-angle tracking for dispatcher-level checklist enforcement.
+class QueryMeta:
+    """Per-query tracking record. Replaces v1 AngleState.
 
-    An angle is uniquely identified by its :func:`query_fingerprint`
-    over ``(query, filters)``. The dispatcher maintains one
-    ``AngleState`` per fingerprint in
-    ``WorkerState.angles: dict[fingerprint, AngleState]``. The
-    ``active_fingerprint`` of the worker is the fingerprint of the
-    most recent ``check_query_size`` call — subsequent
-    ``fetch_results`` / inspection tools are attributed to that
-    fingerprint.
-
-    Calling ``check_query_size`` with a **new** fingerprint is the
-    "angle transition" signal; the dispatcher only accepts it if the
-    outgoing angle's inspection checklist is complete (or the
-    outgoing angle never ran ``fetch_results`` — a worker may open an
-    angle, reconsider, and not fetch).
+    The fingerprint uniquely IDs the (query, filters) pair. df_id is
+    set once ``fetch_results`` runs on this query. No checklist flags
+    — inspection is now automatic inside ``fetch_results``.
     """
 
     fingerprint: str
     query: str
     filters: dict[str, Any]
+    total_in_corpus: int | None = None
     df_id: str | None = None
     n_fetched: int | None = None
-    total_in_corpus: int | None = None
-    checked_top_cited: bool = False
-    checked_random: bool = False
-    checked_years: bool = False
-    checked_topic_model: bool = False
-    refinement_count: int = 0
-    inspection_notes: str = ""
-
-    @property
-    def requires_topic_model(self) -> bool:
-        return (self.n_fetched or 0) >= 500
-
-    def is_checklist_complete(self) -> bool:
-        """True iff this angle can be closed without blocking done() / transition.
-
-        An angle that never ran ``fetch_results`` (``df_id is None``)
-        is trivially complete — the worker opened it and walked away.
-        An angle with a DataFrame must have top_cited + random +
-        years checked, and topic_model iff n_fetched >= 500.
-        """
-        if self.df_id is None:
-            return True
-        if not (self.checked_top_cited and self.checked_random and self.checked_years):
-            return False
-        if self.requires_topic_model and not self.checked_topic_model:
-            return False
-        return True
 
 
 @dataclass
 class WorkerState:
     """Live worker state during one sub-topic run.
 
-    Holds the angle registry (fingerprint -> AngleState), the active
-    angle pointer, the worker-cumulative paper id set (what
-    ``contains(paper_id)`` queries), the verification cycle log, and
-    call-log metadata. Passed to every tool handler via the
-    dispatcher.
+    Holds the query registry (fingerprint -> QueryMeta) — acting as a
+    DataFrame cache that prevents duplicate fetches of the same
+    (query, filters) pair — the worker-cumulative paper id set,
+    pending verification misses detected by the auto-verifier, and
+    call-log metadata.
 
     ``structural_priors`` is stored here so tool handlers can merge
     the run-wide S2 filters into every check_query_size / fetch_results
@@ -215,29 +175,38 @@ class WorkerState:
 
     sub_topic_id: str
     structural_priors: "StructuralPriors | None" = None
-    angles: dict[str, AngleState] = field(default_factory=dict)
+    # Reference-paper titles from the sub_topic spec, stored here so
+    # the auto-verifier inside ``fetch_results`` can resolve them
+    # against each new DataFrame without threading the spec through
+    # every tool handler.
+    reference_papers: tuple[str, ...] = field(default_factory=tuple)
+    queries: dict[str, QueryMeta] = field(default_factory=dict)
     active_fingerprint: str | None = None
     cumulative_paper_ids: set[str] = field(default_factory=set)
-    verification_misses: list[str] = field(default_factory=list)
+    # Titles the auto-verifier flagged as "matched-but-not-in-cumulative"
+    # — i.e. resolved by search_match to a real paper_id but that
+    # paper_id is not in our fetched set. Each one must be explained
+    # via diagnose_miss before done() is accepted.
+    pending_miss_titles: list[str] = field(default_factory=list)
     miss_diagnoses: list[dict[str, Any]] = field(default_factory=list)
     call_log: list[dict[str, Any]] = field(default_factory=list)
     turn_index: int = 0
 
     @property
-    def active_angle(self) -> AngleState | None:
+    def active_query(self) -> QueryMeta | None:
         if self.active_fingerprint is None:
             return None
-        return self.angles.get(self.active_fingerprint)
+        return self.queries.get(self.active_fingerprint)
 
 
 # ---------------------------------------------------------------------------
-# Per-angle postmortem record (lives on SubTopicResult)
+# Per-query postmortem record (lives on SubTopicResult)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class QueryAngleResult:
-    """Per-angle outcome — read offline for postmortem + angle-count tuning."""
+class QueryResult:
+    """Per-query outcome — read offline for postmortem."""
 
     query: str
     filters: dict[str, Any]
@@ -245,9 +214,6 @@ class QueryAngleResult:
     n_fetched: int
     total_in_corpus: int
     papers_added_to_cumulative: int
-    refinement_count: int
-    topic_model_ran: bool
-    inspection_notes: str
 
 
 # ---------------------------------------------------------------------------
@@ -264,10 +230,8 @@ class SubTopicResult:
     """Final report from one sub-topic worker.
 
     The supervisor sees this (not the transcript). ``paper_ids`` is
-    the union of every angle's ``cumulative_paper_ids`` at done-time,
-    deduplicated. ``query_angles`` replaces the v1 ``final_query:
-    str`` singular field — with multi-angle workers, one entry per
-    angle in execution order.
+    the worker's cumulative fetch at done-time, deduped. ``query_results``
+    has one entry per distinct query the worker ran.
     """
 
     spec_id: str
@@ -276,15 +240,13 @@ class SubTopicResult:
     coverage_assessment: CoverageAssessment | None
     summary: str
     turns_used: int
-    query_angles: list[QueryAngleResult]
+    query_results: list[QueryResult]
     failure_reason: str = ""
     # True when the worker hit its turn budget and was rescued by the
     # penultimate-turn auto-closer rather than reaching ``done()`` on
     # its own. Coverage is implicitly ``limited`` and the verification
-    # cycle may have been synthesised. Supervisors should treat
-    # ``auto_closed=True`` workers with lower confidence when deciding
-    # retries or coverage claims — the paper_ids are real but the
-    # agent's own coverage judgement was never exercised.
+    # misses may not have been diagnosed. Supervisors should treat
+    # ``auto_closed=True`` workers with lower confidence.
     auto_closed: bool = False
 
 
@@ -327,38 +289,44 @@ class SupervisorState:
 class AgentConfig:
     """Caller-tunable knobs for one ExpandBySearch v2 run.
 
-    Hard caps reflect the settled parameters table in the v2 design
-    doc. ``max_angles_per_worker`` and ``max_refinement_per_angle`` are
-    dispatcher-enforced; the others are soft guidance / budgets.
+    Post-refactor: the per-angle checklist caps
+    (``max_angles_per_worker``, ``max_refinement_per_angle``) are
+    gone — inspection is automatic so those were scaffolding for a
+    problem the worker no longer orchestrates. Replaced by a flat
+    ``max_queries_per_worker`` (dedup cap on distinct fingerprints)
+    and the worker_max_turns soft ceiling.
     """
 
     # Worker loop
     worker_max_turns: int = 15
-    max_angles_per_worker: int = 4
-    max_refinement_per_angle: int = 1
+    # Cap on distinct (query, filters) pairs a single worker may
+    # open. Dedup applies — re-running the same size-check does NOT
+    # consume a slot. This replaces the old angle cap; the smaller
+    # dispatcher means each "query" does more work (auto-inspection
+    # + auto-verification inside fetch_results), so 4 is enough.
+    max_queries_per_worker: int = 4
 
     # Supervisor loop
     supervisor_max_turns: int = 20
     supervisor_retries_per_failed_worker: int = 1
 
-    # Search fan-out — these bound the cost of ONE fetch_results call.
+    # Search fan-out — bounds the cost of ONE fetch_results call.
     # Each fetch issues two S2 search_bulk calls (top_cited + paperId),
-    # so with 500 each and ~4 angles per worker and ~6 workers per run
-    # we get at most ~24,000 search-result rows over the wire per run
-    # (plus batch enrich for the unique subset). Caller may tune down
-    # for tight budgets.
+    # so with 500 each and ~4 queries per worker and ~6 workers per run
+    # we get at most ~24,000 search-result rows over the wire per run.
     fetch_results_limit_per_strategy: int = 500
 
+    # Per-strategy sample size surfaced in fetch_results' inspection
+    # digest (separately for top_cited and random). Bumped from 10 →
+    # 100 in the refactor: 10 was too few to judge topic drift or
+    # diversity; 100 costs ~1.5K tokens per strategy (~3K total for
+    # both) which is cheap insurance on 2-3 fetches per worker.
+    inspection_sample_size: int = 100
+
     # Hard ceiling on ``total`` in the S2 corpus for a query to be
-    # fetchable. Queries matching more than this are refused with a
-    # teaching hint pointing at structural filters. Rationale: our
-    # fetch only samples top_cited + paperId-ordered up to
-    # ``fetch_results_limit_per_strategy`` each, so a query matching
-    # 100K+ papers would be poorly represented and the result set
-    # would be a coincidental slice of the long tail. Better to force
-    # the agent to narrow first. 50K is a pragmatic floor above which
-    # coverage becomes statistically unreliable for this kind of
-    # sampled fetch — tuned from empirical runs rather than theory.
+    # fetchable. See docstring in search_tools.py for rationale — 50K
+    # is the point above which sampled fetch stops being statistically
+    # reliable.
     fetch_total_cap: int = 50_000
 
     # Budget (delta from start-of-run)

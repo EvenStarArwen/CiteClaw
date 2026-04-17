@@ -38,7 +38,7 @@ Hook enforcement follows the v2 design doc:
 - ``contains``: worker must have ≥1 ``fetch_results``.
 - ``diagnose_miss``: a prior ``contains(...)`` in this worker must
   have returned False.
-- Angle caps: ``len(worker_state.angles) ≤ max_angles_per_worker``.
+- Query caps: ``len(worker_state.queries) ≤ max_queries_per_worker``.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 from citeclaw.agents.state import (
-    AngleState,
+    QueryMeta,
     SupervisorState,
     WorkerState,
     query_fingerprint,
@@ -161,67 +161,54 @@ class WorkerDispatcher:
         return self._done_result
 
     # ------------------------------------------------------------------
-    # Angle-state helpers used by pre- and post-hooks
+    # Query-state helpers
     # ------------------------------------------------------------------
 
-    def get_or_create_angle(self, query: str, filters: dict[str, Any] | None) -> AngleState:
-        """Return the AngleState for ``(query, filters)``, creating if absent.
+    def get_or_create_query(self, query: str, filters: dict[str, Any] | None) -> QueryMeta:
+        """Return the :class:`QueryMeta` for ``(query, filters)``, creating if absent.
 
-        Enforces ``max_angles_per_worker``: if creating this angle
-        would exceed the cap, raises a ``DispatcherError`` which the
-        caller's pre-hook converts to an error envelope.
+        Enforces ``max_queries_per_worker``: if creating this query
+        would exceed the cap, raises :class:`DispatcherError`.
+        Re-running the same (query, filters) pair reuses the cached
+        record — no slot consumed.
         """
         fp = query_fingerprint(query, filters)
-        existing = self.state.angles.get(fp)
+        existing = self.state.queries.get(fp)
         if existing is not None:
             return existing
-        if len(self.state.angles) >= self.config.max_angles_per_worker:
+        if len(self.state.queries) >= self.config.max_queries_per_worker:
             raise DispatcherError(
                 error=(
-                    f"angle cap reached: this worker has already opened "
-                    f"{len(self.state.angles)} distinct (query, filters) tuples "
-                    f"(cap: {self.config.max_angles_per_worker})"
+                    f"query cap reached: this worker has already opened "
+                    f"{len(self.state.queries)} distinct (query, filters) tuples "
+                    f"(cap: {self.config.max_queries_per_worker})"
                 ),
                 hint=(
-                    "finish inspection on existing angles and call done() "
-                    "with coverage_assessment set accordingly — or abort if "
-                    "further queries are truly needed, the supervisor will "
-                    "decide whether to re-dispatch"
+                    "diagnose any outstanding verification misses and "
+                    "call done() — further refinement isn't productive "
+                    "past the cap"
                 ),
             )
-        angle = AngleState(fingerprint=fp, query=query, filters=dict(filters or {}))
-        self.state.angles[fp] = angle
-        return angle
+        record = QueryMeta(
+            fingerprint=fp, query=query, filters=dict(filters or {}),
+        )
+        self.state.queries[fp] = record
+        return record
 
     def set_active(self, fingerprint: str) -> None:
         self.state.active_fingerprint = fingerprint
 
-    def recent_contains_miss(self) -> bool:
-        """True iff the most recent ``contains`` call returned False
-        AND has not been consumed by a SUCCESSFUL diagnose_miss.
+    def pending_miss_count(self) -> int:
+        """Count of auto-verifier misses not yet diagnosed.
 
-        Walks the tail of ``call_log`` for the last ``contains`` entry;
-        if its result was ``False``, checks whether any subsequent
-        diagnose_miss *succeeded* (not errored) — only successful
-        diagnose_miss calls consume a miss. A failed diagnose_miss
-        (e.g. hypotheses malformed) does NOT consume; the worker can
-        retry with a corrected payload.
+        The auto-verifier inside ``fetch_results`` appends resolved-
+        but-missed paper titles to ``pending_miss_titles``; each
+        successful ``diagnose_miss`` consumes one. Used by
+        ``_pre_done`` to block closure on undiagnosed misses.
         """
-        for entry in reversed(self.state.call_log):
-            name = entry.get("tool")
-            if name == "diagnose_miss":
-                result = entry.get("result") or {}
-                # Failed diagnose_miss attempts carry an "error" key
-                # and do NOT consume. Success returns {"acknowledged":
-                # true, "diagnoses_recorded": N} and DOES consume.
-                if "error" in result:
-                    # Failed — keep walking for the matching contains.
-                    continue
-                return False
-            if name == "contains":
-                result = entry.get("result") or {}
-                return result.get("contains") is False
-        return False
+        pending = len(self.state.pending_miss_titles)
+        consumed = len(self.state.miss_diagnoses)
+        return max(0, pending - consumed)
 
     # ------------------------------------------------------------------
     # Core dispatch
@@ -297,9 +284,8 @@ class WorkerDispatcher:
             self._done_result = result
 
         # Circuit breaker: if this call errored AND the previous 2
-        # calls also errored on the SAME active angle (or on the
-        # "no-active-angle" state), synthetically invoke abandon_angle
-        # (or a no-active-angle reset) so the worker escapes the loop.
+        # calls also errored on the SAME active query, drop that
+        # query from the registry so the worker can open a fresh one.
         if is_error(result):
             self._maybe_trip_circuit()
 
@@ -308,11 +294,11 @@ class WorkerDispatcher:
     def _maybe_trip_circuit(self) -> None:
         """Trip the circuit if the last N calls were all error envelopes.
 
-        On trip: if there's an active angle that hasn't already been
-        force-abandoned, synthetically call ``abandon_angle`` (bypassing
-        the tool dispatch machinery so this can't itself trigger the
-        breaker). Mark the fingerprint so we don't force-abandon it
-        again later in the same worker.
+        On trip: drop the active query's QueryMeta + its DataFrame
+        from the store, and remove its papers from the cumulative
+        set. The worker's next turn sees ``active_fingerprint=None``
+        and can open a different query. One-shot per fingerprint so
+        the circuit doesn't fire twice on the same query.
         """
         recent = [e for e in self.state.call_log[-self.CIRCUIT_BREAKER_THRESHOLD:]]
         if len(recent) < self.CIRCUIT_BREAKER_THRESHOLD:
@@ -322,42 +308,39 @@ class WorkerDispatcher:
             for e in recent
         ):
             return
-        active = self.state.active_angle
+        active = self.state.active_query
         if active is None:
             return
         if active.fingerprint in self._circuit_tripped_on_angles:
             return
         self._circuit_tripped_on_angles.add(active.fingerprint)
-        # Synthetic abandon — mirror the handler's effect directly so
-        # this call doesn't itself go through dispatch (which would
-        # re-check the circuit).
-        abandoned_fp = active.fingerprint
-        abandoned_df = active.df_id
+        dropped_fp = active.fingerprint
+        dropped_df = active.df_id
         removed_ids = 0
-        if abandoned_df and abandoned_df in self.store:
+        if dropped_df and dropped_df in self.store:
             try:
-                df = self.store.get(abandoned_df)
+                df = self.store.get(dropped_df)
                 for pid in df["paper_id"]:
                     if isinstance(pid, str) and pid in self.state.cumulative_paper_ids:
                         self.state.cumulative_paper_ids.remove(pid)
                         removed_ids += 1
             except Exception:  # noqa: BLE001
                 pass
-            self.store.drop(abandoned_df)
-        self.state.angles.pop(abandoned_fp, None)
+            self.store.drop(dropped_df)
+        self.state.queries.pop(dropped_fp, None)
         self.state.active_fingerprint = None
         self.state.call_log.append({
             "turn": self.state.turn_index + 1,
-            "tool": "abandon_angle",
+            "tool": "circuit_breaker_drop_query",
             "args": {},
             "synthetic": True,
             "reason": "circuit_breaker_tripped_after_3_errors",
             "result": {
-                "abandoned_fingerprint": abandoned_fp,
+                "dropped_fingerprint": dropped_fp,
                 "n_papers_removed_from_cumulative": removed_ids,
                 "note": (
                     "circuit breaker: 3 consecutive tool errors on this "
-                    "angle — auto-abandoned to prevent loop"
+                    "query — auto-dropped so the worker can open a new one"
                 ),
             },
             "ts": 0,
@@ -501,30 +484,26 @@ class DispatcherError(Exception):
 
 
 def require_df_id(args: dict[str, Any], dispatcher: WorkerDispatcher) -> dict[str, Any] | None:
-    """Pre-hook shared by every tool that takes a ``df_id`` arg.
+    """Pre-hook shared by tools that take a ``df_id`` arg.
 
     If ``df_id`` is missing, empty, or doesn't match a registered
-    DataFrame, we fall back to the active angle's ``df_id`` when it
-    exists. This is intentional ergonomics: weaker LLMs mutate /
-    hallucinate long opaque strings, so defaulting to the obvious
-    single-angle case eliminates a whole class of needless errors.
-    The agent can still target a specific DataFrame by df_id when it
-    really needs to (rare: usually only when referring to an older,
-    still-live angle's DF).
+    DataFrame, we fall back to the active query's ``df_id`` when it
+    exists. Weaker LLMs mutate / hallucinate long opaque strings, so
+    defaulting to the obvious most-recent-fetch case eliminates a
+    whole class of needless errors. The agent can still target an
+    older DataFrame explicitly when it really needs to.
 
-    Only hard-rejects when there's no active angle AND no registered
+    Only hard-rejects when there's no active query AND no registered
     DataFrame — the agent needs to call ``fetch_results`` first.
     """
     df_id = args.get("df_id")
-    # Auto-default to active angle's df_id when missing, empty, or
-    # not matching a registered DataFrame.
     if not isinstance(df_id, str) or not df_id or df_id not in dispatcher.store:
-        active = dispatcher.state.active_angle
+        active = dispatcher.state.active_query
         if active is not None and active.df_id and active.df_id in dispatcher.store:
             args["df_id"] = active.df_id
             return None
         return error_envelope(
-            "no DataFrame available — no active angle has been fetched yet",
+            "no DataFrame available — no query has been fetched yet",
             (
                 "call fetch_results first. "
                 f"registered df_ids: {sorted(dispatcher.store.list_ids(worker_id=dispatcher.worker_id))}"
@@ -533,11 +512,11 @@ def require_df_id(args: dict[str, Any], dispatcher: WorkerDispatcher) -> dict[st
     return None
 
 
-def find_angle_by_df_id(dispatcher: WorkerDispatcher, df_id: str) -> AngleState | None:
-    """Locate the AngleState whose ``df_id`` matches."""
-    for angle in dispatcher.state.angles.values():
-        if angle.df_id == df_id:
-            return angle
+def find_query_by_df_id(dispatcher: WorkerDispatcher, df_id: str) -> QueryMeta | None:
+    """Locate the QueryMeta whose ``df_id`` matches."""
+    for q in dispatcher.state.queries.values():
+        if q.df_id == df_id:
+            return q
     return None
 
 
@@ -549,5 +528,5 @@ __all__ = [
     "error_envelope",
     "is_error",
     "require_df_id",
-    "find_angle_by_df_id",
+    "find_query_by_df_id",
 ]

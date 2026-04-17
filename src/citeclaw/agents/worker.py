@@ -1,4 +1,4 @@
-"""Sub-topic worker loop for v2 ExpandBySearch.
+"""Sub-topic worker loop for ExpandBySearch (post-refactor).
 
 Given a :class:`~citeclaw.agents.state.SubTopicSpec`, runs a
 capped-iteration LLM loop where the model issues structured-output
@@ -6,6 +6,12 @@ tool calls that flow through
 :class:`~citeclaw.agents.tool_dispatch.WorkerDispatcher`. The loop
 terminates when the model calls ``done`` successfully, the budget is
 exhausted, or ``worker_max_turns`` is reached.
+
+The tool surface is 7 tools: ``check_query_size``, ``fetch_results``,
+``query_diagnostics``, ``search_within_df``, ``get_paper``,
+``diagnose_miss``, ``done``. Deterministic post-fetch work (sampling,
+distributions, topic model, reference verification) is embedded in
+``fetch_results`` — the model no longer orchestrates inspection.
 
 Never called directly by users — the supervisor dispatches it per
 sub-topic.
@@ -21,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from citeclaw.agents.search_tools import register_worker_tools
 from citeclaw.agents.state import (
     AgentConfig,
-    QueryAngleResult,
+    QueryResult,
     StructuralPriors,
     SubTopicResult,
     SubTopicSpec,
@@ -66,7 +72,11 @@ def run_sub_topic_worker(
     state other than (a) the DataFrameStore (via the dispatcher,
     cleared at end) and (b) ctx.budget (via LLM + S2 calls).
     """
-    state = WorkerState(sub_topic_id=spec.id, structural_priors=priors)
+    state = WorkerState(
+        sub_topic_id=spec.id,
+        structural_priors=priors,
+        reference_papers=spec.reference_papers,
+    )
     dispatcher = WorkerDispatcher(
         worker_state=state,
         dataframe_store=dataframe_store,
@@ -103,54 +113,51 @@ def run_sub_topic_worker(
         seed_block=seed_block,
         structural_priors=priors_block,
         max_turns=agent_config.worker_max_turns,
-        max_angles_per_worker=agent_config.max_angles_per_worker,
-        max_refinement_per_angle=agent_config.max_refinement_per_angle,
+        max_queries_per_worker=agent_config.max_queries_per_worker,
     )
 
     last_tool_result: dict[str, Any] | None = None
     last_tool_name: str = ""
-    last_active_fp: str | None = None
     turn = 0
     failure_reason = ""
-    auto_closed = False  # set True iff the penultimate-turn rescuer ran and succeeded
+    auto_closed = False
 
     while turn < agent_config.worker_max_turns:
         turn += 1
-        # Render user message for this turn.
         if turn == 1:
             user_msg = initial_user
         else:
             active_query = "(none)"
-            if state.active_angle is not None:
-                aa = state.active_angle
-                active_query = f"{aa.query!r}"
-                if aa.filters:
-                    active_query += f" with filters={aa.filters}"
+            if state.active_query is not None:
+                aq = state.active_query
+                active_query = f"{aq.query!r}"
+                if aq.filters:
+                    active_query += f" with filters={aq.filters}"
             valid_next = _compute_valid_next_tools(
                 state, agent_config, last_tool_name, turn=turn,
             )
             hint_list = _compute_relevant_hints(
                 last_tool_name, last_tool_result, state, agent_config,
             )
-            if hint_list:
-                hints_rendered = "\n".join(f"- {h}" for h in hint_list)
-            else:
-                hints_rendered = "(no situational hints this turn)"
+            hints_rendered = (
+                "\n".join(f"- {h}" for h in hint_list)
+                if hint_list else "(no situational hints this turn)"
+            )
             user_msg = USER_TEMPLATE_CONTINUE.format(
                 sub_topic_id=spec.id,
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
-                n_angles=len(state.angles),
-                max_angles_per_worker=agent_config.max_angles_per_worker,
-                active_angle=(state.active_fingerprint or "(none)"),
+                n_queries=len(state.queries),
+                max_queries_per_worker=agent_config.max_queries_per_worker,
+                active_fingerprint=(state.active_fingerprint or "(none)"),
                 active_query=active_query,
                 n_cumulative=len(state.cumulative_paper_ids),
+                pending_misses=dispatcher.pending_miss_count(),
                 turn=turn,
                 max_turns=agent_config.worker_max_turns,
                 valid_next_tools=valid_next,
                 situational_hints=hints_rendered,
             )
 
-        # LLM call with structured output.
         tokens_before = ctx.budget.llm_total_tokens
         try:
             resp = llm_client.call(
@@ -159,7 +166,7 @@ def run_sub_topic_worker(
                 category=f"expand_by_search_worker:{spec.id}",
                 response_schema=RESPONSE_SCHEMA,
             )
-        except Exception as exc:  # noqa: BLE001 — LLM outage -> fail this worker
+        except Exception as exc:  # noqa: BLE001
             log.warning("worker %s LLM call failed: %s", worker_id, exc)
             failure_reason = f"llm_call_failed: {exc}"
             break
@@ -171,15 +178,13 @@ def run_sub_topic_worker(
             user=user_msg,
             response_text=resp.text or "",
             reasoning=resp.reasoning_content or "",
-            tokens_in=None,  # budget tracks tokens per-category, not per-call
+            tokens_in=None,
             tokens_out=tokens_spent,
         )
 
-        # Parse the structured response.
         try:
             decoded = _parse_tool_call(resp.text or "")
         except _ParseError as exc:
-            # Feed the parse error back to the model as a "tool result".
             last_tool_name = "(parse_error)"
             last_tool_result = {
                 "error": "could not parse your response as JSON",
@@ -192,10 +197,6 @@ def run_sub_topic_worker(
         if not isinstance(tool_args, dict):
             tool_args = {}
 
-        # Track angle transitions (before dispatch, so the log sees the
-        # "from" state).
-        prev_fp = last_active_fp
-        # Dispatch.
         result = dispatcher.dispatch(tool_name, tool_args)
         logger.log_tool_call(
             scope=f"worker:{worker_id}",
@@ -206,34 +207,16 @@ def run_sub_topic_worker(
         )
         last_tool_name = tool_name
         last_tool_result = result
-        # Log angle transition if the active fingerprint changed.
-        new_fp = state.active_fingerprint
-        if new_fp is not None and new_fp != prev_fp:
-            angle = state.angles.get(new_fp)
-            logger.log_angle_transition(
-                worker_id=worker_id,
-                from_fingerprint=prev_fp,
-                to_fingerprint=new_fp,
-                query=(angle.query if angle else ""),
-            )
-            last_active_fp = new_fp
 
         if dispatcher.done_called:
             break
-        # Budget check — if the pipeline's shared budget is exhausted,
-        # abort this worker cleanly.
         if ctx.budget.is_exhausted(ctx.config):
             failure_reason = "budget_exhausted"
             break
-        # Auto-close safety net: on the penultimate turn, if the worker
-        # has produced any cumulative papers, force a clean close. We
-        # auto-abandon any angle whose checklist is incomplete (so the
-        # done hook's precondition passes) and synthetically call
-        # ``done`` with coverage_assessment=limited. Rationale: a
-        # worker that fetched real papers but couldn't orchestrate the
-        # verification cycle in 20 turns is still more useful than one
-        # we reject for max_turns. Only kicks in on turn
-        # ``worker_max_turns - 1`` so it never pre-empts a healthy run.
+        # Auto-close safety net on the penultimate turn: if the
+        # worker has fetched papers but never closed, force a clean
+        # done() so the papers aren't wasted. Transparency: sets the
+        # auto_closed flag on SubTopicResult and emits an event.
         if turn == agent_config.worker_max_turns - 1:
             before_done = dispatcher.done_called
             _attempt_auto_close(
@@ -241,15 +224,11 @@ def run_sub_topic_worker(
                 worker_id=worker_id, turn=turn,
             )
             if dispatcher.done_called and not before_done:
-                # Flag it for the SubTopicResult so the supervisor can
-                # tell an auto-rescue from a natural close.
                 auto_closed = True
                 break
 
-    # Clean up the DataFrame store for this worker.
     dispatcher.store.drop_all_for_worker(worker_id)
 
-    # Build the SubTopicResult.
     done_result = dispatcher.done_result
     if done_result:
         assessment = done_result.get("coverage_assessment")
@@ -270,19 +249,15 @@ def run_sub_topic_worker(
             summary = "Worker hit max_turns without calling done()."
             failure_reason = "max_turns_without_done"
 
-    # Assemble per-angle QueryAngleResults.
-    angle_results: list[QueryAngleResult] = []
-    for fp, angle in state.angles.items():
-        angle_results.append(QueryAngleResult(
-            query=angle.query,
-            filters=dict(angle.filters),
+    query_results: list[QueryResult] = []
+    for fp, q in state.queries.items():
+        query_results.append(QueryResult(
+            query=q.query,
+            filters=dict(q.filters),
             fingerprint=fp,
-            n_fetched=angle.n_fetched or 0,
-            total_in_corpus=angle.total_in_corpus or 0,
-            papers_added_to_cumulative=(angle.n_fetched or 0),
-            refinement_count=angle.refinement_count,
-            topic_model_ran=angle.checked_topic_model,
-            inspection_notes=angle.inspection_notes,
+            n_fetched=q.n_fetched or 0,
+            total_in_corpus=q.total_in_corpus or 0,
+            papers_added_to_cumulative=(q.n_fetched or 0),
         ))
 
     logger.log_worker_finished(
@@ -303,7 +278,7 @@ def run_sub_topic_worker(
         coverage_assessment=assessment,
         summary=summary,
         turns_used=turn,
-        query_angles=angle_results,
+        query_results=query_results,
         failure_reason=failure_reason,
         auto_closed=auto_closed,
     )
@@ -324,10 +299,7 @@ _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)```", re.DOTALL)
 def _parse_tool_call(text: str) -> dict[str, Any]:
     """Parse a worker response into ``{tool_name, tool_args, reasoning}``.
 
-    Accepts:
-    - Bare JSON object.
-    - ```json fenced``` block.
-    - Object with leading whitespace or prose (strips to first ``{``).
+    Accepts: bare JSON, ```json fenced```, or prose-before-brace.
     """
     if not text:
         raise _ParseError("empty response")
@@ -335,7 +307,6 @@ def _parse_tool_call(text: str) -> dict[str, Any]:
     m = _JSON_FENCE_RE.search(text)
     if m:
         text = m.group(1).strip()
-    # Strip any leading prose before the first '{'.
     brace = text.find("{")
     if brace > 0:
         text = text[brace:]
@@ -353,27 +324,6 @@ def _parse_tool_call(text: str) -> dict[str, Any]:
     return data
 
 
-def _auto_close_fallback_fetch(dispatcher, spec: SubTopicSpec) -> None:
-    """Last-chance fetch using the supervisor's ``initial_query_sketch``.
-
-    Dispatched through the real tool layer so the query still goes
-    through the S2 lint. Best-effort: any failure is swallowed and
-    the caller will see the empty cumulative set.
-    """
-    sketch = spec.initial_query_sketch
-    if not sketch:
-        return
-    sz = dispatcher.dispatch("check_query_size", {"query": sketch})
-    if not isinstance(sz, dict) or "error" in sz:
-        return
-    if (sz.get("total") or 0) == 0:
-        return
-    fr = dispatcher.dispatch("fetch_results", {"query": sketch})
-    if not isinstance(fr, dict) or "error" in fr:
-        return
-    dispatcher.dispatch("inspect_angle", {})
-
-
 def _attempt_auto_close(
     dispatcher,
     state: WorkerState,
@@ -385,87 +335,64 @@ def _attempt_auto_close(
 ) -> None:
     """Force a clean close on the penultimate turn.
 
+    Simplified from v2: there is no per-query checklist to abandon.
     Steps:
-      1. If the worker has zero fetched papers, skip — there's nothing
-         to close and the natural "failed" status is correct.
-      2. Abandon every angle whose inspection checklist is incomplete
-         so the done hook doesn't reject on per-angle grounds.
-      3. If no verification cycle has run, synthetically run one
-         against the first reference paper (or any first_3_titles
-         we can see in the log). Records a diagnose_miss with
-         action_taken="accept_gap" for misses.
-      4. Call ``done`` via the dispatcher with coverage_assessment
-         inferred from remaining state.
 
-    Every step is logged via the dispatcher so the transcript shows
-    exactly what the auto-closer did. Best-effort: if anything fails
-    we leave the worker in its current state and the normal
-    max_turns failure path handles it.
+    1. If the worker has fetched zero papers, attempt one last fetch
+       on the supervisor's ``initial_query_sketch``. If that also
+       returns 0, give up (worker will finalise as ``failed``).
+    2. Auto-consume every pending verification miss with a synthetic
+       ``diagnose_miss(action_taken=accept_gap)`` so ``_pre_done``
+       won't reject on undiagnosed misses.
+    3. Call ``done`` via the dispatcher with
+       ``coverage_assessment=limited`` and a summary that flags the
+       auto-close.
+
+    Every dispatch goes through the normal machinery so the
+    transcript shows exactly what the rescuer did.
     """
     had_cumulative_before = bool(state.cumulative_paper_ids)
-    had_contains_before = any(e.get("tool") == "contains" for e in state.call_log)
+    had_verification_before = any(
+        q.df_id is not None for q in state.queries.values()
+    )
+
     if not state.cumulative_paper_ids:
-        # Last-chance fallback: run the supervisor's initial_query_sketch
-        # through size + fetch + inspect. If that produces zero papers
-        # too, the sub-topic is genuinely hard and we return cleanly as
-        # a failure. If it produces papers, auto-close succeeds.
-        _auto_close_fallback_fetch(dispatcher, spec)
+        sketch = spec.initial_query_sketch
+        if sketch:
+            sz = dispatcher.dispatch("check_query_size", {"query": sketch})
+            if isinstance(sz, dict) and "error" not in sz and (sz.get("total") or 0) > 0:
+                dispatcher.dispatch("fetch_results", {"query": sketch})
         if not state.cumulative_paper_ids:
-            return
-    # Step 2: abandon any angle with an incomplete checklist.
-    incomplete = [
-        a for a in list(state.angles.values())
-        if a.df_id is not None and not a.is_checklist_complete()
-    ]
-    for angle in incomplete:
-        # Point active_angle at the incomplete angle, then abandon via
-        # the dispatcher so the effect is consistent with a real
-        # abandon call (drops df, removes papers, logs).
-        state.active_fingerprint = angle.fingerprint
-        dispatcher.dispatch("abandon_angle", {})
-    # Emit a transparency event so postmortem tooling can tell
-    # auto-closed workers from naturally-closed ones — the result
-    # looks the same from the outside but the agent's coverage
-    # judgement was bypassed. ``SubTopicResult.auto_closed=True`` is
-    # set on the worker-loop side after the dispatch returns.
+            return  # genuinely nothing to close
+
+    # Emit the transparency event.
     try:
         logger.log_auto_close_invoked(
             worker_id=worker_id,
             spec_id=spec.id,
             turn=turn,
             had_cumulative=had_cumulative_before,
-            had_verification=had_contains_before,
-            angles_abandoned=len(incomplete),
+            had_verification=had_verification_before,
+            angles_abandoned=0,
         )
-    except Exception:  # noqa: BLE001 — best-effort observability
+    except Exception:  # noqa: BLE001
         pass
-    # Step 3: if no verification cycle has run yet, attempt one.
-    has_contains = any(e.get("tool") == "contains" for e in state.call_log)
-    if not has_contains:
-        # Pick the first reference paper we have, or give up on verify.
-        anchor_title = (
-            spec.reference_papers[0] if spec.reference_papers else None
-        )
-        if anchor_title:
-            sm = dispatcher.dispatch("search_match", {"title": anchor_title})
-            if isinstance(sm, dict) and "error" not in sm and sm.get("match"):
-                pid = sm["match"].get("paper_id")
-                if isinstance(pid, str):
-                    c = dispatcher.dispatch("contains", {"paper_id": pid})
-                    if isinstance(c, dict) and c.get("contains") is False:
-                        dispatcher.dispatch("diagnose_miss", {
-                            "target_title": anchor_title,
-                            "hypotheses": ["auto-closer: not reached within worker budget"],
-                            "action_taken": "accept_gap",
-                            "query_angles_used": [
-                                a.query for a in state.angles.values() if a.query
-                            ],
-                        })
-    # Step 4: force done.
+
+    # Consume any pending misses with synthetic diagnose_miss calls.
+    pending_titles = list(state.pending_miss_titles)
+    consumed = len(state.miss_diagnoses)
+    for title in pending_titles[consumed:]:
+        dispatcher.dispatch("diagnose_miss", {
+            "target_title": title,
+            "hypotheses": ["auto-closer: not reached within worker budget"],
+            "action_taken": "accept_gap",
+            "queries_used": [q.query for q in state.queries.values() if q.query],
+        })
+
     summary = (
         f"auto-closed on turn {turn} of {dispatcher.config.worker_max_turns} "
         f"(reached turn budget); {len(state.cumulative_paper_ids)} papers "
-        f"fetched across {len(state.angles)} live angle(s)"
+        f"fetched across {len(state.queries)} queries"
     )
     dispatcher.dispatch("done", {
         "paper_ids": sorted(state.cumulative_paper_ids),
@@ -480,26 +407,15 @@ def _compute_relevant_hints(
     state: WorkerState,
     cfg: "AgentConfig",
 ) -> list[str]:
-    """Situational, state-derived hints surfaced to the worker per turn.
+    """State-derived hints surfaced per turn.
 
-    The v1 SYSTEM prompt encoded these as a fixed "rules table" the
-    worker re-read every turn (the accreting-rules anti-pattern).
-    Moving them here:
-
-    * shrinks the evergreen SYSTEM prompt,
-    * surfaces guidance only when the state makes it actionable
-      (e.g. size-band guidance only fires after a check_query_size),
-    * lets weaker models attend to a small *current* list rather
-      than scanning an exhaustive table,
-    * and keeps the critical "NEVER change sub-topic" / syntax
-      rules in SYSTEM where they belong (evergreen, not situational).
-
-    Returns a list of 0–3 short hint strings. The caller decides how
-    to render them (bullet list in user message).
+    Post-refactor: drops the refinement-cap hint (no longer a
+    concept) and re-phrases the cap-related hints in terms of
+    queries, not angles.
     """
     hints: list[str] = []
 
-    # 1. Size-band guidance — only when the last call returned a ``total``.
+    # 1. Size-band guidance — fires after a check_query_size return.
     if (
         last_tool_name == "check_query_size"
         and isinstance(last_tool_result, dict)
@@ -528,7 +444,7 @@ def _compute_relevant_hints(
             hints.append(
                 f"total={total:,} is large. Narrow with a structural "
                 "filter (year / fieldsOfStudy / venue) if you want a "
-                "denser sample. Extra '+' clauses often collapse to 0."
+                "denser sample."
             )
         elif 50 <= total <= 5_000:
             hints.append(
@@ -536,28 +452,27 @@ def _compute_relevant_hints(
                 "fetch_results with the SAME (query, filters) pair."
             )
 
-    # 2. Angle-count awareness — preempt the cap error.
-    n_angles = len(state.angles)
-    if n_angles >= cfg.max_angles_per_worker:
+    # 2. Query-cap awareness.
+    n_queries = len(state.queries)
+    if n_queries >= cfg.max_queries_per_worker:
         hints.append(
-            f"{n_angles}/{cfg.max_angles_per_worker} angles used (cap "
-            "reached). check_query_size on a new (query, filters) pair "
-            "will be rejected. Finish inspection + call done(), or "
-            "abandon_angle() on a low-signal active angle first."
+            f"{n_queries}/{cfg.max_queries_per_worker} queries used (cap "
+            "reached). New check_query_size calls on a distinct "
+            "(query, filters) pair will be rejected — diagnose any "
+            "pending misses and call done()."
         )
-    elif n_angles == cfg.max_angles_per_worker - 1:
+    elif n_queries == cfg.max_queries_per_worker - 1:
         hints.append(
-            f"{n_angles}/{cfg.max_angles_per_worker} angles — one slot "
-            "left. Make the next angle count."
+            f"{n_queries}/{cfg.max_queries_per_worker} queries — one slot "
+            "left. Make the next query count."
         )
 
-    # 3. Refinement-cap awareness on the active angle.
-    active = state.active_angle
-    if active is not None and active.refinement_count >= cfg.max_refinement_per_angle:
+    # 3. Pending-miss nudge.
+    pending = len(state.pending_miss_titles) - len(state.miss_diagnoses)
+    if pending > 0:
         hints.append(
-            f"active angle has refined {active.refinement_count} times "
-            "(at cap). The next check_query_size on a different query "
-            "will open a NEW angle — pick a meaningfully different axis."
+            f"{pending} auto-detected reference miss(es) await diagnose_miss "
+            "— each must be explained before done() is accepted."
         )
 
     return hints
@@ -570,110 +485,63 @@ def _compute_valid_next_tools(
     *,
     turn: int,
 ) -> str:
-    """Derive the narrow set of tools that make sense from the current
-    worker state. Rendered as a bullet list in the continuation user
-    message so weaker models follow the checklist lane by default.
+    """Post-refactor candidate set.
 
-    The set is advisory: the dispatcher still accepts any registered
-    tool, but the prompt makes the intended next action obvious.
+    The fetch-inspect-verify chain collapsed into ``fetch_results``,
+    so there's no per-angle checklist to drive. Logic:
 
-    When the worker is near its turn budget (>= 75% of max_turns),
-    ``done`` is strongly emphasised and exploration tools are
-    demoted. When the angle cap is hit, only ``done`` and
-    ``abandon_angle`` are recommended.
+    * pending misses exist → ``diagnose_miss`` only
+    * no queries opened yet → ``check_query_size``
+    * active query not yet fetched → ``fetch_results`` (or
+      ``query_diagnostics`` to assess the size first)
+    * fetched, no misses pending → ``done`` preferred (+
+      ``check_query_size`` if cap + time permit)
+    * time pressure (≥75%) narrows the set toward ``done``
     """
-    active = state.active_angle
-    verification_done = any(
-        e.get("tool") == "contains" for e in state.call_log
-    )
-    unresolved_miss = False
-    for e in reversed(state.call_log):
-        if e.get("tool") == "diagnose_miss":
-            result = e.get("result") or {}
-            if "error" in result:
-                continue
-            break
-        if e.get("tool") == "contains":
-            if (e.get("result") or {}).get("contains") is False:
-                unresolved_miss = True
-            break
-
-    angle_cap_hit = len(state.angles) >= cfg.max_angles_per_worker
+    n_queries = len(state.queries)
+    active = state.active_query
+    cap_hit = n_queries >= cfg.max_queries_per_worker
     time_pressure = turn >= int(cfg.worker_max_turns * 0.75)
+    pending_misses = len(state.pending_miss_titles) - len(state.miss_diagnoses)
 
     candidates: list[str] = []
-    if unresolved_miss:
+    if pending_misses > 0:
         candidates = ["diagnose_miss"]
-    elif angle_cap_hit and active is None:
-        # All slots used and nothing active → just close.
-        candidates = ["done"]
-    elif active is None:
-        # No active angle: either open one or close.
-        has_usable = any(a.is_checklist_complete() and a.df_id for a in state.angles.values())
-        if time_pressure and has_usable:
-            # Strongly prefer closing over opening another angle under time pressure.
-            if verification_done:
+    elif n_queries == 0:
+        candidates = ["check_query_size"]
+    elif active is not None and active.df_id is None:
+        # Size-checked but not yet fetched.
+        candidates = ["fetch_results"]
+        if not time_pressure:
+            candidates.append("query_diagnostics")
+    else:
+        has_any_fetch = any(q.df_id for q in state.queries.values())
+        if has_any_fetch:
+            if time_pressure or cap_hit:
                 candidates = ["done"]
             else:
-                candidates = ["search_match", "done"]
-        elif angle_cap_hit:
-            candidates = ["done"]
+                candidates = ["done", "check_query_size"]
         else:
             candidates = ["check_query_size"]
-            if has_usable:
-                if verification_done:
-                    candidates.append("done")
-                else:
-                    candidates.insert(0, "search_match")
-    else:
-        # An angle is active. Drive the checklist.
-        if active.df_id is None:
-            candidates = ["fetch_results", "abandon_angle"]
-        elif not (active.checked_top_cited and active.checked_random and active.checked_years):
-            # inspect_angle does all three in one call — strongly preferred.
-            candidates = ["inspect_angle", "abandon_angle"]
-        elif active.requires_topic_model and not active.checked_topic_model:
-            # inspect_angle also covers topic_model. The agent likely
-            # already called inspect_angle and it skipped topic_model
-            # for some reason; fall back to the primitive.
-            candidates = ["topic_model", "abandon_angle"]
-        else:
-            # Checklist on active complete.
-            if not verification_done:
-                candidates = ["search_match"]
-                # Allow opening a new angle only if not under time pressure
-                # AND we haven't hit the cap.
-                if not angle_cap_hit and not time_pressure:
-                    candidates.append("check_query_size")
-                candidates.append("abandon_angle")
-            else:
-                # Verification done — closing is strongly preferred.
-                if time_pressure or angle_cap_hit:
-                    candidates = ["done"]
-                else:
-                    candidates = ["done", "check_query_size", "abandon_angle"]
 
-    always_available = ["get_paper", "search_within_df"]
+    always = ["get_paper", "search_within_df", "query_diagnostics"]
     pressure_note = ""
     if time_pressure:
         pressure_note = (
-            f"\n\n⚠️  TIME PRESSURE: turn {turn} of {cfg.worker_max_turns} "
-            f"— strongly prefer `done` over opening new angles. If the per-angle "
-            f"checklist on the active angle is complete and a verification cycle "
-            f"(search_match → contains) has run, call `done` now."
+            f"\n\nTIME PRESSURE: turn {turn} of {cfg.worker_max_turns} — "
+            f"strongly prefer `done` over opening new queries."
         )
-    if angle_cap_hit:
+    if cap_hit:
         pressure_note += (
-            f"\n\n⚠️  ANGLE CAP HIT: you have opened the maximum "
-            f"{cfg.max_angles_per_worker} angles. check_query_size will reject. "
-            f"Finish any outstanding inspection, then call `done` or "
-            f"`abandon_angle` to free a slot."
+            f"\n\nQUERY CAP HIT: opened {cfg.max_queries_per_worker} distinct "
+            f"queries. New (query, filters) pairs will be rejected — "
+            f"diagnose misses and call `done`."
         )
     return (
         "next-action candidates (strongly recommended): "
         + ", ".join(f"`{t}`" for t in candidates)
         + "; optional deep-dive: "
-        + ", ".join(f"`{t}`" for t in always_available)
+        + ", ".join(f"`{t}`" for t in always)
         + pressure_note
     )
 
@@ -688,16 +556,16 @@ def _render_tool_result(tool_name: str, result: dict[str, Any] | None) -> str:
             f"**Result**: ❌ ERROR — {result.get('error', '')}\n"
             f"**Hint**: {result.get('hint', '')}"
         )
-    # Short non-error results rendered as compact JSON; long ones summarised.
     try:
         blob = json.dumps(result, ensure_ascii=False, default=str)
     except Exception:  # noqa: BLE001
         blob = str(result)
-    if len(blob) > 6000:
-        # Truncate the middle so head + tail both survive.
-        head = blob[:3000]
-        tail = blob[-1500:]
-        blob = f"{head}\n... [TRUNCATED {len(blob) - 4500} chars] ...\n{tail}"
+    # fetch_results returns a large digest; allow more headroom.
+    limit = 12000 if tool_name == "fetch_results" else 6000
+    if len(blob) > limit:
+        head = blob[: int(limit * 0.65)]
+        tail = blob[-int(limit * 0.30):]
+        blob = f"{head}\n... [TRUNCATED {len(blob) - len(head) - len(tail)} chars] ...\n{tail}"
     return (
         f"**Previous call**: `{tool_name}`\n"
         f"**Result**:\n```json\n{blob}\n```"

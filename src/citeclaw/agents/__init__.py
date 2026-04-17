@@ -1,4 +1,4 @@
-"""LLM-driven search agents (v2).
+"""LLM-driven search agents.
 
 Houses the supervisor/worker two-level agent that powers
 ``ExpandBySearch``. The v1 single-loop ``run_iterative_search`` module
@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from citeclaw.agents.state import (
     AgentConfig,
-    AngleState,
-    QueryAngleResult,
+    QueryMeta,
+    QueryResult,
     SearchStrategy,
     StructuralPriors,
     SubTopicResult,
@@ -27,8 +27,8 @@ from citeclaw.agents.worker import run_sub_topic_worker
 
 __all__ = [
     "AgentConfig",
-    "AngleState",
-    "QueryAngleResult",
+    "QueryMeta",
+    "QueryResult",
     "SearchStrategy",
     "StructuralPriors",
     "SubTopicResult",

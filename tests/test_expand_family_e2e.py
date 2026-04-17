@@ -277,7 +277,7 @@ def _build_pipeline_dict() -> list[dict]:
         {"step": "Rerank", "metric": "citation", "k": 10},
         {"step": "ExpandBySearch",
          "agent": {"worker_max_turns": 15, "supervisor_max_turns": 6,
-                   "max_angles_per_worker": 2},
+                   "max_queries_per_worker": 2},
          "screener": "permissive"},
         {"step": "ExpandBySemantics",
          "max_anchor_papers": 2, "limit": 10,

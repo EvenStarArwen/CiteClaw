@@ -92,7 +92,7 @@ def run_supervisor(
         seed_block=render_seed_block(seed_papers if agent_config.share_seeds_with_agents else []),
         supervisor_max_turns=agent_config.supervisor_max_turns,
         worker_max_turns=agent_config.worker_max_turns,
-        max_angles_per_worker=agent_config.max_angles_per_worker,
+        max_queries_per_worker=agent_config.max_queries_per_worker,
     )
 
     last_tool_name = ""
@@ -383,29 +383,20 @@ def _register_supervisor_tools(
         d.state.record_result(result)
         if result.status != "success":
             d.state.worker_failures[spec_id] = attempts + 1
-        # Enriched payload: supervisor needs per-angle detail and miss
-        # diagnoses so a retry decision can target the actual failure
-        # mode (spec too broad? query sketch too narrow? prior too
-        # tight? S2 coverage gap?). Sampled at the dispatch boundary
-        # so the supervisor's context doesn't bloat with full
-        # transcripts.
-        angle_payload = []
-        for a in result.query_angles:
-            angle_payload.append({
-                "query": a.query,
-                "filters": a.filters,
-                "n_fetched": a.n_fetched,
-                "total_in_corpus": a.total_in_corpus,
-                "papers_added_to_cumulative": a.papers_added_to_cumulative,
-                "refinement_count": a.refinement_count,
-                "topic_model_ran": a.topic_model_ran,
-                "inspection_notes": a.inspection_notes[:400],
+        # Enriched payload: supervisor needs per-query detail so a
+        # retry decision can target the actual failure mode (spec too
+        # broad? query sketch too narrow? prior too tight? S2 coverage
+        # gap?). Sampled at the dispatch boundary so the supervisor's
+        # context doesn't bloat with full transcripts.
+        query_payload = []
+        for q in result.query_results:
+            query_payload.append({
+                "query": q.query,
+                "filters": q.filters,
+                "n_fetched": q.n_fetched,
+                "total_in_corpus": q.total_in_corpus,
+                "papers_added_to_cumulative": q.papers_added_to_cumulative,
             })
-        # Pull miss_diagnoses from the worker's event log (passed
-        # through the result's `failure_reason` + the SubTopicResult
-        # shape doesn't currently carry them; we read via the result's
-        # query_angles instead and surface a count for the supervisor).
-        # Stop-reason label: readable category of why the worker halted.
         stop_reason = _stop_reason_label(result)
         return {
             "spec_id": result.spec_id,
@@ -418,8 +409,8 @@ def _register_supervisor_tools(
             "failure_reason": result.failure_reason,
             "stop_reason": stop_reason,
             "auto_closed": result.auto_closed,
-            "n_angles": len(result.query_angles),
-            "angles": angle_payload,
+            "n_queries": len(result.query_results),
+            "queries": query_payload,
         }
 
     def _handle_done(args: dict[str, Any], d: SupervisorDispatcher) -> dict[str, Any]:

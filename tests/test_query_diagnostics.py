@@ -47,8 +47,12 @@ def _make_dispatcher(s2, priors=None):
 
 
 def test_flat_or_breakdown():
-    """For ``"A" | "B" | "C"``, tool issues 4 S2 calls (1 total + 3 leaves)
-    and returns a per-leaf count list sorted by contribution descending.
+    """For ``"A" | "B" | "C"``, tool probes 1 full-query + 3 leaves
+    in-context + 3 leaves alone = 7 S2 calls. Returns per-leaf
+    in-context counts, raw counts, and a flat raw_breakdown map.
+
+    For a flat OR, the substituted-query for each leaf IS the leaf
+    alone, so in-context == raw.
     """
     totals = {
         '"A" | "B" | "C"': 500,
@@ -68,18 +72,29 @@ def test_flat_or_breakdown():
     # Sorted descending by total_in_context.
     assert [l["leaf"] for l in leaves] == ['"A"', '"B"', '"C"']
     assert [l["total_in_context"] for l in leaves] == [300, 100, 50]
-    # One S2 call for the full query + 3 for leaves.
-    assert len(s2.calls) == 4
+    # New: raw_breakdown flat map {leaf: total_alone}.
+    assert result["raw_breakdown"] == {'"A"': 300, '"B"': 100, '"C"': 50}
+    # 1 full + 3 in-context + 3 raw = 7 S2 calls.
+    assert len(s2.calls) == 7
 
 
 def test_nested_and_or_returns_two_groups():
-    """Nested ``("A" | "B") +("C" | "D")`` → 2 OR groups, 4 leaves."""
+    """Nested ``("A" | "B") +("C" | "D")`` → 2 OR groups, 4 leaves.
+
+    Here raw counts differ from in-context counts: raw is the leaf
+    alone (e.g. ``"A"`` matches 300), in-context is the leaf inside
+    the full query (``"A" + ("C" | "D")`` matches 40). Both surfaced.
+    """
     totals = {
         '("A" | "B") +("C" | "D")': 50,
         '"A" +("C" | "D")': 40,
         '"B" +("C" | "D")': 10,
         '("A" | "B") +"C"': 30,
         '("A" | "B") +"D"': 20,
+        '"A"': 300,  # raw
+        '"B"': 200,
+        '"C"': 150,
+        '"D"': 100,
     }
     s2 = _RecordingS2(totals)
     d = _make_dispatcher(s2)
@@ -92,8 +107,16 @@ def test_nested_and_or_returns_two_groups():
     group1 = result["or_groups"][1]["leaves"]
     assert {l["leaf"] for l in group0} == {'"A"', '"B"'}
     assert {l["leaf"] for l in group1} == {'"C"', '"D"'}
-    # 1 full + 4 leaves = 5 S2 calls.
-    assert len(s2.calls) == 5
+    # Raw breakdown surfaces intrinsic breadth.
+    assert result["raw_breakdown"] == {
+        '"A"': 300, '"B"': 200, '"C"': 150, '"D"': 100,
+    }
+    # Each leaf record carries both counts.
+    a_entry = next(l for l in group0 if l["leaf"] == '"A"')
+    assert a_entry["total_in_context"] == 40
+    assert a_entry["total_raw"] == 300
+    # 1 full + 4 in-context + 4 raw = 9 S2 calls.
+    assert len(s2.calls) == 9
 
 
 def test_no_or_returns_trivial_note():

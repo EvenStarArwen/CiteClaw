@@ -148,7 +148,7 @@ USER_TEMPLATE_FIRST = """\
 
 - Max supervisor turns: {supervisor_max_turns}
 - Workers will have: {worker_max_turns} turns each, up to
-  {max_angles_per_worker} angles per worker.
+  {max_queries_per_worker} distinct queries per worker.
 
 Begin by calling set_strategy with your structural_priors and
 sub_topics. Be concrete in the query sketches.

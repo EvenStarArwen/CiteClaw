@@ -1234,7 +1234,11 @@ class TestStructuredOutput:
         rf = captured["response_format"]
         assert rf["type"] == "json_schema"
         assert rf["json_schema"]["strict"] is True
-        assert rf["json_schema"]["schema"] is schema
+        # The client copies the schema to strip the _strict_openai
+        # sentinel before sending, so identity comparison no longer
+        # holds — content-equality is the real invariant.
+        assert rf["json_schema"]["schema"] == schema
+        assert "_strict_openai" not in rf["json_schema"]["schema"]
         assert resp.text.startswith("{")
 
     def test_openai_client_skips_response_format_without_schema(self, tmp_path, monkeypatch):
