@@ -149,6 +149,8 @@ class GeminiClient:
         reasoning_tokens = (getattr(um, "thinking_token_count", 0) or 0) if um else 0
         if prompt_tokens or completion_tokens:
             self._budget.record_llm(
-                prompt_tokens, completion_tokens, category, reasoning_tokens=reasoning_tokens,
+                prompt_tokens, completion_tokens, category,
+                reasoning_tokens=reasoning_tokens,
+                model=self._model,
             )
         return LLMResponse(text=text, logprob_tokens=[])

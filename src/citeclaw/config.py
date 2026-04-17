@@ -389,6 +389,17 @@ class BudgetTracker:
         # cache hit. Hits are billed nothing (no record_llm call), so
         # this counter is the only signal that the cache is working.
         self._llm_cache_hits: dict[str, int] = {}
+        # Per-model token tracking — parallel to the per-category maps
+        # above but keyed by the resolved model name (e.g.
+        # ``grok-4-fast-reasoning``, ``gemini-3-flash``). Filled in
+        # when an LLMClient passes ``model=self._model`` to
+        # :meth:`record_llm`. Enables accurate USD estimation when one
+        # run uses multiple models (e.g. cheap screening + capable
+        # search agent) — each model's tokens are priced separately
+        # in :meth:`cost_by_model`. Clients that don't pass ``model``
+        # still record to the per-category buckets, they just won't
+        # contribute to the per-model breakdown.
+        self._llm_by_model: dict[str, dict[str, int]] = {}
         self._s2_api: dict[str, int] = {}
         self._s2_cache: dict[str, int] = {}
 
@@ -437,7 +448,23 @@ class BudgetTracker:
                 self._llm_cache_hits.get(category, 0) + 1
             )
 
-    def record_llm(self, input_tokens: int, output_tokens: int, category: str = "other", *, reasoning_tokens: int = 0) -> None:
+    def record_llm(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        category: str = "other",
+        *,
+        reasoning_tokens: int = 0,
+        model: str | None = None,
+    ) -> None:
+        """Record one LLM call's token usage.
+
+        ``model`` is the resolved model name (YAML alias, not the
+        ``served_model_name``). When passed, the counts are *also*
+        accumulated into a per-model bucket so :meth:`cost_by_model`
+        can price each model independently — the primary mechanism
+        for accurate USD tracking in multi-model runs.
+        """
         with self._lock:
             total = input_tokens + output_tokens
             self._llm_tokens[category] = self._llm_tokens.get(category, 0) + total
@@ -446,6 +473,15 @@ class BudgetTracker:
             self._llm_calls[category] = self._llm_calls.get(category, 0) + 1
             if reasoning_tokens:
                 self._llm_reasoning_tokens[category] = self._llm_reasoning_tokens.get(category, 0) + reasoning_tokens
+            if model:
+                bucket = self._llm_by_model.setdefault(
+                    model,
+                    {"input": 0, "output": 0, "reasoning": 0, "calls": 0},
+                )
+                bucket["input"] += input_tokens
+                bucket["output"] += output_tokens
+                bucket["reasoning"] += reasoning_tokens
+                bucket["calls"] += 1
 
     def record_s2(self, req_type: str = "other", *, cached: bool = False) -> None:
         with self._lock:
@@ -492,6 +528,48 @@ class BudgetTracker:
             + self.llm_reasoning_tokens * reason_per_m / 1_000_000
         )
 
+    def cost_by_model(self) -> dict[str, dict[str, float | int]]:
+        """Per-resolved-model USD estimate, sorted by cost descending.
+
+        Returns ``{model: {"input": tokens, "output": tokens,
+        "reasoning": tokens, "calls": n, "cost_usd": float}}``. Each
+        model is priced via :func:`lookup_pricing` against its own
+        name — so a mixed-model run (e.g. gemma-4-31b + grok-4-fast-
+        reasoning) gets a faithful total rather than the single-model
+        approximation returned by :meth:`cost_estimate`.
+
+        Useful output surface for the per-run cost report written
+        alongside search agent transcripts. Empty ``{}`` when no
+        client passed ``model=`` to ``record_llm`` — older clients
+        that only report per-category counts don't contribute.
+
+        IMPORTANT: this is still a *local* estimate computed from
+        token counts × :data:`MODEL_PRICING`. No major provider (xAI,
+        OpenAI, Gemini, Anthropic) exposes a public per-call USD API;
+        the only ground truth is each provider's billing dashboard,
+        which is delayed and aggregated. Token counts themselves are
+        reported by every provider in ``response.usage`` and are
+        authoritative — only the USD conversion needs the local
+        price table.
+        """
+        out: dict[str, dict[str, float | int]] = {}
+        for model, counts in self._llm_by_model.items():
+            in_per_m, out_per_m, reason_per_m = lookup_pricing(model)
+            cost = (
+                counts["input"]     * in_per_m     / 1_000_000
+                + counts["output"]    * out_per_m    / 1_000_000
+                + counts["reasoning"] * reason_per_m / 1_000_000
+            )
+            out[model] = {
+                **counts,
+                "cost_usd": cost,
+            }
+        return dict(sorted(out.items(), key=lambda kv: -kv[1]["cost_usd"]))
+
+    def total_cost_usd(self) -> float:
+        """Sum of ``cost_usd`` across every per-model bucket."""
+        return sum(bucket["cost_usd"] for bucket in self.cost_by_model().values())
+
     def cost_breakdown(self, model_name: str | None) -> dict[str, dict[str, float | int]]:
         """Per-category cost breakdown for the run-end summary.
 
@@ -524,27 +602,42 @@ class BudgetTracker:
 
     def detailed_summary(self) -> str:
         lines = ["Budget breakdown:"]
-        lines.append("  LLM usage:")
+        lines.append("  LLM usage by category:")
         for cat in sorted(self._llm_tokens.keys()):
             tokens = self._llm_tokens[cat]
             calls = self._llm_calls.get(cat, 0)
-            lines.append(f"    {cat:<20s}  {tokens / 1_000_000:.3f}M tokens  ({calls} calls)")
-        lines.append(f"    {'TOTAL':<20s}  {self.llm_total_tokens / 1_000_000:.3f}M tokens  ({self.llm_calls} calls)")
+            lines.append(f"    {cat:<30s}  {tokens / 1_000_000:.3f}M tokens  ({calls} calls)")
+        lines.append(f"    {'TOTAL':<30s}  {self.llm_total_tokens / 1_000_000:.3f}M tokens  ({self.llm_calls} calls)")
+        by_model = self.cost_by_model()
+        if by_model:
+            lines.append("  LLM usage by model (USD estimates):")
+            total_usd = 0.0
+            for model, b in by_model.items():
+                tokens = b["input"] + b["output"]
+                cost = b["cost_usd"]
+                total_usd += cost
+                lines.append(
+                    f"    {model:<30s}  {tokens / 1_000_000:.3f}M tokens  "
+                    f"({b['calls']} calls)  ${cost:.4f}"
+                )
+            lines.append(f"    {'TOTAL USD (est.)':<30s}  ${total_usd:.4f}")
         lines.append("  S2 usage:")
         all_types = sorted(set(self._s2_api.keys()) | set(self._s2_cache.keys()))
         for t in all_types:
             api = self._s2_api.get(t, 0)
             cache = self._s2_cache.get(t, 0)
-            lines.append(f"    {t:<20s}  {api:>5} api  {cache:>5} cached")
+            lines.append(f"    {t:<30s}  {api:>5} api  {cache:>5} cached")
         return "\n".join(lines)
 
     def to_dict(self) -> dict[str, Any]:
+        by_model = self.cost_by_model()
         return {
             "llm": {
                 "total_tokens": self.llm_total_tokens,
                 "total_tokens_millions": round(self.llm_total_tokens / 1_000_000, 3),
                 "total_reasoning_tokens": self.llm_reasoning_tokens,
                 "total_calls": self.llm_calls,
+                "total_cost_usd_est": round(self.total_cost_usd(), 6),
                 "by_category": {
                     cat: {
                         "tokens": self._llm_tokens[cat],
@@ -553,6 +646,7 @@ class BudgetTracker:
                     }
                     for cat in self._llm_tokens
                 },
+                "by_model": by_model,
             },
             "s2": {
                 "total_api_requests": sum(self._s2_api.values()),

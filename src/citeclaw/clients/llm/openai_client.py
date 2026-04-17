@@ -383,6 +383,7 @@ class OpenAIClient:
                 usage.completion_tokens,
                 category,
                 reasoning_tokens=_extract_reasoning_tokens(usage),
+                model=self._model,
             )
         text = resp.choices[0].message.content or ""
         # PH-07: vLLM's reasoning parser exposes the thinking trace on

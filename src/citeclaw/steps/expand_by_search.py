@@ -142,6 +142,10 @@ class ExpandBySearch:
         t_start = time.time()
         tokens_before = ctx.budget.llm_total_tokens
         s2_before = ctx.budget.s2_requests
+        # Full snapshot so the cost summary can diff run-total vs
+        # search-only spend per model. to_dict() is cheap — a bounded
+        # dict over existing tracker state.
+        budget_before_snapshot = ctx.budget.to_dict()
 
         try:
             sup_state, aggregate_ids = run_supervisor(
@@ -167,6 +171,9 @@ class ExpandBySearch:
                 summary=f"Supervisor crashed: {exc}",
             )
             logger.finalize()
+            logger.write_cost_summary(
+                ctx.budget, before_snapshot=budget_before_snapshot,
+            )
             return StepResult(
                 signal=[],
                 in_count=len(signal),
@@ -214,6 +221,9 @@ class ExpandBySearch:
             summary=done_summary,
         )
         logger.finalize()
+        logger.write_cost_summary(
+            ctx.budget, before_snapshot=budget_before_snapshot,
+        )
 
         ctx.dashboard.note(
             f"ExpandBySearch v2 done · {len(sup_state.sub_topic_results)} sub-topics · "

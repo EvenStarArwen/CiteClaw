@@ -274,6 +274,51 @@ class SearchLogger:
         except Exception as exc:  # noqa: BLE001
             log.warning("SearchLogger.finalize failed: %s", exc)
 
+    def write_cost_summary(
+        self,
+        budget: Any,
+        *,
+        before_snapshot: dict[str, Any] | None = None,
+    ) -> None:
+        """Dump a ``cost_summary.json`` to the run directory.
+
+        Writes the current :class:`BudgetTracker` state as returned by
+        :meth:`to_dict`, plus (when provided) a ``search_only`` diff
+        computed against ``before_snapshot`` — the subset of the
+        run-total that was spent *inside this ExpandBySearch call*,
+        which is what the user typically cares about when comparing
+        models.
+
+        Quiet no-op when the logger is disabled.
+        """
+        if self._disabled or self._run_dir is None:
+            return
+        try:
+            full_state = budget.to_dict() if hasattr(budget, "to_dict") else {}
+        except Exception as exc:  # noqa: BLE001
+            log.debug("write_cost_summary: to_dict failed: %s", exc)
+            full_state = {}
+        diff: dict[str, Any] | None = None
+        if before_snapshot and isinstance(before_snapshot.get("llm"), dict):
+            diff = _diff_budget_snapshots(before_snapshot, full_state)
+        payload = {
+            "run_total": full_state,
+            "search_only": diff,
+            "pricing_provenance": (
+                "Local USD estimate = response.usage.tokens × "
+                "citeclaw.config.MODEL_PRICING. No public provider API "
+                "(xAI, OpenAI, Gemini, Anthropic) returns per-call USD — "
+                "token counts themselves are authoritative (reported by "
+                "every provider in response.usage); only the USD "
+                "conversion uses the local price table."
+            ),
+        }
+        try:
+            out_path = self._run_dir / "cost_summary.json"
+            out_path.write_text(json.dumps(payload, indent=2, default=_json_default), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            log.debug("write_cost_summary failed: %s", exc)
+
     # ------------------------------------------------------------------
     # In-memory access (for tests + postmortem tooling)
     # ------------------------------------------------------------------
@@ -535,6 +580,53 @@ def _json_default(o: Any) -> Any:
         except Exception:  # noqa: BLE001
             return str(o)
     return str(o)
+
+
+def _diff_budget_snapshots(
+    before: dict[str, Any], after: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute the ``after - before`` delta of a ``BudgetTracker.to_dict()``.
+
+    Only differences the numeric totals + per-model buckets; category
+    maps are kept as ``after`` (not diffed) because the search agent
+    writes its own categories and the caller usually wants the full
+    per-category view for this run.
+    """
+    b_llm = before.get("llm") or {}
+    a_llm = after.get("llm") or {}
+
+    def _num(d: dict[str, Any], k: str) -> float:
+        v = d.get(k)
+        return float(v) if isinstance(v, (int, float)) else 0.0
+
+    # Per-model diff.
+    b_by_model = b_llm.get("by_model") or {}
+    a_by_model = a_llm.get("by_model") or {}
+    model_diff: dict[str, dict[str, float | int]] = {}
+    for model, a_bucket in a_by_model.items():
+        b_bucket = b_by_model.get(model) or {}
+        delta = {}
+        for k in ("input", "output", "reasoning", "calls"):
+            delta[k] = int(_num(a_bucket, k) - _num(b_bucket, k))
+        delta["cost_usd"] = _num(a_bucket, "cost_usd") - _num(b_bucket, "cost_usd")
+        if any(delta[k] for k in ("input", "output", "reasoning", "calls")):
+            model_diff[model] = delta
+    b_s2 = before.get("s2") or {}
+    a_s2 = after.get("s2") or {}
+    return {
+        "llm_tokens": int(_num(a_llm, "total_tokens") - _num(b_llm, "total_tokens")),
+        "llm_calls": int(_num(a_llm, "total_calls") - _num(b_llm, "total_calls")),
+        "llm_cost_usd_est": (
+            _num(a_llm, "total_cost_usd_est") - _num(b_llm, "total_cost_usd_est")
+        ),
+        "llm_by_model": model_diff,
+        "s2_api_requests": int(
+            _num(a_s2, "total_api_requests") - _num(b_s2, "total_api_requests")
+        ),
+        "s2_cache_hits": int(
+            _num(a_s2, "total_cache_hits") - _num(b_s2, "total_cache_hits")
+        ),
+    }
 
 
 __all__ = ["SearchLogger", "NullSearchLogger"]

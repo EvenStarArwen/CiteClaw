@@ -275,5 +275,7 @@ class StubClient:
         # response.
         text = stub_respond(system, user)
         # Deterministic fake token bookkeeping
-        self._budget.record_llm(len(user) // 4, len(text) // 4, category)
+        self._budget.record_llm(
+            len(user) // 4, len(text) // 4, category, model=self._model,
+        )
         return LLMResponse(text=text, logprob_tokens=[])
