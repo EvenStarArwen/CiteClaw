@@ -19,6 +19,17 @@ set_strategy(structural_priors, sub_topics)
     Cannot be called twice. After this, each sub_topic is addressable
     by its `id`.
 
+add_sub_topics(sub_topics)
+    Append new sub_topic specs to the current strategy. Use when a
+    worker's result reveals a gap — e.g. (a) the completed worker's
+    sample titles show a distinct sub-area you missed, (b) a worker
+    failed because its spec was too broad and you want to split it
+    into narrower slices, or (c) a worker's angles suggest an
+    un-queried retrieval axis worth its own dispatch. Each entry
+    mirrors the set_strategy sub_topic shape. Cannot modify or
+    remove existing sub_topics (they may already have results
+    attached). Combined strategy is capped at 20 sub_topics.
+
 dispatch_sub_topic_worker(spec_id)
     Launch the worker for the sub-topic with id=spec_id. The supervisor
     loop blocks until the worker returns. You receive a
@@ -196,7 +207,12 @@ RESPONSE_SCHEMA = {
         },
         "tool_name": {
             "type": "string",
-            "enum": ["set_strategy", "dispatch_sub_topic_worker", "done"],
+            "enum": [
+                "set_strategy",
+                "add_sub_topics",
+                "dispatch_sub_topic_worker",
+                "done",
+            ],
         },
         "tool_args": {
             "type": "object",

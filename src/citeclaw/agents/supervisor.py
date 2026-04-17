@@ -256,6 +256,73 @@ def _register_supervisor_tools(
             "sub_topic_ids": [s.id for s in specs],
         }
 
+    def _handle_add_sub_topics(args: dict[str, Any], d: SupervisorDispatcher) -> dict[str, Any]:
+        """Append new sub-topic specs to an already-locked strategy.
+
+        Addresses the one-shot-decomposition gap: if a worker's result
+        reveals a gap (e.g. the sub-topic was too broad and needs to
+        be split into narrower slices, or a slice the supervisor
+        missed initially), the supervisor can add targeted specs
+        without losing already-dispatched results. Purely additive —
+        existing specs and worker records are untouched.
+
+        The global 20-spec ceiling from ``set_strategy`` is enforced
+        across the combined set so the supervisor can't pad the
+        strategy into an unbounded list.
+        """
+        if d.state.strategy is None:
+            raise DispatcherError(
+                "no strategy yet — call set_strategy first",
+                "add_sub_topics only augments an existing strategy",
+            )
+        raw = args.get("sub_topics")
+        if not isinstance(raw, list) or not raw:
+            raise DispatcherError(
+                "'sub_topics' must be a non-empty list of {id, description, initial_query_sketch, reference_papers}",
+                "each entry mirrors the set_strategy sub_topics schema",
+            )
+        existing_ids = {s.id for s in d.state.strategy.sub_topics}
+        new_specs: list[SubTopicSpec] = []
+        for idx, item in enumerate(raw):
+            if not isinstance(item, dict):
+                raise DispatcherError(
+                    f"sub_topics[{idx}] must be an object",
+                    "{id, description, initial_query_sketch, reference_papers}",
+                )
+            sid = str(item.get("id") or "").strip()
+            if not sid:
+                raise DispatcherError(
+                    f"sub_topics[{idx}].id missing",
+                    "each sub_topic needs a unique non-empty id slug",
+                )
+            if sid in existing_ids:
+                raise DispatcherError(
+                    f"sub_topic id {sid!r} already in strategy",
+                    "pick a new id; can't overwrite existing sub_topics",
+                )
+            existing_ids.add(sid)
+            new_specs.append(SubTopicSpec(
+                id=sid,
+                description=str(item.get("description") or ""),
+                initial_query_sketch=str(item.get("initial_query_sketch") or ""),
+                reference_papers=tuple(str(r) for r in (item.get("reference_papers") or []) if r),
+            ))
+        combined_n = len(d.state.strategy.sub_topics) + len(new_specs)
+        if combined_n > 20:
+            raise DispatcherError(
+                f"combined strategy would have {combined_n} sub-topics",
+                "max 20 across the run; consolidate before adding more",
+            )
+        d.state.strategy = SearchStrategy(
+            structural_priors=d.state.strategy.structural_priors,
+            sub_topics=tuple(list(d.state.strategy.sub_topics) + new_specs),
+        )
+        return {
+            "acknowledged": True,
+            "added": [s.id for s in new_specs],
+            "n_sub_topics_total": len(d.state.strategy.sub_topics),
+        }
+
     def _handle_dispatch(args: dict[str, Any], d: SupervisorDispatcher) -> dict[str, Any]:
         spec_id = args.get("spec_id")
         if not isinstance(spec_id, str) or not spec_id:
@@ -356,6 +423,7 @@ def _register_supervisor_tools(
 
     dispatcher.register_many([
         ToolSpec("set_strategy", _handle_set_strategy),
+        ToolSpec("add_sub_topics", _handle_add_sub_topics),
         ToolSpec("dispatch_sub_topic_worker", _handle_dispatch),
         ToolSpec("done", _handle_done, pre_hook=_pre_done),
     ])
