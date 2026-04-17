@@ -914,6 +914,154 @@ def _handle_inspect_angle(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
     return result
 
 
+def _handle_query_diagnostics(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, Any]:
+    """Break down a query by OR group, reporting per-leaf hit counts.
+
+    For every OR group in ``query``, compute one variant of the full
+    query where that OR group is replaced by just one of its leaves,
+    and call S2 ``search_bulk`` on each variant with ``limit=1`` to
+    read the total. The result lets the agent see how many papers
+    each OR branch contributes **in the context of the rest of the
+    query** — a much better signal than guessing whether one branch
+    is dominating or redundant.
+
+    Cost is bounded by :data:`_DIAGNOSTICS_MAX_LEAVES` (1 S2 call per
+    leaf). Queries with no OR operators return a trivial result
+    (single ``total_full_query`` entry).
+
+    Structural priors (year/fields_of_study/venue) are merged into
+    every variant's filter dict, identically to ``check_query_size``,
+    so the diagnostic reflects the same constraints the agent would
+    see when actually fetching.
+    """
+    query = args.get("query")
+    filters = args.get("filters")
+    if not isinstance(query, str) or not query.strip():
+        raise DispatcherError(
+            "missing or empty 'query' string",
+            "pass the full (possibly-complex) query you want to break down",
+        )
+    if filters is not None and not isinstance(filters, dict):
+        raise DispatcherError(
+            "'filters' must be a JSON object or null",
+            "pass the same filter shape you'd use in check_query_size",
+        )
+
+    # Lint the top-level query first so bad syntax fails with a teaching
+    # hint before we parse (the parser's errors are less actionable).
+    from citeclaw.agents.s2_query_lint import lint_s2_query
+    lint = lint_s2_query(query)
+    if not lint.ok:
+        raise DispatcherError(
+            f"S2 query lint: {lint.message}",
+            lint.hint,
+        )
+
+    from citeclaw.agents.query_parser import enumerate_or_leaves, tree_signature
+    try:
+        tree, substitutions = enumerate_or_leaves(query)
+    except Exception as exc:  # noqa: BLE001
+        raise DispatcherError(
+            f"could not parse query: {exc}",
+            "use Lucene syntax with balanced parens and quoted phrases",
+        ) from exc
+
+    sig = tree_signature(tree)
+    merged_filters = _merge_priors_into_filters(
+        filters if isinstance(filters, dict) else None, d
+    )
+
+    # Always report the total for the full query so the agent can
+    # compare per-leaf counts against it.
+    full_resp = d.ctx.s2.search_bulk(
+        query=query,
+        filters=merged_filters or None,
+        limit=1,
+    )
+    full_total = 0
+    if isinstance(full_resp, dict):
+        tot = full_resp.get("total")
+        if isinstance(tot, int) and tot >= 0:
+            full_total = tot
+
+    if not substitutions:
+        return {
+            "total_full_query": full_total,
+            "tree_shape": sig,
+            "or_groups": [],
+            "note": (
+                "query contains no OR (|) operators — per-branch breakdown "
+                "is only meaningful when at least one | is present"
+            ),
+        }
+
+    if len(substitutions) > _DIAGNOSTICS_MAX_LEAVES:
+        return {
+            "total_full_query": full_total,
+            "tree_shape": sig,
+            "or_groups": [],
+            "note": (
+                f"query has {len(substitutions)} OR leaves across "
+                f"{sig['or_groups']} groups — exceeds diagnostics cap of "
+                f"{_DIAGNOSTICS_MAX_LEAVES}. Simplify the query or probe "
+                f"one OR group at a time."
+            ),
+        }
+
+    # Probe each leaf. Group results by group_id so the agent sees the
+    # structure of its own query reflected in the response.
+    groups: dict[int, list[dict[str, Any]]] = {}
+    for sub in substitutions:
+        try:
+            resp = d.ctx.s2.search_bulk(
+                query=sub.substituted_query,
+                filters=merged_filters or None,
+                limit=1,
+            )
+            total: int | None = None
+            if isinstance(resp, dict):
+                raw = resp.get("total")
+                if isinstance(raw, int) and raw >= 0:
+                    total = raw
+        except Exception as exc:  # noqa: BLE001 — best-effort per leaf
+            total = None
+            leaf_err = f"{type(exc).__name__}: {str(exc)[:120]}"
+        else:
+            leaf_err = ""
+        entry: dict[str, Any] = {
+            "leaf": sub.leaf_text,
+            "substituted_query": sub.substituted_query,
+            "total_in_context": total,
+        }
+        if leaf_err:
+            entry["error"] = leaf_err
+        groups.setdefault(sub.group_id, []).append(entry)
+
+    # Sort each group's leaves by contribution descending so the "biggest
+    # branch" jumps out first in the transcript.
+    or_groups_out = []
+    for gid in sorted(groups.keys()):
+        leaves = sorted(
+            groups[gid],
+            key=lambda e: -(e.get("total_in_context") or -1),
+        )
+        or_groups_out.append({
+            "group_id": gid,
+            "n_leaves": len(leaves),
+            "leaves": leaves,
+        })
+
+    return {
+        "total_full_query": full_total,
+        "tree_shape": sig,
+        "or_groups": or_groups_out,
+        "n_leaves_probed": len(substitutions),
+    }
+
+
+_DIAGNOSTICS_MAX_LEAVES = 12
+
+
 def _handle_abandon_angle(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, Any]:
     """Drop the current active angle without completing its checklist.
 
@@ -986,6 +1134,7 @@ def register_worker_tools(dispatcher: WorkerDispatcher) -> None:
                  pre_hook=_pre_diagnose_miss, post_hook=_post_diagnose_miss),
         ToolSpec("inspect_angle", _handle_inspect_angle),
         ToolSpec("abandon_angle", _handle_abandon_angle),
+        ToolSpec("query_diagnostics", _handle_query_diagnostics),
         ToolSpec("done", _handle_done, pre_hook=_pre_done),
     ]
     dispatcher.register_many(specs)

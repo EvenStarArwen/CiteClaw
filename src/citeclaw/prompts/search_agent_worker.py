@@ -101,6 +101,15 @@ abandon_angle()
     low-signal and you want to open a new angle without wasting
     budget on the rest of its checklist.
 
+query_diagnostics(query, filters)
+  → per-OR-leaf hit count IN CONTEXT of the rest of the query. For
+    each "|" group, substitutes the group with each of its leaves
+    one at a time and reports the total. Useful when (a) you wrote
+    ("A" | "B" | "C") and want to know whether one branch is
+    dominating or redundant, or (b) a query's total looks wrong and
+    you want to localise which branch is the outlier. No precondition
+    — callable any turn. Cost: 1 S2 call per leaf, capped at 12.
+
 diagnose_miss(target_title, query_angles_used, hypotheses, action_taken)
   action_taken ∈ {accept_gap, add_angle, refine_current_angle,
                   relax_prior, no_action}
@@ -292,6 +301,7 @@ RESPONSE_SCHEMA = {
                 "diagnose_miss",
                 "get_paper",
                 "abandon_angle",
+                "query_diagnostics",
                 "done",
             ],
         },
