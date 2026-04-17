@@ -34,20 +34,56 @@ _EXTRAS_HINT = (
 )
 
 
+def _compute_cluster_params(n: int) -> dict[str, int]:
+    """Adaptive UMAP + HDBSCAN parameters tuned to corpus size ``n``.
+
+    Three coupled knobs scale together:
+
+    * ``min_cluster_size`` — HDBSCAN's minimum-cluster threshold. Hard-coded
+      to 10 under the old defaults; that collapses every topic into noise
+      on corpora below ~50 papers. Scales as ``n // 30`` clamped to
+      ``[5, 100]``: 5 on small corpora, 100 on large ones so the agent
+      doesn't surface micro-clusters at scale.
+    * ``min_samples`` — HDBSCAN density strictness. Defaults to
+      ``min_cluster_size`` when unset (overly strict); we cap it at 20%
+      of ``min_cluster_size`` so ~30% more papers escape the ``-1`` noise
+      bucket on small corpora.
+    * ``n_neighbors`` — UMAP local-vs-global balance. Scales as ``n // 50``
+      clamped to ``[5, 30]`` so small corpora preserve local structure
+      and large corpora use the global-structure default.
+
+    Worked examples::
+
+        n=50    → mcs=5,  min_samples=1,  n_neighbors=5
+        n=300   → mcs=10, min_samples=2,  n_neighbors=6
+        n=1000  → mcs=33, min_samples=7,  n_neighbors=20
+        n=3000  → mcs=100,min_samples=20, n_neighbors=30
+        n=10000 → mcs=100 (cap), min_samples=20 (cap), n_neighbors=30 (cap)
+    """
+    mcs = max(5, min(100, n // 30))
+    return {
+        "min_cluster_size": mcs,
+        "min_samples": max(1, int(0.2 * mcs)),
+        "n_neighbors": max(5, min(30, n // 50)),
+    }
+
+
 class TopicModelClusterer:
     name = "topic_model"
 
     def __init__(
         self,
         *,
-        # UMAP — defaults match BERTopic.
-        n_neighbors: int = 15,
+        # UMAP. ``n_neighbors=None`` → adaptive via :func:`_compute_cluster_params`.
+        n_neighbors: int | None = None,
         n_components: int = 5,
         min_dist: float = 0.0,
         umap_metric: str = "cosine",
         random_state: int = 42,
-        # HDBSCAN — defaults match BERTopic.
-        min_cluster_size: int = 10,
+        # HDBSCAN. ``min_cluster_size=None`` / ``min_samples=None`` → adaptive.
+        # Hand-set values still win; the adaptive path only fires when
+        # the caller didn't pin a number.
+        min_cluster_size: int | None = None,
         min_samples: int | None = None,
         hdbscan_metric: str = "euclidean",
         cluster_selection_method: str = "eom",
@@ -98,13 +134,30 @@ class TopicModelClusterer:
 
         membership: dict[str, int] = {pid: -1 for pid in missing}
 
+        # Resolve adaptive parameters from the number of papers we can
+        # actually cluster. Caller-set values (non-None attributes) always
+        # win over the adaptive defaults.
+        adaptive = _compute_cluster_params(len(kept_ids))
+        effective_mcs = (
+            self.min_cluster_size if self.min_cluster_size is not None
+            else adaptive["min_cluster_size"]
+        )
+        effective_min_samples = (
+            self.min_samples if self.min_samples is not None
+            else adaptive["min_samples"]
+        )
+        effective_n_neighbors = (
+            self.n_neighbors if self.n_neighbors is not None
+            else adaptive["n_neighbors"]
+        )
+
         # 3. Need at least min_cluster_size papers with embeddings; otherwise
         #    HDBSCAN can't form a single cluster. Treat that as "all noise".
-        if len(kept_ids) < max(2, self.min_cluster_size):
+        if len(kept_ids) < max(2, effective_mcs):
             log.warning(
                 "topic_model: only %d papers with embeddings (need >= %d); "
                 "skipping clustering, all papers assigned to -1",
-                len(kept_ids), max(2, self.min_cluster_size),
+                len(kept_ids), max(2, effective_mcs),
             )
             for pid in kept_ids:
                 membership[pid] = -1
@@ -118,7 +171,7 @@ class TopicModelClusterer:
 
         # 4. UMAP — reduce to n_components dims, preserving local structure.
         # n_neighbors must be < n_samples; clamp it.
-        n_neighbors = min(self.n_neighbors, max(2, len(kept_ids) - 1))
+        n_neighbors = min(effective_n_neighbors, max(2, len(kept_ids) - 1))
         reducer = umap.UMAP(
             n_neighbors=n_neighbors,
             n_components=min(self.n_components, max(2, len(kept_ids) - 1)),
@@ -130,8 +183,8 @@ class TopicModelClusterer:
 
         # 5. HDBSCAN — density-based clustering with -1 for noise.
         clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=max(2, self.min_cluster_size),
-            min_samples=self.min_samples,
+            min_cluster_size=max(2, effective_mcs),
+            min_samples=effective_min_samples,
             metric=self.hdbscan_metric,
             cluster_selection_method=self.cluster_selection_method,
         )

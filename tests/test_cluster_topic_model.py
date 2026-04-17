@@ -15,6 +15,7 @@ import pytest
 
 from citeclaw.cluster import TopicModelClusterer
 from citeclaw.cluster.base import ClusterResult
+from citeclaw.cluster.topic_model import _compute_cluster_params
 from citeclaw.models import PaperRecord
 from tests.fakes import FakeS2Client, make_paper
 
@@ -55,6 +56,43 @@ class TestExtrasMissingError:
         c = TopicModelClusterer(min_cluster_size=2)
         with pytest.raises(RuntimeError, match="topic_model"):
             c.cluster([_paper("p1")], _StubCtx())
+
+
+class TestComputeClusterParams:
+    """Breakpoints for the adaptive parameter helper.
+
+    Runs unconditionally — pure-Python math, no extras needed.
+    """
+
+    @pytest.mark.parametrize(
+        "n, expected",
+        [
+            # Small corpora: floor at mcs=5
+            (10,   {"min_cluster_size": 5,  "min_samples": 1,  "n_neighbors": 5}),
+            (50,   {"min_cluster_size": 5,  "min_samples": 1,  "n_neighbors": 5}),
+            (149,  {"min_cluster_size": 5,  "min_samples": 1,  "n_neighbors": 5}),
+            # Mid corpora: scale linearly with N
+            (300,  {"min_cluster_size": 10, "min_samples": 2,  "n_neighbors": 6}),
+            (1000, {"min_cluster_size": 33, "min_samples": 6,  "n_neighbors": 20}),
+            # Large: caps kick in
+            (3000, {"min_cluster_size": 100, "min_samples": 20, "n_neighbors": 30}),
+            (10000, {"min_cluster_size": 100, "min_samples": 20, "n_neighbors": 30}),
+        ],
+    )
+    def test_breakpoints(self, n: int, expected: dict):
+        assert _compute_cluster_params(n) == expected
+
+    def test_min_samples_at_least_twenty_percent_of_mcs(self):
+        """Per-spec invariant: min_samples >= 20% of min_cluster_size."""
+        for n in (10, 50, 150, 300, 1000, 3000, 10000):
+            p = _compute_cluster_params(n)
+            assert p["min_samples"] >= int(0.2 * p["min_cluster_size"]) or p["min_samples"] == 1
+
+    def test_min_cluster_size_in_range(self):
+        """min_cluster_size is always in [5, 100]."""
+        for n in (1, 10, 100, 1000, 10000, 100000):
+            mcs = _compute_cluster_params(n)["min_cluster_size"]
+            assert 5 <= mcs <= 100
 
 
 class _StubCtx:

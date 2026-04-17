@@ -79,9 +79,12 @@ class TestRegistry:
     def test_build_string_topic_model(self):
         c = build_clusterer("topic_model")
         assert isinstance(c, TopicModelClusterer)
-        # Defaults match BERTopic-style values.
-        assert c.n_neighbors == 15
-        assert c.min_cluster_size == 10
+        # Adaptive defaults (resolved at cluster() time based on signal size,
+        # not at construction). The attribute staying None is the signal that
+        # adaptive resolution should fire.
+        assert c.n_neighbors is None
+        assert c.min_cluster_size is None
+        assert c.min_samples is None
 
     def test_build_dict_walktrap_with_kwargs(self):
         c = build_clusterer({"type": "walktrap", "n_communities": 7})
