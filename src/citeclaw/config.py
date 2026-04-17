@@ -330,6 +330,16 @@ MODEL_PRICING: dict[str, tuple[float, float, float]] = {
     "gpt-5-mini":                            (0.25,  2.00,  2.00),
     "gpt-4.1":                               (2.00,  8.00,  8.00),
     "gpt-4.1-mini":                          (0.40,  1.60,  1.60),
+    # xAI Grok (native reasoning_effort)
+    "grok-4":                                (3.00, 15.00, 15.00),
+    "grok-4-reasoning":                      (3.00, 15.00, 15.00),
+    "grok-4-fast":                           (0.20,  0.50,  0.50),
+    "grok-4-fast-reasoning":                 (0.20,  0.50,  0.50),
+    "grok-4.20":                             (3.00, 15.00, 15.00),
+    "grok-4.20-reasoning":                   (3.00, 15.00, 15.00),
+    "grok-4.20-0309":                        (3.00, 15.00, 15.00),
+    "grok-4.20-0309-reasoning":              (3.00, 15.00, 15.00),
+    "grok-3":                                (2.00, 15.00, 15.00),
     # Anthropic (extended-thinking billed at output rate)
     "claude-opus-4-6":                       (15.00, 75.00, 75.00),
     "claude-sonnet-4-6":                     (3.00, 15.00, 15.00),
