@@ -217,11 +217,16 @@ results.
 - Active angle query: {active_query}
 - Cumulative papers: {n_cumulative}
 
-Plan your next action. If the previous call was check_query_size
-and total=0, BROADEN the current query by dropping a "+" clause or
-adding "|" alternatives (keep phrases quoted). Do NOT change
-sub-topic. If an angle is clearly off-topic after inspection, call
-abandon_angle() before opening a new one.
+# Action space for this turn
+
+{valid_next_tools}
+
+Plan your next action from the strongly-recommended set above. If
+the previous call was check_query_size and total=0, BROADEN the
+current query by dropping a "+" clause or adding "|" alternatives
+(keep phrases quoted). Do NOT change sub-topic. If an angle is
+clearly off-topic after inspection, call abandon_angle() before
+opening a new one.
 """
 
 

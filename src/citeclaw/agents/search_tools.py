@@ -58,6 +58,18 @@ def _handle_check_query_size(args: dict[str, Any], d: WorkerDispatcher) -> dict[
             "see the fieldsOfStudy / year / venue list in the system prompt",
         )
 
+    # Pre-flight syntax lint — reject obvious broken queries before S2
+    # sees them. A reject here is a teaching signal; the agent fixes
+    # and re-calls in one turn. Unlike a true S2 call it costs no
+    # network budget, so we can afford strict-ish rules.
+    from citeclaw.agents.s2_query_lint import lint_s2_query
+    lint = lint_s2_query(query)
+    if not lint.ok:
+        raise DispatcherError(
+            f"S2 query lint: {lint.message}",
+            lint.hint,
+        )
+
     merged_filters = _merge_priors_into_filters(
         filters if isinstance(filters, dict) else None, d
     )

@@ -116,6 +116,8 @@ class WorkerDispatcher:
     post-hooks do that writing on behalf of the matching handler.
     """
 
+    CIRCUIT_BREAKER_THRESHOLD = 3
+
     def __init__(
         self,
         *,
@@ -133,6 +135,7 @@ class WorkerDispatcher:
         self._tools: dict[str, ToolSpec] = {}
         self._done_called = False
         self._done_result: dict[str, Any] | None = None
+        self._circuit_tripped_on_angles: set[str] = set()
 
     # ------------------------------------------------------------------
     # Registration
@@ -288,7 +291,73 @@ class WorkerDispatcher:
             self._done_called = True
             self._done_result = result
 
+        # Circuit breaker: if this call errored AND the previous 2
+        # calls also errored on the SAME active angle (or on the
+        # "no-active-angle" state), synthetically invoke abandon_angle
+        # (or a no-active-angle reset) so the worker escapes the loop.
+        if is_error(result):
+            self._maybe_trip_circuit()
+
         return result
+
+    def _maybe_trip_circuit(self) -> None:
+        """Trip the circuit if the last N calls were all error envelopes.
+
+        On trip: if there's an active angle that hasn't already been
+        force-abandoned, synthetically call ``abandon_angle`` (bypassing
+        the tool dispatch machinery so this can't itself trigger the
+        breaker). Mark the fingerprint so we don't force-abandon it
+        again later in the same worker.
+        """
+        recent = [e for e in self.state.call_log[-self.CIRCUIT_BREAKER_THRESHOLD:]]
+        if len(recent) < self.CIRCUIT_BREAKER_THRESHOLD:
+            return
+        if not all(
+            isinstance(e.get("result"), dict) and "error" in e["result"]
+            for e in recent
+        ):
+            return
+        active = self.state.active_angle
+        if active is None:
+            return
+        if active.fingerprint in self._circuit_tripped_on_angles:
+            return
+        self._circuit_tripped_on_angles.add(active.fingerprint)
+        # Synthetic abandon — mirror the handler's effect directly so
+        # this call doesn't itself go through dispatch (which would
+        # re-check the circuit).
+        abandoned_fp = active.fingerprint
+        abandoned_df = active.df_id
+        removed_ids = 0
+        if abandoned_df and abandoned_df in self.store:
+            try:
+                df = self.store.get(abandoned_df)
+                for pid in df["paper_id"]:
+                    if isinstance(pid, str) and pid in self.state.cumulative_paper_ids:
+                        self.state.cumulative_paper_ids.remove(pid)
+                        removed_ids += 1
+            except Exception:  # noqa: BLE001
+                pass
+            self.store.drop(abandoned_df)
+        self.state.angles.pop(abandoned_fp, None)
+        self.state.active_fingerprint = None
+        self.state.call_log.append({
+            "turn": self.state.turn_index + 1,
+            "tool": "abandon_angle",
+            "args": {},
+            "synthetic": True,
+            "reason": "circuit_breaker_tripped_after_3_errors",
+            "result": {
+                "abandoned_fingerprint": abandoned_fp,
+                "n_papers_removed_from_cumulative": removed_ids,
+                "note": (
+                    "circuit breaker: 3 consecutive tool errors on this "
+                    "angle — auto-abandoned to prevent loop"
+                ),
+            },
+            "ts": 0,
+        })
+        self.state.turn_index += 1
 
 
 # ---------------------------------------------------------------------------

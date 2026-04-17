@@ -125,6 +125,7 @@ def run_sub_topic_worker(
                 active_query = f"{aa.query!r}"
                 if aa.filters:
                     active_query += f" with filters={aa.filters}"
+            valid_next = _compute_valid_next_tools(state, agent_config, last_tool_name)
             user_msg = USER_TEMPLATE_CONTINUE.format(
                 sub_topic_id=spec.id,
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
@@ -135,6 +136,7 @@ def run_sub_topic_worker(
                 n_cumulative=len(state.cumulative_paper_ids),
                 turn=turn,
                 max_turns=agent_config.worker_max_turns,
+                valid_next_tools=valid_next,
             )
 
         # LLM call with structured output.
@@ -317,6 +319,75 @@ def _parse_tool_call(text: str) -> dict[str, Any]:
             "{reasoning, tool_name, tool_args}"
         )
     return data
+
+
+def _compute_valid_next_tools(
+    state: WorkerState,
+    cfg: "AgentConfig",
+    last_tool_name: str,
+) -> str:
+    """Derive the narrow set of tools that make sense from the current
+    worker state. Rendered as a bullet list in the continuation user
+    message so weaker models follow the checklist lane by default.
+
+    The set is advisory: the dispatcher still accepts any registered
+    tool, but the prompt makes the intended next action obvious.
+    """
+    active = state.active_angle
+    verification_done = any(
+        e.get("tool") == "contains" for e in state.call_log
+    )
+    unresolved_miss = False
+    for e in reversed(state.call_log):
+        if e.get("tool") == "diagnose_miss":
+            break
+        if e.get("tool") == "contains":
+            if (e.get("result") or {}).get("contains") is False:
+                unresolved_miss = True
+            break
+
+    candidates: list[str] = []
+    if unresolved_miss:
+        # Dispatcher will reject any tool other than diagnose_miss
+        # until the miss is resolved.
+        candidates = ["diagnose_miss"]
+    elif active is None:
+        # No active angle: either open one or (if we have enough
+        # coverage) close the worker.
+        candidates = ["check_query_size"]
+        if any(a.is_checklist_complete() and a.df_id for a in state.angles.values()):
+            if verification_done:
+                candidates.append("done")
+            else:
+                candidates.append("search_match")
+    else:
+        # An angle is active. The next action depends on which
+        # checklist flags are unset.
+        if active.df_id is None:
+            # Size-checked but not fetched yet.
+            candidates = ["fetch_results", "abandon_angle"]
+        elif not (active.checked_top_cited and active.checked_random and active.checked_years):
+            candidates = ["sample_titles", "year_distribution",
+                          "venue_distribution", "abandon_angle"]
+        elif active.requires_topic_model and not active.checked_topic_model:
+            candidates = ["topic_model", "abandon_angle"]
+        else:
+            # Checklist complete on active angle — verify or move on.
+            if not verification_done:
+                candidates = ["search_match", "check_query_size", "abandon_angle"]
+            else:
+                candidates = ["check_query_size", "done", "abandon_angle"]
+
+    # Always surface search_within_df / get_paper / search_match as
+    # optional deep-dive tools; they don't advance the checklist but
+    # the agent may call them for inspection.
+    always_available = ["get_paper", "search_within_df"]
+    return (
+        "next-action candidates (strongly recommended): "
+        + ", ".join(f"`{t}`" for t in candidates)
+        + "; optional deep-dive: "
+        + ", ".join(f"`{t}`" for t in always_available)
+    )
 
 
 def _render_tool_result(tool_name: str, result: dict[str, Any] | None) -> str:
