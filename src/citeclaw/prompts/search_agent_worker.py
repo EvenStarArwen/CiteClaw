@@ -51,15 +51,6 @@ FILTERS (narrow without changing text — preferred over more "+" clauses)
   publicationTypes  one of: Review, JournalArticle, Conference,
                     Dataset, Editorial, …
 
-TOTAL-SIZE HEURISTICS (return value of check_query_size)
-  total < 10            BROADEN the CURRENT query — drop a "+" clause
-                        or add "|" alternatives. Stay on sub-topic.
-  10 ≤ total < 50       Proceed to fetch; plan another angle too.
-  50 ≤ total ≤ 5000     Sweet spot — proceed to fetch.
-  5000 < total ≤ 50000  Narrow with a FILTER (year, fieldsOfStudy),
-                        NOT with more "+" clauses.
-  total > 50000         fetch_results refuses. Narrow first.
-
 # The tools
 
 check_query_size(query, filters)
@@ -236,12 +227,15 @@ results.
 
 {valid_next_tools}
 
-Plan your next action from the strongly-recommended set above. If
-the previous call was check_query_size and total=0, BROADEN the
-current query by dropping a "+" clause or adding "|" alternatives
-(keep phrases quoted). Do NOT change sub-topic. If an angle is
-clearly off-topic after inspection, call abandon_angle() before
-opening a new one.
+# Situational hints (only what's relevant right now)
+
+{situational_hints}
+
+Plan your next action from the strongly-recommended set above.
+Follow the situational hints where they apply — they are derived
+from your current state, not generic rules. Do NOT change sub-topic.
+If an angle is clearly off-topic after inspection, call
+abandon_angle() before opening a new one.
 """
 
 

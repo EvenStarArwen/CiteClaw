@@ -137,14 +137,18 @@ def _pre_check_query_size(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
                     f"before size-checking a new (query, filters) tuple."
                 ),
             )
-    # Angle-cap pre-check: would this open a 5th angle?
+    # Angle-cap pre-check: would this open a new angle past the cap?
     if fp not in d.state.angles and len(d.state.angles) >= d.config.max_angles_per_worker:
         return error_envelope(
             f"angle cap reached ({d.config.max_angles_per_worker})",
             (
-                "you've opened the maximum number of distinct query angles "
-                "for this sub-topic; finish inspection on existing angles "
-                "and call done()"
+                f"you've opened {len(d.state.angles)} of {d.config.max_angles_per_worker} "
+                "angles for this sub-topic. Two recovery paths: "
+                "(a) finish any outstanding inspection on existing angles "
+                "then call done(), or "
+                "(b) if the ACTIVE angle is low-signal, call abandon_angle() "
+                "to drop it — that frees a slot and lets you size-check "
+                "this new query next turn."
             ),
         )
     return None

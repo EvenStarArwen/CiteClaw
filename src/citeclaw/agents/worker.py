@@ -129,6 +129,13 @@ def run_sub_topic_worker(
             valid_next = _compute_valid_next_tools(
                 state, agent_config, last_tool_name, turn=turn,
             )
+            hint_list = _compute_relevant_hints(
+                last_tool_name, last_tool_result, state, agent_config,
+            )
+            if hint_list:
+                hints_rendered = "\n".join(f"- {h}" for h in hint_list)
+            else:
+                hints_rendered = "(no situational hints this turn)"
             user_msg = USER_TEMPLATE_CONTINUE.format(
                 sub_topic_id=spec.id,
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
@@ -140,6 +147,7 @@ def run_sub_topic_worker(
                 turn=turn,
                 max_turns=agent_config.worker_max_turns,
                 valid_next_tools=valid_next,
+                situational_hints=hints_rendered,
             )
 
         # LLM call with structured output.
@@ -464,6 +472,95 @@ def _attempt_auto_close(
         "coverage_assessment": "limited",
         "summary": summary,
     })
+
+
+def _compute_relevant_hints(
+    last_tool_name: str,
+    last_tool_result: dict[str, Any] | None,
+    state: WorkerState,
+    cfg: "AgentConfig",
+) -> list[str]:
+    """Situational, state-derived hints surfaced to the worker per turn.
+
+    The v1 SYSTEM prompt encoded these as a fixed "rules table" the
+    worker re-read every turn (the accreting-rules anti-pattern).
+    Moving them here:
+
+    * shrinks the evergreen SYSTEM prompt,
+    * surfaces guidance only when the state makes it actionable
+      (e.g. size-band guidance only fires after a check_query_size),
+    * lets weaker models attend to a small *current* list rather
+      than scanning an exhaustive table,
+    * and keeps the critical "NEVER change sub-topic" / syntax
+      rules in SYSTEM where they belong (evergreen, not situational).
+
+    Returns a list of 0–3 short hint strings. The caller decides how
+    to render them (bullet list in user message).
+    """
+    hints: list[str] = []
+
+    # 1. Size-band guidance — only when the last call returned a ``total``.
+    if (
+        last_tool_name == "check_query_size"
+        and isinstance(last_tool_result, dict)
+        and isinstance(last_tool_result.get("total"), int)
+    ):
+        total = last_tool_result["total"]
+        cap = getattr(cfg, "fetch_total_cap", 50_000)
+        if total == 0:
+            hints.append(
+                "total=0 ⇒ the query is over-constrained. Drop a '+' "
+                "clause OR add '|' alternatives. STAY on this sub-topic "
+                "— do not switch."
+            )
+        elif total < 10:
+            hints.append(
+                f"total={total} is very thin. Broaden by dropping a '+' "
+                "clause or adding '|' alternatives before fetch_results."
+            )
+        elif total > cap:
+            hints.append(
+                f"total={total:,} exceeds the fetch cap ({cap:,}). Add "
+                "a structural filter (year / fieldsOfStudy / venue) — "
+                "NOT more '+' clauses."
+            )
+        elif total > 5_000:
+            hints.append(
+                f"total={total:,} is large. Narrow with a structural "
+                "filter (year / fieldsOfStudy / venue) if you want a "
+                "denser sample. Extra '+' clauses often collapse to 0."
+            )
+        elif 50 <= total <= 5_000:
+            hints.append(
+                f"total={total:,} is in the sweet spot — proceed to "
+                "fetch_results with the SAME (query, filters) pair."
+            )
+
+    # 2. Angle-count awareness — preempt the cap error.
+    n_angles = len(state.angles)
+    if n_angles >= cfg.max_angles_per_worker:
+        hints.append(
+            f"{n_angles}/{cfg.max_angles_per_worker} angles used (cap "
+            "reached). check_query_size on a new (query, filters) pair "
+            "will be rejected. Finish inspection + call done(), or "
+            "abandon_angle() on a low-signal active angle first."
+        )
+    elif n_angles == cfg.max_angles_per_worker - 1:
+        hints.append(
+            f"{n_angles}/{cfg.max_angles_per_worker} angles — one slot "
+            "left. Make the next angle count."
+        )
+
+    # 3. Refinement-cap awareness on the active angle.
+    active = state.active_angle
+    if active is not None and active.refinement_count >= cfg.max_refinement_per_angle:
+        hints.append(
+            f"active angle has refined {active.refinement_count} times "
+            "(at cap). The next check_query_size on a different query "
+            "will open a NEW angle — pick a meaningfully different axis."
+        )
+
+    return hints
 
 
 def _compute_valid_next_tools(
