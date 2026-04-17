@@ -18,6 +18,55 @@ from citeclaw.cluster import build_clusterer
 from citeclaw.models import PaperRecord
 
 
+def _largest_remainder_allocate(
+    n_slots: int, weights: list[int], caps: list[int],
+) -> list[int]:
+    """Apportion ``n_slots`` among items proportional to ``weights``,
+    respecting per-item ``caps``, using Hamilton's largest-remainder method.
+
+    The previous ``round()``-based distribution accumulated rounding drift
+    and also drained the running ``surplus`` variable in-loop — later
+    clusters systematically got less than their proportional share. This
+    helper fixes both: compute ideal allocations up-front, floor them,
+    then distribute the remainder by descending fractional part.
+
+    Slots that can't be assigned because all cap-respecting items are
+    full are returned unassigned (the caller's leftover-fill path mops
+    them up).
+    """
+    n = len(weights)
+    assert len(caps) == n, "weights and caps must be same length"
+    if n == 0 or n_slots <= 0:
+        return [0] * n
+    total_weight = sum(weights)
+    if total_weight <= 0:
+        return [0] * n
+
+    ideals = [w * n_slots / total_weight for w in weights]
+    alloc = [min(int(ideals[i]), caps[i]) for i in range(n)]
+
+    remaining = n_slots - sum(alloc)
+    # Indices sorted by descending fractional remainder; ties broken
+    # deterministically by input order (stable sort).
+    order = sorted(range(n), key=lambda i: -(ideals[i] - int(ideals[i])))
+    # Redistribute remaining slots one at a time in remainder order. Loop
+    # until either the surplus is spent or every item is capped — the
+    # outer ``while`` is what handles the over-capped-item overflow case
+    # (first pass hits a cap, remaining slots cascade to uncapped items).
+    while remaining > 0:
+        progress = False
+        for i in order:
+            if remaining <= 0:
+                break
+            if alloc[i] < caps[i]:
+                alloc[i] += 1
+                remaining -= 1
+                progress = True
+        if not progress:
+            break
+    return alloc
+
+
 def cluster_diverse_top_k(
     signal: list[PaperRecord],
     scores: dict[str, float],
@@ -81,28 +130,15 @@ def cluster_diverse_top_k(
         # Floor: 1 slot per cluster.
         for c, _ in sorted_comms:
             slots[c] = 1
-        # Distribute the surplus proportionally to size, capped by member count.
+        # Distribute the surplus proportionally via Hamilton's method
+        # (largest-remainder). Weights = cluster sizes; caps = cluster size
+        # minus the 1 slot already reserved.
         surplus = k - n_comms
-        total = sum(len(m) for _, m in sorted_comms)
-        for c, members in sorted_comms:
-            if surplus <= 0:
-                break
-            extra = round(surplus * len(members) / total) if total else 0
-            extra = min(extra, len(members) - slots[c], surplus)
-            if extra < 0:
-                extra = 0
+        weights = [len(m) for _, m in sorted_comms]
+        caps = [len(m) - 1 for _, m in sorted_comms]
+        extras = _largest_remainder_allocate(surplus, weights, caps)
+        for (c, _), extra in zip(sorted_comms, extras):
             slots[c] += extra
-            surplus -= extra
-        # Any rounding remainder gets handed to the largest clusters that
-        # still have headroom (largest-remainder method).
-        for c, members in sorted_comms:
-            if surplus <= 0:
-                break
-            headroom = len(members) - slots[c]
-            if headroom > 0:
-                add = min(headroom, surplus)
-                slots[c] += add
-                surplus -= add
 
     selected: list[PaperRecord] = []
     for c, n in slots.items():

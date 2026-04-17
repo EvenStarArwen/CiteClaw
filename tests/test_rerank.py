@@ -11,7 +11,10 @@ from citeclaw.cluster import (
 )
 from citeclaw.cluster.base import ClusterMetadata, ClusterResult
 from citeclaw.models import PaperRecord
-from citeclaw.rerank.diversity import cluster_diverse_top_k
+from citeclaw.rerank.diversity import (
+    _largest_remainder_allocate,
+    cluster_diverse_top_k,
+)
 from citeclaw.rerank.metrics import compute_metric
 
 
@@ -164,6 +167,58 @@ class _FixedMembershipClusterer:
 
     def cluster(self, signal, ctx) -> ClusterResult:
         return ClusterResult(membership=self._m, algorithm=self.name)
+
+
+class TestLargestRemainderAllocate:
+    """Unit tests for the Hamilton-method allocator.
+
+    The previous round()-based distribution accumulated drift; these tests
+    pin the specific behaviours we want: exact sum when caps allow it,
+    proportional shape across a range of inputs, and stable tie-breaking.
+    """
+
+    def test_exact_sum_when_uncapped(self):
+        # 10 slots, weights [3, 7] → ideal [3.0, 7.0] → exact.
+        assert _largest_remainder_allocate(10, [3, 7], [100, 100]) == [3, 7]
+
+    def test_rounding_uses_largest_remainder(self):
+        # 3 slots, weights [1, 1, 1] → ideals all 1.0 → each gets 1.
+        assert _largest_remainder_allocate(3, [1, 1, 1], [10, 10, 10]) == [1, 1, 1]
+        # 4 slots, weights [1, 1, 1] → ideals all 4/3 ≈ 1.333 → floors
+        # [1,1,1], remainders all equal → one extra goes to first by stable
+        # tie-break (sort key reversed).
+        out = _largest_remainder_allocate(4, [1, 1, 1], [10, 10, 10])
+        assert sum(out) == 4
+        assert all(v >= 1 for v in out)
+
+    def test_caps_clamp_allocation(self):
+        # 10 slots, weights [5, 5], caps [2, 10]. Ideal [5, 5] → capped at
+        # [2, 5] and then 3 slots left → assigned to the uncapped item up
+        # to its cap.
+        out = _largest_remainder_allocate(10, [5, 5], [2, 10])
+        assert out[0] == 2
+        # Uncapped item takes whatever fits.
+        assert out[1] == min(10, 10 - out[0]) == 8
+
+    def test_unassignable_slots_dropped_silently(self):
+        # 10 slots but total cap is 3 → only 3 get assigned.
+        out = _largest_remainder_allocate(10, [1, 1], [1, 2])
+        assert sum(out) <= 3
+
+    def test_no_drift_on_repeated_allocation(self):
+        """Drift check: 5 equal-weight clusters, varying surplus values.
+        Every allocation must sum exactly to min(surplus, total_cap)."""
+        weights = [10, 10, 10, 10, 10]
+        caps = [10, 10, 10, 10, 10]
+        for surplus in range(0, 51):
+            out = _largest_remainder_allocate(surplus, weights, caps)
+            assert sum(out) == surplus, f"drift on surplus={surplus}: {out}"
+
+    def test_zero_total_weight(self):
+        assert _largest_remainder_allocate(5, [0, 0], [5, 5]) == [0, 0]
+
+    def test_zero_slots(self):
+        assert _largest_remainder_allocate(0, [5, 5], [5, 5]) == [0, 0]
 
 
 class TestDiversityAllocator:
