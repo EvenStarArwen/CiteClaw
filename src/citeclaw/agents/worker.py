@@ -124,6 +124,7 @@ def run_sub_topic_worker(
             user_msg = USER_TEMPLATE_CONTINUE.format(
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
                 n_angles=len(state.angles),
+                max_angles_per_worker=agent_config.max_angles_per_worker,
                 active_angle=(state.active_fingerprint or "(none)"),
                 n_cumulative=len(state.cumulative_paper_ids),
                 turn=turn,
