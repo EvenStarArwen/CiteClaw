@@ -463,7 +463,56 @@ class SemanticScholarClient:
                 rec.citation_count = data["citationCount"]
             if rec.year is None and data.get("year") is not None:
                 rec.year = data["year"]
+
+        # 3) OpenAlex fallback for records still missing an abstract. We
+        # only attempt this for papers that carry a DOI in external_ids
+        # — OpenAlex's lookup path is DOI-keyed, and trying arbitrary
+        # titles would waste rate budget on false matches. Records
+        # without a DOI stay un-enriched (the pipeline tolerates None
+        # abstracts throughout). Failures log at info and never propagate.
+        oa_needs = [
+            r for r in still_missing
+            if not r.abstract and r.external_ids and r.external_ids.get("DOI")
+        ]
+        if oa_needs:
+            self._openalex_abstract_fallback(oa_needs)
+
         return records
+
+    def _openalex_abstract_fallback(self, records: list[PaperRecord]) -> None:
+        """Best-effort fallback: query OpenAlex for abstracts we couldn't
+        get from S2. Imports are deferred so configs without OpenAlex
+        credentials don't pay the import cost.
+        """
+        try:
+            from citeclaw.clients.openalex import OpenAlexClient
+        except ImportError as exc:  # pragma: no cover - defensive
+            log.debug("OpenAlex client unavailable: %s", exc)
+            return
+        client = OpenAlexClient(self._config)
+        try:
+            for rec in records:
+                doi = rec.external_ids.get("DOI")
+                if not doi:
+                    continue
+                try:
+                    abstract = client.fetch_abstract_by_doi(doi)
+                except Exception as exc:  # noqa: BLE001 — best-effort
+                    log.debug("OpenAlex abstract fetch failed for %s: %s",
+                              rec.paper_id[:20], exc)
+                    continue
+                if abstract:
+                    rec.abstract = abstract
+                    # Also write-through to the metadata cache so rerun
+                    # doesn't re-hit OpenAlex.
+                    try:
+                        cached = self._cache.get_metadata(rec.paper_id) or {}
+                        cached["abstract"] = abstract
+                        self._cache.put_metadata(rec.paper_id, cached)
+                    except Exception:  # noqa: BLE001
+                        pass
+        finally:
+            client.close()
 
     def enrich_batch(self, candidates: list[dict[str, Any]]) -> list[PaperRecord]:
         """Hydrate ``candidates`` (list of ``{paper_id: ...}`` dicts) into

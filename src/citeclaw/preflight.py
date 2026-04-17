@@ -165,6 +165,24 @@ def find_missing_api_keys(config: Settings) -> list[str]:
     ]
 
 
+def find_optional_unset_keys(config: Settings) -> list[str]:
+    """Report optional keys that are unset but unlock better behaviour.
+
+    Unlike :func:`find_missing_api_keys`, nothing in this list blocks a
+    run — the caller is expected to log these as warnings rather than
+    errors. Currently only :envvar:`OPENALEX_API_KEY`: unset, OpenAlex
+    still works via the polite pool, but abstract / reference fallback
+    will be rate-limited to ~10 rps.
+    """
+    out: list[str] = []
+    if not config.openalex_api_key:
+        out.append(
+            "OPENALEX_API_KEY unset — OpenAlex fallback will use the "
+            "polite pool (~10 rps). Set the env var for higher limits."
+        )
+    return out
+
+
 def _walk_blocks_in_built(config: Settings) -> Iterable[str]:
     """Iterate every model override across all built blocks."""
     for block in (config.blocks_built or {}).values():

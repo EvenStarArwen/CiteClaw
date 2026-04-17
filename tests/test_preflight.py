@@ -11,7 +11,11 @@ from __future__ import annotations
 import pytest
 
 from citeclaw.config import ModelEndpoint, Settings
-from citeclaw.preflight import find_missing_api_keys, required_keys_for_model
+from citeclaw.preflight import (
+    find_missing_api_keys,
+    find_optional_unset_keys,
+    required_keys_for_model,
+)
 
 
 def _settings(**overrides) -> Settings:
@@ -216,3 +220,24 @@ class TestFindMissingApiKeys:
         )
         msgs = find_missing_api_keys(cfg)
         assert any("GEMINI_API_KEY" in m for m in msgs), msgs
+
+
+class TestFindOptionalUnsetKeys:
+    def test_openalex_key_warned_when_absent(self, monkeypatch):
+        monkeypatch.delenv("OPENALEX_API_KEY", raising=False)
+        cfg = _settings()
+        warnings = find_optional_unset_keys(cfg)
+        assert any("OPENALEX_API_KEY" in w for w in warnings)
+
+    def test_openalex_key_set_no_warning(self):
+        cfg = _settings(openalex_api_key="present")
+        warnings = find_optional_unset_keys(cfg)
+        assert not any("OPENALEX_API_KEY" in w for w in warnings)
+
+    def test_never_blocks_a_run(self):
+        """The contract: every entry must be a plain string, never a
+        blocker. If future code ever returns a tuple / raises, this
+        test breaks early."""
+        cfg = _settings()
+        warnings = find_optional_unset_keys(cfg)
+        assert all(isinstance(w, str) for w in warnings)

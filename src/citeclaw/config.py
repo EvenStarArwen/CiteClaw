@@ -121,6 +121,13 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     gemini_api_key: str = ""
     s2_api_key: str = ""
+    # OpenAlex — abstract + reference fallback when S2 is incomplete.
+    # Polite-pool access is free and unauthenticated; setting an API key
+    # unlocks the higher-rate-limit pool. ``openalex_email`` identifies
+    # the caller for polite-pool etiquette (OpenAlex prefers this to bare
+    # IPs). Absent both, the client still works but is rate-limited.
+    openalex_api_key: str = ""
+    openalex_email: str = ""
 
     # LLM
     screening_model: str = "stub"
@@ -170,6 +177,10 @@ class Settings(BaseSettings):
     # sustained outage rather than transient hiccups. Set to 0 to
     # disable the auto-abort.
     s2_max_consecutive_failures: int = 10
+    # OpenAlex rate limit in requests / second. The polite-pool ceiling
+    # is ~10 rps; the API-key pool is ~100 rps. Default of 5 rps keeps
+    # the polite pool happy without aggressive bursts.
+    openalex_rps: float = 5.0
 
     # Topic + IO
     topic_description: str = ""
@@ -220,11 +231,13 @@ _FORBIDDEN_YAML_KEYS = {
     "gemini_api_key",
     "s2_api_key",
     "llm_api_key",
+    "openalex_api_key",
     "OPENAI_API_KEY",
     "GEMINI_API_KEY",
     "S2_API_KEY",
     "SEMANTIC_SCHOLAR_API_KEY",
     "LLM_API_KEY",
+    "OPENALEX_API_KEY",
 }
 
 
@@ -248,6 +261,8 @@ def _env_overrides(values: dict[str, Any]) -> None:
         (("CITECLAW_OPENAI_API_KEY", "OPENAI_API_KEY"), "openai_api_key"),
         (("CITECLAW_GEMINI_API_KEY", "GEMINI_API_KEY"), "gemini_api_key"),
         (("CITECLAW_S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY"), "s2_api_key"),
+        (("CITECLAW_OPENALEX_API_KEY", "OPENALEX_API_KEY"), "openalex_api_key"),
+        (("CITECLAW_OPENALEX_EMAIL", "OPENALEX_EMAIL"), "openalex_email"),
     ]:
         for k in env_keys:
             v = os.environ.get(k)
