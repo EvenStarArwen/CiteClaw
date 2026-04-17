@@ -70,25 +70,25 @@ fetch_results(query, filters)
   → df_id, n_fetched, total_in_corpus, fetch_strategy.
     (query, filters) MUST be the exact pair you just size-checked.
 
-sample_titles(strategy, n)          (df_id optional — defaults to active angle)
-  → titles+year+venue+citations. strategy ∈ {"top_cited","random"}.
+inspect_angle()                     (df_id optional — defaults to active angle)
+  → RECOMMENDED: runs the full post-fetch checklist in ONE call.
+    Returns { top_cited_titles, random_titles, year_distribution,
+    topic_model | skipped }. Auto-flips every inspection flag on
+    the active angle. Use this instead of orchestrating the four
+    individual tools below yourself — fewer turns, same result.
 
-year_distribution()                 (df_id optional)
-  → {year: count} histogram
-venue_distribution(top_k)           (df_id optional)
-  → top-K venues
+Fine-grained inspection (only when you need something inspect_angle
+doesn't give you; most angles never need these):
 
-topic_model()                       (df_id optional)
-  → UMAP+HDBSCAN clusters with c-TF-IDF labels.
-    REQUIRED iff n_fetched ≥ 500; otherwise skip.
+sample_titles(strategy, n)          → titles+year+venue+citations.
+year_distribution()                 → {year: count} histogram.
+venue_distribution(top_k)           → top-K venues.
+topic_model()                       → UMAP+HDBSCAN clusters.
+search_within_df(pattern, fields)   → regex match, flag only.
 
-search_within_df(pattern, fields)   (df_id optional)
-  → regex match, returns matching_field flag (NOT the full text)
-
-NOTE: df_id is an opaque internal string. When you want to inspect the
-CURRENT fetched angle (the common case) you can OMIT df_id entirely
-and the tool will default to the active angle's DataFrame. Only pass
-df_id when targeting a specific earlier angle's DataFrame.
+NOTE: df_id on every above tool is an opaque internal string and is
+optional — the tool defaults to the active angle's DataFrame. Only
+pass df_id when targeting an EARLIER angle's DataFrame (rare).
 
 search_match(title)   → resolve a title to paper_id
 contains(paper_id)    → True iff paper_id is in your CUMULATIVE fetch set
@@ -110,19 +110,18 @@ done(paper_ids, coverage_assessment, summary)
 
 # Per-angle checklist (enforced by dispatcher)
 
-Within one angle (same (query, filters) pair), run these in order
-— cheap first, heavy last — so you can bail before the expensive ones
-if samples show the angle is off-topic. Call abandon_angle then to
-drop this angle and open a new one.
+Within one angle (same (query, filters) pair), the DEFAULT path is
+just three tools:
 
   1. check_query_size              (1 S2 call; preview titles)
   2. fetch_results                 (2 S2 bulk calls + batch enrich)
-  3. sample_titles("top_cited")    (free — DataFrame sort+head)
-  4. sample_titles("random")       (free)
-  5. year_distribution             (free)
-  6. topic_model                   (expensive — embedding fetch +
-                                    UMAP + HDBSCAN). Only if
-                                    n_fetched ≥ 500; skip otherwise.
+  3. inspect_angle                 (ONE call; does samples + year +
+                                    topic_model-if-needed + flips all
+                                    checklist flags for you)
+
+Use the fine-grained tools (sample_titles / year_distribution /
+topic_model / search_within_df) only when inspect_angle's result
+raises a specific question you want to drill into.
 
 Angle transition (new (query, filters)): either
   (a) the outgoing angle's checklist 3-6 must be complete, or
@@ -282,6 +281,7 @@ RESPONSE_SCHEMA = {
             "enum": [
                 "check_query_size",
                 "fetch_results",
+                "inspect_angle",
                 "sample_titles",
                 "year_distribution",
                 "venue_distribution",

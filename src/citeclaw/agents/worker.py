@@ -216,6 +216,22 @@ def run_sub_topic_worker(
         if ctx.budget.is_exhausted(ctx.config):
             failure_reason = "budget_exhausted"
             break
+        # Auto-close safety net: on the penultimate turn, if the worker
+        # has produced any cumulative papers, force a clean close. We
+        # auto-abandon any angle whose checklist is incomplete (so the
+        # done hook's precondition passes) and synthetically call
+        # ``done`` with coverage_assessment=limited. Rationale: a
+        # worker that fetched real papers but couldn't orchestrate the
+        # verification cycle in 20 turns is still more useful than one
+        # we reject for max_turns. Only kicks in on turn
+        # ``worker_max_turns - 1`` so it never pre-empts a healthy run.
+        if turn == agent_config.worker_max_turns - 1:
+            _attempt_auto_close(
+                dispatcher, state, spec=spec, logger=logger,
+                worker_id=worker_id, turn=turn,
+            )
+            if dispatcher.done_called:
+                break
 
     # Clean up the DataFrame store for this worker.
     dispatcher.store.drop_all_for_worker(worker_id)
@@ -323,6 +339,82 @@ def _parse_tool_call(text: str) -> dict[str, Any]:
     return data
 
 
+def _attempt_auto_close(
+    dispatcher,
+    state: WorkerState,
+    *,
+    spec: SubTopicSpec,
+    logger: "SearchLogger",
+    worker_id: str,
+    turn: int,
+) -> None:
+    """Force a clean close on the penultimate turn.
+
+    Steps:
+      1. If the worker has zero fetched papers, skip — there's nothing
+         to close and the natural "failed" status is correct.
+      2. Abandon every angle whose inspection checklist is incomplete
+         so the done hook doesn't reject on per-angle grounds.
+      3. If no verification cycle has run, synthetically run one
+         against the first reference paper (or any first_3_titles
+         we can see in the log). Records a diagnose_miss with
+         action_taken="accept_gap" for misses.
+      4. Call ``done`` via the dispatcher with coverage_assessment
+         inferred from remaining state.
+
+    Every step is logged via the dispatcher so the transcript shows
+    exactly what the auto-closer did. Best-effort: if anything fails
+    we leave the worker in its current state and the normal
+    max_turns failure path handles it.
+    """
+    if not state.cumulative_paper_ids:
+        return
+    # Step 2: abandon any angle with an incomplete checklist.
+    incomplete = [
+        a for a in list(state.angles.values())
+        if a.df_id is not None and not a.is_checklist_complete()
+    ]
+    for angle in incomplete:
+        # Point active_angle at the incomplete angle, then abandon via
+        # the dispatcher so the effect is consistent with a real
+        # abandon call (drops df, removes papers, logs).
+        state.active_fingerprint = angle.fingerprint
+        dispatcher.dispatch("abandon_angle", {})
+    # Step 3: if no verification cycle has run yet, attempt one.
+    has_contains = any(e.get("tool") == "contains" for e in state.call_log)
+    if not has_contains:
+        # Pick the first reference paper we have, or give up on verify.
+        anchor_title = (
+            spec.reference_papers[0] if spec.reference_papers else None
+        )
+        if anchor_title:
+            sm = dispatcher.dispatch("search_match", {"title": anchor_title})
+            if isinstance(sm, dict) and "error" not in sm and sm.get("match"):
+                pid = sm["match"].get("paper_id")
+                if isinstance(pid, str):
+                    c = dispatcher.dispatch("contains", {"paper_id": pid})
+                    if isinstance(c, dict) and c.get("contains") is False:
+                        dispatcher.dispatch("diagnose_miss", {
+                            "target_title": anchor_title,
+                            "hypotheses": ["auto-closer: not reached within worker budget"],
+                            "action_taken": "accept_gap",
+                            "query_angles_used": [
+                                a.query for a in state.angles.values() if a.query
+                            ],
+                        })
+    # Step 4: force done.
+    summary = (
+        f"auto-closed on turn {turn} of {dispatcher.config.worker_max_turns} "
+        f"(reached turn budget); {len(state.cumulative_paper_ids)} papers "
+        f"fetched across {len(state.angles)} live angle(s)"
+    )
+    dispatcher.dispatch("done", {
+        "paper_ids": sorted(state.cumulative_paper_ids),
+        "coverage_assessment": "limited",
+        "summary": summary,
+    })
+
+
 def _compute_valid_next_tools(
     state: WorkerState,
     cfg: "AgentConfig",
@@ -390,9 +482,12 @@ def _compute_valid_next_tools(
         if active.df_id is None:
             candidates = ["fetch_results", "abandon_angle"]
         elif not (active.checked_top_cited and active.checked_random and active.checked_years):
-            candidates = ["sample_titles", "year_distribution",
-                          "venue_distribution", "abandon_angle"]
+            # inspect_angle does all three in one call — strongly preferred.
+            candidates = ["inspect_angle", "abandon_angle"]
         elif active.requires_topic_model and not active.checked_topic_model:
+            # inspect_angle also covers topic_model. The agent likely
+            # already called inspect_angle and it skipped topic_model
+            # for some reason; fall back to the primitive.
             candidates = ["topic_model", "abandon_angle"]
         else:
             # Checklist on active complete.

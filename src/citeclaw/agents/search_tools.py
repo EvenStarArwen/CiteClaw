@@ -839,6 +839,81 @@ def _pre_done(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, Any] | Non
 # ---------------------------------------------------------------------------
 
 
+def _handle_inspect_angle(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, Any]:
+    """Compound tool: run the full post-fetch checklist on the active
+    angle in one dispatch.
+
+    Runs sample_titles(top_cited, n=10), sample_titles(random, n=10),
+    year_distribution, and topic_model (if n_fetched ≥ 500) in sequence.
+    Flips all four checklist flags on the target angle at once and
+    returns a single merged payload so the worker doesn't have to
+    orchestrate the individual calls.
+
+    ``df_id`` defaults to the active angle's DataFrame (same as the
+    underlying tools). Returns an error envelope if no DataFrame is
+    available.
+    """
+    df_id = args.get("df_id")
+    if not isinstance(df_id, str) or not df_id or df_id not in d.store:
+        active = d.state.active_angle
+        if active is None or not active.df_id or active.df_id not in d.store:
+            raise DispatcherError(
+                "no DataFrame available for inspection",
+                "call fetch_results first",
+            )
+        df_id = active.df_id
+    angle = find_angle_by_df_id(d, df_id)
+    if angle is None:
+        raise DispatcherError(
+            "df_id not associated with any angle",
+            "the df_id was registered but its AngleState is missing",
+        )
+    df = d.store.get(df_id)
+
+    # Run the four inspection tools inline so the one-shot result carries
+    # every signal the worker needs to judge the angle.
+    n_fetched = len(df)
+    top_cited = _handle_sample_titles(
+        {"df_id": df_id, "strategy": "top_cited", "n": 10}, d,
+    )["samples"]
+    random_sample = _handle_sample_titles(
+        {"df_id": df_id, "strategy": "random", "n": 10}, d,
+    )["samples"]
+    year_counts = _handle_year_distribution({"df_id": df_id}, d)["year_counts"]
+
+    result: dict[str, Any] = {
+        "df_id": df_id,
+        "n_fetched": n_fetched,
+        "top_cited_titles": top_cited,
+        "random_titles": random_sample,
+        "year_distribution": year_counts,
+        "topic_model": None,
+    }
+    # Flip checklist flags explicitly (sample_titles post-hook will have
+    # flipped top_cited + random; year_distribution flipped years).
+    angle.checked_top_cited = True
+    angle.checked_random = True
+    angle.checked_years = True
+
+    # topic_model: only when the angle has enough papers.
+    if angle.requires_topic_model:
+        try:
+            tm = _handle_topic_model({"df_id": df_id}, d)
+            result["topic_model"] = tm
+            angle.checked_topic_model = True
+        except DispatcherError as exc:
+            result["topic_model"] = {"skipped": True, "reason": str(exc.error)}
+        except Exception as exc:  # noqa: BLE001
+            result["topic_model"] = {"skipped": True, "reason": f"{type(exc).__name__}: {exc}"}
+    else:
+        result["topic_model"] = {
+            "skipped": True,
+            "reason": f"n_fetched={n_fetched} < 500 threshold",
+        }
+
+    return result
+
+
 def _handle_abandon_angle(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, Any]:
     """Drop the current active angle without completing its checklist.
 
@@ -909,6 +984,7 @@ def register_worker_tools(dispatcher: WorkerDispatcher) -> None:
         ToolSpec("get_paper", _handle_get_paper),
         ToolSpec("diagnose_miss", _handle_diagnose_miss,
                  pre_hook=_pre_diagnose_miss, post_hook=_post_diagnose_miss),
+        ToolSpec("inspect_angle", _handle_inspect_angle),
         ToolSpec("abandon_angle", _handle_abandon_angle),
         ToolSpec("done", _handle_done, pre_hook=_pre_done),
     ]
