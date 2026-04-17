@@ -137,9 +137,24 @@ class GeminiClient:
         # sees one. Strip it on the way out so the shared schema in
         # ``citeclaw.screening.schemas`` works for both providers without
         # maintaining two copies.
+        #
+        # Polymorphic-args gotcha: schemas marked ``_strict_openai: False``
+        # (our supervisor + worker response schemas) have a ``tool_args``
+        # object with NO declared properties — intentionally polymorphic
+        # across 14 tools. Gemini's response-schema enforcer treats
+        # "object with no properties" as "object that must stay empty",
+        # and silently emits ``"tool_args": {}`` regardless of what the
+        # model's reasoning says it should contain (empirically observed on
+        # both ``gemini-3.1-flash-lite-preview`` and
+        # ``gemini-3.1-pro-preview`` — ~2000 thinking-tokens of correct
+        # strategy, then an empty slot). Skip response_schema entirely in
+        # that case; the worker/supervisor JSON parsers are lenient and
+        # handle free-form JSON plus fenced blocks.
         if response_schema is not None and self._config.structured_output_enabled:
-            gen_config["response_mime_type"] = "application/json"
-            gen_config["response_schema"] = _strip_additional_properties(response_schema)
+            polymorphic_args = response_schema.get("_strict_openai") is False
+            if not polymorphic_args:
+                gen_config["response_mime_type"] = "application/json"
+                gen_config["response_schema"] = _strip_additional_properties(response_schema)
 
         resp = client.models.generate_content(
             model=self._model,

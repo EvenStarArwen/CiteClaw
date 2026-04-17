@@ -317,6 +317,7 @@ MODEL_PRICING: dict[str, tuple[float, float, float]] = {
     "gemini-3-flash":                        (0.30,  2.50,  2.50),
     "gemini-3-flash-lite":                   (0.10,  0.40,  0.40),
     "gemini-3.1-flash-lite-preview":         (0.10,  0.40,  0.40),
+    "gemini-3.1-pro-preview":                (1.25, 10.00, 10.00),
     # Gemini 2.5 (still widely deployed)
     "gemini-2.5-pro":                        (1.25, 10.00, 10.00),
     "gemini-2.5-flash":                      (0.30,  2.50,  2.50),
