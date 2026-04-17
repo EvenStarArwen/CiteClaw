@@ -1,47 +1,45 @@
-"""ExpandBySearch — flagship Phase C step.
+"""ExpandBySearch v2 — supervisor/worker flagship Phase C step.
 
-Wires :func:`citeclaw.agents.iterative_search.run_iterative_search`
-into the pipeline as a composable step. Unlike ``ExpandForward`` /
-``ExpandBackward``, this step has *no source paper*: the agent is
-grounded by the input signal as anchor context, not by an upstream
-citation edge. The ``FilterContext`` therefore carries
-``source=None`` / ``source_refs=None`` / ``source_citers=None``, so
-every filter atom in the screener must tolerate source-less mode
-(audited in PC-05).
+Wires the v2 supervisor loop (:func:`citeclaw.agents.supervisor.run_supervisor`)
+into the pipeline as a composable step. Unlike v1's single-agent
+iterative loop, v2 decomposes the topic into sub-topics and dispatches
+a sequential worker per sub-topic, each running a per-angle
+dispatcher-enforced checklist.
 
-Run loop (matches the roadmap spec line by line):
+Step flow:
+  1. Idempotency fingerprint over (step name, sorted signal ids,
+     agent config). Skip if already searched.
+  2. Derive seed papers from the input signal (up to
+     ``max_anchor_papers``) — supervisor + workers see these as
+     context.
+  3. Build the LLMClient via the same cascade as v1: per-step model
+     override > ctx.config.search_model > ctx.config.screening_model.
+  4. Render the downstream filter summary (for calibration context).
+  5. Open a SearchLogger that writes to
+     ``<data_dir>/search_agent_transcripts/<timestamp>/``.
+  6. Run the supervisor, collect aggregate paper_ids.
+  7. Screen the hydrated candidates through the shared expand helpers
+     (matches ExpandByForward / ExpandByBackward). apply_local_query
+     is available as a post-hydrate trim.
+  8. Mark fingerprint as searched.
+  9. Return StepResult with stats including the agent-level bookkeeping.
 
-  1. Compute a fingerprint over (step name, sorted signal IDs, agent
-     config). If already in ``ctx.searched_signals``, return a no-op
-     so a second invocation with identical inputs doesn't re-spend
-     budget.
-  2. ``anchor_papers = signal[:max_anchor_papers]`` — callers can put
-     a ``Rerank`` (with diversity) upstream to control what gets fed
-     in.
-  3. ``topic = self.topic_description or ctx.config.topic_description``.
-  4. Build the LLM client once and call ``run_iterative_search``.
-  5. Hydrate the agent's raw hits via ``ctx.s2.enrich_batch``.
-  6. Fill in abstracts via ``ctx.s2.enrich_with_abstracts``.
-  7. (Optional) trim via :func:`citeclaw.search.apply_local_query` for
-     post-fetch predicates that the S2 search API can't express.
-  8. Dedup against ``ctx.seen``, stamp ``source="search"`` on the
-     novel ones, add them to ``ctx.seen``.
-  9. Build a source-less ``FilterContext``.
-  10. ``apply_block`` the screener, then ``record_rejections``.
-  11. Add survivors to ``ctx.collection`` with ``llm_verdict="accept"``.
-  12. Mark the fingerprint in ``ctx.searched_signals``.
-  13. Return ``StepResult(signal=passed, in_count=len(hydrated),
-      stats={...})`` carrying the agent's bookkeeping totals so the
-      shape-summary table can show what the run cost.
+The old v1 flow (``run_iterative_search``, single-loop) is gone —
+this step now *always* goes through supervisor/worker.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
-from citeclaw.agents.iterative_search import AgentConfig, run_iterative_search
+from citeclaw.agents.filter_summary import render_filter_summary
+from citeclaw.agents.search_logging import SearchLogger
+from citeclaw.agents.state import AgentConfig
+from citeclaw.agents.supervisor import run_supervisor
 from citeclaw.clients.llm.factory import build_llm_client
 from citeclaw.models import PaperRecord
 from citeclaw.search.query_engine import apply_local_query
@@ -56,11 +54,7 @@ log = logging.getLogger("citeclaw.steps.expand_by_search")
 
 
 class ExpandBySearch:
-    """Iterative meta-LLM search expansion step.
-
-    Composable at the same level as ``ExpandForward`` /
-    ``ExpandBackward`` — users mix all three freely in YAML pipelines.
-    """
+    """Supervisor/worker meta-LLM search expansion step (v2)."""
 
     name = "ExpandBySearch"
 
@@ -87,7 +81,6 @@ class ExpandBySearch:
                 stats={"reason": "no screener"},
             )
 
-        # 1. Idempotency.
         fp = fingerprint_signal(
             self.name, signal,
             agent=asdict(self.agent),
@@ -97,18 +90,13 @@ class ExpandBySearch:
         if (skip := check_already_searched(self.name, fp, ctx, len(signal))):
             return skip
 
-        # 2. Anchor papers — callers control the order via an upstream Rerank.
         anchor_papers = signal[: self.max_anchor_papers]
-
-        # 3. Topic — explicit override > Settings.topic_description.
         topic = (
             self.topic_description
             or getattr(ctx.config, "topic_description", "")
             or ""
         )
 
-        # 4. Build the LLM client once and run the agent.
-        # Cascade: per-step model > Settings.search_model > screening_model.
         llm = build_llm_client(
             ctx.config,
             ctx.budget,
@@ -120,66 +108,135 @@ class ExpandBySearch:
             reasoning_effort=self.agent.reasoning_effort,
             cache=getattr(ctx, "cache", None),
         )
-        # Wrap the agent run so that LLM API outages, malformed
-        # structured-output responses, schema-validation crashes etc.
-        # don't kill the entire pipeline. ExpandBySemantics already does
-        # this around its fetch_recommendations call; this brings
-        # ExpandBySearch in line with that crash-isolation contract.
+
+        # Seed papers for the agents — derived from input signal. Using
+        # already-hydrated PaperRecords avoids a second S2 hit.
+        seed_papers = []
+        for rec in anchor_papers:
+            seed_papers.append({
+                "paper_id": rec.paper_id,
+                "title": rec.title or "",
+                "abstract": rec.abstract or "",
+                "year": rec.year,
+                "venue": rec.venue or "",
+            })
+
+        filter_summary = render_filter_summary(self.screener)
+
+        # Logger dir: one subdirectory per run, stamped with ISO date.
+        data_dir = Path(getattr(ctx.config, "data_dir", ".") or ".")
+        run_dir = data_dir / "search_agent_transcripts" / f"run_{int(time.time())}_{fp[:10]}"
+        logger = SearchLogger(run_dir)
+        logger.log_run_started(
+            topic=topic,
+            seed_count=len(seed_papers),
+            filter_summary=filter_summary,
+            agent_config=asdict(self.agent),
+            model=(
+                self.agent.model
+                or ctx.config.search_model
+                or ctx.config.screening_model
+            ),
+        )
+
+        t_start = time.time()
+        tokens_before = ctx.budget.llm_total_tokens
+        s2_before = ctx.budget.s2_requests
+
         try:
-            result = run_iterative_search(
-                topic, anchor_papers, llm, ctx, self.agent,
+            sup_state, aggregate_ids = run_supervisor(
+                topic_description=topic,
+                filter_summary=filter_summary,
+                seed_papers=seed_papers,
+                llm_client=llm,
+                ctx=ctx,
+                agent_config=self.agent,
+                logger=logger,
             )
-        except Exception as exc:  # noqa: BLE001 — agent crash safety net
+        except Exception as exc:  # noqa: BLE001 — LLM/outage safety net
             log.warning(
-                "ExpandBySearch: iterative search agent crashed (%s); "
-                "returning empty signal so the pipeline can continue.",
+                "ExpandBySearch: supervisor crashed (%s); returning empty signal",
                 exc,
             )
+            logger.log_run_finished(
+                n_papers_found=0,
+                n_sub_topics=0,
+                duration_s=time.time() - t_start,
+                llm_tokens=ctx.budget.llm_total_tokens - tokens_before,
+                s2_requests=ctx.budget.s2_requests - s2_before,
+                summary=f"Supervisor crashed: {exc}",
+            )
+            logger.finalize()
             return StepResult(
                 signal=[],
                 in_count=len(signal),
                 stats={
-                    "reason": "agent_failed",
-                    "error": str(exc)[:160],
+                    "reason": "supervisor_failed",
+                    "error": str(exc)[:200],
                     "anchor_papers": len(anchor_papers),
+                    "transcript_dir": str(run_dir),
                 },
             )
 
-        # Surface the agent's exit reason so the user knows whether the
-        # loop terminated because the corpus was saturated or because
-        # the iteration / token cap was hit.
-        ctx.dashboard.note(
-            f"search agent done · {len(result.transcript)} turns · "
-            f"{len(result.hits)} unique hits · → {result.final_decision or 'unknown'}"
-        )
+        # Turn aggregate paper_ids into the list[dict] shape screen_expand_candidates expects.
+        raw_hits = [{"paperId": pid} for pid in aggregate_ids]
 
-        # 5. Shared screening pipeline. ``apply_local_query`` runs as
-        # the post-hydrate trim so the screener only sees post-trim
-        # candidates (matches the previous behaviour).
         post_trim = (
             (lambda recs: apply_local_query(recs, **self.apply_local_query_args))
             if self.apply_local_query_args
             else None
         )
         screened = screen_expand_candidates(
-            raw_hits=result.hits,
+            raw_hits=raw_hits,
             source_label="search",
             screener=self.screener,
             ctx=ctx,
             post_hydrate_fn=post_trim,
         )
 
-        # 6. Mark the fingerprint so re-runs are no-ops.
         ctx.searched_signals.add(fp)
+
+        duration = time.time() - t_start
+        tokens_used = ctx.budget.llm_total_tokens - tokens_before
+        s2_used = ctx.budget.s2_requests - s2_before
+
+        done_summary = (
+            (sup_state.call_log[-1] or {}).get("result", {}).get("summary", "")
+            if sup_state.call_log else ""
+        ) or f"{len(sup_state.sub_topic_results)} sub-topics dispatched"
+
+        logger.log_run_finished(
+            n_papers_found=len(aggregate_ids),
+            n_sub_topics=len(sup_state.sub_topic_results),
+            duration_s=duration,
+            llm_tokens=tokens_used,
+            s2_requests=s2_used,
+            summary=done_summary,
+        )
+        logger.finalize()
+
+        ctx.dashboard.note(
+            f"ExpandBySearch v2 done · {len(sup_state.sub_topic_results)} sub-topics · "
+            f"{len(aggregate_ids)} unique hits · "
+            f"{screened.base_stats.get('accepted', 0)} accepted after screening"
+        )
 
         return StepResult(
             signal=screened.passed,
             in_count=len(screened.hydrated),
             stats={
                 **screened.base_stats,
-                "agent_iterations": len(result.transcript),
-                "agent_decision": result.final_decision,
-                "tokens_used": result.tokens_used,
-                "s2_requests_used": result.s2_requests_used,
+                "n_sub_topics": len(sup_state.sub_topic_results),
+                "n_successful_workers": sum(
+                    1 for r in sup_state.sub_topic_results if r.status == "success"
+                ),
+                "n_failed_workers": sum(
+                    1 for r in sup_state.sub_topic_results if r.status != "success"
+                ),
+                "aggregate_paper_ids": len(aggregate_ids),
+                "supervisor_turns": sup_state.turn_index,
+                "tokens_used": tokens_used,
+                "s2_requests_used": s2_used,
+                "transcript_dir": str(run_dir),
             },
         )

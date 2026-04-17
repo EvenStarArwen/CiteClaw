@@ -1,23 +1,40 @@
-"""LLM-driven search agents.
+"""LLM-driven search agents (v2).
 
-Currently houses :mod:`citeclaw.agents.iterative_search` — the meta-LLM
-agent that designs targeted literature-database queries from a topic
-description and a sample of papers already in the collection, then
-iteratively refines its query based on what each search returned. The
-agent powers Phase C's ``ExpandBySearch`` step.
+Houses the supervisor/worker two-level agent that powers
+``ExpandBySearch``. The v1 single-loop ``run_iterative_search`` module
+has been removed — recover from git history if needed.
 
-Re-exports the three core dataclasses so callers can write
-``from citeclaw.agents import AgentConfig`` instead of having to know
-the submodule path.
+Re-exports the core dataclasses so callers can write
+``from citeclaw.agents import AgentConfig`` without knowing the
+submodule path.
 """
 
 from __future__ import annotations
 
-from citeclaw.agents.iterative_search import (
+from citeclaw.agents.state import (
     AgentConfig,
-    AgentState,
-    AgentTurn,
-    SearchAgentResult,
+    AngleState,
+    QueryAngleResult,
+    SearchStrategy,
+    StructuralPriors,
+    SubTopicResult,
+    SubTopicSpec,
+    SupervisorState,
+    WorkerState,
 )
+from citeclaw.agents.supervisor import run_supervisor
+from citeclaw.agents.worker import run_sub_topic_worker
 
-__all__ = ["AgentConfig", "AgentState", "AgentTurn", "SearchAgentResult"]
+__all__ = [
+    "AgentConfig",
+    "AngleState",
+    "QueryAngleResult",
+    "SearchStrategy",
+    "StructuralPriors",
+    "SubTopicResult",
+    "SubTopicSpec",
+    "SupervisorState",
+    "WorkerState",
+    "run_supervisor",
+    "run_sub_topic_worker",
+]

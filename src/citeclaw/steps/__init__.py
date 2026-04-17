@@ -63,11 +63,11 @@ def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
     """Build an ``ExpandBySearch`` step from its YAML dict.
 
     The ``agent:`` sub-dict is forwarded into ``AgentConfig`` kwargs
-    so users can override any combination of iteration cap, token cap,
-    target_count, model, reasoning_effort, etc. without learning a
+    so users can override any combination of worker/supervisor turns,
+    angle caps, model, reasoning_effort, etc. without learning a
     second schema.
     """
-    from citeclaw.agents.iterative_search import AgentConfig
+    from citeclaw.agents.state import AgentConfig
 
     agent_raw = d.get("agent") or {}
     if isinstance(agent_raw, AgentConfig):
