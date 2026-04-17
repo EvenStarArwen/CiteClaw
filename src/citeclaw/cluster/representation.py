@@ -87,6 +87,7 @@ def extract_keywords_ctfidf(
     *,
     n_keywords: int = 10,
     stop_words: str = "english",
+    ngram_range: tuple[int, int] = (1, 3),
 ) -> dict[int, list[str]]:
     """Compute the top N c-TF-IDF keywords per cluster.
 
@@ -101,6 +102,20 @@ def extract_keywords_ctfidf(
     Returns ``{cluster_id: [keyword1, keyword2, ...]}`` for every non-noise
     cluster. Empty clusters and clusters with no usable text are silently
     skipped (their entry just doesn't appear).
+
+    ``ngram_range`` default of ``(1, 3)`` surfaces multi-word technical
+    terms like ``"protein structure prediction"`` or ``"graph neural
+    network"`` that unigrams fragment into their components. Unigrams
+    are still generated so single-token topic hints (``"transformer"``,
+    ``"phylogenetic"``) remain available — the ranking naturally mixes
+    both depending on which carries the class-discriminative signal.
+
+    ``min_df`` is NOT exposed. sklearn's ``CountVectorizer`` applies
+    min_df across the corpus (= across clusters in this super-doc
+    setup), so ``min_df=2`` would drop any term that only distinguishes
+    ONE cluster — the exact signal c-TF-IDF is designed to surface.
+    Keep the default ``min_df=1``; rely on stop-word removal + the
+    IDF component to suppress uninformative tokens.
     """
     cluster_docs = _cluster_documents(membership, papers)
     if not cluster_docs:
@@ -117,7 +132,7 @@ def extract_keywords_ctfidf(
     cluster_ids = sorted(cluster_docs.keys())
     docs = [cluster_docs[cid] for cid in cluster_ids]
 
-    vectorizer = CountVectorizer(stop_words=stop_words)
+    vectorizer = CountVectorizer(stop_words=stop_words, ngram_range=ngram_range)
     try:
         tf = vectorizer.fit_transform(docs)  # shape (n_clusters, vocab)
     except ValueError:
