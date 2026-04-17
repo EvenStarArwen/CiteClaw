@@ -690,21 +690,36 @@ def _handle_diagnose_miss(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
     angles_used = args.get("query_angles_used")
     if not isinstance(target, str) or not target.strip():
         raise DispatcherError("missing 'target_title'", "the paper title you were verifying")
-    if not isinstance(hypotheses, list) or not hypotheses:
-        raise DispatcherError(
-            "'hypotheses' must be a non-empty list of strings",
-            "give >=1 hypothesis for why the paper was missed",
-        )
+    # Accept either a non-empty list of strings OR a single string (auto-wrap).
+    # Weaker reasoning models often emit a plain string even when the schema
+    # asks for a list — being forgiving here saves a full turn of "must be a list"
+    # error-recovery dialogue. Empty / null falls back to a placeholder so the
+    # miss is still recorded and the per-done hook can match it.
+    if isinstance(hypotheses, str) and hypotheses.strip():
+        hypotheses_list = [hypotheses.strip()]
+    elif isinstance(hypotheses, list):
+        hypotheses_list = [str(h) for h in hypotheses if h]
+    else:
+        hypotheses_list = []
+    if not hypotheses_list:
+        hypotheses_list = ["(no hypothesis provided)"]
     if not isinstance(action, str) or action not in _VALID_ACTIONS:
         raise DispatcherError(
             f"invalid 'action_taken' — got {action!r}",
             f"valid actions: {sorted(_VALID_ACTIONS)}",
         )
+    # Normalise query_angles_used to list[str].
+    if isinstance(angles_used, str):
+        angles_list = [angles_used]
+    elif isinstance(angles_used, list):
+        angles_list = [str(q) for q in angles_used if q]
+    else:
+        angles_list = []
     entry = {
         "target_title": target,
-        "hypotheses": [str(h) for h in hypotheses if h],
+        "hypotheses": hypotheses_list,
         "action_taken": action,
-        "query_angles_used": [str(q) for q in (angles_used or []) if q],
+        "query_angles_used": angles_list,
     }
     d.state.miss_diagnoses.append(entry)
     return {"acknowledged": True, "diagnoses_recorded": len(d.state.miss_diagnoses)}

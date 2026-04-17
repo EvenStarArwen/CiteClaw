@@ -197,21 +197,26 @@ class WorkerDispatcher:
         self.state.active_fingerprint = fingerprint
 
     def recent_contains_miss(self) -> bool:
-        """True iff the most recent ``contains`` call returned False.
+        """True iff the most recent ``contains`` call returned False
+        AND has not been consumed by a SUCCESSFUL diagnose_miss.
 
-        Walks the tail of ``call_log`` for the last ``contains``
-        entry; if its result was ``False``, a subsequent
-        ``diagnose_miss`` is valid. Any tool call OTHER than
-        ``diagnose_miss`` between the contains and the diagnose
-        does not clear the signal — the miss is only "resolved" by
-        the diagnose itself (exactly-once per miss).
+        Walks the tail of ``call_log`` for the last ``contains`` entry;
+        if its result was ``False``, checks whether any subsequent
+        diagnose_miss *succeeded* (not errored) — only successful
+        diagnose_miss calls consume a miss. A failed diagnose_miss
+        (e.g. hypotheses malformed) does NOT consume; the worker can
+        retry with a corrected payload.
         """
         for entry in reversed(self.state.call_log):
             name = entry.get("tool")
             if name == "diagnose_miss":
-                # A diagnose already consumed the most recent miss —
-                # nothing more to diagnose unless there's been another
-                # contains that returned False since then.
+                result = entry.get("result") or {}
+                # Failed diagnose_miss attempts carry an "error" key
+                # and do NOT consume. Success returns {"acknowledged":
+                # true, "diagnoses_recorded": N} and DOES consume.
+                if "error" in result:
+                    # Failed — keep walking for the matching contains.
+                    continue
                 return False
             if name == "contains":
                 result = entry.get("result") or {}
