@@ -125,7 +125,9 @@ def run_sub_topic_worker(
                 active_query = f"{aa.query!r}"
                 if aa.filters:
                     active_query += f" with filters={aa.filters}"
-            valid_next = _compute_valid_next_tools(state, agent_config, last_tool_name)
+            valid_next = _compute_valid_next_tools(
+                state, agent_config, last_tool_name, turn=turn,
+            )
             user_msg = USER_TEMPLATE_CONTINUE.format(
                 sub_topic_id=spec.id,
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
@@ -325,6 +327,8 @@ def _compute_valid_next_tools(
     state: WorkerState,
     cfg: "AgentConfig",
     last_tool_name: str,
+    *,
+    turn: int,
 ) -> str:
     """Derive the narrow set of tools that make sense from the current
     worker state. Rendered as a bullet list in the continuation user
@@ -332,6 +336,11 @@ def _compute_valid_next_tools(
 
     The set is advisory: the dispatcher still accepts any registered
     tool, but the prompt makes the intended next action obvious.
+
+    When the worker is near its turn budget (>= 75% of max_turns),
+    ``done`` is strongly emphasised and exploration tools are
+    demoted. When the angle cap is hit, only ``done`` and
+    ``abandon_angle`` are recommended.
     """
     active = state.active_angle
     verification_done = any(
@@ -340,31 +349,45 @@ def _compute_valid_next_tools(
     unresolved_miss = False
     for e in reversed(state.call_log):
         if e.get("tool") == "diagnose_miss":
+            result = e.get("result") or {}
+            if "error" in result:
+                continue
             break
         if e.get("tool") == "contains":
             if (e.get("result") or {}).get("contains") is False:
                 unresolved_miss = True
             break
 
+    angle_cap_hit = len(state.angles) >= cfg.max_angles_per_worker
+    time_pressure = turn >= int(cfg.worker_max_turns * 0.75)
+
     candidates: list[str] = []
     if unresolved_miss:
-        # Dispatcher will reject any tool other than diagnose_miss
-        # until the miss is resolved.
         candidates = ["diagnose_miss"]
+    elif angle_cap_hit and active is None:
+        # All slots used and nothing active → just close.
+        candidates = ["done"]
     elif active is None:
-        # No active angle: either open one or (if we have enough
-        # coverage) close the worker.
-        candidates = ["check_query_size"]
-        if any(a.is_checklist_complete() and a.df_id for a in state.angles.values()):
+        # No active angle: either open one or close.
+        has_usable = any(a.is_checklist_complete() and a.df_id for a in state.angles.values())
+        if time_pressure and has_usable:
+            # Strongly prefer closing over opening another angle under time pressure.
             if verification_done:
-                candidates.append("done")
+                candidates = ["done"]
             else:
-                candidates.append("search_match")
+                candidates = ["search_match", "done"]
+        elif angle_cap_hit:
+            candidates = ["done"]
+        else:
+            candidates = ["check_query_size"]
+            if has_usable:
+                if verification_done:
+                    candidates.append("done")
+                else:
+                    candidates.insert(0, "search_match")
     else:
-        # An angle is active. The next action depends on which
-        # checklist flags are unset.
+        # An angle is active. Drive the checklist.
         if active.df_id is None:
-            # Size-checked but not fetched yet.
             candidates = ["fetch_results", "abandon_angle"]
         elif not (active.checked_top_cited and active.checked_random and active.checked_years):
             candidates = ["sample_titles", "year_distribution",
@@ -372,21 +395,43 @@ def _compute_valid_next_tools(
         elif active.requires_topic_model and not active.checked_topic_model:
             candidates = ["topic_model", "abandon_angle"]
         else:
-            # Checklist complete on active angle — verify or move on.
+            # Checklist on active complete.
             if not verification_done:
-                candidates = ["search_match", "check_query_size", "abandon_angle"]
+                candidates = ["search_match"]
+                # Allow opening a new angle only if not under time pressure
+                # AND we haven't hit the cap.
+                if not angle_cap_hit and not time_pressure:
+                    candidates.append("check_query_size")
+                candidates.append("abandon_angle")
             else:
-                candidates = ["check_query_size", "done", "abandon_angle"]
+                # Verification done — closing is strongly preferred.
+                if time_pressure or angle_cap_hit:
+                    candidates = ["done"]
+                else:
+                    candidates = ["done", "check_query_size", "abandon_angle"]
 
-    # Always surface search_within_df / get_paper / search_match as
-    # optional deep-dive tools; they don't advance the checklist but
-    # the agent may call them for inspection.
     always_available = ["get_paper", "search_within_df"]
+    pressure_note = ""
+    if time_pressure:
+        pressure_note = (
+            f"\n\n⚠️  TIME PRESSURE: turn {turn} of {cfg.worker_max_turns} "
+            f"— strongly prefer `done` over opening new angles. If the per-angle "
+            f"checklist on the active angle is complete and a verification cycle "
+            f"(search_match → contains) has run, call `done` now."
+        )
+    if angle_cap_hit:
+        pressure_note += (
+            f"\n\n⚠️  ANGLE CAP HIT: you have opened the maximum "
+            f"{cfg.max_angles_per_worker} angles. check_query_size will reject. "
+            f"Finish any outstanding inspection, then call `done` or "
+            f"`abandon_angle` to free a slot."
+        )
     return (
         "next-action candidates (strongly recommended): "
         + ", ".join(f"`{t}`" for t in candidates)
         + "; optional deep-dive: "
         + ", ".join(f"`{t}`" for t in always_available)
+        + pressure_note
     )
 
 
