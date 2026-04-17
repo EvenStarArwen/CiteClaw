@@ -498,21 +498,31 @@ class DispatcherError(Exception):
 def require_df_id(args: dict[str, Any], dispatcher: WorkerDispatcher) -> dict[str, Any] | None:
     """Pre-hook shared by every tool that takes a ``df_id`` arg.
 
-    Rejects if ``df_id`` is missing, not a string, or not registered
-    in the DataFrameStore.
+    If ``df_id`` is missing, empty, or doesn't match a registered
+    DataFrame, we fall back to the active angle's ``df_id`` when it
+    exists. This is intentional ergonomics: weaker LLMs mutate /
+    hallucinate long opaque strings, so defaulting to the obvious
+    single-angle case eliminates a whole class of needless errors.
+    The agent can still target a specific DataFrame by df_id when it
+    really needs to (rare: usually only when referring to an older,
+    still-live angle's DF).
+
+    Only hard-rejects when there's no active angle AND no registered
+    DataFrame — the agent needs to call ``fetch_results`` first.
     """
     df_id = args.get("df_id")
-    if not isinstance(df_id, str) or not df_id:
+    # Auto-default to active angle's df_id when missing, empty, or
+    # not matching a registered DataFrame.
+    if not isinstance(df_id, str) or not df_id or df_id not in dispatcher.store:
+        active = dispatcher.state.active_angle
+        if active is not None and active.df_id and active.df_id in dispatcher.store:
+            args["df_id"] = active.df_id
+            return None
         return error_envelope(
-            "missing or non-string df_id",
-            "call fetch_results first; the returned df_id is what you pass here",
-        )
-    if df_id not in dispatcher.store:
-        return error_envelope(
-            f"df_id {df_id!r} not found in store",
+            "no DataFrame available — no active angle has been fetched yet",
             (
-                f"registered df_ids: {sorted(dispatcher.store.list_ids(worker_id=dispatcher.worker_id))}; "
-                f"call fetch_results first"
+                "call fetch_results first. "
+                f"registered df_ids: {sorted(dispatcher.store.list_ids(worker_id=dispatcher.worker_id))}"
             ),
         )
     return None

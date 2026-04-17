@@ -70,18 +70,25 @@ fetch_results(query, filters)
   → df_id, n_fetched, total_in_corpus, fetch_strategy.
     (query, filters) MUST be the exact pair you just size-checked.
 
-sample_titles(df_id, strategy, n)
+sample_titles(strategy, n)          (df_id optional — defaults to active angle)
   → titles+year+venue+citations. strategy ∈ {"top_cited","random"}.
 
-year_distribution(df_id)        → {year: count} histogram
-venue_distribution(df_id,top_k) → top-K venues
+year_distribution()                 (df_id optional)
+  → {year: count} histogram
+venue_distribution(top_k)           (df_id optional)
+  → top-K venues
 
-topic_model(df_id)
+topic_model()                       (df_id optional)
   → UMAP+HDBSCAN clusters with c-TF-IDF labels.
     REQUIRED iff n_fetched ≥ 500; otherwise skip.
 
-search_within_df(df_id, pattern, fields)
+search_within_df(pattern, fields)   (df_id optional)
   → regex match, returns matching_field flag (NOT the full text)
+
+NOTE: df_id is an opaque internal string. When you want to inspect the
+CURRENT fetched angle (the common case) you can OMIT df_id entirely
+and the tool will default to the active angle's DataFrame. Only pass
+df_id when targeting a specific earlier angle's DataFrame.
 
 search_match(title)   → resolve a title to paper_id
 contains(paper_id)    → True iff paper_id is in your CUMULATIVE fetch set
