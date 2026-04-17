@@ -135,6 +135,16 @@ def test_full_pipeline_round_trip(tmp_path: Path):
     assert (data_dir / "collaboration_network.graphml").exists()
     assert (data_dir / "shape_summary.txt").exists()
     assert (data_dir / "shape_summary.json").exists()
+    assert (data_dir / "rejections.json").exists()
+
+    # rejections.json: each entry has at least a categories list.
+    rejections = json.loads((data_dir / "rejections.json").read_text())
+    assert isinstance(rejections, dict)
+    for pid, entry in rejections.items():
+        assert "categories" in entry
+        assert isinstance(entry["categories"], list)
+        # dedup check — no duplicate categories per paper
+        assert len(entry["categories"]) == len(set(entry["categories"]))
 
     # shape_summary.json should be a list of dicts with the same step sequence
     # as the rendered text table — enables programmatic run comparison.

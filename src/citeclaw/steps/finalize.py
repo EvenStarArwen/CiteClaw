@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,49 @@ from citeclaw.output import (
 from citeclaw.steps.base import StepResult
 
 log = logging.getLogger("citeclaw.steps.finalize")
+
+
+def _write_rejections_json(ctx, path: Path) -> None:
+    """Write ``rejections.json`` — per-paper rejection ledger.
+
+    Schema (compact by design; no abstracts so the file stays scannable
+    even on 50k-candidate runs)::
+
+        {
+          "<paper_id>": {
+            "categories": ["year_filter", "llm_topic_llm"],   # dedup'd, ordered
+            "title": "<first 200 chars>",                     # best-effort
+            "year": 2023                                       # best-effort
+          }
+        }
+
+    Title + year are pulled from the S2 metadata cache when available,
+    so rejected papers that were never loaded into ``ctx.collection``
+    still get an identifying row. Missing cache entries produce the
+    ``categories``-only shape.
+    """
+    rejections: dict[str, dict] = {}
+    for pid, categories in ctx.rejection_ledger.items():
+        seen: set[str] = set()
+        unique_cats: list[str] = []
+        for c in categories:
+            if c not in seen:
+                seen.add(c)
+                unique_cats.append(c)
+        entry: dict = {"categories": unique_cats}
+        try:
+            cached = ctx.cache.get_metadata(pid)
+        except Exception:
+            cached = None
+        if isinstance(cached, dict):
+            title = cached.get("title")
+            if isinstance(title, str) and title:
+                entry["title"] = title[:200]
+            year = cached.get("year")
+            if isinstance(year, int):
+                entry["year"] = year
+        rejections[pid] = entry
+    path.write_text(json.dumps(rejections, indent=2) + "\n")
 
 
 def _inject_suffix(path: Path, suffix: str) -> Path:
@@ -198,6 +242,14 @@ class Finalize:
 
         dash.begin_phase("write graphs · citation + collab", total=1)
         write_graphs(ctx, suffix="")
+        dash.tick_inner(1)
+
+        dash.begin_phase("write rejections", total=1)
+        rej_path = with_iteration_suffix(data_dir / "rejections.json", ctx.iteration)
+        try:
+            _write_rejections_json(ctx, rej_path)
+        except Exception as exc:
+            log.warning("rejections.json write failed: %s", exc)
         dash.tick_inner(1)
 
         ctx.result = output  # type: ignore[attr-defined]
