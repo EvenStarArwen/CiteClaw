@@ -221,8 +221,6 @@ def _register_supervisor_tools(
         priors = StructuralPriors(
             year_min=_opt_int(priors_raw.get("year_min")),
             year_max=_opt_int(priors_raw.get("year_max")),
-            required_keywords=tuple(priors_raw.get("required_keywords") or []),
-            excluded_keywords=tuple(priors_raw.get("excluded_keywords") or []),
             fields_of_study=tuple(priors_raw.get("fields_of_study") or []),
             venue_filters=tuple(priors_raw.get("venue_filters") or []),
         )
@@ -298,6 +296,30 @@ def _register_supervisor_tools(
         d.state.record_result(result)
         if result.status != "success":
             d.state.worker_failures[spec_id] = attempts + 1
+        # Enriched payload: supervisor needs per-angle detail and miss
+        # diagnoses so a retry decision can target the actual failure
+        # mode (spec too broad? query sketch too narrow? prior too
+        # tight? S2 coverage gap?). Sampled at the dispatch boundary
+        # so the supervisor's context doesn't bloat with full
+        # transcripts.
+        angle_payload = []
+        for a in result.query_angles:
+            angle_payload.append({
+                "query": a.query,
+                "filters": a.filters,
+                "n_fetched": a.n_fetched,
+                "total_in_corpus": a.total_in_corpus,
+                "papers_added_to_cumulative": a.papers_added_to_cumulative,
+                "refinement_count": a.refinement_count,
+                "topic_model_ran": a.topic_model_ran,
+                "inspection_notes": a.inspection_notes[:400],
+            })
+        # Pull miss_diagnoses from the worker's event log (passed
+        # through the result's `failure_reason` + the SubTopicResult
+        # shape doesn't currently carry them; we read via the result's
+        # query_angles instead and surface a count for the supervisor).
+        # Stop-reason label: readable category of why the worker halted.
+        stop_reason = _stop_reason_label(result)
         return {
             "spec_id": result.spec_id,
             "worker_id": worker_id,
@@ -307,7 +329,9 @@ def _register_supervisor_tools(
             "summary": result.summary,
             "turns_used": result.turns_used,
             "failure_reason": result.failure_reason,
+            "stop_reason": stop_reason,
             "n_angles": len(result.query_angles),
+            "angles": angle_payload,
         }
 
     def _handle_done(args: dict[str, Any], d: SupervisorDispatcher) -> dict[str, Any]:
@@ -397,6 +421,28 @@ def _opt_int(v: Any) -> int | None:
         return int(v)
     except (ValueError, TypeError):
         return None
+
+
+def _stop_reason_label(result) -> str:
+    """Categorise why the worker stopped, for supervisor retry decisions.
+
+    Labels:
+      - ``called_done``   — worker cleanly completed and called done()
+      - ``max_turns``     — hit the worker_max_turns budget
+      - ``budget``        — shared run budget exhausted
+      - ``llm_error``     — LLM call failed (timeout / 5xx / parse)
+      - ``other_failure`` — any other failure_reason
+    """
+    if result.status == "success":
+        return "called_done"
+    if result.status == "budget_exhausted":
+        return "budget"
+    fr = (result.failure_reason or "").lower()
+    if "max_turns" in fr:
+        return "max_turns"
+    if "llm" in fr:
+        return "llm_error"
+    return "other_failure"
 
 
 __all__ = ["run_supervisor"]

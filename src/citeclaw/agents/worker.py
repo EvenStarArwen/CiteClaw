@@ -66,7 +66,7 @@ def run_sub_topic_worker(
     state other than (a) the DataFrameStore (via the dispatcher,
     cleared at end) and (b) ctx.budget (via LLM + S2 calls).
     """
-    state = WorkerState(sub_topic_id=spec.id)
+    state = WorkerState(sub_topic_id=spec.id, structural_priors=priors)
     dispatcher = WorkerDispatcher(
         worker_state=state,
         dataframe_store=dataframe_store,
@@ -87,8 +87,6 @@ def run_sub_topic_worker(
     priors_block = render_structural_priors({
         "year_min": priors.year_min,
         "year_max": priors.year_max,
-        "required_keywords": priors.required_keywords,
-        "excluded_keywords": priors.excluded_keywords,
         "fields_of_study": priors.fields_of_study,
         "venue_filters": priors.venue_filters,
     })

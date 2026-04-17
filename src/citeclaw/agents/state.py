@@ -67,36 +67,32 @@ def query_fingerprint(query: str, filters: dict[str, Any] | None) -> str:
 
 @dataclass(frozen=True)
 class StructuralPriors:
-    """Hard filters that every query in a run shares.
+    """S2-filter priors that every worker's queries share.
 
-    Produced by the supervisor during Step 2 of its checklist
-    (Identify structural priors) and handed unchanged to every
-    sub-topic worker. The worker applies these as ``filters=`` on
-    every ``check_query_size`` / ``fetch_results`` it runs.
+    Only priors that map DIRECTLY to S2 filter parameters belong here.
+    Keyword-shaped priors (``required_keywords`` / ``excluded_keywords``)
+    were removed in the review: they were prose-level hints that the
+    code never actually applied, and as hard filters they become
+    false-negative traps for papers that use canonical-adjacent
+    terminology (mechanistic analysis, saliency, attribution, etc. vs
+    "interpretability"). Let the worker design queries freely; the
+    downstream LLM screener handles topic fit.
 
-    Each prior is a false-positive risk — a too-tight prior rejects
-    in-topic papers. Supervisor prompt guidance: *only set priors you
-    are confident about; prefer fewer strong priors to many weak
-    ones*.
+    Each remaining prior is advisory — a too-tight prior rejects
+    in-topic papers. Prefer fewer strong priors to many weak ones.
     """
 
     year_min: int | None = None
     year_max: int | None = None
-    required_keywords: tuple[str, ...] = field(default_factory=tuple)
-    excluded_keywords: tuple[str, ...] = field(default_factory=tuple)
     venue_filters: tuple[str, ...] = field(default_factory=tuple)
     fields_of_study: tuple[str, ...] = field(default_factory=tuple)
 
     def to_s2_filters(self) -> dict[str, Any]:
         """Convert to the dict shape s2.search_bulk expects.
 
-        Only S2-recognised keys are emitted: ``year``,
-        ``fieldsOfStudy``, ``venue``. Keyword priors (required /
-        excluded) are intentionally NOT converted — they belong in
-        the query text (``"kw1 | kw2" + " -kw3"``) and the worker is
-        prompted to emit them that way. Venue priors are currently
-        passed through verbatim; S2 matches on substring so callers
-        are responsible for choosing sensible strings.
+        Emits only S2-recognised keys (``year``, ``fieldsOfStudy``,
+        ``venue``). Callers — the worker's ``check_query_size`` and
+        ``fetch_results`` — merge this dict into any per-call filters.
         """
         out: dict[str, Any] = {}
         if self.year_min is not None or self.year_max is not None:
@@ -210,9 +206,15 @@ class WorkerState:
     ``contains(paper_id)`` queries), the verification cycle log, and
     call-log metadata. Passed to every tool handler via the
     dispatcher.
+
+    ``structural_priors`` is stored here so tool handlers can merge
+    the run-wide S2 filters into every check_query_size / fetch_results
+    call without the worker having to thread them through its JSON
+    tool_args.
     """
 
     sub_topic_id: str
+    structural_priors: "StructuralPriors | None" = None
     angles: dict[str, AngleState] = field(default_factory=dict)
     active_fingerprint: str | None = None
     cumulative_paper_ids: set[str] = field(default_factory=set)

@@ -36,25 +36,35 @@ done(summary)
 1. INGEST the topic description, seed papers (if any), and the
    downstream filter calibration in the user message.
 
-2. IDENTIFY STRUCTURAL PRIORS. These are applied as hard filters to
-   EVERY query EVERY worker runs. Set only priors you're confident
-   about — each is a false-positive risk (a too-tight prior rejects
-   in-topic papers).
+2. IDENTIFY STRUCTURAL PRIORS. These are S2 filters applied to EVERY
+   query EVERY worker runs. Set only priors you're confident about —
+   each is a false-NEGATIVE risk (a too-tight prior drops in-topic
+   papers, and the downstream LLM screener cannot recover them).
+
+   Only four priors exist. Keyword-shaped priors are intentionally NOT
+   available: they collapse recall on in-topic papers that use
+   canonical-adjacent terminology (e.g. "mechanistic analysis" /
+   "saliency" / "attribution" for interpretability topics). Let the
+   workers design queries freely.
 
    year_min / year_max      — when the topic has an obvious era.
                               LLMs ~2022. Deep learning ~2012. Don't
                               set when the topic spans a wide era.
-   required_keywords        — terms every in-topic paper uses, OR'd
-                              together. Use sparingly: "xai" would
-                              set ["interpretab*", "explana*"], but
-                              most broad topics have no universal
-                              required keyword.
-   excluded_keywords        — off-topic cluster to suppress globally.
-                              Almost always empty.
-   fields_of_study          — e.g. ["Computer Science", "Biology"]
-                              when relevant. Leave empty otherwise.
-   venue_filters            — almost always empty. Only when user
-                              explicitly wanted venue scoping.
+   fields_of_study          — EXACT S2 names (comma-joined), from:
+                              "Computer Science", "Biology",
+                              "Medicine", "Chemistry", "Physics",
+                              "Mathematics", "Materials Science",
+                              "Engineering", "Environmental Science",
+                              "Economics", "Business", "Sociology",
+                              "Political Science", "Psychology",
+                              "Linguistics", "Philosophy", "Geology",
+                              "Geography", "History", "Art",
+                              "Education", "Law",
+                              "Agricultural and Food Sciences".
+                              Leave empty when the topic spans
+                              multiple fields.
+   venue_filters            — almost always empty. Only when the
+                              topic is explicitly venue-scoped.
 
 3. DECOMPOSE into 3–15 sub-topics, each with:
        id                    — short slug, unique. e.g. "protein_structure"

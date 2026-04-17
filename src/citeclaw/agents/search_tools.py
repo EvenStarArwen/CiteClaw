@@ -50,17 +50,20 @@ def _handle_check_query_size(args: dict[str, Any], d: WorkerDispatcher) -> dict[
     if not isinstance(query, str) or not query.strip():
         raise DispatcherError(
             "missing or empty 'query' string",
-            "query is a Lucene-style keyword expression, e.g. 'protein structure prediction'",
+            "query is a Lucene-style expression; quote multi-word phrases",
         )
     if filters is not None and not isinstance(filters, dict):
         raise DispatcherError(
             "'filters' must be a JSON object or null",
-            "example: {\"year\": \"2020-\", \"fieldsOfStudy\": \"Computer Science\"}",
+            "see the fieldsOfStudy / year / venue list in the system prompt",
         )
 
+    merged_filters = _merge_priors_into_filters(
+        filters if isinstance(filters, dict) else None, d
+    )
     payload = d.ctx.s2.search_bulk(
         query=query,
-        filters=filters or None,
+        filters=merged_filters or None,
         limit=3,
     )
     total = 0
@@ -181,16 +184,19 @@ def _handle_fetch_results(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
         )
 
     limit = d.config.fetch_results_limit_per_strategy
+    merged_filters = _merge_priors_into_filters(
+        filters if isinstance(filters, dict) else None, d
+    )
     # Two S2 calls: top-cited and paperId-order (~random).
     top_cited_payload = d.ctx.s2.search_bulk(
         query=query,
-        filters=filters or None,
+        filters=merged_filters or None,
         sort="citationCount:desc",
         limit=limit,
     )
     random_payload = d.ctx.s2.search_bulk(
         query=query,
-        filters=filters or None,
+        filters=merged_filters or None,
         sort="paperId",
         limit=limit,
     )
@@ -802,8 +808,55 @@ def _pre_done(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, Any] | Non
 # ---------------------------------------------------------------------------
 
 
+def _handle_abandon_angle(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, Any]:
+    """Drop the current active angle without completing its checklist.
+
+    Removes the AngleState from the registry, drops its DataFrame from
+    the store, and removes its fetched paper_ids from the worker's
+    cumulative set (so verification doesn't count them). The angle
+    slot is freed — len(angles) decreases, so this does NOT count
+    against ``max_angles_per_worker``.
+
+    After abandon, the worker has no active angle; next
+    check_query_size opens a fresh one.
+    """
+    active = d.state.active_angle
+    if active is None:
+        raise DispatcherError(
+            "no active angle to abandon",
+            "abandon_angle is only valid when an angle is active (after check_query_size)",
+        )
+    fp = active.fingerprint
+    abandoned_df = active.df_id
+    abandoned_n = active.n_fetched or 0
+    # Remove fetched papers from the cumulative set. We need the
+    # paper_ids that were added by THIS angle. The simplest correct
+    # approach: re-derive from the DataFrame (if we still have it),
+    # then subtract.
+    removed_ids = 0
+    if abandoned_df and abandoned_df in d.store:
+        try:
+            df = d.store.get(abandoned_df)
+            for pid in df["paper_id"]:
+                if isinstance(pid, str) and pid in d.state.cumulative_paper_ids:
+                    d.state.cumulative_paper_ids.remove(pid)
+                    removed_ids += 1
+        except Exception:  # noqa: BLE001
+            pass
+        d.store.drop(abandoned_df)
+    # Remove the angle entirely and clear the active pointer.
+    d.state.angles.pop(fp, None)
+    d.state.active_fingerprint = None
+    return {
+        "abandoned_fingerprint": fp,
+        "n_papers_removed_from_cumulative": removed_ids,
+        "n_fetched_in_abandoned_df": abandoned_n,
+        "angles_remaining": len(d.state.angles),
+    }
+
+
 def register_worker_tools(dispatcher: WorkerDispatcher) -> None:
-    """Register all 12 worker tools on ``dispatcher``."""
+    """Register all 13 worker tools on ``dispatcher``."""
     specs = [
         ToolSpec("check_query_size", _handle_check_query_size,
                  pre_hook=_pre_check_query_size, post_hook=_post_check_query_size),
@@ -825,6 +878,7 @@ def register_worker_tools(dispatcher: WorkerDispatcher) -> None:
         ToolSpec("get_paper", _handle_get_paper),
         ToolSpec("diagnose_miss", _handle_diagnose_miss,
                  pre_hook=_pre_diagnose_miss, post_hook=_post_diagnose_miss),
+        ToolSpec("abandon_angle", _handle_abandon_angle),
         ToolSpec("done", _handle_done, pre_hook=_pre_done),
     ]
     dispatcher.register_many(specs)
@@ -842,6 +896,26 @@ def _pd_is_nan(v: Any) -> bool:
         return isinstance(v, float) and math.isnan(v)
     except Exception:  # noqa: BLE001
         return False
+
+
+def _merge_priors_into_filters(
+    per_call_filters: dict[str, Any] | None,
+    d: WorkerDispatcher,
+) -> dict[str, Any]:
+    """Merge the worker's structural priors into the per-call filter dict.
+
+    Per-call filters take precedence when they overlap a prior — the
+    worker can locally narrow (say, year) without changing the priors.
+    Priors are read from ``d.state.structural_priors`` which the
+    worker loop populates at construction.
+    """
+    priors = getattr(d.state, "structural_priors", None)
+    merged: dict[str, Any] = {}
+    if priors is not None:
+        merged.update(priors.to_s2_filters())
+    if per_call_filters:
+        merged.update(per_call_filters)
+    return merged
 
 
 __all__ = [
