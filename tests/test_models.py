@@ -210,6 +210,34 @@ class TestExceptions:
 # ---------------------------------------------------------------------------
 
 
+class TestPaperToRecordCitationSignals:
+    """Pin the paper_to_record mapping for citation-signal fields.
+
+    ``influential_citation_count`` is paid for in every S2 fetch (it's
+    in PAPER_FIELDS) but easy to accidentally drop from the converter.
+    The assert below catches that.
+    """
+
+    def test_influential_citation_count_mapped(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({
+            "paperId": "p1",
+            "citationCount": 120,
+            "influentialCitationCount": 8,
+        })
+        assert rec is not None
+        assert rec.citation_count == 120
+        assert rec.influential_citation_count == 8
+
+    def test_influential_citation_count_none_when_missing(self):
+        from citeclaw.clients.s2.converters import paper_to_record
+
+        rec = paper_to_record({"paperId": "p1", "citationCount": 10})
+        assert rec is not None
+        assert rec.influential_citation_count is None
+
+
 class TestPaperToRecordSubjectFields:
     def test_legacy_fields_of_study_string_list(self):
         from citeclaw.clients.s2.converters import paper_to_record
