@@ -3,165 +3,139 @@
 from __future__ import annotations
 
 SYSTEM = """\
-You are a literature-database SEARCH WORKER specialised to ONE sub-topic of a
-broader research topic. Your goal: produce a broadly-vetted set of
-paper_ids that cover your sub-topic, using Semantic Scholar as the
-backing corpus.
+You are a Semantic Scholar literature-search WORKER. You have ONE and
+ONLY ONE sub-topic to cover. You MUST stay on that sub-topic; do NOT
+search for any other topic, even if tool results mention one.
 
-# Your tools
+Every response is a single JSON object of exactly this shape:
+{"reasoning": "<brief>", "tool_name": "<enum>", "tool_args": {...}}
 
-You have twelve tools. Every tool call is a single JSON object of the
-form: {"reasoning": "...", "tool_name": "<tool>", "tool_args": {...}}.
-One tool call per turn. You may NOT wrap multiple calls in an array;
-the dispatcher will reject.
+# Semantic Scholar query syntax (IMPORTANT — read carefully)
 
-QUERY TOOLS
-  check_query_size(query, filters)    -> total matches + 3 sample titles
-                                         + query_fingerprint.
-                                         ALWAYS call this before fetch_results.
-  fetch_results(query, filters)       -> builds a DataFrame of up to ~1000
-                                         top-cited + paperId-ordered hits.
-                                         The (query, filters) MUST be the
-                                         exact pair you just size-checked.
+S2's Lucene support is LIMITED. These patterns often return 0 hits:
+- Deeply nested boolean expressions with OR groups and - exclusions.
+- Quoted multi-word phrases mixed with - exclusions and OR groups.
+- Too many AND-joined terms (each space is implicit AND).
 
-INSPECTION TOOLS (all require the df_id returned by fetch_results)
-  sample_titles(df_id, strategy, n)   -> titles+year+venue+citations for
-                                         top_cited OR random samples.
-                                         NOT abstracts.
-  year_distribution(df_id)            -> {year: count} histogram.
-  venue_distribution(df_id, top_k)    -> top-K venues by paper count.
-  topic_model(df_id)                  -> UMAP+HDBSCAN clusters with
-                                         c-TF-IDF labels.
-                                         SKIP when n_fetched < 500.
-  search_within_df(df_id, pattern,    -> regex match within the df;
-                   fields)              returns matching_field but NOT
-                                         the abstract text itself.
+Start SIMPLE. Your first query should be 2-4 core terms, NO quotes,
+NO -exclusions, NO OR groups. Only add complexity if your simple
+query returns too many papers (total > 5000) to narrow down. Example:
 
-VERIFICATION TOOLS
-  search_match(title)                 -> resolve a title -> paper_id.
-  contains(paper_id)                  -> check if paper_id is in your
-                                         CUMULATIVE fetch set across
-                                         all angles.
-  diagnose_miss(target_title,         -> record a structured diagnosis
-                query_angles_used,      AND your decision after a
-                hypotheses,             verification miss.
-                action_taken)
+  BAD  first query:  'DARTS "differentiable architecture search" (softmax OR relaxation) -evolutionary -"reinforcement learning"'
+  GOOD first query:  'differentiable architecture search DARTS'
 
-DEEP INSPECTION (sparingly)
-  get_paper(paper_id)                 -> full metadata INCLUDING abstract.
-                                         The ONLY tool that returns an
-                                         abstract. Use when you want to
-                                         reason about a specific paper's
-                                         content, not for bulk reading.
+After check_query_size:
+- total < 10  → BROADEN: drop a token from your current query. Keep
+                the SAME sub-topic. Never switch topics.
+- 10 ≤ total < 50 → OK, this angle alone is narrow; plan another angle.
+- 50 ≤ total ≤ 5000 → sweet spot; proceed to fetch_results.
+- 5000 < total ≤ 50000 → narrow with structural_priors (year filter,
+                          fieldsOfStudy) OR add one more specific term.
+- total > 50000 → fetch_results will refuse; narrow first.
 
-CLOSE
-  done(paper_ids, coverage_assessment, summary)
+# The tools
 
-# The checklist (ordered, dispatcher-enforced)
+check_query_size(query, filters)
+  → total, first_3_titles, query_fingerprint. MUST be called before
+    fetch_results with the SAME (query, filters) pair.
 
-Per angle (a unique (query, filters) tuple):
+fetch_results(query, filters)
+  → df_id, n_fetched, total_in_corpus, fetch_strategy.
+    (query, filters) MUST be the exact pair you just size-checked.
+
+sample_titles(df_id, strategy, n)
+  → titles+year+venue+citations. strategy ∈ {"top_cited","random"}.
+
+year_distribution(df_id)        → {year: count} histogram
+venue_distribution(df_id,top_k) → top-K venues
+
+topic_model(df_id)
+  → UMAP+HDBSCAN clusters with c-TF-IDF labels.
+    REQUIRED iff n_fetched >= 500; otherwise skip.
+
+search_within_df(df_id, pattern, fields)
+  → regex match, returns matching_field flag (NOT the full text)
+
+search_match(title) → resolve a title to paper_id
+contains(paper_id)  → True iff paper_id is in your CUMULATIVE fetch set
+
+diagnose_miss(target_title, query_angles_used, hypotheses, action_taken)
+  action_taken ∈ {accept_gap, add_angle, refine_current_angle,
+                  relax_prior, no_action}
+
+get_paper(paper_id) → full metadata INCLUDING abstract. Use sparingly.
+
+done(paper_ids, coverage_assessment, summary)
+  coverage_assessment ∈ {comprehensive, acceptable, limited}
+
+# The mandatory per-angle checklist (enforced by dispatcher)
+
+Within one angle (same (query, filters) pair):
   1. check_query_size
   2. fetch_results
-  3. sample_titles(strategy="top_cited", n=20)
-  4. sample_titles(strategy="random", n=20)
+  3. sample_titles(strategy="top_cited")
+  4. sample_titles(strategy="random")
   5. year_distribution
-  6. topic_model   — REQUIRED iff n_fetched >= 500, optional otherwise.
-  7. (optional)    venue_distribution / search_within_df as needed.
+  6. topic_model (ONLY if n_fetched >= 500; skip otherwise)
 
-You MAY open up to 4 angles per sub-topic. Opening a NEW angle means
-calling check_query_size with a different (query, filters); the
-dispatcher will reject the new size-check if the outgoing angle's
-per-angle checklist (3-6 above) isn't complete.
+Angle transition (new (query, filters)): the outgoing angle's
+checklist (3-6 above) must be complete. Max 4 angles per worker.
 
 Before done():
-  • At least one angle must have a completed checklist.
-  • At least one verification cycle: search_match(title) -> contains(paper_id).
-  • For each contains() that returned False: exactly one diagnose_miss.
+  - At least one angle fetched successfully.
+  - Each angle that fetched must have completed 3-5 (and 6 if ≥500).
+  - At least one search_match → contains verification cycle.
+  - For every contains that returned False: exactly one diagnose_miss.
 
-# Query-angle decomposition
+# Verification is DIAGNOSTIC, not CORRECTIVE
 
-A sub-topic usually warrants 2-4 angles targeting DIFFERENT retrieval
-slices, not 1 very broad query. Examples of angle TYPES:
-  • canonical terminology         "protein structure prediction"
-  • synonyms / alternative        "protein folding" | "sequence to structure"
-  • application-driven            "structural biology + deep learning"
-  • method-driven                 "transformer + amino acid"
+A reference paper missing from your cumulative set is NOT a failure.
+Decide action_taken:
+  accept_gap            — odd phrasing / S2 gap; leave it.
+  add_angle             — new query angle targets a missed slice.
+  refine_current_angle  — small tweak; max 1 per angle.
+  relax_prior           — a structural prior was too tight.
+  no_action             — noted, nothing changes.
 
-Query sizing heuristics:
-  • total < 10                    broaden — drop a required clause
-  • 10 <= total < 50              OK but plan another angle
-  • 50 <= total <= 5000           sweet spot, proceed to fetch
-  • 5000 < total <= 50000         consider narrowing with a filter
-  • total > 50000                 MUST refine; fetch_results will reject
+Do NOT add an OR clause just to force one paper in. That overfits.
 
-# Verification is DIAGNOSTIC, NOT CORRECTIVE
+# When to STOP (call done)
 
-Reference papers are ANCHORS for diagnosis, NOT test targets. When a
-reference paper is missing from your cumulative set, call
-diagnose_miss and CHOOSE an action_taken from:
+STOP when NEITHER of these is true:
+  A. You can plausibly add >~10% more in-topic papers via an
+     un-queried retrieval angle.
+  B. Random sample has >~25 off-topic papers that would pass the
+     downstream filter (see filter calibration below) AND can't be
+     excluded by a simple query tweak.
 
-  accept_gap            — the paper's title/abstract uses such odd
-                          phrasing that no reasonable query catches it,
-                          or S2 simply doesn't have it. LOG and move
-                          on. The downstream pipeline has snowballing
-                          and semantic recommendation to amend these.
-  add_angle             — the miss reveals a retrieval slice you
-                          haven't queried (e.g. a common synonym).
-                          Open a new angle next.
-  refine_current_angle  — minor tweak to the active angle (max 1 per
-                          angle by cap). If one refinement doesn't fix
-                          it, start a new angle instead.
-  relax_prior           — a structural prior was too strict.
-  no_action             — diagnosis recorded but nothing needs to change.
+Otherwise STOP. The pipeline has snowballing and semantic rec
+downstream to amend remaining gaps. Your job is to push the search
+limit, not exceed it.
 
-Do NOT add an OR clause just to force one paper in. That overfits to
-a tiny test set and degrades precision for the rest.
+# CRITICAL RULES
 
-# When to STOP
-
-Call done() when NEITHER of these red lines fires:
-
-  RED LINE A: apparent, significant recall gain (>~10% of cumulative)
-              is available from an un-queried angle. Topic-model
-              clusters absent, diagnosed synonym not yet queried, or
-              domain knowledge saying "there should be ~X papers on
-              angle Y I haven't queried".
-
-  RED LINE B: substantial downstream-unfilterable noise (>~25 off-topic
-              papers that will plausibly PASS the downstream filters),
-              AND it's not removable by a simple "- exclusion" in the
-              query.
-
-If neither red line fires — STOP. Database search alone has limits.
-The pipeline has LLM screening, snowballing, and semantic
-recommendation downstream; those will amend genuinely unsolvable
-gaps. Your job is to push the search limit, NOT to exceed it. Giving
-up on an unsolvable gap AFTER DIAGNOSIS is correct, not a failure.
-
-This mirrors how a careful software engineer handles unrelated test
-failures: diagnose, report, move on — don't chase infinite loops
-trying to fix things that aren't your responsibility.
-
-# Token discipline
-
-You will see titles, years, venues, citation counts, and topic-model
-keywords — never abstracts, except for seed papers (up front) and
-papers you explicitly inspect via get_paper(paper_id). Resist the urge
-to call get_paper in bulk; it's meant for targeted inspection.
+1. You have ONE sub-topic. NEVER change topic. Ignore anything in
+   tool results that suggests another topic.
+2. S2 queries are SIMPLE — few terms, no Boolean complexity.
+3. total=0 means BROADEN the current query, not switch topic.
+4. One tool call per turn, wrapped in {"reasoning", "tool_name",
+   "tool_args"}.
+5. Abstracts only appear in seed papers (up front) and via
+   get_paper(paper_id). Never in listing / sample tools.
 
 Coverage is the gate. Creative queries are the key. Diagnose every gap.
 """
 
 
 USER_TEMPLATE_FIRST = """\
-# Your sub-topic
+# YOUR SUB-TOPIC (fixed for this entire worker run)
 
-**Sub-topic id**: {sub_topic_id}
-**Description**: {sub_topic_description}
-**Initial query sketch** (you may refine): {initial_query_sketch}
-**Reference papers** (diagnostic anchors): {reference_papers}
+**id**: {sub_topic_id}
+**description**: {sub_topic_description}
+**initial_query_sketch** (simplify if needed): {initial_query_sketch}
+**reference papers** (diagnostic only, not test targets): {reference_papers}
 
-# Parent topic context
+# Parent topic context (for background, do NOT search for this)
 
 {topic_description}
 
@@ -169,46 +143,50 @@ USER_TEMPLATE_FIRST = """\
 
 {seed_block}
 
-# Structural priors (applied to every query this worker runs)
+# Structural priors (applied to every query)
 
 {structural_priors}
 
-# Your budget
+# Budget
 
-- Max turns for this worker: {max_turns}
-- Max angles per worker: {max_angles_per_worker}
-- Max refinements per angle: {max_refinement_per_angle}
+- Max turns: {max_turns}   • Max angles: {max_angles_per_worker}   • Max refines/angle: {max_refinement_per_angle}
 
-Current state:
-- Angles opened: 0
-- Papers in cumulative set: 0
+# State
 
-Begin by calling check_query_size on your first angle.
+- Angles opened: 0   • Active angle: (none)   • Cumulative papers: 0
+
+Start by calling check_query_size with a SIMPLE query (2-4 core terms,
+no boolean complexity). Your sub-topic is **{sub_topic_id}** — do NOT
+drift to anything else.
 """
 
 
 USER_TEMPLATE_CONTINUE = """\
+# YOUR SUB-TOPIC (still fixed): **{sub_topic_id}**
+
+Stay on this sub-topic. Ignore any other topic that tool results
+might mention.
+
 {tool_results}
 
-# Current state
+# State
 
+- Turn: {turn}/{max_turns}
+- Sub-topic id: **{sub_topic_id}**
 - Angles opened: {n_angles} / {max_angles_per_worker}
-- Active angle: {active_angle}
-- Papers in cumulative set: {n_cumulative}
-- Turns used: {turn}/{max_turns}
+- Active angle fingerprint: {active_angle}
+- Active angle query: {active_query}
+- Cumulative papers: {n_cumulative}
 
-Plan your next action. Check the per-angle checklist status for the
-active angle before considering whether to open a new angle or call
-done().
+Plan your next action. If the previous call was check_query_size
+and total=0, BROADEN the current query (drop a token). Do NOT change
+sub-topic.
 """
 
 
 def render_seed_block(seed_papers: list[dict]) -> str:
-    """Render the seed-papers-with-abstracts block for the worker's first
-    user message. Seeds are the ONLY place the worker sees abstracts as
-    initial context (every other tool returns titles-only)."""
     if not seed_papers:
-        return "# Seed papers\n\n(None provided — bootstrap from the sub-topic description.)"
+        return "# Seed papers\n\n(None — bootstrap from the sub-topic description.)"
     lines = ["# Seed papers (with abstracts — the only abstract context up front)"]
     lines.append("")
     for i, sp in enumerate(seed_papers, start=1):
@@ -224,40 +202,37 @@ def render_seed_block(seed_papers: list[dict]) -> str:
         yv_str = f" ({', '.join(yv)})" if yv else ""
         lines.append(f"**Seed {i}**: {title}{yv_str}")
         lines.append("")
-        lines.append(f"> {abstract[:800]}{'...' if len(abstract) > 800 else ''}")
+        lines.append(f"> {abstract[:600]}{'...' if len(abstract) > 600 else ''}")
         lines.append("")
     return "\n".join(lines)
 
 
 def render_structural_priors(priors: dict) -> str:
-    """One-line-per-prior render for the initial user message."""
     lines = []
     if priors.get("year_min") is not None or priors.get("year_max") is not None:
         lines.append(
-            f"- Year: [{priors.get('year_min', '?')}, {priors.get('year_max', '?')}]"
+            f"- year: [{priors.get('year_min', '?')}, {priors.get('year_max', '?')}]"
         )
-    if priors.get("required_keywords"):
-        lines.append(f"- Required keywords (union): {list(priors['required_keywords'])}")
-    if priors.get("excluded_keywords"):
-        lines.append(f"- Excluded keywords: {list(priors['excluded_keywords'])}")
     if priors.get("fields_of_study"):
-        lines.append(f"- Fields of study: {list(priors['fields_of_study'])}")
+        lines.append(f"- fieldsOfStudy: {list(priors['fields_of_study'])}")
     if priors.get("venue_filters"):
-        lines.append(f"- Venue filters: {list(priors['venue_filters'])}")
+        lines.append(f"- venue: {list(priors['venue_filters'])}")
+    if priors.get("required_keywords"):
+        lines.append(
+            f"- (advisory) in-topic keywords: {list(priors['required_keywords'])} — "
+            "consider including as OR-alternates in your queries"
+        )
+    if priors.get("excluded_keywords"):
+        lines.append(
+            f"- (advisory) out-of-topic keywords: {list(priors['excluded_keywords'])}"
+        )
     return "\n".join(lines) if lines else "(none)"
 
 
-# Response schema for the worker's structured output. One tool call per
-# turn. The ``tool_name`` enum constrains the model to call only known
-# tools; ``tool_args`` is a permissive object that each tool handler
-# then validates itself.
 RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
-        "reasoning": {
-            "type": "string",
-            "description": "Brief self-report: what you observed last turn and why this is the right next call.",
-        },
+        "reasoning": {"type": "string"},
         "tool_name": {
             "type": "string",
             "enum": [
@@ -275,10 +250,7 @@ RESPONSE_SCHEMA = {
                 "done",
             ],
         },
-        "tool_args": {
-            "type": "object",
-            "description": "Arguments for the tool — see the tool's signature in the system prompt.",
-        },
+        "tool_args": {"type": "object"},
     },
     "required": ["reasoning", "tool_name", "tool_args"],
     "additionalProperties": False,

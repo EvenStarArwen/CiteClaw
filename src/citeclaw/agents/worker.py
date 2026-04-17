@@ -121,11 +121,19 @@ def run_sub_topic_worker(
         if turn == 1:
             user_msg = initial_user
         else:
+            active_query = "(none)"
+            if state.active_angle is not None:
+                aa = state.active_angle
+                active_query = f"{aa.query!r}"
+                if aa.filters:
+                    active_query += f" with filters={aa.filters}"
             user_msg = USER_TEMPLATE_CONTINUE.format(
+                sub_topic_id=spec.id,
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
                 n_angles=len(state.angles),
                 max_angles_per_worker=agent_config.max_angles_per_worker,
                 active_angle=(state.active_fingerprint or "(none)"),
+                active_query=active_query,
                 n_cumulative=len(state.cumulative_paper_ids),
                 turn=turn,
                 max_turns=agent_config.worker_max_turns,
