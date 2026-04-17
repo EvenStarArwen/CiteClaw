@@ -112,6 +112,7 @@ def run_sub_topic_worker(
     last_active_fp: str | None = None
     turn = 0
     failure_reason = ""
+    auto_closed = False  # set True iff the penultimate-turn rescuer ran and succeeded
 
     while turn < agent_config.worker_max_turns:
         turn += 1
@@ -226,11 +227,15 @@ def run_sub_topic_worker(
         # we reject for max_turns. Only kicks in on turn
         # ``worker_max_turns - 1`` so it never pre-empts a healthy run.
         if turn == agent_config.worker_max_turns - 1:
+            before_done = dispatcher.done_called
             _attempt_auto_close(
                 dispatcher, state, spec=spec, logger=logger,
                 worker_id=worker_id, turn=turn,
             )
-            if dispatcher.done_called:
+            if dispatcher.done_called and not before_done:
+                # Flag it for the SubTopicResult so the supervisor can
+                # tell an auto-rescue from a natural close.
+                auto_closed = True
                 break
 
     # Clean up the DataFrame store for this worker.
@@ -292,6 +297,7 @@ def run_sub_topic_worker(
         turns_used=turn,
         query_angles=angle_results,
         failure_reason=failure_reason,
+        auto_closed=auto_closed,
     )
 
 
@@ -388,6 +394,8 @@ def _attempt_auto_close(
     we leave the worker in its current state and the normal
     max_turns failure path handles it.
     """
+    had_cumulative_before = bool(state.cumulative_paper_ids)
+    had_contains_before = any(e.get("tool") == "contains" for e in state.call_log)
     if not state.cumulative_paper_ids:
         # Last-chance fallback: run the supervisor's initial_query_sketch
         # through size + fetch + inspect. If that produces zero papers
@@ -407,6 +415,22 @@ def _attempt_auto_close(
         # abandon call (drops df, removes papers, logs).
         state.active_fingerprint = angle.fingerprint
         dispatcher.dispatch("abandon_angle", {})
+    # Emit a transparency event so postmortem tooling can tell
+    # auto-closed workers from naturally-closed ones — the result
+    # looks the same from the outside but the agent's coverage
+    # judgement was bypassed. ``SubTopicResult.auto_closed=True`` is
+    # set on the worker-loop side after the dispatch returns.
+    try:
+        logger.log_auto_close_invoked(
+            worker_id=worker_id,
+            spec_id=spec.id,
+            turn=turn,
+            had_cumulative=had_cumulative_before,
+            had_verification=had_contains_before,
+            angles_abandoned=len(incomplete),
+        )
+    except Exception:  # noqa: BLE001 — best-effort observability
+        pass
     # Step 3: if no verification cycle has run yet, attempt one.
     has_contains = any(e.get("tool") == "contains" for e in state.call_log)
     if not has_contains:

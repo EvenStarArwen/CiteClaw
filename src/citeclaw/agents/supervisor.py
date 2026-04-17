@@ -330,6 +330,7 @@ def _register_supervisor_tools(
             "turns_used": result.turns_used,
             "failure_reason": result.failure_reason,
             "stop_reason": stop_reason,
+            "auto_closed": result.auto_closed,
             "n_angles": len(result.query_angles),
             "angles": angle_payload,
         }

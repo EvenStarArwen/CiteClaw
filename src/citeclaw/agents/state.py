@@ -278,6 +278,14 @@ class SubTopicResult:
     turns_used: int
     query_angles: list[QueryAngleResult]
     failure_reason: str = ""
+    # True when the worker hit its turn budget and was rescued by the
+    # penultimate-turn auto-closer rather than reaching ``done()`` on
+    # its own. Coverage is implicitly ``limited`` and the verification
+    # cycle may have been synthesised. Supervisors should treat
+    # ``auto_closed=True`` workers with lower confidence when deciding
+    # retries or coverage claims — the paper_ids are real but the
+    # agent's own coverage judgement was never exercised.
+    auto_closed: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +348,18 @@ class AgentConfig:
     # (plus batch enrich for the unique subset). Caller may tune down
     # for tight budgets.
     fetch_results_limit_per_strategy: int = 500
+
+    # Hard ceiling on ``total`` in the S2 corpus for a query to be
+    # fetchable. Queries matching more than this are refused with a
+    # teaching hint pointing at structural filters. Rationale: our
+    # fetch only samples top_cited + paperId-ordered up to
+    # ``fetch_results_limit_per_strategy`` each, so a query matching
+    # 100K+ papers would be poorly represented and the result set
+    # would be a coincidental slice of the long tail. Better to force
+    # the agent to narrow first. 50K is a pragmatic floor above which
+    # coverage becomes statistically unreliable for this kind of
+    # sampled fetch — tuned from empirical runs rather than theory.
+    fetch_total_cap: int = 50_000
 
     # Budget (delta from start-of-run)
     max_llm_tokens: int = 2_000_000

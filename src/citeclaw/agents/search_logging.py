@@ -241,6 +241,33 @@ class SearchLogger:
             is_error="error" in (result or {}),
         )
 
+    def log_auto_close_invoked(
+        self,
+        *,
+        worker_id: str,
+        spec_id: str,
+        turn: int,
+        had_cumulative: bool,
+        had_verification: bool,
+        angles_abandoned: int,
+    ) -> None:
+        """Emit one event each time the penultimate-turn rescuer fires.
+
+        ``had_cumulative``/``had_verification`` capture the worker's
+        state *before* the rescue so downstream analysis can separate
+        "worker fetched papers but forgot to close" from "worker
+        exhausted turns on queries returning 0".
+        """
+        self._emit(
+            "auto_close_invoked",
+            worker_id=worker_id,
+            spec_id=spec_id,
+            turn=turn,
+            had_cumulative=bool(had_cumulative),
+            had_verification=bool(had_verification),
+            angles_abandoned=int(angles_abandoned),
+        )
+
     def log_angle_transition(
         self,
         *,

@@ -35,8 +35,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("citeclaw.agents.search_tools")
 
-_FETCH_TOTAL_CAP = 50_000  # fetch_results refuses above this
-_FETCH_TOTAL_WARN = 5_000
+# ``_FETCH_TOTAL_CAP`` is the hard refuse-threshold for fetch_results; it is
+# read from :attr:`AgentConfig.fetch_total_cap` at dispatch time so callers
+# can tune it per-run. The module-level constant is kept only as the
+# historical default for tests that construct a dispatcher without an
+# override — do not reference it elsewhere.
+_FETCH_TOTAL_CAP_DEFAULT = 50_000
+_FETCH_TOTAL_WARN = 5_000  # soft warning threshold; currently unused but reserved for future UI
 
 
 # ===========================================================================
@@ -186,12 +191,20 @@ def _handle_fetch_results(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
         )
 
     total = angle.total_in_corpus or 0
-    if total > _FETCH_TOTAL_CAP:
+    cap = getattr(d.config, "fetch_total_cap", _FETCH_TOTAL_CAP_DEFAULT)
+    if total > cap:
         raise DispatcherError(
-            f"query matches {total:,} papers (cap {_FETCH_TOTAL_CAP:,}) — refine first",
+            f"query matches {total:,} papers (cap {cap:,}) — refine first",
             (
-                "add a structural prior (year, fieldsOfStudy, venue) or "
-                "tighten the query with more specific terms"
+                "the fetch samples top_cited + paperId-order up to "
+                f"{d.config.fetch_results_limit_per_strategy} each, so a "
+                "corpus this large would give a spotty representation. "
+                "narrow the query FIRST by adding a structural prior — "
+                "filters={\"year\":\"2018-2026\"} or "
+                "filters={\"fieldsOfStudy\":\"Computer Science\"} — then "
+                "re-call check_query_size before fetch_results. "
+                "Prefer filters over extra '+' clauses (which often "
+                "over-constrain to 0)."
             ),
         )
 
@@ -444,6 +457,15 @@ def _handle_topic_model(args: dict[str, Any], d: WorkerDispatcher) -> dict[str, 
 
     X = np.asarray(vectors, dtype=float)
     n = X.shape[0]
+    # UMAP + HDBSCAN hyperparameters tuned for 50–500-paper result sets:
+    #   - n_neighbors ∈ [5, 15] — keeps neighborhood structure tight on
+    #     small n (5 for ~50 papers) and caps at 15 once n dominates
+    #     (beyond that, UMAP's manifold estimate saturates).
+    #   - min_cluster_size = max(5, n // 25) — enforces a floor of 5 so
+    #     clusters are linguistically interpretable, and grows to ~4%
+    #     of n so large result sets don't fragment into micro-clusters
+    #     (empirically ~20-25 topics on a 500-paper set, which matches
+    #     how many distinct sub-topics the supervisor tends to generate).
     n_neighbors = max(5, min(15, n - 1))
     min_cluster_size = max(5, n // 25)
     reducer = umap.UMAP(
