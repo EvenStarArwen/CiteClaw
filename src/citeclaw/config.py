@@ -260,7 +260,7 @@ def _env_overrides(values: dict[str, Any]) -> None:
     for env_keys, field in [
         (("CITECLAW_OPENAI_API_KEY", "OPENAI_API_KEY"), "openai_api_key"),
         (("CITECLAW_GEMINI_API_KEY", "GEMINI_API_KEY"), "gemini_api_key"),
-        (("CITECLAW_S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY"), "s2_api_key"),
+        (("CITECLAW_S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "S2_API_KEY"), "s2_api_key"),
         (("CITECLAW_OPENALEX_API_KEY", "OPENALEX_API_KEY"), "openalex_api_key"),
         (("CITECLAW_OPENALEX_EMAIL", "OPENALEX_EMAIL"), "openalex_email"),
     ]:
