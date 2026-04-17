@@ -117,11 +117,19 @@ class ExpandBackward:
         pdf_references: bool = False,
         pdf_model: str | None = None,
         headless: bool = True,
+        openalex_references: bool = True,
     ) -> None:
         self.screener = screener
         self.pdf_references = pdf_references
         self.pdf_model = pdf_model
         self.headless = headless
+        # OpenAlex reference fallback — used when S2 returns empty refs
+        # AND the paper has a DOI in external_ids. Cheap (one OpenAlex
+        # call + N single-DOI S2 resolves) and strictly improves recall
+        # for fresh preprints S2 hasn't fully ingested. Defaults to True
+        # because the network cost is small and the payoff is real; set
+        # False to disable.
+        self.openalex_references = openalex_references
 
     def run(self, signal: list[PaperRecord], ctx: Any) -> StepResult:
         if self.screener is None:
@@ -132,6 +140,7 @@ class ExpandBackward:
 
         accepted: list[PaperRecord] = []
         pdf_fallback_count = 0
+        openalex_fallback_count = 0
 
         for source in signal:
             if source.paper_id in ctx.expanded_backward:
@@ -148,7 +157,17 @@ class ExpandBackward:
                 continue
             dash.tick_inner(1)
 
-            # PDF fallback: when S2 returns no references and the user
+            # OpenAlex fallback: when S2 returns no references and the
+            # paper has a DOI, consult OpenAlex's referenced_works. Tried
+            # before the PDF fallback because it's O(refs) network calls
+            # (cheap) vs O(PDF fetch + LLM parse) for the PDF path.
+            if not ref_records and self.openalex_references:
+                oa_refs = self._openalex_fallback(source, ctx)
+                if oa_refs:
+                    ref_records = oa_refs
+                    openalex_fallback_count += 1
+
+            # PDF fallback: when S2 AND OpenAlex both miss and the user
             # opted in, extract reference titles from the paper's PDF.
             if not ref_records and self.pdf_references:
                 pdf_refs = self._pdf_fallback(source, ctx)
@@ -191,10 +210,68 @@ class ExpandBackward:
         stats: dict[str, Any] = {"accepted": len(accepted)}
         if self.pdf_references:
             stats["pdf_fallback_used"] = pdf_fallback_count
+        if self.openalex_references:
+            stats["openalex_fallback_used"] = openalex_fallback_count
         return StepResult(
             signal=accepted, in_count=len(signal),
             stats=stats,
         )
+
+    def _openalex_fallback(
+        self,
+        source: PaperRecord,
+        ctx: Any,
+    ) -> list[PaperRecord]:
+        """Fetch references via OpenAlex for a paper S2 has no refs for.
+
+        Only runs when the paper carries a DOI in ``external_ids``.
+        OpenAlex's ``referenced_works`` is keyed by DOI (via the
+        ``/works/doi:...`` path); we resolve each returned DOI back to
+        an S2 ``PaperRecord`` via ``ctx.s2.fetch_metadata("DOI:...")``.
+        Failures (network, missing work, non-DOI'd records) are silently
+        skipped so a partially-broken OpenAlex response doesn't kill
+        the run.
+        """
+        doi = (source.external_ids or {}).get("DOI")
+        if not doi:
+            return []
+        try:
+            from citeclaw.clients.openalex import OpenAlexClient
+        except ImportError:  # pragma: no cover
+            return []
+        client = OpenAlexClient(ctx.config)
+        try:
+            ref_dois = client.fetch_references_by_doi(doi)
+        except Exception as exc:  # noqa: BLE001 — best effort
+            log.info("OpenAlex references lookup failed for %s: %s",
+                     source.paper_id[:20], exc)
+            client.close()
+            return []
+        finally:
+            # ``client.close`` is safe to call twice; ``try/finally``
+            # guarantees it runs even on the happy path.
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+        if not ref_dois:
+            return []
+
+        records: list[PaperRecord] = []
+        for ref_doi in ref_dois:
+            try:
+                rec = ctx.s2.fetch_metadata(f"DOI:{ref_doi}")
+            except Exception:  # noqa: BLE001 — skip unresolvable DOIs
+                continue
+            if rec is not None:
+                records.append(rec)
+
+        log.info(
+            "openalex fallback: %d DOIs → %d resolved refs for %s",
+            len(ref_dois), len(records), source.paper_id[:20],
+        )
+        return records
 
     def _pdf_fallback(
         self,

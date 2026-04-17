@@ -55,6 +55,7 @@ def _build_expand_backward(d: dict, blocks: dict) -> BaseStep:
         pdf_references=bool(d.get("pdf_references", False)),
         pdf_model=d.get("pdf_model"),
         headless=bool(d.get("headless", True)),
+        openalex_references=bool(d.get("openalex_references", True)),
     )
 
 
