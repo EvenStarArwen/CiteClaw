@@ -161,13 +161,16 @@ USER_TEMPLATE_CONTINUE = """\
 # Current state
 
 - Sub-topics in strategy: {n_sub_topics}
-- Sub-topics dispatched: {n_dispatched} / {n_sub_topics}
+- Dispatched so far   ({n_dispatched}/{n_sub_topics}): {dispatched_ids}
+- **Remaining to dispatch**: {remaining_ids}
 - Workers successful / failed / budget_exhausted:
   {n_success} / {n_failed} / {n_budget}
 - Aggregate paper count so far: {n_aggregate}
 - Turns used: {turn}/{supervisor_max_turns}
 
-Plan your next action.
+Plan your next action. When calling dispatch_sub_topic_worker, use
+**exactly one of the spec_ids in "Remaining to dispatch" above** —
+do not invent or re-spell ids.
 """
 
 

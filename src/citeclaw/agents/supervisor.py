@@ -110,6 +110,24 @@ def run_supervisor(
             n_fail = sum(1 for r in state.sub_topic_results if r.status == "failed")
             n_bud = sum(1 for r in state.sub_topic_results if r.status == "budget_exhausted")
             n_agg = len(state.aggregate_paper_ids())
+            # Surface the literal spec_ids each turn. Without this, the
+            # supervisor sees "2 / 5 dispatched" but has to remember the
+            # actual id list from set_strategy's response N turns ago.
+            # Thinking-heavy models (Gemini Pro, reasoning OpenAI) then
+            # hallucinate semantically plausible but unregistered ids
+            # (e.g. `vision_contrastive`, `clustering_based`) and burn a
+            # turn on the error round-trip. Keeping the list visible
+            # every turn costs ~30 tokens and eliminates that failure mode.
+            dispatched_ids = {r.spec_id for r in state.sub_topic_results}
+            if state.strategy:
+                remaining_ids = [
+                    s.id for s in state.strategy.sub_topics
+                    if s.id not in dispatched_ids
+                ]
+                dispatched_list = sorted(dispatched_ids)
+            else:
+                remaining_ids = []
+                dispatched_list = []
             user_msg = USER_TEMPLATE_CONTINUE.format(
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
                 n_sub_topics=n_sub,
@@ -120,6 +138,8 @@ def run_supervisor(
                 n_aggregate=n_agg,
                 turn=turn,
                 supervisor_max_turns=agent_config.supervisor_max_turns,
+                dispatched_ids=(", ".join(dispatched_list) or "(none)"),
+                remaining_ids=(", ".join(remaining_ids) or "(none)"),
             )
 
         tokens_before = ctx.budget.llm_total_tokens
