@@ -339,6 +339,27 @@ def _parse_tool_call(text: str) -> dict[str, Any]:
     return data
 
 
+def _auto_close_fallback_fetch(dispatcher, spec: SubTopicSpec) -> None:
+    """Last-chance fetch using the supervisor's ``initial_query_sketch``.
+
+    Dispatched through the real tool layer so the query still goes
+    through the S2 lint. Best-effort: any failure is swallowed and
+    the caller will see the empty cumulative set.
+    """
+    sketch = spec.initial_query_sketch
+    if not sketch:
+        return
+    sz = dispatcher.dispatch("check_query_size", {"query": sketch})
+    if not isinstance(sz, dict) or "error" in sz:
+        return
+    if (sz.get("total") or 0) == 0:
+        return
+    fr = dispatcher.dispatch("fetch_results", {"query": sketch})
+    if not isinstance(fr, dict) or "error" in fr:
+        return
+    dispatcher.dispatch("inspect_angle", {})
+
+
 def _attempt_auto_close(
     dispatcher,
     state: WorkerState,
@@ -368,7 +389,13 @@ def _attempt_auto_close(
     max_turns failure path handles it.
     """
     if not state.cumulative_paper_ids:
-        return
+        # Last-chance fallback: run the supervisor's initial_query_sketch
+        # through size + fetch + inspect. If that produces zero papers
+        # too, the sub-topic is genuinely hard and we return cleanly as
+        # a failure. If it produces papers, auto-close succeeds.
+        _auto_close_fallback_fetch(dispatcher, spec)
+        if not state.cumulative_paper_ids:
+            return
     # Step 2: abandon any angle with an incomplete checklist.
     incomplete = [
         a for a in list(state.angles.values())
