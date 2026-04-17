@@ -152,7 +152,15 @@ class GeminiClient:
         # handle free-form JSON plus fenced blocks.
         if response_schema is not None and self._config.structured_output_enabled:
             polymorphic_args = response_schema.get("_strict_openai") is False
-            if not polymorphic_args:
+            if polymorphic_args:
+                # Force JSON output but skip the schema — see the
+                # polymorphic-args comment above. Without mime_type the
+                # thinking-mode model will emit all 2K+ tokens as
+                # ``thought`` parts with nothing in ``text`` (observed on
+                # gemini-3.1-pro-preview), collapsing the response to
+                # empty string on the client side.
+                gen_config["response_mime_type"] = "application/json"
+            else:
                 gen_config["response_mime_type"] = "application/json"
                 gen_config["response_schema"] = _strip_additional_properties(response_schema)
 
