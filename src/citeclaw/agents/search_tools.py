@@ -853,6 +853,19 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
     re-running fetch_results on a new query doesn't multiply the
     pending list — only NEW misses count.
 
+    Titles the worker has already diagnosed on a previous turn are
+    surfaced in a separate ``already_diagnosed`` bucket instead of
+    ``matched_not_in_cumulative``. Without this split, every subsequent
+    ``fetch_results`` would re-report the same miss in
+    ``matched_not_in_cumulative`` (the auto-verifier recomputes
+    against the current cumulative, which still doesn't contain the
+    paper) — and weaker models read the digest more literally than
+    ``State.pending_misses`` and repeatedly call ``diagnose_miss``,
+    burning turns on the dispatcher's ``no pending verification misses
+    to diagnose`` error. Observed with Gemini-flash (handover notes)
+    and now Gemma 4 31B. Splitting the bucket in the digest removes
+    the signal that causes the spam at the source.
+
     Returns ``None`` when the sub_topic has no reference_papers
     (nothing to verify against). Returns a structured report
     otherwise.
@@ -860,8 +873,14 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
     refs = tuple(d.state.reference_papers or ())
     if not refs:
         return None
+    diagnosed_titles = {
+        str(dx.get("target_title", ""))
+        for dx in d.state.miss_diagnoses
+        if isinstance(dx, dict) and dx.get("target_title")
+    }
     matched_in: list[dict[str, Any]] = []
     matched_not_in: list[dict[str, Any]] = []
+    already_diagnosed: list[dict[str, Any]] = []
     not_in_s2: list[str] = []
     for title in refs:
         try:
@@ -882,6 +901,8 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
         }
         if pid in d.state.cumulative_paper_ids:
             matched_in.append(record)
+        elif title in diagnosed_titles:
+            already_diagnosed.append(record)
         else:
             matched_not_in.append(record)
             # Dedup against pending list so repeated fetches don't
@@ -891,10 +912,12 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
     return {
         "matched_in_cumulative": matched_in,
         "matched_not_in_cumulative": matched_not_in,
+        "already_diagnosed": already_diagnosed,
         "not_in_s2": not_in_s2,
         "summary": {
             "matched_in_cumulative": len(matched_in),
             "matched_not_in_cumulative": len(matched_not_in),
+            "already_diagnosed": len(already_diagnosed),
             "not_in_s2": len(not_in_s2),
         },
     }
