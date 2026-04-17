@@ -193,16 +193,61 @@ def _first_author_id(rec: PaperRecord) -> str | None:
     return None
 
 
+_DOI_URL_PREFIXES = (
+    "https://doi.org/",
+    "http://doi.org/",
+    "https://dx.doi.org/",
+    "http://dx.doi.org/",
+    "doi:",
+)
+_ARXIV_URL_PREFIXES = (
+    "https://arxiv.org/abs/",
+    "http://arxiv.org/abs/",
+    "arxiv:",
+)
+
+
+def _normalise_external_value(namespace: str, value: str) -> str:
+    """Strip URL/namespace prefixes from an external-id value.
+
+    S2's native ``externalIds`` dict returns bare IDs, but values that
+    originate in PDF extraction or Crossref can include ``https://doi.org/``
+    wrappers. Without stripping, two papers with the same DOI but different
+    storage formats would fail to match in the external-ID union-find
+    pass.
+    """
+    v = (value or "").strip()
+    if not v:
+        return ""
+    lower = v.lower()
+    ns = namespace.lower()
+    if ns == "doi":
+        for prefix in _DOI_URL_PREFIXES:
+            if lower.startswith(prefix):
+                v = v[len(prefix):]
+                break
+    elif ns == "arxiv":
+        for prefix in _ARXIV_URL_PREFIXES:
+            if lower.startswith(prefix):
+                v = v[len(prefix):]
+                break
+    return v.strip()
+
+
 def _external_keys(rec: PaperRecord) -> list[str]:
     """Extract identity keys from external_ids.
 
     Each key is provider-scoped (e.g. ``DOI:10.1/abc``, ``ArXiv:2301.00001``)
-    so a shared DOI doesn't collide with an identical-looking PMID.
+    so a shared DOI doesn't collide with an identical-looking PMID. Values
+    are normalised via :func:`_normalise_external_value` so URL-prefixed
+    forms cluster with bare forms.
     """
     out: list[str] = []
     for k, v in (rec.external_ids or {}).items():
         if v:
-            out.append(f"{k}:{v}".lower())
+            normalised = _normalise_external_value(k, str(v))
+            if normalised:
+                out.append(f"{k}:{normalised}".lower())
     return out
 
 

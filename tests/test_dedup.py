@@ -184,6 +184,68 @@ class TestDetectClusters:
         clusters = detect_duplicate_clusters(coll)
         assert len(clusters) == 1
 
+    def test_shared_doi_normalises_url_prefixes(self):
+        """DOIs prefixed with https://doi.org/ still match bare forms.
+        Catches the case where one record came from S2 (bare DOI) and
+        another from Crossref or a PDF-extracted reference (URL form)."""
+        coll = {
+            "a": _paper("a", external_ids={"DOI": "10.1038/s41586-021-12345"}),
+            "b": _paper("b", external_ids={"DOI": "https://doi.org/10.1038/s41586-021-12345"}),
+            "c": _paper("c", external_ids={"DOI": "doi:10.1038/s41586-021-12345"}),
+        }
+        clusters = detect_duplicate_clusters(coll)
+        assert len(clusters) == 1
+        assert set(clusters[0]) == {"a", "b", "c"}
+
+    def test_doi_case_insensitive_match(self):
+        """DOI suffixes are case-insensitive per spec; different casings cluster."""
+        coll = {
+            "a": _paper("a", external_ids={"DOI": "10.1038/ABC123"}),
+            "b": _paper("b", external_ids={"DOI": "10.1038/abc123"}),
+        }
+        clusters = detect_duplicate_clusters(coll)
+        assert len(clusters) == 1
+
+    def test_doi_whitespace_stripped_from_values(self):
+        coll = {
+            "a": _paper("a", external_ids={"DOI": "10.1/same"}),
+            "b": _paper("b", external_ids={"DOI": "  10.1/same  "}),
+        }
+        clusters = detect_duplicate_clusters(coll)
+        assert len(clusters) == 1
+
+    def test_transitive_cluster_via_different_namespaces(self):
+        """A shares DOI with B, A shares ArXiv with C — all three cluster
+        together even though B and C have no directly-shared key."""
+        coll = {
+            "a": _paper(
+                "a",
+                external_ids={"DOI": "10.1/shared", "ArXiv": "2301.00001"},
+                venue="arXiv",
+            ),
+            "b": _paper(
+                "b", external_ids={"DOI": "10.1/shared"},
+                venue="NeurIPS",
+            ),
+            "c": _paper(
+                "c", external_ids={"ArXiv": "2301.00001"},
+                venue="ICML",
+            ),
+        }
+        clusters = detect_duplicate_clusters(coll)
+        assert len(clusters) == 1
+        assert set(clusters[0]) == {"a", "b", "c"}
+
+    def test_arxiv_prefix_normalisation(self):
+        coll = {
+            "a": _paper("a", external_ids={"ArXiv": "2301.00001"}),
+            "b": _paper("b", external_ids={"ArXiv": "https://arxiv.org/abs/2301.00001"}),
+            "c": _paper("c", external_ids={"ArXiv": "arXiv:2301.00001"}),
+        }
+        clusters = detect_duplicate_clusters(coll)
+        assert len(clusters) == 1
+        assert set(clusters[0]) == {"a", "b", "c"}
+
     def test_title_similarity_same_author_year(self):
         """High Jaro-Winkler + same first-author + same year = merge."""
         author = [{"authorId": "au1", "name": "Alice Adams"}]
