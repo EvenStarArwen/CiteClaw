@@ -103,7 +103,15 @@ done(paper_ids, coverage_assessment, summary)
 
 - You have ONE sub-topic. NEVER change topic.
 - Quote multi-word phrases for S2.
-- total=0 means BROADEN, not switch topic.
+- Every query MUST keep the sub_topic's **domain anchor** — the core
+  phrase that defines your sub_topic (e.g. "base editing", "NeRF",
+  "mechanistic interpretability", "sparse autoencoder"). When you
+  broaden, add '|' alternatives to the OTHER clauses — never drop
+  or weaken the anchor. A query without the anchor will silently
+  drift into an adjacent domain (e.g. ``"ABE" +"CRISPR"`` without
+  ``"adenine base editor"`` pulls in Attribute-Based Encryption and
+  Acetone-Butanol-Ethanol fermentation papers).
+- total=0 means BROADEN the non-anchor clauses, not switch topic.
 - Abstracts only via get_paper(paper_id) or seed_papers.
 - Situational guidance appears in each turn's user message — follow
   those hints over generic intuition.
