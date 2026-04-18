@@ -201,14 +201,25 @@ class WorkerDispatcher:
     def pending_miss_count(self) -> int:
         """Count of auto-verifier misses not yet diagnosed.
 
-        The auto-verifier inside ``fetch_results`` appends resolved-
-        but-missed paper titles to ``pending_miss_titles``; each
-        successful ``diagnose_miss`` consumes one. Used by
-        ``_pre_done`` to block closure on undiagnosed misses.
+        Title-based: a pending miss is only considered handled when a
+        ``diagnose_miss`` call with a matching ``target_title`` has
+        been recorded. The earlier implementation subtracted list
+        lengths which let a fabricated-title diagnose_miss satisfy the
+        counter while real pending misses remained undiagnosed
+        (observed iter-10 spectral_theory_gft). The handler for
+        diagnose_miss also rejects titles outside the pending set, so
+        this identity-based count now matches the gate exactly.
         """
-        pending = len(self.state.pending_miss_titles)
-        consumed = len(self.state.miss_diagnoses)
-        return max(0, pending - consumed)
+        diagnosed = {
+            str(dx.get("target_title", "")).strip().lower()
+            for dx in self.state.miss_diagnoses
+            if isinstance(dx, dict)
+        }
+        remaining = sum(
+            1 for t in self.state.pending_miss_titles
+            if t.strip().lower() not in diagnosed
+        )
+        return remaining
 
     # ------------------------------------------------------------------
     # Core dispatch

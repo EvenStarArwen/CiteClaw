@@ -337,6 +337,33 @@ def _handle_diagnose_miss(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
             "missing 'target_title'",
             "the title of the reference paper that was flagged as a miss",
         )
+    # Require target_title to be one of the currently-pending missed
+    # reference titles (case-insensitive match to the pending list),
+    # and not one the worker has already diagnosed. Without this check
+    # the counter arithmetic (``len(pending) - len(diagnoses)``) could
+    # be satisfied by diagnosing fabricated titles, leaving actual
+    # pending misses undiagnosed while ``_pre_done`` saw 0 remaining.
+    pending_titles = {t.strip().lower() for t in d.state.pending_miss_titles}
+    already_diagnosed = {
+        str(dx.get("target_title", "")).strip().lower()
+        for dx in d.state.miss_diagnoses
+        if isinstance(dx, dict)
+    }
+    target_key = target.strip().lower()
+    if target_key not in pending_titles:
+        raise DispatcherError(
+            f"target_title {target!r} is not in the pending miss list",
+            (
+                "diagnose_miss must name a title currently in "
+                "reference_coverage.matched_not_in_cumulative. Pending: "
+                f"{sorted(d.state.pending_miss_titles)}"
+            ),
+        )
+    if target_key in already_diagnosed:
+        raise DispatcherError(
+            f"target_title {target!r} already diagnosed",
+            "each pending miss only needs one diagnose_miss call",
+        )
     if isinstance(hypotheses, str) and hypotheses.strip():
         hyp_list = [hypotheses.strip()]
     elif isinstance(hypotheses, list):
@@ -363,11 +390,10 @@ def _handle_diagnose_miss(args: dict[str, Any], d: WorkerDispatcher) -> dict[str
         "queries_used": q_list,
     }
     d.state.miss_diagnoses.append(entry)
-    remaining = max(0, len(d.state.pending_miss_titles) - len(d.state.miss_diagnoses))
     return {
         "acknowledged": True,
         "diagnoses_recorded": len(d.state.miss_diagnoses),
-        "pending_misses_remaining": remaining,
+        "pending_misses_remaining": d.pending_miss_count(),
     }
 
 
