@@ -12,6 +12,7 @@ from tenacity import (
     retry_if_exception_type,
     retry_if_not_exception_type,
     stop_after_attempt,
+    stop_after_delay,
     wait_random_exponential,
 )
 
@@ -327,7 +328,14 @@ class OpenAIClient:
     @retry(
         retry=(retry_if_exception_type(Exception) & retry_if_not_exception_type(BudgetExhaustedError)),
         wait=wait_random_exponential(min=1, max=60),
-        stop=stop_after_attempt(6),
+        # Stop on whichever fires first: 6 attempts OR 10 minutes total
+        # wall clock. The per-call SDK timeout (``llm_request_timeout``,
+        # default 300s) bounds each attempt; without a total-delay cap, a
+        # stuck endpoint can eat the full 6 × 300s = 30+ min budget through
+        # retries while the worker's turn counter doesn't advance.
+        # Observed iter-12 (data_loop_weather worker 2) stalled 20+ min on
+        # one turn before the bash-level kill.
+        stop=(stop_after_attempt(6) | stop_after_delay(600)),
         before_sleep=lambda rs: logging.getLogger("citeclaw.llm.openai").warning(
             "LLM call failed (attempt %d): %s — retrying",
             rs.attempt_number,
