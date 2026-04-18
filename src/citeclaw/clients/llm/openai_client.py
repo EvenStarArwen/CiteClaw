@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+import httpx
 import openai
 from tenacity import (
     retry,
@@ -206,6 +207,31 @@ def _custom_endpoint_reasoning_kwargs(
     }
 
 
+def _build_timeout(total: float) -> httpx.Timeout:
+    """Build an httpx.Timeout with explicit per-phase bounds.
+
+    Passing a single float to ``openai.OpenAI(timeout=…)`` maps to
+    ``httpx.Timeout(total, connect=total, read=total, write=total,
+    pool=total)``. In practice httpx's pool / connect phases are fine,
+    but the READ phase — how long we wait between response bytes — is
+    what actually gates long vLLM reasoning traces. On Modal's
+    streaming-via-keepalive, the socket can dribble bytes indefinitely
+    without triggering the read timeout. Observed iter-12 and iter-15:
+    20+ min stalls on a single call despite ``timeout=300``.
+
+    Setting ``read=total`` but keeping connect/write/pool tight means
+    a hung call still reaches a total limit, without breaking happy-
+    path long-reasoning responses that legitimately take minutes.
+    """
+    return httpx.Timeout(
+        timeout=total,
+        connect=min(30.0, total),
+        read=total,
+        write=min(30.0, total),
+        pool=min(30.0, total),
+    )
+
+
 def _build_openai_sdk(
     config: Settings,
     *,
@@ -225,17 +251,18 @@ def _build_openai_sdk(
     """
     if endpoint_base_url:
         api_key = endpoint_api_key or config.llm_api_key or config.openai_api_key or "none"
+        total = endpoint_timeout if endpoint_timeout is not None else config.llm_request_timeout
         return openai.OpenAI(
             api_key=api_key,
             base_url=endpoint_base_url.rstrip("/"),
-            timeout=endpoint_timeout if endpoint_timeout is not None else config.llm_request_timeout,
+            timeout=_build_timeout(total),
         )
     if config.llm_base_url:
         api_key = config.llm_api_key or config.openai_api_key or "none"
         return openai.OpenAI(
             api_key=api_key,
             base_url=config.llm_base_url.rstrip("/"),
-            timeout=config.llm_request_timeout,
+            timeout=_build_timeout(config.llm_request_timeout),
         )
     api_key = config.openai_api_key
     if not api_key:
@@ -244,7 +271,7 @@ def _build_openai_sdk(
             f"(or set llm_base_url for a custom OpenAI-compatible endpoint). "
             f"Set it in config.yaml or OPENAI_API_KEY / CITECLAW_OPENAI_API_KEY env."
         )
-    return openai.OpenAI(api_key=api_key, timeout=60.0)
+    return openai.OpenAI(api_key=api_key, timeout=_build_timeout(60.0))
 
 
 class OpenAIClient:
