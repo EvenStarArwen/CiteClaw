@@ -119,11 +119,39 @@ done(summary)
 
 # Sub-topic specs — be CONCRETE
 
-Initial query sketches should be ACTUAL Lucene queries the worker
-can run (possibly after refinement), not English descriptions.
+Each sub_topic's ``initial_query_sketch`` is a ready-to-run Lucene
+query the worker will execute (possibly after minor refinement). To
+avoid burning worker turns on syntax or topic-drift recovery, every
+sketch MUST follow four rules:
 
-  BAD:  "papers about protein structure prediction methods"
-  GOOD: "protein structure prediction (deep learning | neural)"
+1. USE SYMBOLS not words. ``|`` for OR, ``+`` for AND, ``-`` for NOT.
+   Never write ``OR`` / ``AND`` / ``NOT`` — S2 treats them as tokens,
+   not operators.
+       ✗  "A" OR "B" AND "C"
+       ✓  ("A" | "B") +"C"
+
+2. WRAP every OR group in parens. Without them precedence is ambiguous
+   and the worker may fetch far more than you intended.
+       ✗  "A" | "B" +"C"         (S2 reads as: "A"  OR  ("B" +"C"))
+       ✓  ("A" | "B") +"C"       (explicit: "A or B"  AND  "C")
+
+3. NAME THE TOPIC with a disambiguating FULL PHRASE. Bare acronyms
+   collide across fields — e.g. ABE = adenine base editor / acetone-
+   butanol-ethanol / attribute-based encryption; LSTM = long short-
+   term memory / liquid silicon trench modulator. Always make the
+   full phrase the primary term; the acronym is an optional
+   alternative inside the same OR group.
+       ✗  "ABE" +"CRISPR"                                ← three fields mix
+       ✓  ("adenine base editor" | "ABE") +"CRISPR"      ← domain-locked
+
+4. KEEP arity ≤ 3. At most two ``+`` at the top level; more than
+   that the S2 corpus almost always returns zero hits and the worker
+   has to redesign from scratch. Use ``fieldsOfStudy`` / ``year``
+   filters instead of extra ``+`` clauses to narrow.
+
+Full example for a sub_topic on adenine base editor off-target effects:
+
+  ("adenine base editor" | "ABE") +"CRISPR" +("off-target" | "specificity")
 
 Reference papers should be well-known, canonical examples. Workers
 use them to detect gaps, not to pass/fail. Never include more than
