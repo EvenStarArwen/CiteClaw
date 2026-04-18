@@ -241,8 +241,8 @@ def _register_supervisor_tools(
         priors = StructuralPriors(
             year_min=_opt_int(priors_raw.get("year_min")),
             year_max=_opt_int(priors_raw.get("year_max")),
-            fields_of_study=tuple(priors_raw.get("fields_of_study") or []),
-            venue_filters=tuple(priors_raw.get("venue_filters") or []),
+            fields_of_study=_coerce_str_list(priors_raw.get("fields_of_study")),
+            venue_filters=_coerce_str_list(priors_raw.get("venue_filters")),
         )
         specs: list[SubTopicSpec] = []
         seen_ids: set[str] = set()
@@ -501,6 +501,27 @@ def _opt_int(v: Any) -> int | None:
         return int(v)
     except (ValueError, TypeError):
         return None
+
+
+def _coerce_str_list(v: Any) -> tuple[str, ...]:
+    """Normalise ``fields_of_study`` / ``venue_filters`` to a tuple of strings.
+
+    Weaker supervisor models frequently emit these as bare strings
+    (``"Computer Science"`` or ``"Biology,Medicine"``) even when the
+    schema expects a list, because the SYSTEM prompt describes them
+    as "EXACT S2 names (comma-joined)". ``tuple()`` on a bare string
+    then splits the string character by character and the worker sees
+    nonsense like ``fieldsOfStudy: ['C', 'o', 'm', 'p', 'u', ...]`` in
+    its user message (observed in every reference transcript on disk
+    before this coercion was added). Accept str / list / tuple / None.
+    """
+    if v is None:
+        return ()
+    if isinstance(v, str):
+        return tuple(p.strip() for p in v.split(",") if p.strip())
+    if isinstance(v, (list, tuple)):
+        return tuple(str(p).strip() for p in v if str(p).strip())
+    return ()
 
 
 def _stop_reason_label(result) -> str:
