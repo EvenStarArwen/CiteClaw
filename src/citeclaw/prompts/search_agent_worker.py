@@ -56,14 +56,13 @@ fetch_results(query, filters) → a big digest, auto-computed:
     topic_model:         {clusters, ctfidf_label, …} | {skipped, reason},
     frequent_ngrams:     [{ngram, frequency}, ... top 20],
     reference_coverage:  {matched_in_cumulative, matched_not_in_cumulative,
-                          already_diagnosed, not_in_s2, summary} | null
+                          not_in_s2, summary} | null
   }
   (query, filters) MUST exactly match a prior check_query_size call.
   Inspection and reference-paper verification run AUTOMATICALLY —
   you do NOT orchestrate them. ``matched_not_in_cumulative`` lists only
-  NEW misses awaiting diagnose_miss. ``already_diagnosed`` lists misses
-  you handled on a previous turn — NO further action is needed on them
-  even though they reappear until a query actually retrieves the paper.
+  NEW misses awaiting diagnose_miss (titles already diagnosed on a
+  previous turn are silently suppressed from the digest).
 
 query_diagnostics(query, filters) → per-OR-leaf hit counts,
   in-context and raw. Use when total looks wrong (too high / too low)
@@ -80,9 +79,8 @@ diagnose_miss(target_title, hypotheses, action_taken, queries_used)
   action_taken ∈ {accept_gap, add_angle, refine_current_angle,
                   relax_prior, no_action}
   Required ONCE per title in the CURRENT fetch's
-  ``reference_coverage.matched_not_in_cumulative``. A title in
-  ``already_diagnosed`` needs NO action — you handled it already.
-  Do NOT call when ``State.pending_misses = 0``.
+  ``reference_coverage.matched_not_in_cumulative``. Do NOT call when
+  ``State.pending_misses = 0`` or that list is empty.
 
 done(paper_ids, coverage_assessment, summary)
   coverage_assessment ∈ {comprehensive, acceptable, limited}

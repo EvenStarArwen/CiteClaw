@@ -854,17 +854,19 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
     pending list — only NEW misses count.
 
     Titles the worker has already diagnosed on a previous turn are
-    surfaced in a separate ``already_diagnosed`` bucket instead of
-    ``matched_not_in_cumulative``. Without this split, every subsequent
-    ``fetch_results`` would re-report the same miss in
-    ``matched_not_in_cumulative`` (the auto-verifier recomputes
-    against the current cumulative, which still doesn't contain the
-    paper) — and weaker models read the digest more literally than
-    ``State.pending_misses`` and repeatedly call ``diagnose_miss``,
-    burning turns on the dispatcher's ``no pending verification misses
-    to diagnose`` error. Observed with Gemini-flash (handover notes)
-    and now Gemma 4 31B. Splitting the bucket in the digest removes
-    the signal that causes the spam at the source.
+    silently EXCLUDED from the user-visible digest. The internal
+    state (``miss_diagnoses`` + ``pending_miss_titles``) still tracks
+    them so ``_pre_done`` correctly gates closure, but the worker
+    no longer sees them in the ``fetch_results`` return value.
+
+    First attempt (iter-2 commit 16ec37f) surfaced diagnosed titles
+    in a separate ``already_diagnosed`` bucket "for transparency".
+    That backfired on iter-9: Gemma read the title in the bucket,
+    pattern-matched on "diagnose", and called ``diagnose_miss``
+    anyway — the dispatcher rejects via ``_pre_done`` but the turn
+    is still burned. The transparency consumer was the human reading
+    the transcript, not the worker itself, so the right move is to
+    drop the bucket entirely from the dispatch return value.
 
     Returns ``None`` when the sub_topic has no reference_papers
     (nothing to verify against). Returns a structured report
@@ -880,7 +882,6 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
     }
     matched_in: list[dict[str, Any]] = []
     matched_not_in: list[dict[str, Any]] = []
-    already_diagnosed: list[dict[str, Any]] = []
     not_in_s2: list[str] = []
     for title in refs:
         try:
@@ -902,7 +903,9 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
         if pid in d.state.cumulative_paper_ids:
             matched_in.append(record)
         elif title in diagnosed_titles:
-            already_diagnosed.append(record)
+            # Already handled — suppress from the user-visible digest
+            # so the worker can't re-diagnose. State is untouched.
+            continue
         else:
             matched_not_in.append(record)
             # Dedup against pending list so repeated fetches don't
@@ -912,12 +915,10 @@ def _internal_auto_verify_references(d: WorkerDispatcher) -> dict[str, Any] | No
     return {
         "matched_in_cumulative": matched_in,
         "matched_not_in_cumulative": matched_not_in,
-        "already_diagnosed": already_diagnosed,
         "not_in_s2": not_in_s2,
         "summary": {
             "matched_in_cumulative": len(matched_in),
             "matched_not_in_cumulative": len(matched_not_in),
-            "already_diagnosed": len(already_diagnosed),
             "not_in_s2": len(not_in_s2),
         },
     }
