@@ -9,6 +9,7 @@ from citeclaw.steps.cluster import Cluster
 from citeclaw.steps.expand_backward import ExpandBackward
 from citeclaw.steps.expand_by_author import ExpandByAuthor
 from citeclaw.steps.expand_by_search import ExpandBySearch
+from citeclaw.steps.expand_by_search_v3 import ExpandBySearchV3
 from citeclaw.steps.expand_by_pdf import ExpandByPDF
 from citeclaw.steps.expand_by_semantics import ExpandBySemantics
 from citeclaw.steps.expand_forward import ExpandForward
@@ -84,6 +85,32 @@ def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
         topic_description=d.get("topic_description"),
         max_anchor_papers=int(d.get("max_anchor_papers", 20)),
         apply_local_query_args=d.get("apply_local_query_args"),
+    )
+
+
+def _build_expand_by_search_v3(d: dict, blocks: dict) -> BaseStep:
+    """Build an ``ExpandBySearchV3`` step from its YAML dict.
+
+    The ``agent:`` sub-dict is forwarded into ``AgentConfigV3`` kwargs.
+    Unlike V2 this step does NOT take a screener — the V3 loop is the
+    multi-agent query-design module only, per the design brief.
+    """
+    from citeclaw.agents.v3.state import AgentConfigV3
+
+    agent_raw = d.get("agent") or {}
+    if isinstance(agent_raw, AgentConfigV3):
+        agent_cfg = agent_raw
+    elif isinstance(agent_raw, dict):
+        known = {k: v for k, v in agent_raw.items() if k in AgentConfigV3.__dataclass_fields__}
+        agent_cfg = AgentConfigV3(**known)
+    else:
+        raise ValueError(
+            "ExpandBySearchV3.agent must be a mapping (or omitted to use defaults)"
+        )
+    return ExpandBySearchV3(
+        agent=agent_cfg,
+        topic_description=d.get("topic_description"),
+        supervisor_max_turns=int(d.get("supervisor_max_turns", 20)),
     )
 
 
@@ -200,6 +227,7 @@ STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
     "ExpandBackward":    _build_expand_backward,
     "ExpandByPDF":       _build_expand_by_pdf,
     "ExpandBySearch":    _build_expand_by_search,
+    "ExpandBySearchV3":  _build_expand_by_search_v3,
     "ExpandBySemantics": _build_expand_by_semantics,
     "ExpandByAuthor":    _build_expand_by_author,
     "HumanInTheLoop":    _build_human_in_the_loop,
