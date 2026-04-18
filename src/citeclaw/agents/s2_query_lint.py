@@ -104,25 +104,18 @@ def lint_s2_query(query: str) -> LintResult:
     quoted_phrases = _QUOTED_PHRASE.findall(text)
 
     # 4. Too many '+' clauses (3+ is the empirical 0-hit tipping point).
+    # Arity of the top-level AND chain = plus_clauses + 1, so ``≥ 3``
+    # here means ≥ 4-way AND — the real over-constraint case. Phrases
+    # inside OR groups like ``+("C" | "D")`` don't count as mandatory
+    # terms on their own; rejecting on flat phrase count (the old
+    # 4-phrases-AND-2-plus rule) produced false positives on legitimate
+    # shapes like ``"A" +"B" +("C" | "D")`` (arity 3, not 4).
     plus_clauses = len(re.findall(r'\+(?=")|\+(?=\()', text))
     if plus_clauses >= 3:
         return LintResult(
             ok=False,
             message=f"too many '+' clauses ({plus_clauses}); S2 intersections of 3+ phrases almost always return 0 hits",
             hint="keep at most 2 '+' mandatory phrases; use '|' OR to broaden",
-        )
-
-    # Also reject 3+ total mandatory phrases (quoted + explicit `+`
-    # prefix considered). Example: ``"A" +"B" +"C" +"D"`` has 3 `+`
-    # operators AND 4 total phrases — over-constrained.
-    if len(quoted_phrases) >= 4 and plus_clauses >= 2:
-        return LintResult(
-            ok=False,
-            message=(
-                f"{len(quoted_phrases)} quoted phrases combined with {plus_clauses} '+' "
-                f"operators creates an over-constrained AND of 4+ terms"
-            ),
-            hint="reduce to at most 3 quoted phrases, or convert some '+' to '|'",
         )
 
     # 5. Operators between bare (unquoted) tokens. We detect '+', '-',
