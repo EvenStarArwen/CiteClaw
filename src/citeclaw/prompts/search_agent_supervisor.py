@@ -30,6 +30,14 @@ add_sub_topics(sub_topics)
     remove existing sub_topics (they may already have results
     attached). Combined strategy is capped at 20 sub_topics.
 
+    NO OVERLAP: every new sub_topic must cover a slice that is
+    NOT represented by any existing sub_topic's description. Read
+    "Dispatched so far" and "Remaining to dispatch" in the state
+    block before calling. Adding a near-duplicate under a different
+    id (e.g. `cu_alloys_v2` next to `cu_alloys`, or `methanol` next
+    to `methanol_production`) wastes a worker budget on work that
+    is already done.
+
 dispatch_sub_topic_worker(spec_id)
     Launch the worker for the sub-topic with id=spec_id. The supervisor
     loop blocks until the worker returns. You receive a
@@ -189,16 +197,27 @@ USER_TEMPLATE_CONTINUE = """\
 # Current state
 
 - Sub-topics in strategy: {n_sub_topics}
-- Dispatched so far   ({n_dispatched}/{n_sub_topics}): {dispatched_ids}
-- **Remaining to dispatch**: {remaining_ids}
 - Workers successful / failed / budget_exhausted:
   {n_success} / {n_failed} / {n_budget}
 - Aggregate paper count so far: {n_aggregate}
 - Turns used: {turn}/{supervisor_max_turns}
 
-Plan your next action. When calling dispatch_sub_topic_worker, use
-**exactly one of the spec_ids in "Remaining to dispatch" above** —
-do not invent or re-spell ids.
+# Dispatched so far ({n_dispatched}/{n_sub_topics})
+
+{dispatched_block}
+
+# Remaining to dispatch
+
+{remaining_block}
+
+Plan your next action.
+- dispatch_sub_topic_worker: pick one id from "Remaining to dispatch"
+  above — do not invent or re-spell ids.
+- add_sub_topics: first scan every description under "Dispatched so
+  far" and "Remaining to dispatch". Only add a new sub_topic when
+  its slice is NOT already covered by any existing description. If
+  you find yourself wanting to add a sub_topic whose description
+  would restate an existing one with different words, skip it.
 """
 
 

@@ -110,24 +110,45 @@ def run_supervisor(
             n_fail = sum(1 for r in state.sub_topic_results if r.status == "failed")
             n_bud = sum(1 for r in state.sub_topic_results if r.status == "budget_exhausted")
             n_agg = len(state.aggregate_paper_ids())
-            # Surface the literal spec_ids each turn. Without this, the
-            # supervisor sees "2 / 5 dispatched" but has to remember the
-            # actual id list from set_strategy's response N turns ago.
-            # Thinking-heavy models (Gemini Pro, reasoning OpenAI) then
-            # hallucinate semantically plausible but unregistered ids
-            # (e.g. `vision_contrastive`, `clustering_based`) and burn a
-            # turn on the error round-trip. Keeping the list visible
-            # every turn costs ~30 tokens and eliminates that failure mode.
-            dispatched_ids = {r.spec_id for r in state.sub_topic_results}
+            # Surface the full sub-topic table each turn — id + 1-line
+            # description + per-worker status — so the supervisor can
+            # (a) pick a valid id when dispatching without hallucinating
+            # one, and (b) check coverage before calling add_sub_topics.
+            # Showing only ids caused two failure modes on Gemma 4 / weak
+            # models: hallucinated ids for dispatch (round-trip error)
+            # and semantic-duplicate adds (two sub-topics covering the
+            # same slice with different id slugs, e.g. cu_alloys_X and
+            # cu_alloys_Y). Descriptions cost ~150 tokens / turn but
+            # make both failure modes structurally impossible.
+            dispatched_id_set = {r.spec_id for r in state.sub_topic_results}
             if state.strategy:
-                remaining_ids = [
-                    s.id for s in state.strategy.sub_topics
-                    if s.id not in dispatched_ids
-                ]
-                dispatched_list = sorted(dispatched_ids)
+                spec_by_id = {s.id: s for s in state.strategy.sub_topics}
+                result_by_id = {r.spec_id: r for r in state.sub_topic_results}
+                dispatched_lines: list[str] = []
+                for sid in sorted(dispatched_id_set):
+                    spec = spec_by_id.get(sid)
+                    res = result_by_id.get(sid)
+                    desc = (spec.description or "").strip().replace("\n", " ") if spec else ""
+                    if len(desc) > 100:
+                        desc = desc[:100].rstrip() + "…"
+                    if res is not None:
+                        tag = f"{res.status}, {len(res.paper_ids)} papers"
+                    else:
+                        tag = "pending"
+                    dispatched_lines.append(f"  - {sid} [{tag}]: {desc}" if desc else f"  - {sid} [{tag}]")
+                remaining_lines: list[str] = []
+                for s in state.strategy.sub_topics:
+                    if s.id in dispatched_id_set:
+                        continue
+                    desc = (s.description or "").strip().replace("\n", " ")
+                    if len(desc) > 100:
+                        desc = desc[:100].rstrip() + "…"
+                    remaining_lines.append(f"  - {s.id}: {desc}" if desc else f"  - {s.id}")
+                dispatched_block = "\n".join(dispatched_lines) if dispatched_lines else "  (none)"
+                remaining_block = "\n".join(remaining_lines) if remaining_lines else "  (none)"
             else:
-                remaining_ids = []
-                dispatched_list = []
+                dispatched_block = "  (none)"
+                remaining_block = "  (none)"
             user_msg = USER_TEMPLATE_CONTINUE.format(
                 tool_results=_render_tool_result(last_tool_name, last_tool_result),
                 n_sub_topics=n_sub,
@@ -138,8 +159,8 @@ def run_supervisor(
                 n_aggregate=n_agg,
                 turn=turn,
                 supervisor_max_turns=agent_config.supervisor_max_turns,
-                dispatched_ids=(", ".join(dispatched_list) or "(none)"),
-                remaining_ids=(", ".join(remaining_ids) or "(none)"),
+                dispatched_block=dispatched_block,
+                remaining_block=remaining_block,
             )
 
         tokens_before = ctx.budget.llm_total_tokens
