@@ -68,6 +68,29 @@ _ENRICH_CAP = 2000
 _RANDOM_SAMPLE_SIZE = 10
 _TOP_ABSTRACTS_SIZE = 10
 
+# Each LLM call already has a per-call tenacity budget (6 attempts or
+# 600s total, whichever comes first — see clients/llm/openai_client.py).
+# When that budget is exhausted, _single_call returns an empty string.
+# If we see 2 consecutive empty replies, the endpoint is almost
+# certainly down / saturated, so abort the worker rather than keep
+# burning ~10 min per dead call through the remaining phases.
+_MAX_CONSECUTIVE_LLM_FAILURES = 2
+
+
+class _LLMCallTracker:
+    def __init__(self, threshold: int = _MAX_CONSECUTIVE_LLM_FAILURES) -> None:
+        self.threshold = threshold
+        self.consec_empty = 0
+
+    def record(self, text: str) -> None:
+        if text and text.strip():
+            self.consec_empty = 0
+        else:
+            self.consec_empty += 1
+
+    def dead(self) -> bool:
+        return self.consec_empty >= self.threshold
+
 
 # ---------------------------------------------------------------------------
 # JSON extraction
@@ -394,7 +417,34 @@ def run_v3_worker(
     state = WorkerStateV3(sub_topic_id=spec.id, description=spec.description)
     enriched_pool: dict[str, dict] = {}
 
+    # Shared LLM-failure tracker: if the endpoint is dead, bail out of
+    # the iteration loop instead of burning the rest of the phases on
+    # consecutive 10-min retry cycles.
+    _tracker = _LLMCallTracker()
+
+    def _llm(*, user: str, category: str, system: str | None = None) -> tuple[str, dict]:
+        # Short-circuit: don't burn more 10-min retry cycles if the
+        # endpoint has already failed _MAX_CONSECUTIVE_LLM_FAILURES
+        # calls in a row. Every call site gracefully handles an empty
+        # response.
+        if _tracker.dead():
+            return "", {}
+        text, parsed = _single_call(
+            llm_client=llm_client,
+            system=system if system is not None else system_prompt,
+            user=user,
+            category=category,
+        )
+        _tracker.record(text)
+        return text, parsed
+
     for iter_idx in range(config.max_iter):
+        if _tracker.consec_empty >= _tracker.threshold:
+            log.warning(
+                "V3 worker %s: aborting at iter %d — %d consecutive LLM failures",
+                spec.id, iter_idx, _tracker.consec_empty,
+            )
+            break
         # -- Phase 1: PROPOSE ------------------------------------------------
         if iter_idx == 0:
             user_msg = WORKER_PROPOSE_FIRST.format(description=spec.description)
@@ -405,9 +455,7 @@ def run_v3_worker(
                 diagnosis=state.iterations[-1].diagnosis or "(none)",
                 intended_change=state.iterations[-1].intended_change or "(none)",
             )
-        _, parsed = _single_call(
-            llm_client=llm_client,
-            system=system_prompt,
+        _, parsed = _llm(
             user=user_msg,
             category="v3_worker_propose",
         )
@@ -438,9 +486,7 @@ def run_v3_worker(
             )
             if not has_blocking_error(issues):
                 break
-            _, parsed_fix = _single_call(
-                llm_client=llm_client,
-                system=system_prompt,
+            _, parsed_fix = _llm(
                 user=WORKER_SYNTAX_ERROR.format(
                     query=query_nl,
                     issues=render_issues(issues),
@@ -500,9 +546,7 @@ def run_v3_worker(
         )
 
         # -- Phase 3: CHECK_TOTAL (fresh, isolated context) ----------------
-        _, parsed = _single_call(
-            llm_client=llm_client,
-            system=system_prompt,
+        _, parsed = _llm(
             user=WORKER_CHECK_TOTAL.format(
                 query=query_nl,
                 total=total,
@@ -515,9 +559,7 @@ def run_v3_worker(
         iteration.reasoning_total = str(parsed.get("reasoning") or "").strip()
 
         # -- Phase 4: CHECK_CLUSTERS ---------------------------------------
-        _, parsed = _single_call(
-            llm_client=llm_client,
-            system=system_prompt,
+        _, parsed = _llm(
             user=WORKER_CHECK_CLUSTERS.format(
                 query=query_nl,
                 description=spec.description,
@@ -554,9 +596,7 @@ def run_v3_worker(
                 enriched_by_id=enriched_pool,
                 query_lucene=query_lucene,
             )
-            _, parsed_diag = _single_call(
-                llm_client=llm_client,
-                system=system_prompt,
+            _, parsed_diag = _llm(
                 user=WORKER_NOISE_TOPIC_DIAG.format(
                     cluster_id=cid_int,
                     description=spec.description,
@@ -572,9 +612,7 @@ def run_v3_worker(
 
         # -- Phase 5: CHECK_TOP100 -----------------------------------------
         titles_block = _render_top100_titles(enriched_sorted)
-        _, parsed = _single_call(
-            llm_client=llm_client,
-            system=system_prompt,
+        _, parsed = _llm(
             user=WORKER_CHECK_TOP100.format(
                 query=query_nl,
                 titles=titles_block,
@@ -594,9 +632,7 @@ def run_v3_worker(
             if not title:
                 continue
             inspect_output = _inspect_paper(title, s2_client=s2_client, iteration=iteration)
-            _, parsed_diag = _single_call(
-                llm_client=llm_client,
-                system=system_prompt,
+            _, parsed_diag = _llm(
                 user=WORKER_NOISE_PAPER_DIAG.format(
                     title=title,
                     inspect_output=inspect_output,
@@ -630,9 +666,7 @@ def run_v3_worker(
             random10_block=random10_block,
             clusters=clusters_block,
         )
-        _, parsed = _single_call(
-            llm_client=llm_client,
-            system=system_prompt,
+        _, parsed = _llm(
             user=diagnose_msg,
             category="v3_worker_diagnose_plan",
         )
@@ -681,9 +715,7 @@ def run_v3_worker(
 
     summary_text = ""
     try:
-        _, parsed = _single_call(
-            llm_client=llm_client,
-            system=system_prompt,
+        _, parsed = _llm(
             user=WORKER_FINAL_SUMMARY.format(
                 n_unique=len(final_ids),
                 clusters=render_clusters(clusters_final),
