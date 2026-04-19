@@ -80,7 +80,8 @@ class QueryIterationV3:
     """Everything captured for one iteration of a worker's loop."""
 
     iter_idx: int
-    query: str
+    query: str  # natural-language form (AND/OR/NOT) — what the LLM wrote
+    query_lucene: str  # Lucene form actually sent to S2
     total_count: int  # S2's reported total (capped at max_papers_per_query for fetch)
     fetched_count: int
     paper_ids: list[str]  # stable order = S2 relevance order
@@ -89,6 +90,14 @@ class QueryIterationV3:
     top_titles_100: list[str]  # top-100 by citationCount
     diff_new: int  # papers not seen in any prior iter's paper_ids (this worker)
     diff_seen: int  # papers seen in a prior iter
+    # Per-phase one-sentence reasoning from this iter's diagnostics.
+    # These are surfaced in subsequent iters' write-next history block
+    # so the worker doesn't regress to mistakes it already diagnosed.
+    reasoning_total: str = ""
+    reasoning_clusters: str = ""
+    reasoning_top100: str = ""
+    diagnosis: str = ""
+    intended_change: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -123,10 +132,6 @@ class WorkerStateV3:
     sub_topic_id: str
     description: str
     iterations: list[QueryIterationV3] = field(default_factory=list)
-    # Conversation messages accumulated across the worker's lifetime.
-    # Tutorial-style: one long coherent conversation with multiple
-    # phases per iteration. LLM returns a single text reply per turn.
-    messages: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def aggregate_paper_ids(self) -> list[str]:

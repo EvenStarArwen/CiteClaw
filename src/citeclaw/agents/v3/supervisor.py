@@ -188,7 +188,7 @@ def _handle_set_strategy(args: dict, state: SupervisorStateV3, max_subtopics: in
     if not isinstance(raw, list) or not raw:
         raise _SupervisorError(
             "'sub_topics' must be a non-empty list of {id, description}",
-            f"3 to {max_subtopics} entries",
+            f"1 to {max_subtopics} entries — shared-anchor topics should use 1",
         )
     if len(raw) > max_subtopics:
         raise _SupervisorError(
