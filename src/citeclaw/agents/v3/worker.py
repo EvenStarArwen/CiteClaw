@@ -516,8 +516,8 @@ def run_v3_worker(
                     [r["reason"] for r in result.rejected],
                 )
 
-        if state.plan is None or not state.plan.facets:
-            log.warning("V3 worker %s iter %d: plan is empty", spec.id, iter_idx)
+        if state.plan is None or not any(f.terms for f in state.plan.facets):
+            log.warning("V3 worker %s iter %d: plan has no non-empty facet", spec.id, iter_idx)
             break
 
         query_nl = render_plan_natural(state.plan)
