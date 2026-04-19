@@ -128,3 +128,70 @@
 3. Step 2 里 "maximally expand" 的指令可能需要对 short acronym(≤3 char)加一个硬例外 —— 即使 step 4 说去 filter,iter-0 就已经从 200K+ 论文里 sample 了 top-cited,先产生的污染就是用户最先看到的。
 
 ---
+
+## Scenario 1 — `prime_editing` 重跑 (post-diagnostic-overhaul)
+
+中间落地了一系列修复:V3.1 supervisor anchor-shared 判断、union → last-iter、translator 保护 quoted strings、per-OR-alternative 计数、pre-S2 syntax checker(8 个检查 + WORKER_SYNTAX_ERROR retry)、in-cluster query tree + forced per-item noise diagnosis、S2 auto-stem 的 prompt 更新(删 `word*` 推荐、加 <4 char acronym 硬例外)、wildcard-in-phrase 与 operator-in-phrase 两个 syntax 检查、LLM consecutive-failure tracker、topic_model scipy 错误 guard、in-cluster combo render 上限 40。
+
+### 数量变化
+
+| Model | 旧轮 初始 / 追加 / Union | 新轮 初始 / 追加 / Union | Workers 总 |
+|---|---|---|---|
+| Gemma | 3 + 1 = 4 workers, union **6,422** | **3 + 0 = 3 workers, union 463** | 3 |
+| Grok | 5 + 0 = 5 workers, union **13,925** | **1 + 0 = 1 worker, union 1,076** | 1 |
+| OpenAI | 5 + 0 = 5 workers, union **42,741** | **1 + 0 = 1 worker, union 49** | 1 |
+
+Supervisor 行为彻底变了:Grok 和 OpenAI 都从 5 顶格降到 1(anchor-shared 判断真正落地);Gemma 初始仍选 3 但没像上轮那样多加 `pe_agriculture` 漂出 scope。
+
+### 聚类干净度(UMAP+HDBSCAN on SPECTER2, size_factor=0.5)
+
+**Gemma** — 18 clusters on 463 enriched papers, **接近 100% on-topic**:
+18 个 clusters 全部是 prime editing 细分方向 —— retinal gene editing、liver in-vivo、cardiac RBM20/PLN、CD34+/HSPCs、CFTR 囊性纤维、DMD exon、KRAS、SCID 基因治疗、eVLP 递送、Alzheimer APOE4 等。**零 PE=preeclampsia / PPE / plantar / property accounting 类的 collision**。上轮 41% 噪声 → 现在 ~0%。
+
+**Grok** — 14 clusters on 1,076 enriched papers, **~75% on-topic**:
+cluster 1 (251p, plant editing) 仍有残留 —— plant prime editing 在 topic 的 therapeutic scope 之外但确实是 prime editing 的应用。其余 13 个 cluster 全部 on-topic(prime editing / pegRNA design / gene therapy / CFTR / DMD / retinal / cardiovascular / Alzheimer / KRAS 等)。**零 PE=preeclampsia / phosphatidylethanolamine / pulmonary embolism 类的 collision**。上轮 >50% 噪声 → 现在 ~25%(剩余 drift 不是 acronym 碰撞而是 scope 问题)。
+
+**OpenAI** — 16 clusters on 49 enriched papers, **100% on-topic**:
+每个 cluster 2-8 篇,全部是 prime editing 细分:SBDS、SMA exon skipping、F508del CFTR、ELANE neutrophil editing、ABCA4 BRET、OptiPrime 机器学习、PEDAR deletion、template-jumping PE 等。**零 `RT`=reverse transcriptase / SARS-CoV-2 / 癌症综述 类的 collision**。上轮 17% 噪声 → 现在 0%,但 recall 偏低(49 vs Gemma 463)。
+
+### Top-cited 对比
+
+新的三家 top-cited 都是货真价实的 prime editing 论文:Anzalone 2019 原型("Search-and-replace genome editing"),DMD/CFTR/IRD 的 prime editing 应用,Enhanced pegRNA,PASSIGE,engineered pegRNA,split PE with dual-AAV,twin prime,mouse liver/heart in vivo 等。上轮那种 SARS-CoV-2 Cas12、burnout 社科综述、preeclampsia、肺栓塞之类的"高引噪声"彻底消失。
+
+### syntax_check 触发统计
+
+| code | Gemma | Grok | OpenAI |
+|---|---|---|---|
+| `or_subsumed`(warning) | 3 | 2 | **21** |
+| `bare_short_acronym`(warning) | 4 | 0 | 0 |
+| `wildcard_in_phrase`(error) | 0 | 0 | 0 |
+| `operator_word_in_phrase`(warning) | 0 | 0 | 0 |
+
+OpenAI 每 iter 都堆 `"prime editing" OR "prime-editing" OR "prime editing system"` 这种 subsumption 违反,检查每次都报,但属于 warning,没阻塞。Gemma 的 4 次 `bare_short_acronym` 都是在 therapeutic facet 里放了 `rat`(3 字母)—— 警告触发符合规则。由于这轮三家都没写 bare `PE` / `RT` / `PASTE`、也没写 quoted-phrase-with-wildcard 或 AND-inside-quote,新加的两个 error 检查没机会触发,但**模型行为本身已经规避了这些陷阱** —— 说明 prompt 更新生效。
+
+### 修复了 SEARCH_TEST 里记的哪些问题
+
+| 上轮记录的问题 | 状态 |
+|---|---|
+| PE / RT / PASTE / PPE 裸缩写 collision | ✓ 三家都消失 |
+| Supervisor 顶到 max_subtopics | ✓ Grok & OpenAI 从 5 → 1;Gemma 3 未追加 |
+| Gemma pe_agriculture scope drift | ✓ 这次没有 |
+| Grok `"prime AND editing"`(AND 在引号内) | ✓ 这次没写 |
+| Grok 冗余 AND facet (同一 OR 组两侧) | ✓ 这次没有 |
+| 迭代剧烈震荡(5→500K→9→50K) | 🟢 这次单调收敛(Gemma 2413→521→255→204→105;OpenAI 750→83→23→40→49)|
+| cluster 0 k-means 伪 99% 干净 | ✓ 换 UMAP+HDBSCAN 后真实 cluster 分布 |
+| Union 作为 recall 指标误导 | ✓ 现在返回 last-iter 而非 union |
+| 诊断 → 行动脱节 | 🟢 可见单调收敛,间接证据 |
+
+### 仍存问题(observation,非 blocker)
+
+1. **OpenAI recall 偏低(49 papers)**。worker 在 iter 1 后 query 过窄(750→83),到 iter 4 只有 49 篇。max_iter=5 给了 5 次机会但 agent 倾向越收越紧。没有"你离理想召回 X 篇还差多少"的量化反馈;这正是上轮 "共性 #4" 留的口子,user 指示暂不加(不同领域没有通用值)。
+2. **Grok worker 1 iter 2 propose 返回空 query**,worker 只完成 2 iter 就止步(iter 0 的 142K 被 iter 1 的 1076 覆盖,最终就是 iter 1)。不是我们的 bug,是模型响应异常;新加的 consecutive-failure tracker 此时不会触发(tracker 只看空响应,iter 2 propose 返回了空但 iter 0-1 的中间 LLM 调用都成功,consec 计数被重置)。
+3. **Grok plant editing drift (251p/1076)**。plant prime editing 是合法的 prime editing 应用,但 topic 明确 scope 在"therapeutic".这不是 acronym collision,是 agent 对 topic 描述里 "NOT" 边界的 pattern-match 不够严;属于 supervisor/worker 共同的 scope interpretation 问题,单靠 syntax check 抓不到。
+4. **OpenAI subsumption 违反 21 次**(warning-only)。`or_subsumed` 作为 warning 不阻塞,OpenAI 稳定忽略。如果希望真正压这个,需要把它升级成 error,或者由 translator 层静默删除冗余 alternative。
+
+### 小结
+
+上轮三家一眼望去都是灾难(PE 拉进 preeclampsia、RT 拉进 SARS-CoV-2 RT、PPE 拉进 Personal Protective Equipment、OpenAI union 42K 里大半是无关论文),本轮三家的 last-iter 输出都是**纯粹的 prime editing 相关 paper**,差别只剩 recall(OpenAI 49 < Gemma 463 < Grok 1076)和一个 scope-drift 残余(Grok plant editing)。Diagnostic tools + 两轮 prompt 更新 + syntax check + anchor-shared supervisor 叠加起来的综合效果显著。
+
+---
