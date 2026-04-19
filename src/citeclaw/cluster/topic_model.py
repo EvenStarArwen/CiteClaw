@@ -137,22 +137,38 @@ def cluster_embeddings(
 
     X = np.asarray(kept_vectors, dtype=np.float32)
     nn = min(effective_n_neighbors, max(2, len(kept_ids) - 1))
-    reducer = umap.UMAP(
-        n_neighbors=nn,
-        n_components=min(n_components, max(2, len(kept_ids) - 1)),
-        min_dist=0.0,
-        metric=umap_metric,
-        random_state=random_state,
-    )
-    X_reduced = reducer.fit_transform(X)
-
-    clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=max(2, effective_mcs),
-        min_samples=effective_min_samples,
-        metric=hdbscan_metric,
-        cluster_selection_method=cluster_selection_method,
-    )
-    labels = clusterer.fit_predict(X_reduced)
+    try:
+        reducer = umap.UMAP(
+            n_neighbors=nn,
+            n_components=min(n_components, max(2, len(kept_ids) - 1)),
+            min_dist=0.0,
+            metric=umap_metric,
+            random_state=random_state,
+        )
+        X_reduced = reducer.fit_transform(X)
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=max(2, effective_mcs),
+            min_samples=effective_min_samples,
+            metric=hdbscan_metric,
+            cluster_selection_method=cluster_selection_method,
+        )
+        labels = clusterer.fit_predict(X_reduced)
+    except Exception as exc:  # noqa: BLE001
+        # UMAP's spectral-init can fall over with scipy-eigh errors on
+        # tiny / degenerate corpora (<~30 papers). Rather than crash the
+        # whole worker, treat everything as noise and let the caller
+        # decide what to do.
+        log.warning(
+            "topic_model: UMAP/HDBSCAN failed (%s); returning all-noise membership",
+            exc,
+        )
+        for pid in kept_ids:
+            membership[pid] = -1
+        return membership, {
+            "min_cluster_size": effective_mcs,
+            "min_samples": effective_min_samples,
+            "n_neighbors": effective_n_neighbors,
+        }
     for pid, label in zip(kept_ids, labels):
         membership[pid] = int(label)
     return membership, {

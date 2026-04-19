@@ -171,8 +171,20 @@ def build_in_cluster_tree(
     return out
 
 
+_IN_CLUSTER_COMBO_CAP = 40
+
+
 def render_in_cluster_tree(tree: dict[str, Any]) -> str:
-    """Pretty-print an in-cluster query tree for the worker prompt."""
+    """Pretty-print an in-cluster query tree for the worker prompt.
+
+    Per-facet marginals are always fully shown — they're bounded by
+    the number of OR alternatives the worker wrote. The Cartesian-
+    product combinations section is capped at the top
+    ``_IN_CLUSTER_COMBO_CAP`` rows by count (plus an explicit
+    "X more combinations" footer), because with 3 facets × 15 alts
+    the full grid would be ~3.4K rows — enough to push the prompt
+    into rate-limit territory on OpenAI.
+    """
     total = tree.get("total", 0)
     or_facets = tree.get("or_facets") or []
     marginals = tree.get("marginals") or []
@@ -187,18 +199,24 @@ def render_in_cluster_tree(tree: dict[str, Any]) -> str:
     lines.append("  Per-facet marginals (papers matching each alternative alone):")
     for m in marginals:
         lines.append(f"    facet: {m['facet']}")
-        # Sort alternatives by hit count desc.
         items = sorted(m["per_alt"].items(), key=lambda kv: -kv[1])
         for alt, n in items:
             pct = 100 * n / total
             lines.append(f"      · {alt:<40s} {n:5d}  ({pct:5.1f}%)")
     lines.append("")
-    lines.append("  Combinations (how many papers match every listed alternative):")
-    for r in combos:
+    shown = combos[:_IN_CLUSTER_COMBO_CAP]
+    truncated = len(combos) - len(shown)
+    lines.append(
+        "  Combinations (how many papers match every listed alternative; "
+        f"top {len(shown)} by count):"
+    )
+    for r in shown:
         n = r["count"]
         pct = 100 * n / total
         combo_str = "  +  ".join(r["alts"])
         lines.append(f"      · {combo_str}  →  {n}  ({pct:5.1f}%)")
+    if truncated > 0:
+        lines.append(f"      · ... {truncated} more combinations (all smaller)")
     return "\n".join(lines)
 
 
