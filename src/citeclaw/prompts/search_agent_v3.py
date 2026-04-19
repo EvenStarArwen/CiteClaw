@@ -63,16 +63,17 @@ on-topic? Each AND clause compounds recall loss; prefer fewer facets.
 If every document matching one facet also matches another, drop the
 implied one.
 
-**Step 2: Expansion (OR).** Within each facet, enumerate synonyms,
-alternate names, and acronyms in an OR group. Prefer terms that
+**Step 2: Expansion (OR).** Within each facet, MAXIMALLY enumerate
+synonyms, alternate names, and acronyms in an OR group. Err on the
+side of including more, not fewer — the AND across facets is what
+delivers precision, so a term that LOOKS risky in isolation (a short
+acronym, a generic word) is usually fine because the other facets
+constrain it. Do NOT filter for topic leakage at this step. The one
+de-dup rule: if one phrase is a substring of another, drop the longer
+one — every document matching `"A B C"` also matches `"A B"`, so
+`("A B" OR "A B C")` collapses to `"A B"` alone. Prefer terms that
 authors actually use in paper titles and abstracts over theoretically
-neat labels — when unsure, inspect a few retrieved top-cited papers
-first. Before adding a term, anticipate whether it routinely appears
-in adjacent but off-topic literature — if yes, drop it or pair it with
-a disambiguator via AND. Be especially wary of short or generic
-acronyms. If one phrase is a substring of another, drop the longer
-one: every document matching `"A B C"` also matches `"A B"`, so
-`("A B" OR "A B C")` collapses to `"A B"` alone.
+neat labels.
 
 **Step 3: Term syntax.** For each multi-word term, choose matching
 strictness from loosest to strictest:
@@ -88,6 +89,15 @@ concept with different word order or intervening modifiers.
 For individual word terms, consider a suffix wildcard (`word*`) to
 match plurals and morphological variants — this is usually worth it
 unless the stem is short or ambiguous.
+
+**Step 4: Leakage check (on the WHOLE composed query).** Only now —
+after all facets are AND'd together — ask whether the combined query
+risks leaking into adjacent topics. A leaky term inside one facet is
+fine if the other facets exclude it. Flag leakage only when noise
+would satisfy ALL facets simultaneously (e.g. the noise shares the
+same anchor vocabulary). If so, tighten: prefer AND-with-disambiguator
+over NOT-exclusion; promote a facet term from AND to proximity/phrase
+if that cleans the intersection.
 
 # How this tutorial works
 
@@ -117,11 +127,18 @@ Reasoning order:
 - Step 1 (facets): identify the smallest set of distinct concepts that
   together define the sub-topic. Err toward fewer facets — you can
   tighten in refinement.
-- Step 2 (synonyms): for each facet, write an OR group of the most
-  established terms a domain expert would use. Exclude terms that leak
-  into adjacent topics.
+- Step 2 (synonyms): for each facet, write an OR group of all
+  established terms a domain expert would use. Maximally expand — err
+  on including more synonyms, not fewer. Do NOT filter for topic
+  leakage here; the other facets will constrain. The only de-dup rule:
+  if one phrase is a substring of another, drop the longer one.
 - Step 3 (syntax): default to AND for multi-word terms; use phrase
-  matching only when AND would clearly over-match.
+  matching only when AND would clearly over-match. Proximity match
+  can be considered as an intermediate solution.
+- Step 4 (check): on the WHOLE composed query (all facets AND'd),
+  critical-check whether it still leaks into adjacent topics. A leaky
+  term in one facet is fine if the other facets exclude that adjacency.
+  Only tighten when noise would satisfy ALL facets.
 
 Goal: a high-recall query that captures canonical papers for this
 sub-topic. Precision gets tightened later.
