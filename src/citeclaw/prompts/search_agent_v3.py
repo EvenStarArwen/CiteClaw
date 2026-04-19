@@ -65,15 +65,23 @@ implied one.
 
 **Step 2: Expansion (OR).** Within each facet, MAXIMALLY enumerate
 synonyms, alternate names, and acronyms in an OR group. Err on the
-side of including more, not fewer — the AND across facets is what
-delivers precision, so a term that LOOKS risky in isolation (a short
-acronym, a generic word) is usually fine because the other facets
-constrain it. Do NOT filter for topic leakage at this step. The one
-de-dup rule: if one phrase is a substring of another, drop the longer
-one — every document matching `"A B C"` also matches `"A B"`, so
+side of including more, not fewer — the AND across facets delivers
+precision, so most terms that look risky in isolation are constrained
+by the other facets. **One hard exception**: tokens shorter than 4
+characters — especially pure-letter acronyms like `PE`, `RT`, `LM`,
+`NN` — collide with so many unrelated fields (preeclampsia, reverse
+transcriptase, linear model, neural network) that no AND-gate
+cleans them up. Omit such bare acronyms, or pair them with their full
+expansion in the same OR group so the expansion carries the recall.
+Do NOT filter for topic leakage at this step. The de-dup rule: if
+one phrase is a substring of another, drop the longer one — every
+document matching `"A B C"` also matches `"A B"`, so
 `("A B" OR "A B C")` collapses to `"A B"` alone. Prefer terms that
 authors actually use in paper titles and abstracts over theoretically
-neat labels.
+neat labels. Note that S2's default matching already folds plurals
+and common inflections together (`edit` catches `edits` and
+`editing`; `protein` catches `proteins`; `pegRNA` catches `pegRNAs`),
+so you don't need to list both.
 
 **Step 3: Term syntax.** For each multi-word term, choose matching
 strictness from loosest to strictest:
@@ -85,10 +93,6 @@ Default to AND. Tighten to proximity only if precision is clearly too
 low, and to exact phrase only if proximity is still too loose.
 Exact-phrase matching is brittle: it misses documents that use the same
 concept with different word order or intervening modifiers.
-
-For individual word terms, consider a suffix wildcard (`word*`) to
-match plurals and morphological variants — this is usually worth it
-unless the stem is short or ambiguous.
 
 **Step 4: Leakage check (on the WHOLE composed query).** Only now —
 after all facets are AND'd together — ask whether the combined query
@@ -133,9 +137,15 @@ Reasoning order:
   tighten in refinement.
 - Step 2 (synonyms): for each facet, write an OR group of all
   established terms a domain expert would use. Maximally expand — err
-  on including more synonyms, not fewer. Do NOT filter for topic
-  leakage here; the other facets will constrain. The only de-dup rule:
-  if one phrase is a substring of another, drop the longer one.
+  on including more synonyms, not fewer. Two qualifiers: tokens shorter
+  than 4 characters (particularly pure-letter acronyms like `PE`,
+  `RT`, `NN`) collide across unrelated fields too broadly for the
+  AND-gate to clean up, so omit them or pair with a full-phrase
+  expansion in the same group; and if one phrase is a substring of
+  another, drop the longer one. Do NOT filter for topic leakage at
+  this step; the other facets will constrain. S2's default matching
+  already folds `edit`/`edits`/`editing` and `protein`/`proteins`
+  together — don't list both.
 - Step 3 (syntax): default to AND for multi-word terms; use phrase
   matching only when AND would clearly over-match. Proximity match
   can be considered as an intermediate solution.
