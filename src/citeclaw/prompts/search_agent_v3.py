@@ -1,26 +1,34 @@
 """Prompt templates for V3 ExpandBySearch.
 
-V3.1 revision:
+V4.0 revision:
 
-- Operator form is natural-language AND / OR / NOT (the worker doesn't
-  deal with Lucene symbols; the code translates on the way to S2 and
-  back when showing previous queries).
-- Worker follows a tutorial-style state machine with ISOLATED context
-  per diagnostic question (system + current query + the slice being
-  asked about). The heavy data dump (top-10 + random-10 + clusters +
-  query tree) is only shown at the diagnose_plan phase.
-- The write-next phase receives a short iter-history block (prior
-  queries + totals + trees + one-sentence reasoning) to prevent
-  regression / oscillation.
-- Supervisor analyses whether sub-areas share a retrieval anchor and
-  only decomposes when anchors diverge across sub-areas.
+- Supervisor emits a concrete ``facet_skeleton`` per sub-topic; the
+  skeleton is the operational form of the anchor-shared judgement
+  (same facets across candidates → one sub-topic; structurally
+  different facets → decompose).
+- Anchor-discovery agent runs between supervisor and worker: writes
+  a precise S2 query, confirms 5-15 canonical papers, hands them to
+  the worker as real domain vocabulary.
+- Worker gets ONE amendment turn on the skeleton before
+  ``propose_first``; amendments flow back to the supervisor.
+- Refinement iterations pick up to two transformations from a
+  closed set (add / remove OR alternative, tighten / loosen term,
+  swap operator, add facet, add exclusion) instead of retyping the
+  query from scratch. System applies each op to a structured
+  QueryPlan.
+- Total-count check is demoted from a standalone phase to context
+  alongside the query tree — topical cleanliness + anchor coverage
+  are the refinement signals.
+- Direction-neutral framing: each iteration combines gap-filling
+  and noise-killing ops, not "refine toward precision — never the
+  reverse".
 """
 
 from __future__ import annotations
 
 
 # ---------------------------------------------------------------------------
-# Worker prompts (user's verbatim text, with AND/OR/NOT per modification A)
+# Worker prompts
 # ---------------------------------------------------------------------------
 
 
@@ -34,11 +42,22 @@ question. You answer. Over multiple turns we refine your query together.
 
 {description}
 
-# Strategy
+# How refinement works
 
-Initialize a high-recall query, then iteratively refine toward precision
-— never the reverse. Reason top-down: facets → synonyms → syntax →
-execute → refine.
+Each iteration you get to apply up to two transformations to the
+current query: typically one to fill coverage gaps (add missing
+vocabulary, loosen an over-tight match), and one to kill noise
+(prune a leaky term, tighten a match). The balance between the two
+depends on what the previous iteration's clusters and anchor
+coverage revealed — there is no fixed direction.
+
+The primary signals you react to:
+- **Topical cleanliness** — are the clusters and the top-cited
+  titles all on-topic for the sub-topic?
+- **Anchor coverage** — do the canonical papers you (and the
+  anchor-discovery step) flagged actually appear in the fetched set?
+
+Total count and the query tree are context, not signals on their own.
 
 # Semantic Scholar query syntax
 
@@ -54,111 +73,182 @@ Syntax rules:
   convert them to the symbolic operators S2 requires).
 - Wrap every OR group in parentheses: `("A" OR "B") AND "C"`.
 
-# Query construction steps (for every new query)
+# Term-strictness guidance (used by tighten/loosen transformations)
 
-**Step 1: Structuring (AND).** Ask yourself: what is the smallest set
-of AND'd concepts A, B, C, ... such that co-occurrence of one term from
-each facet in a document's title+abstract is a near-guarantee of
-on-topic? Each AND clause compounds recall loss; prefer fewer facets.
-If every document matching one facet also matches another, drop the
-implied one.
-
-**Step 2: Expansion (OR).** Within each facet, MAXIMALLY enumerate
-synonyms, alternate names, and acronyms in an OR group. Err on the
-side of including more, not fewer — the AND across facets delivers
-precision, so most terms that look risky in isolation are constrained
-by the other facets. **One hard exception**: tokens shorter than 4
-characters — especially pure-letter acronyms like `PE`, `RT`, `LM`,
-`NN` — collide with so many unrelated fields (preeclampsia, reverse
-transcriptase, linear model, neural network) that no AND-gate
-cleans them up. Omit such bare acronyms, or pair them with their full
-expansion in the same OR group so the expansion carries the recall.
-Do NOT filter for topic leakage at this step. The de-dup rule: if
-one phrase is a substring of another, drop the longer one — every
-document matching `"A B C"` also matches `"A B"`, so
-`("A B" OR "A B C")` collapses to `"A B"` alone. Prefer terms that
-authors actually use in paper titles and abstracts over theoretically
-neat labels. Note that S2's default matching already folds plurals
-and common inflections together (`edit` catches `edits` and
-`editing`; `protein` catches `proteins`; `pegRNA` catches `pegRNAs`),
-so you don't need to list both.
-
-**Step 3: Term syntax.** For each multi-word term, choose matching
-strictness from loosest to strictest:
+For multi-word terms, three matching modes from loosest to strictest:
 - `A AND B` — both words anywhere (AND).
 - `"A B"~N` — both words within N positions (proximity).
 - `"A B"` — exact contiguous phrase.
 
-Default to AND. Tighten to proximity only if precision is clearly too
-low, and to exact phrase only if proximity is still too loose.
-Exact-phrase matching is brittle: it misses documents that use the same
-concept with different word order or intervening modifiers.
+Exact-phrase matching is brittle: it misses documents that use the
+same concept with different word order or intervening modifiers.
 
-**Step 4: Leakage check (on the WHOLE composed query).** Only now —
-after all facets are AND'd together — ask whether the combined query
-risks leaking into adjacent topics. A leaky term inside one facet is
-fine if the other facets exclude it. Flag leakage only when noise
-would satisfy ALL facets simultaneously (e.g. the noise shares the
-same anchor vocabulary). If so, tighten: prefer AND-with-disambiguator
-over NOT-exclusion; promote a facet term from AND to proximity/phrase
-if that cleans the intersection.
+Two hard rules on term choice:
+- Tokens shorter than 4 characters — especially pure-letter
+  acronyms like `PE`, `RT`, `LM` — collide with so many unrelated
+  fields (preeclampsia, reverse transcriptase, linear model) that
+  no AND-gate cleans them up. Omit such bare acronyms, or pair
+  them with their full expansion in the same OR group so the
+  expansion carries the recall.
+- If one phrase is a substring of another, drop the longer one.
+  Every document matching `"A B C"` also matches `"A B"`, so
+  `("A B" OR "A B C")` collapses to `"A B"` alone.
 
-# How this tutorial works
+S2's default matching folds plurals and common inflections together
+(`edit` catches `edits` / `editing`; `protein` catches `proteins`;
+`pegRNA` catches `pegRNAs`), so you don't need to list both.
 
-1. You write an initial query (Steps 1-4 above).
-2. I run it on S2, auto-analyse the results, and show you the analysis
-   one slice at a time — total size, the query tree, topic clusters,
-   top-cited titles.
-3. You answer each diagnostic question (short — one sentence of
-   reasoning). Where you flag a cluster as unrelated or a paper as
-   off-topic, I'll then automatically show you the in-cluster query
-   tree (which OR alternatives pulled those papers in) or the paper's
-   abstract, and ask you — in one sentence — to name the specific
-   mechanism in your query responsible. These per-item diagnoses come
-   back to you combined in the plan step.
-4. After all diagnostics you synthesise ONE plan (diagnosis +
-   intended change for the next query).
-5. You write the next query.
-6. Repeat until budget is used.
+Output format: each turn, respond with a single JSON object shaped
+to the current question — I'll tell you the shape.
+"""
 
-Output format: each turn, respond with a single JSON object shaped to
-the current question — I'll tell you the shape.
+
+WORKER_AMEND_SKELETON = """\
+The supervisor proposed this facet skeleton for your sub-topic:
+
+{skeleton_block}
+
+Anchor papers found by a precise-query pass (use these to sanity-check
+the skeleton — do their titles and abstracts use the vocabulary the
+skeleton implies?):
+
+{anchors_block}
+
+# Question
+
+Flag any STRUCTURAL problem with the skeleton — a missing dimension,
+a redundant facet, or misaligned seed vocabulary. Minor synonym gaps
+are not problems; you'll expand each OR group fully on the next
+turn.
+
+Respond with JSON:
+`{{"amendments": [...], "accept": true|false, "reason": "..."}}`.
+Each amendment object is one of:
+- `{{"op": "add_facet", "facet_id": "...", "concept": "...", "seed_terms": [...]}}`
+- `{{"op": "remove_facet", "facet_id": "..."}}`
+- `{{"op": "reshape_terms", "facet_id": "...", "seed_terms": [...]}}`
+No changes needed: `{{"amendments": [], "accept": true, "reason": "..."}}`.
+Keep `reason` to one short sentence.
 """
 
 
 WORKER_PROPOSE_FIRST = """\
-You have no results yet. Based ONLY on your understanding of the
-sub-topic `{description}`, propose an initial query following Steps 1-3
-in the system prompt.
+Here's everything you have to work from for the initial query:
 
-Reasoning order:
-- Step 1 (facets): identify the smallest set of distinct concepts that
-  together define the sub-topic. Err toward fewer facets — you can
-  tighten in refinement.
-- Step 2 (synonyms): for each facet, write an OR group of all
-  established terms a domain expert would use. Maximally expand — err
-  on including more synonyms, not fewer. Two qualifiers: tokens shorter
-  than 4 characters (particularly pure-letter acronyms like `PE`,
-  `RT`, `NN`) collide across unrelated fields too broadly for the
-  AND-gate to clean up, so omit them or pair with a full-phrase
-  expansion in the same group; and if one phrase is a substring of
-  another, drop the longer one. Do NOT filter for topic leakage at
-  this step; the other facets will constrain. S2's default matching
-  already folds `edit`/`edits`/`editing` and `protein`/`proteins`
-  together — don't list both.
-- Step 3 (syntax): default to AND for multi-word terms; use phrase
-  matching only when AND would clearly over-match. Proximity match
-  can be considered as an intermediate solution.
-- Step 4 (check): on the WHOLE composed query (all facets AND'd),
-  critical-check whether it still leaks into adjacent topics. A leaky
-  term in one facet is fine if the other facets exclude that adjacency.
-  Only tighten when noise would satisfy ALL facets.
+# Sub-topic
 
-Goal: a high-recall query that captures canonical papers for this
-sub-topic. Precision gets tightened later.
+{description}
 
-Respond with JSON: `{{"query": "..."}}` — just the query (AND / OR /
-NOT in words), nothing else.
+# Facet skeleton (post-amendment)
+
+{skeleton_block}
+
+# Anchor papers (real canonical work for this sub-topic)
+
+{anchors_block}
+
+# Task
+
+For each facet in the skeleton, write a full OR group of terms.
+Expand from the seeds: add the synonyms, alternate names, and
+acronyms a domain expert would use. Let the anchor papers' titles
+and abstracts guide vocabulary — prefer what authors actually write
+over theoretically neat labels. Don't filter for topic leakage at
+this step; the AND across facets handles that.
+
+For each term pick a strictness:
+- `and_words` — multi-word term matched as AND'd words (loosest).
+- `proximity` — `"A B"~N` within N positions.
+- `phrase` — exact contiguous quoted phrase (strictest; default).
+
+Single-word terms are always rendered bare regardless.
+
+Respond with JSON:
+```
+{{"facets": [
+    {{"id": "technology",
+      "terms": [
+        "prime editing",
+        {{"raw": "pegRNA", "strictness": "phrase"}},
+        {{"raw": "twin prime editing", "strictness": "proximity", "slop": 2}}
+      ]}},
+    ...
+  ],
+  "exclusions": []
+}}
+```
+
+Use the skeleton's facet ids. Exclusions are rare — leave empty
+unless a concrete noise source is already obvious.
+"""
+
+
+WORKER_SELECT_TRANSFORMATIONS = """\
+# Current query plan
+
+{plan_tree}
+
+Rendered query: `{query}`
+
+# What you've seen this iteration
+
+- Total count: {total} (new +{diff_new}, seen {diff_seen})
+- Anchor coverage:
+{anchor_coverage}
+- Top-cluster cleanliness (one-sentence recap): {ans_clusters}
+- Top-100 cleanliness (one-sentence recap): {ans_top100}
+- Per-noise-item diagnoses:
+{noise_diagnoses}
+
+# Prior transformations this worker has already applied
+
+{transformation_history}
+
+# Diagnose + plan
+
+diagnosis:       {diagnosis}
+intended change: {intended_change}
+
+# Task
+
+Pick up to 2 transformations to apply. The system applies them
+mechanically — you never retype the query. Available ops:
+
+- `add_or_alternative(facet_id, terms)` — pearl-grow within a
+  facet. `terms` is a list of strings or `{{"raw": ..., "strictness": ...}}`.
+- `remove_or_alternative(facet_id, term)` — drop a leaky OR
+  alternative the in-cluster tree showed pulling noise.
+- `tighten_term(term, to)` — `to` is `proximity_N` or
+  `exact_phrase`. Use when that term's loose form is the noise
+  source.
+- `loosen_term(term, to)` — `to` is `and_words` or `proximity_N`.
+  Use when an anchor is absent and an exact-phrase term is the
+  obvious reason.
+- `swap_operator(to, ...)` — rare. `to: "OR"` merges facet_id + b
+  into one OR group. `to: "AND"` splits a facet_id on a
+  `split_on` term list into two AND'd facets. Reserve for cases
+  where the skeleton is wrong.
+- `add_facet(facet_id, concept, terms)` — add a whole new AND
+  dimension. Supervisor will be told when this fires; use only
+  when a real dimension is missing.
+- `add_exclusion(term)` — NOT clause. Last resort; use only when
+  the noise source shares one unambiguous characteristic term
+  with no collateral damage.
+
+Typical iteration: one widening op + one narrowing op. If coverage
+and cleanliness already look acceptable, `transformations` can be
+empty and `satisfied: true` closes the worker.
+
+Respond with JSON:
+```
+{{"transformations": [
+    {{"type": "add_or_alternative", "facet_id": "technology", "terms": ["twinPE"]}},
+    {{"type": "remove_or_alternative", "facet_id": "application", "term": "neoplasm"}}
+  ],
+  "reasoning": "one short sentence",
+  "satisfied": false
+}}
+```
 """
 
 
@@ -216,33 +306,10 @@ Respond with JSON: `{{"query": "..."}}`.
 """
 
 
-WORKER_CHECK_TOTAL = """\
-Your current query: `{query}`
-
-# Total size & query tree
-
-Total papers matching on S2: **{total}**
-New vs prior queries this iteration: **+{diff_new} new**, **{diff_seen} seen before**
-
-Query tree (per-clause counts):
-{query_tree}
-
-# Question
-
-Is this total count reasonable given your own expectation for this
-sub-topic's size? Is any clause in the tree clearly over- or
-under-constraining? (Totals above ~50K are almost always too broad
-regardless of topic.)
-
-Respond with JSON: `{{"ok": true|false, "reasoning": "..."}}`. Keep
-reasoning to ONE short sentence.
-"""
-
-
 WORKER_CHECK_CLUSTERS = """\
 Your current query: `{query}`
 
-# Topic clusters (TF-IDF + k-means on the fetched papers)
+# Topic clusters (UMAP + HDBSCAN on SPECTER2, c-TF-IDF keywords)
 
 {clusters}
 
@@ -278,31 +345,36 @@ to ONE short sentence.
 
 # ---------------------------------------------------------------------------
 # Diagnose + plan — this is the ONE phase that sees all the data plus the
-# prior diagnostic answers. Per modification B: the heavy data dump lives
-# here, not in every earlier phase.
+# prior diagnostic answers. Total count + query tree live here now as
+# informational context alongside everything else.
 # ---------------------------------------------------------------------------
 
 
 WORKER_DIAGNOSE_PLAN = """\
 Your current query: `{query}`
 
-# What you answered this iteration (short — one sentence each)
+# What you answered this iteration
 
-- check_total:    {ans_total}
 - check_clusters: {ans_clusters}
 - check_top100:   {ans_top100}
 
-# Per-noise-item diagnoses (from the forced Phase 4b / 5b questions)
+# Anchor coverage this iteration
+
+{anchor_coverage}
+
+# Per-noise-item diagnoses (from forced Phase 4b / 5b questions)
 
 {noise_diagnoses}
 
-# Raw analysis (full data — use this to synthesise)
+# Context (informational — not a signal on its own)
 
-## total_count
-{total}
+- Total papers matching on S2: **{total}**
+- New vs prior queries this iteration: **+{diff_new} new**, **{diff_seen} seen before**
 
-## query tree
+Query tree (per-clause counts):
 {query_tree}
+
+# Raw analysis (full data — use this to synthesise)
 
 ## top-10 cited papers (title + abstract)
 {top10_block}
@@ -313,70 +385,44 @@ Your current query: `{query}`
 ## topic clusters (c-TF-IDF keywords + representative titles)
 {clusters}
 
-# Synthesise — ONE plan covering everything
+# Synthesise — ONE plan
 
 Each refinement round targets two success conditions:
-(a) top clusters are mostly on-topic, and
-(b) no major expected sub-area is missing.
-If both are met the query is good enough — further iteration risks
-over-optimizing.
+(a) the clusters and the top-cited slice are topical, and
+(b) the auto-injected anchors are ``present`` in the fetched set.
+When both hold the query is good enough; further iteration risks
+over-optimising.
 
-You now have per-noise-item diagnoses that name the specific mechanisms
-letting bad papers in. Combine those with the overall picture and
-commit to ONE plan for the next query. Multiple noise sources may
-point to conflicting fixes (tighten here, loosen there) — pick the
-single coherent plan that wins the trade-off, don't list both.
+Refinement modes you can combine (one of each is a common pattern):
+- **Pearl growing** — add an OR alternative with vocabulary you
+  saw in the top-cited / random titles or in the anchor papers but
+  didn't anticipate.
+- **Term tightening** — promote a term from AND-words to proximity
+  or to exact phrase when that term's looseness is the noise source.
+- **Term loosening** — demote in the reverse direction when an
+  anchor is absent and an over-strict match is the obvious reason.
+- **AND-gate a leaky acronym** — replace a bare `PE`-type
+  alternative with a facet pair like `("prime editing" OR ("PE"
+  AND pegRNA))`.
+- **Pruning** — drop OR alternatives the in-cluster tree shows add
+  no unique relevant papers.
+- **Exclusion (NOT)** — last resort; only when a noise cluster
+  shares one unambiguous characteristic term with no collateral
+  damage.
 
-Refinement modes you can combine:
-- **Pearl growing** — expand an OR list with vocabulary you saw in the
-  top-cited / random titles but didn't anticipate.
-- **Syntax tightening** — promote a term from bag-of-words AND to
-  proximity (``"A B"~N``), or proximity to exact phrase. Use when
-  precision is low but the facet decomposition is correct.
-- **Syntax loosening** — demote in the reverse direction. Use when
-  recall is suspiciously low or canonical papers are missing.
-- **AND-gate a leaky acronym** — if a short acronym like ``PE`` is
-  pulling in unrelated papers, replace the bare alternative with an
-  AND-gated pair such as ``("prime editing" OR ("PE" AND pegRNA))``.
-- **Exclusion (NOT)** — last resort; only when a noise cluster shares
-  an unambiguous characteristic term you can exclude without
-  collateral damage.
-- **Pruning** — drop OR alternatives that the in-cluster tree shows
-  contribute no unique relevant papers.
+You now have per-noise-item diagnoses that name the specific
+mechanisms letting bad papers in. Combine those with the overall
+picture and commit to ONE plan. Multiple noise sources may point
+to conflicting fixes (tighten here, loosen there) — pick the single
+coherent plan that wins the trade-off, don't list both.
 
 Respond with JSON:
-`{{"diagnosis": "...", "intended_change": "..."}}`.
+`{{"diagnosis": "...", "intended_change": "...", "coverage_ok": true|false}}`.
 
-Keep both SHORT — one sentence each. ``diagnosis`` summarises what's
-wrong; ``intended_change`` names the specific edit(s) for the next
-query.
-"""
-
-
-# ---------------------------------------------------------------------------
-# Write-next — per modification C: show prior iterations' queries,
-# counts, trees, and one-sentence reasoning so the worker doesn't
-# regress to earlier mistakes.
-# ---------------------------------------------------------------------------
-
-
-WORKER_WRITE_NEXT = """\
-# Prior iterations this worker has run
-
-{history_block}
-
-# Your plan from the diagnose phase
-
-diagnosis:       {diagnosis}
-intended change: {intended_change}
-
-# Task
-
-Write the next query (AND / OR / NOT in words). Remember the syntax
-rules from the system prompt. Do NOT repeat a query you've already
-tried — if you're tempted to, check the history block first.
-
-Respond with JSON: `{{"query": "..."}}`.
+Keep `diagnosis` and `intended_change` SHORT — one sentence each.
+`coverage_ok` is true when anchor coverage is strong enough AND
+cleanliness looks acceptable that another refinement round would
+be over-optimising.
 """
 
 
@@ -387,6 +433,9 @@ Budget exhausted. Across all iterations you fetched a deduped set of
 Top clusters in the final union:
 {clusters}
 
+Anchor coverage on the final query:
+{anchor_coverage}
+
 In ONE sentence, describe the coverage this sub-topic ended with.
 
 Respond with JSON: `{{"summary": "..."}}`.
@@ -394,7 +443,84 @@ Respond with JSON: `{{"summary": "..."}}`.
 
 
 # ---------------------------------------------------------------------------
-# Supervisor — anchor-shared detection, 1-to-max decomposition range
+# Anchor discovery (pre-worker stage)
+# ---------------------------------------------------------------------------
+
+
+ANCHOR_DISCOVERY_SYSTEM = """\
+You are finding anchor papers for a sub-topic: the handful of
+canonical works every worker must retrieve to claim coverage. Your
+output grounds the downstream worker's synonym expansion in real
+domain vocabulary.
+
+The job is two turns:
+1. Write a PRECISE query using only terms you are 100% sure are
+   correct for this sub-topic. No speculative synonyms. The query
+   must be specific enough that its top-cited matches are obvious
+   anchors, not a broad recall sweep.
+2. I run your query on S2, rank by citation count, and show you the
+   top 15 candidates with title + abstract. You mark each
+   `on_topic` / `off_topic` / `uncertain` and I keep only the
+   on-topic ones.
+
+Same natural-language Boolean syntax as the worker: AND / OR / NOT
+as words, wrap OR groups in parentheses, `"..."` for exact phrase.
+
+Respond with JSON per the shape I request each turn.
+"""
+
+
+ANCHOR_DISCOVERY_QUERY = """\
+# Sub-topic
+
+{description}
+
+# Supervisor's facet skeleton (for reference)
+
+{skeleton_block}
+
+# Task
+
+Write a precise query. Use the facets' concepts as scaffolding, but
+include only terms you are 100% sure authors use for these exact
+concepts. It is fine (expected) for this query to be narrow — we're
+looking for the canonical papers, not full coverage.
+
+Respond with JSON: `{{"query": "...", "reasoning": "one short sentence"}}`.
+"""
+
+
+ANCHOR_DISCOVERY_CONFIRM = """\
+# Sub-topic
+
+{description}
+
+# Skeleton (for reference)
+
+{skeleton_block}
+
+# Top candidates (by citation count)
+
+{candidates}
+
+# Task
+
+For each candidate, decide whether it is clearly ON-TOPIC for the
+sub-topic. Read the abstract, not just the title. Reject papers
+whose topic overlaps only in surface vocabulary (e.g. "PE" as
+preeclampsia when the sub-topic is prime editing). Keep the bar
+high — one off-topic paper in the anchor set will mislead the
+worker's vocabulary mining.
+
+Respond with JSON:
+`{{"decisions": [{{"index": 1, "verdict": "on_topic"|"off_topic"|"uncertain", "reason": "..."}}, ...]}}`.
+Use the `[N]` indices from the candidate list. Keep each `reason`
+to a short phrase.
+"""
+
+
+# ---------------------------------------------------------------------------
+# Supervisor — anchor-shared detection, operationalised as facet_skeleton
 # ---------------------------------------------------------------------------
 
 
@@ -403,48 +529,48 @@ You are a literature-search SUPERVISOR. You analyse the parent topic
 and decide whether it needs sub-topic decomposition. The system
 dispatches workers for you — you never call dispatch yourself.
 
-# Decomposition decision
+# Decomposition decision — write the facet skeleton
 
-Each worker will decompose its sub-topic into a small set of AND'd
-concept facets — the minimum set whose co-occurrence in a document's
-title+abstract is a near-guarantee of on-topic. Your decision: does
-the parent topic admit ONE such facet set covering all sub-areas, or
-does it require multiple structurally distinct facet sets?
+A facet skeleton is the smallest set of AND'd concepts whose
+co-occurrence in a document's title+abstract is a near-guarantee of
+on-topic. You write one skeleton per sub-topic inside `set_strategy`.
 
-- **One facet set suffices → one sub-topic.** The worker's single
-  query captures all sub-areas because they share the facet set.
-  Further decomposition adds overlapping work without new coverage.
-- **Multiple distinct facet sets needed → decompose.** Each sub-topic
-  has its OWN facet set, and the sets must differ structurally — at
-  least one facet that differs in kind, not just in synonym variants.
+Before picking a count, literally write down the facet set of each
+candidate sub-topic. Then apply this test:
+
+- If every candidate would use the SAME facets — differing only in
+  synonym variants within each facet — ONE sub-topic suffices. The
+  worker's single query captures all sub-areas.
+- If candidates need STRUCTURALLY different facets (at least one
+  facet that differs in kind, not just in vocabulary), decompose.
 
 Abstract illustration:
-- Shared facet set: all sub-areas captured by `(X terms) AND (Y
-  terms)` → one sub-topic.
-- Distinct facet sets: sub-area 1 `(X AND P)`, sub-area 2 `(X AND Q)`,
-  sub-area 3 `(X AND R)`, where P, Q, R are genuinely different
-  concepts (not synonyms) → three sub-topics.
+- Shared facet set: all sub-areas captured by `(X) AND (Y)` → one
+  sub-topic.
+- Distinct facet sets: sub-area 1 `(X) AND (P)`, sub-area 2 `(X)
+  AND (Q)`, sub-area 3 `(X) AND (R)`, where P, Q, R are genuinely
+  different concepts → three sub-topics.
 
-Default toward fewer. Only decompose when you can name the facet set
-of each sub-topic AND show they differ structurally.
+Default toward fewer. Only decompose when you can write each
+sub-topic's facet set AND show they differ structurally.
 
 # Signals between turns
 
 After each worker returns, you see a pairwise paper-ID overlap matrix
-across all completed workers. High overlap (>50%) means the
-decomposition was redundant — treat it as a strong signal against
-adding more sub-topics. Low overlap confirms the decomposition is
-working.
+across all completed workers plus any amendments the worker proposed
+to your skeleton. High overlap (>50%) means the decomposition was
+redundant. Repeated big amendments mean a skeleton was miscast — use
+that as a signal when adding sub-topics later.
 
 # Turn flow
 
 1. Turn 1: `set_strategy` with your initial decomposition (1 to
-   {max_subtopics} sub-topics).
-2. System dispatches sub-topics one at a time in queue order. After
-   each worker returns, you get a turn to react:
-   - `add_sub_topics` — add a new sub-topic if the returned clusters
-     reveal a genuinely new retrieval axis not covered by any
-     existing sub-topic. The new sub-topic(s) append to the queue.
+   {max_subtopics} sub-topics), each carrying a `facet_skeleton`.
+2. System runs anchor-discovery and dispatches sub-topics one at a
+   time in queue order. After each worker returns, you get a turn:
+   - `add_sub_topics` — add a new sub-topic (with skeleton) if the
+     returned clusters reveal a genuinely new retrieval axis not
+     covered by any existing sub-topic.
    - `continue` — no change, let the system dispatch the next queued
      sub-topic.
    - `done(summary)` — close early.
@@ -456,13 +582,16 @@ working.
 Every reply is `{{"reasoning": "...", "tool_name": "<tool>", "tool_args": {{...}}}}`.
 Keep `reasoning` to one short sentence.
 
-- `set_strategy(sub_topics: [{{id, description}}])` — call once at
-  turn 1. Each `description` is 1-2 English sentences naming the
-  sub-area — no query syntax.
-- `add_sub_topics(sub_topics: [{{id, description}}])` — add only if
-  the new facet set differs structurally from every existing
-  sub-topic's. Never to cover a narrow gap within an existing
-  sub-topic's coverage — that's the worker's job.
+- `set_strategy(sub_topics: [{{id, description, facet_skeleton}}])` —
+  call once at turn 1. `description` is 1-2 English sentences naming
+  the sub-area. `facet_skeleton` is
+  `{{"facets": [{{"id": "...", "concept": "...", "seed_terms": [...]}}, ...]}}`.
+  `seed_terms` is a minimal starter list (3-5 items per facet is a
+  good target); the worker expands each into a full OR group.
+- `add_sub_topics(sub_topics: [{{id, description, facet_skeleton}}])` —
+  add only when the new facet set differs structurally from every
+  existing sub-topic's. Never to cover a narrow gap within an
+  existing sub-topic's coverage — that's the worker's job.
 - `continue` — no arguments. Proceed to the next queued worker.
 - `done(summary)` — close the run.
 """
@@ -479,9 +608,10 @@ SUPERVISOR_USER_FIRST = """\
 - Max supervisor turns: {supervisor_max_turns}
 - Each worker will run {max_iter} query iterations.
 
-Call `set_strategy` now. First decide: shared anchor → one sub-topic;
-distinct anchors → multiple. Write clear 1-2 sentence descriptions —
-your workers will only see their one assigned description.
+Call `set_strategy` now. First write the facet skeleton you'd use
+for the parent as a whole — if every candidate sub-topic would reuse
+it with only synonym variation, emit one sub-topic. If structurally
+different skeletons are needed, emit one per sub-topic.
 """
 
 

@@ -21,8 +21,12 @@ import logging
 import re
 from typing import Any, TYPE_CHECKING
 
+from citeclaw.agents.v3.anchor_discovery import discover_anchors
 from citeclaw.agents.v3.state import (
     AgentConfigV3,
+    AnchorPaper,
+    Facet,
+    FacetSkeleton,
     StrategyV3,
     SubTopicResultV3,
     SubTopicSpecV3,
@@ -114,14 +118,30 @@ def _render_dispatched(results: list[SubTopicResultV3]) -> str:
         lines.append(
             f"  - {r.spec_id} [{r.status}, {len(r.paper_ids)} papers]: {desc}"
         )
-        # Cluster keywords summary
+        if r.anchor_papers:
+            lines.append(
+                f"      anchors: {len(r.anchor_papers)} confirmed"
+            )
+        if r.skeleton_amendments:
+            lines.append("      worker amendments to your skeleton:")
+            for amend in r.skeleton_amendments[:5]:
+                op = amend.get("op", "?")
+                fid = amend.get("facet_id") or amend.get("id") or "?"
+                reason = (amend.get("reason") or "")[:80]
+                lines.append(f"          · {op} {fid}: {reason}")
+        if r.anchor_coverage_final:
+            present = sum(1 for v in r.anchor_coverage_final.values() if v == "present")
+            total = len(r.anchor_coverage_final)
+            if total:
+                lines.append(
+                    f"      anchor coverage: {present}/{total} present"
+                )
         if r.clusters_final:
             kw_summary = "; ".join(
                 f"{c.count}:{','.join(c.keywords[:4])}"
                 for c in r.clusters_final[:5]
             )
             lines.append(f"      clusters: {kw_summary}")
-        # Top-cited (first 5)
         if r.top_titles_final:
             lines.append(
                 "      top-cited: "
@@ -159,9 +179,61 @@ class _SupervisorError(Exception):
         self.hint = hint
 
 
+def _parse_facet_skeleton(raw: Any, *, idx: int) -> FacetSkeleton | None:
+    """Parse the ``facet_skeleton`` entry inside one sub_topic.
+
+    Optional for backwards-compat: if missing the worker will design
+    facets from the description alone (degraded mode). When present it
+    must be a list of ``{id, concept, seed_terms}`` under a ``facets``
+    key."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise _SupervisorError(
+            f"sub_topics[{idx}].facet_skeleton must be an object",
+            'shape: {"facets": [{"id": "...", "concept": "...", "seed_terms": [...]}]}',
+        )
+    facets_raw = raw.get("facets")
+    if not isinstance(facets_raw, list) or not facets_raw:
+        raise _SupervisorError(
+            f"sub_topics[{idx}].facet_skeleton.facets must be a non-empty list",
+            "at least one facet is required when a skeleton is emitted",
+        )
+    facets: list[Facet] = []
+    seen_ids: set[str] = set()
+    for j, item in enumerate(facets_raw):
+        if not isinstance(item, dict):
+            raise _SupervisorError(
+                f"sub_topics[{idx}].facet_skeleton.facets[{j}] must be an object",
+                '{"id": "...", "concept": "...", "seed_terms": [...]}',
+            )
+        fid = str(item.get("id") or "").strip()
+        if not fid:
+            raise _SupervisorError(
+                f"sub_topics[{idx}].facet_skeleton.facets[{j}].id missing",
+                "unique slug per facet",
+            )
+        if fid in seen_ids:
+            raise _SupervisorError(
+                f"sub_topics[{idx}].facet_skeleton.facets[{j}].id {fid!r} duplicate",
+                "each facet id must be unique within the skeleton",
+            )
+        seen_ids.add(fid)
+        concept = str(item.get("concept") or "").strip() or fid
+        seed_raw = item.get("seed_terms") or []
+        if not isinstance(seed_raw, list):
+            seed_raw = []
+        seeds = tuple(str(s).strip() for s in seed_raw if str(s).strip())
+        facets.append(Facet(id=fid, concept=concept, seed_terms=seeds))
+    return FacetSkeleton(facets=tuple(facets))
+
+
 def _validate_sub_topic_entry(raw: Any, *, idx: int, existing: set[str]) -> SubTopicSpecV3:
     if not isinstance(raw, dict):
-        raise _SupervisorError(f"sub_topics[{idx}] must be an object", "{id, description}")
+        raise _SupervisorError(
+            f"sub_topics[{idx}] must be an object",
+            "{id, description, facet_skeleton}",
+        )
     sid = str(raw.get("id") or "").strip()
     desc = str(raw.get("description") or "").strip()
     if not sid:
@@ -175,7 +247,8 @@ def _validate_sub_topic_entry(raw: Any, *, idx: int, existing: set[str]) -> SubT
             f"sub_topics[{idx}].description missing",
             "1-2 sentence English description",
         )
-    return SubTopicSpecV3(id=sid, description=desc)
+    skeleton = _parse_facet_skeleton(raw.get("facet_skeleton"), idx=idx)
+    return SubTopicSpecV3(id=sid, description=desc, facet_skeleton=skeleton)
 
 
 def _handle_set_strategy(args: dict, state: SupervisorStateV3, max_subtopics: int) -> dict:
@@ -327,12 +400,21 @@ def run_v3_supervisor(
         spec_id = queue.pop(0)
         spec = next(s for s in state.strategy.sub_topics if s.id == spec_id)
         log.info("V3 supervisor dispatching worker for %s", spec_id)
+        anchors = discover_anchors(
+            description=spec.description,
+            skeleton=spec.facet_skeleton,
+            s2_client=s2_client,
+            llm_client=llm_client,
+            logger=logger,
+            spec_id=spec.id,
+        )
         worker_result = run_v3_worker(
             spec=spec,
             config=config,
             s2_client=s2_client,
             llm_client=llm_client,
             logger=logger,
+            anchors=anchors,
         )
         state.sub_topic_results.append(worker_result)
         logger.log_tool_call(
@@ -343,6 +425,7 @@ def run_v3_supervisor(
                 "status": worker_result.status,
                 "n_papers": len(worker_result.paper_ids),
                 "n_iterations": len(worker_result.iterations),
+                "n_anchors": len(worker_result.anchor_papers),
             },
         )
 
@@ -429,9 +512,18 @@ def run_v3_supervisor(
                 turn += 1
                 spec_id = queue.pop(0)
                 spec = next(s for s in state.strategy.sub_topics if s.id == spec_id)
+                anchors = discover_anchors(
+                    description=spec.description,
+                    skeleton=spec.facet_skeleton,
+                    s2_client=s2_client,
+                    llm_client=llm_client,
+                    logger=logger,
+                    spec_id=spec.id,
+                )
                 worker_result = run_v3_worker(
                     spec=spec, config=config,
                     s2_client=s2_client, llm_client=llm_client, logger=logger,
+                    anchors=anchors,
                 )
                 state.sub_topic_results.append(worker_result)
                 logger.log_tool_call(
@@ -441,6 +533,7 @@ def run_v3_supervisor(
                     result={
                         "status": worker_result.status,
                         "n_papers": len(worker_result.paper_ids),
+                        "n_anchors": len(worker_result.anchor_papers),
                     },
                 )
         else:

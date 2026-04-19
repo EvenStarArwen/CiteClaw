@@ -37,19 +37,103 @@ class AgentConfigV3:
 
 
 @dataclass(frozen=True)
+class Facet:
+    """One AND'd concept in a sub-topic's query.
+
+    ``seed_terms`` is a minimal starter list the supervisor writes
+    while deciding decomposition; the worker expands each into a full
+    OR group during query construction. ``concept`` is the
+    human-readable name of the dimension (e.g. "prime editing
+    technique") — used for diagnostics and supervisor review, never
+    sent to S2 verbatim.
+    """
+
+    id: str
+    concept: str
+    seed_terms: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FacetSkeleton:
+    """Supervisor-written facet set for one sub-topic. Makes the
+    anchor-shared decomposition judgement concrete: if every candidate
+    sub-topic would use the same facets (synonym variation only),
+    decomposition isn't justified."""
+
+    facets: tuple[Facet, ...]
+
+
+@dataclass(frozen=True)
 class SubTopicSpecV3:
-    """One sub-topic assigned to a worker. Just id + description —
-    no query sketch, no reference papers, no filters. Workers design
-    queries from scratch using their pre-training knowledge and the
-    description alone."""
+    """One sub-topic assigned to a worker. ``facet_skeleton`` is the
+    supervisor's proposed AND'd-concept set; the worker gets one
+    amendment turn before query construction (can add/remove a facet
+    or reshape seed terms)."""
 
     id: str
     description: str
+    facet_skeleton: FacetSkeleton | None = None
 
 
 @dataclass(frozen=True)
 class StrategyV3:
     sub_topics: tuple[SubTopicSpecV3, ...]
+
+
+# ---------------------------------------------------------------------------
+# Anchor papers (discovered before the worker runs — see anchor_discovery.py)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AnchorPaper:
+    """A canonical paper for the sub-topic, confirmed on-topic by the
+    anchor-discovery agent. The worker reads these during
+    ``propose_first`` to ground its OR-group expansion in the actual
+    vocabulary authors use, and the system rechecks their coverage
+    every iteration via :func:`check_anchor_coverage`."""
+
+    paper_id: str
+    title: str
+    abstract: str = ""
+    citation_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Structured query plan (what transformations operate on)
+# ---------------------------------------------------------------------------
+
+
+TermStrictness = Literal["and_words", "proximity", "phrase"]
+
+
+@dataclass
+class TermSpec:
+    """One entry inside an OR group. ``strictness`` picks the matching
+    mode: ``and_words`` splits a multi-word term into AND'd words,
+    ``proximity`` keeps them within ``slop`` positions, ``phrase`` is
+    the exact contiguous quoted form. Single-word terms are always
+    rendered bare regardless of strictness."""
+
+    raw: str
+    strictness: TermStrictness = "phrase"
+    slop: int = 0
+
+
+@dataclass
+class MutableFacet:
+    id: str
+    concept: str
+    terms: list[TermSpec] = field(default_factory=list)
+
+
+@dataclass
+class QueryPlan:
+    """Mutable tree the transformation ops act on. Rendered to Lucene
+    for S2 and to AND/OR/NOT form for worker-facing displays."""
+
+    facets: list[MutableFacet] = field(default_factory=list)
+    exclusions: list[TermSpec] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -108,11 +192,16 @@ class QueryIterationV3:
     # Per-phase one-sentence reasoning from this iter's diagnostics.
     # These are surfaced in subsequent iters' write-next history block
     # so the worker doesn't regress to mistakes it already diagnosed.
-    reasoning_total: str = ""
     reasoning_clusters: str = ""
     reasoning_top100: str = ""
     diagnosis: str = ""
     intended_change: str = ""
+    # Transformations applied this iter (empty on iter 0 — the initial
+    # plan came from propose_first, not from a transformation list).
+    transformations: list[dict[str, Any]] = field(default_factory=list)
+    # {title: "present" | "absent" | "ambiguous"} for every auto-injected
+    # anchor plus any worker-proposed title checked this iter.
+    anchor_coverage: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +223,14 @@ class SubTopicResultV3:
     top_titles_final: list[str] = field(default_factory=list)
     # Topic clusters computed over the final union (shown to supervisor).
     clusters_final: list[TopicCluster] = field(default_factory=list)
+    # Anchor papers resolved by anchor_discovery (before worker dispatch).
+    anchor_papers: list[AnchorPaper] = field(default_factory=list)
+    # Worker amendments to the supervisor's skeleton — visible to
+    # supervisor in its next react turn so repeated big amendments
+    # signal the skeleton was miscast.
+    skeleton_amendments: list[dict[str, Any]] = field(default_factory=list)
+    # Final anchor coverage ({title: present/absent/ambiguous}).
+    anchor_coverage_final: dict[str, str] = field(default_factory=dict)
     failure_reason: str = ""
 
 
@@ -147,6 +244,15 @@ class WorkerStateV3:
     sub_topic_id: str
     description: str
     iterations: list[QueryIterationV3] = field(default_factory=list)
+    # Post-amendment skeleton + live query plan (filled on iter 0,
+    # mutated in place by §3 transformations on subsequent iters).
+    skeleton: FacetSkeleton | None = None
+    plan: QueryPlan | None = None
+    # Anchor titles checked every iteration by check_anchor_coverage;
+    # sourced from pre-worker anchor_discovery plus anything the worker
+    # explicitly adds later.
+    anchor_titles: list[str] = field(default_factory=list)
+    skeleton_amendments: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def aggregate_paper_ids(self) -> list[str]:

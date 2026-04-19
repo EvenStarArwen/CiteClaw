@@ -1,15 +1,25 @@
-"""V3 worker — tutorial-style 6-phase loop with ISOLATED context.
+"""V3 worker — tutorial-style loop, now operating on a structured QueryPlan.
 
 Per iteration each phase issues a fresh LLM call (system + a
 phase-specific user message) rather than accumulating one long
 conversation. The heavy data dump (top-10 cited + random-10 +
-topic clusters + query tree) is shown ONLY in the diagnose_plan
-phase, paired with one-sentence recaps of the earlier diagnostic
-answers.
+topic clusters + query tree + anchor coverage) is shown ONLY in the
+diagnose_plan phase.
 
-The worker writes queries in natural-language (AND / OR / NOT);
-the translator converts to Lucene before hitting S2, and translates
-back when the query is shown in the write-next history block.
+V4 changes:
+
+- Worker first runs an amendment turn against the supervisor's
+  facet skeleton, then produces an initial :class:`QueryPlan` in
+  ``propose_first`` seeded by skeleton + anchor papers.
+- Subsequent iterations pick up to two transformations from the
+  closed op set in :mod:`citeclaw.agents.v3.transformations`; the
+  plan is mutated in place, never retyped.
+- Every iteration runs :func:`check_anchor_coverage` against the
+  auto-injected anchors (plus anything the worker explicitly adds).
+  Coverage feeds into the diagnose phase and can trigger
+  ``satisfied=true`` early termination.
+- No standalone ``check_total`` phase — total and query tree are
+  context in the diagnose prompt.
 """
 
 from __future__ import annotations
@@ -29,9 +39,25 @@ from citeclaw.agents.v3.analysis import (
     render_query_tree,
     topic_model,
 )
-from citeclaw.agents.v3.query_translate import to_lucene, to_natural
+from citeclaw.agents.v3.anchor_coverage import (
+    check_anchor_coverage,
+    coverage_ratio,
+    render_anchor_coverage,
+    titles_for_coverage,
+)
+from citeclaw.agents.v3.anchor_discovery import render_anchors
+from citeclaw.agents.v3.query_plan import (
+    apply_skeleton_amendments,
+    plan_from_propose_first,
+    render_plan_lucene,
+    render_plan_natural,
+    render_plan_tree,
+    render_skeleton,
+)
+from citeclaw.agents.v3.query_translate import to_lucene
 from citeclaw.agents.v3.state import (
     AgentConfigV3,
+    AnchorPaper,
     QueryIterationV3,
     SubTopicResultV3,
     SubTopicSpecV3,
@@ -42,18 +68,22 @@ from citeclaw.agents.v3.syntax_check import (
     render_issues,
     syntax_check,
 )
+from citeclaw.agents.v3.transformations import (
+    apply_transformations,
+    render_transformations,
+)
 from citeclaw.prompts.search_agent_v3 import (
+    WORKER_AMEND_SKELETON,
     WORKER_CHECK_CLUSTERS,
     WORKER_CHECK_TOP100,
-    WORKER_CHECK_TOTAL,
     WORKER_DIAGNOSE_PLAN,
     WORKER_FINAL_SUMMARY,
     WORKER_NOISE_PAPER_DIAG,
     WORKER_NOISE_TOPIC_DIAG,
     WORKER_PROPOSE_FIRST,
+    WORKER_SELECT_TRANSFORMATIONS,
     WORKER_SYNTAX_ERROR,
     WORKER_SYSTEM,
-    WORKER_WRITE_NEXT,
 )
 
 if TYPE_CHECKING:
@@ -67,6 +97,7 @@ log = logging.getLogger("citeclaw.agents.v3.worker")
 _ENRICH_CAP = 2000
 _RANDOM_SAMPLE_SIZE = 10
 _TOP_ABSTRACTS_SIZE = 10
+_COVERAGE_SATISFIED_THRESHOLD = 0.80
 
 # Each LLM call already has a per-call tenacity budget (6 attempts or
 # 600s total, whichever comes first — see clients/llm/openai_client.py).
@@ -267,7 +298,6 @@ def _render_noise_diagnoses(
     topic_diagnoses: list[dict[str, Any]],
     paper_diagnoses: list[dict[str, Any]],
 ) -> str:
-    """Render the per-item diagnostic answers gathered during Phase 4b / 5b."""
     if not topic_diagnoses and not paper_diagnoses:
         return "  (no cluster or paper was flagged as noisy this iteration)"
     lines: list[str] = []
@@ -285,41 +315,25 @@ def _render_noise_diagnoses(
     return "\n".join(lines)
 
 
-def _render_history(iters: list[QueryIterationV3]) -> str:
-    """Prior-iter history for the write-next prompt — includes the
-    natural-language query (translated back), total_count, the query
-    tree, and the iter's one-sentence diagnosis. Keeps the worker from
-    regressing to queries it already tried and from re-discovering
-    problems it already flagged."""
+def _render_transformation_history(iters: list[QueryIterationV3]) -> str:
     if not iters:
-        return "  (this is iteration 0 — no prior iterations)"
+        return "  (this is iteration 0 — no prior transformations)"
     blocks: list[str] = []
     for it in iters:
-        q_nl = to_natural(it.query_lucene) or it.query
-        problems = " | ".join(
-            p for p in (
-                it.reasoning_total,
-                it.reasoning_clusters,
-                it.reasoning_top100,
-            ) if p
-        ) or "(no issues recorded)"
-        tree = render_query_tree(it.query_tree)
-        block = (
+        cov = it.anchor_coverage or {}
+        n_present = sum(1 for v in cov.values() if v == "present")
+        n_total = len(cov)
+        coverage_note = f"{n_present}/{n_total} anchors present" if n_total else "no coverage data"
+        ops = render_transformations(it.transformations)
+        blocks.append(
             f"iter {it.iter_idx}:\n"
-            f"  query: {q_nl}\n"
             f"  total: {it.total_count} (new +{it.diff_new}, seen {it.diff_seen})\n"
-            f"  query tree:\n{tree}\n"
-            f"  issues found: {problems}\n"
+            f"  coverage: {coverage_note}\n"
+            f"  transformations:\n{ops}\n"
             f"  diagnosis: {it.diagnosis or '(no plan)'}\n"
             f"  intended change: {it.intended_change or '(n/a)'}"
         )
-        blocks.append(block)
     return "\n\n".join(blocks)
-
-
-# ---------------------------------------------------------------------------
-# Diagnose-plan tool helpers
-# ---------------------------------------------------------------------------
 
 
 def _inspect_topic(
@@ -329,33 +343,17 @@ def _inspect_topic(
     enriched_by_id: dict[str, dict],
     query_lucene: str,
 ) -> str:
-    """Render a worker-facing report for one cluster, including:
-
-    - cluster keywords + representative titles with abstracts
-    - an IN-CLUSTER query tree that shows WHICH OR-alternatives
-      (across facets) are responsible for pulling papers into this
-      cluster — per-facet marginals + Cartesian-product combinations
-      (see :func:`citeclaw.agents.v3.analysis.build_in_cluster_tree`).
-
-    No S2 calls — all counts come from regex matching the
-    already-fetched papers' title + abstract text.
-    """
     cluster = next((c for c in iteration.clusters if c.cluster_id == cluster_id), None)
     if cluster is None:
         valid = [c.cluster_id for c in iteration.clusters]
         return f"(no cluster {cluster_id}; valid ids: {valid})"
-
-    # Pull the actual member papers (populated by topic_model).
     cluster_papers = [
         enriched_by_id[pid] for pid in cluster.paper_ids if pid in enriched_by_id
     ]
-
     lines = [
         f"Cluster {cluster_id} — {cluster.count} papers.",
         f"Keywords: {', '.join(cluster.keywords[:8])}",
     ]
-
-    # In-cluster breakdown: which OR-alternative combinations are in this cluster.
     tree = build_in_cluster_tree(cluster_papers, query_lucene)
     lines.append("")
     lines.append("In-cluster query-tree (which OR alternatives brought papers in):")
@@ -412,21 +410,18 @@ def run_v3_worker(
     s2_client: "SemanticScholarClient",
     llm_client: "LLMClient",
     logger: "SearchLogger",
+    anchors: list[AnchorPaper] | None = None,
 ) -> SubTopicResultV3:
     system_prompt = WORKER_SYSTEM.format(description=spec.description)
+    anchors = anchors or []
     state = WorkerStateV3(sub_topic_id=spec.id, description=spec.description)
+    state.skeleton = spec.facet_skeleton
+    state.anchor_titles = titles_for_coverage(anchors)
     enriched_pool: dict[str, dict] = {}
 
-    # Shared LLM-failure tracker: if the endpoint is dead, bail out of
-    # the iteration loop instead of burning the rest of the phases on
-    # consecutive 10-min retry cycles.
     _tracker = _LLMCallTracker()
 
     def _llm(*, user: str, category: str, system: str | None = None) -> tuple[str, dict]:
-        # Short-circuit: don't burn more 10-min retry cycles if the
-        # endpoint has already failed _MAX_CONSECUTIVE_LLM_FAILURES
-        # calls in a row. Every call site gracefully handles an empty
-        # response.
         if _tracker.dead():
             return "", {}
         text, parsed = _single_call(
@@ -438,76 +433,125 @@ def run_v3_worker(
         _tracker.record(text)
         return text, parsed
 
+    # -- Amendment turn (only when a skeleton is present) ------------------
+    if state.skeleton is not None:
+        _, parsed = _llm(
+            user=WORKER_AMEND_SKELETON.format(
+                skeleton_block=render_skeleton(state.skeleton),
+                anchors_block=render_anchors(anchors),
+            ),
+            category="v3_worker_amend",
+        )
+        amendments = parsed.get("amendments") if isinstance(parsed, dict) else None
+        amendments = amendments if isinstance(amendments, list) else []
+        state.skeleton_amendments = [a for a in amendments if isinstance(a, dict)]
+        state.skeleton = apply_skeleton_amendments(state.skeleton, state.skeleton_amendments)
+        logger.log_tool_call(
+            scope=f"v3_worker::{spec.id}",
+            turn=-1,
+            tool_name="amend_skeleton",
+            args={"n_amendments": len(state.skeleton_amendments)},
+            result={
+                "ops": [a.get("op") for a in state.skeleton_amendments],
+                "accept": bool(parsed.get("accept", True) if isinstance(parsed, dict) else True),
+            },
+        )
+
+    # -- Iteration loop ---------------------------------------------------
+    satisfied_early = False
     for iter_idx in range(config.max_iter):
-        if _tracker.consec_empty >= _tracker.threshold:
+        if _tracker.dead():
             log.warning(
                 "V3 worker %s: aborting at iter %d — %d consecutive LLM failures",
                 spec.id, iter_idx, _tracker.consec_empty,
             )
             break
-        # -- Phase 1: PROPOSE ------------------------------------------------
+
+        # -- Phase 1: PROPOSE / TRANSFORM ------------------------------------
         if iter_idx == 0:
-            user_msg = WORKER_PROPOSE_FIRST.format(description=spec.description)
+            _, parsed = _llm(
+                user=WORKER_PROPOSE_FIRST.format(
+                    description=spec.description,
+                    skeleton_block=render_skeleton(state.skeleton),
+                    anchors_block=render_anchors(anchors),
+                ),
+                category="v3_worker_propose",
+            )
+            if not parsed:
+                log.warning("V3 worker %s iter 0: propose returned empty", spec.id)
+                break
+            state.plan = plan_from_propose_first(parsed, skeleton=state.skeleton)
+            applied_ops: list[dict[str, Any]] = []
         else:
-            history_block = _render_history(state.iterations)
-            user_msg = WORKER_WRITE_NEXT.format(
-                history_block=history_block,
-                diagnosis=state.iterations[-1].diagnosis or "(none)",
-                intended_change=state.iterations[-1].intended_change or "(none)",
+            # Transformations: shown coverage + noise diagnoses from prior iter
+            last = state.iterations[-1]
+            _, parsed = _llm(
+                user=WORKER_SELECT_TRANSFORMATIONS.format(
+                    plan_tree=render_plan_tree(state.plan) if state.plan else "(no plan)",
+                    query=render_plan_natural(state.plan) if state.plan else "",
+                    total=last.total_count,
+                    diff_new=last.diff_new,
+                    diff_seen=last.diff_seen,
+                    anchor_coverage=render_anchor_coverage(last.anchor_coverage),
+                    ans_clusters=last.reasoning_clusters or "(no answer)",
+                    ans_top100=last.reasoning_top100 or "(no answer)",
+                    noise_diagnoses="  (surfaced in the diagnose phase, not re-shown here)",
+                    transformation_history=_render_transformation_history(state.iterations),
+                    diagnosis=last.diagnosis or "(none)",
+                    intended_change=last.intended_change or "(none)",
+                ),
+                category="v3_worker_transform",
             )
-        _, parsed = _llm(
-            user=user_msg,
-            category="v3_worker_propose",
-        )
-        query_nl = (parsed.get("query") or "").strip()
-        if not query_nl:
-            log.warning(
-                "V3 worker %s: iter %d propose returned no query",
-                spec.id, iter_idx,
-            )
+            if parsed.get("satisfied") is True:
+                satisfied_early = True
+                break
+            raw_ops = parsed.get("transformations") or []
+            raw_ops = raw_ops if isinstance(raw_ops, list) else []
+            result = apply_transformations(state.plan, [o for o in raw_ops if isinstance(o, dict)])
+            applied_ops = result.applied
+            if result.rejected:
+                log.info(
+                    "V3 worker %s iter %d: %d transformation(s) rejected: %s",
+                    spec.id, iter_idx, len(result.rejected),
+                    [r["reason"] for r in result.rejected],
+                )
+
+        if state.plan is None or not state.plan.facets:
+            log.warning("V3 worker %s iter %d: plan is empty", spec.id, iter_idx)
             break
 
-        # Pre-S2 syntax check loop — up to 3 rewrites if the query has
-        # errors S2 would reject (short wildcard, unmatched parens /
-        # quotes, no mandatory clause, etc.).
-        query_lucene = to_lucene(query_nl)
-        for syntax_retry in range(3):
-            issues = syntax_check(query_lucene)
-            logger.log_tool_call(
-                scope=f"v3_worker::{spec.id}",
-                turn=iter_idx,
-                tool_name="syntax_check",
-                args={"retry": syntax_retry, "query_nl": query_nl},
-                result={
-                    "n_errors": sum(1 for i in issues if i.severity == "error"),
-                    "n_warnings": sum(1 for i in issues if i.severity == "warning"),
-                    "codes": [i.code for i in issues],
-                },
+        query_nl = render_plan_natural(state.plan)
+        query_lucene = render_plan_lucene(state.plan)
+
+        # Pre-S2 syntax check. We can't retry as a natural-language
+        # rewrite any more (transformations own the plan), but every
+        # blocking error is a bug in the renderer, not the worker —
+        # surface it in the log and bail this iter rather than spin.
+        issues = syntax_check(query_lucene)
+        logger.log_tool_call(
+            scope=f"v3_worker::{spec.id}",
+            turn=iter_idx,
+            tool_name="syntax_check",
+            args={"query_nl": query_nl},
+            result={
+                "n_errors": sum(1 for i in issues if i.severity == "error"),
+                "n_warnings": sum(1 for i in issues if i.severity == "warning"),
+                "codes": [i.code for i in issues],
+            },
+        )
+        if has_blocking_error(issues):
+            log.warning(
+                "V3 worker %s iter %d: plan renders to a syntactically invalid "
+                "Lucene query — this indicates a renderer bug. Issues: %s",
+                spec.id, iter_idx, render_issues(issues),
             )
-            if not has_blocking_error(issues):
-                break
-            _, parsed_fix = _llm(
-                user=WORKER_SYNTAX_ERROR.format(
-                    query=query_nl,
-                    issues=render_issues(issues),
-                ),
-                category="v3_worker_syntax_fix",
-            )
-            new_nl = (parsed_fix.get("query") or "").strip()
-            if not new_nl:
-                log.warning(
-                    "V3 worker %s iter %d: syntax-fix retry returned no query",
-                    spec.id, iter_idx,
-                )
-                break
-            query_nl = new_nl
-            query_lucene = to_lucene(query_nl)
+            break
 
         logger.log_tool_call(
             scope=f"v3_worker::{spec.id}",
             turn=iter_idx,
-            tool_name="propose_query",
-            args={"iter": iter_idx},
+            tool_name="propose_query" if iter_idx == 0 else "apply_transformations",
+            args={"iter": iter_idx, "ops": applied_ops},
             result={"query_nl": query_nl, "query_lucene": query_lucene},
         )
 
@@ -531,6 +575,21 @@ def run_v3_worker(
             prior_ids_set.update(it.paper_ids)
         diff_new, diff_seen = diff_vs_prev(paper_ids, prior_ids_set)
 
+        # -- Phase 3: ANCHOR COVERAGE (system-side, no LLM) -----------------
+        fetched_titles = [p.get("title") or "" for p in enriched]
+        anchor_cov = check_anchor_coverage(state.anchor_titles, fetched_titles)
+        logger.log_tool_call(
+            scope=f"v3_worker::{spec.id}",
+            turn=iter_idx,
+            tool_name="check_anchor_coverage",
+            args={"n_anchors": len(state.anchor_titles)},
+            result={
+                "present": sum(1 for v in anchor_cov.values() if v == "present"),
+                "absent": sum(1 for v in anchor_cov.values() if v == "absent"),
+                "ambiguous": sum(1 for v in anchor_cov.values() if v == "ambiguous"),
+            },
+        )
+
         iteration = QueryIterationV3(
             iter_idx=iter_idx,
             query=query_nl,
@@ -543,20 +602,9 @@ def run_v3_worker(
             top_titles_100=top_titles,
             diff_new=diff_new,
             diff_seen=diff_seen,
+            transformations=applied_ops,
+            anchor_coverage=anchor_cov,
         )
-
-        # -- Phase 3: CHECK_TOTAL (fresh, isolated context) ----------------
-        _, parsed = _llm(
-            user=WORKER_CHECK_TOTAL.format(
-                query=query_nl,
-                total=total,
-                diff_new=diff_new,
-                diff_seen=diff_seen,
-                query_tree=render_query_tree(query_tree),
-            ),
-            category="v3_worker_check_total",
-        )
-        iteration.reasoning_total = str(parsed.get("reasoning") or "").strip()
 
         # -- Phase 4: CHECK_CLUSTERS ---------------------------------------
         _, parsed = _llm(
@@ -579,14 +627,9 @@ def run_v3_worker(
             ans_clusters_reasoning + ((" (" + "; ".join(extras) + ")") if extras else "")
         ).strip()
 
-        # -- Phase 4b: FORCED per-cluster noise diagnosis -------------------
-        # When the agent flagged clusters as unrelated, we MUST show it the
-        # in-cluster query-tree breakdown and force a per-cluster diagnosis
-        # of WHICH part of the query let the cluster through. The agent does
-        # NOT propose a fix yet — fixes are chosen holistically in
-        # diagnose_plan after all per-item diagnoses are in.
+        # -- Phase 4b: forced per-cluster noise diagnosis ------------------
         noise_topic_diagnoses: list[dict[str, Any]] = []
-        for raw_cid in unrelated[:5]:  # cap to 5 to bound LLM calls
+        for raw_cid in unrelated[:5]:
             try:
                 cid_int = int(raw_cid)
             except (TypeError, ValueError):
@@ -605,10 +648,7 @@ def run_v3_worker(
                 category="v3_worker_noise_topic_diag",
             )
             reason = str(parsed_diag.get("reason") or "").strip()
-            noise_topic_diagnoses.append({
-                "cluster_id": cid_int,
-                "reason": reason,
-            })
+            noise_topic_diagnoses.append({"cluster_id": cid_int, "reason": reason})
 
         # -- Phase 5: CHECK_TOP100 -----------------------------------------
         titles_block = _render_top100_titles(enriched_sorted)
@@ -625,7 +665,7 @@ def run_v3_worker(
             ans_top100_reasoning += f" (off_topic_titles={off_topic[:5]})"
         iteration.reasoning_top100 = ans_top100_reasoning.strip()
 
-        # -- Phase 5b: FORCED per-paper noise diagnosis ---------------------
+        # -- Phase 5b: forced per-paper noise diagnosis --------------------
         noise_paper_diagnoses: list[dict[str, Any]] = []
         for raw_title in off_topic[:5]:
             title = str(raw_title or "").strip()
@@ -642,25 +682,22 @@ def run_v3_worker(
             reason = str(parsed_diag.get("reason") or "").strip()
             noise_paper_diagnoses.append({"title": title, "reason": reason})
 
-        # -- Phase 6: DIAGNOSE + PLAN (fresh, no tool loop) ----------------
-        # Agent now has: global query tree, per-cluster keywords +
-        # representative titles, top-10 abstracts, 10-random abstracts,
-        # PLUS per-noise-item diagnostic answers from Phase 4b / 5b.
+        # -- Phase 6: DIAGNOSE + PLAN --------------------------------------
         top10_block = _render_top10_abstracts(enriched_sorted)
         random10_block = _render_random10(enriched, seed=iter_idx)
         clusters_block = render_clusters(clusters)
-
         noise_diag_block = _render_noise_diagnoses(
             noise_topic_diagnoses, noise_paper_diagnoses,
         )
-
         diagnose_msg = WORKER_DIAGNOSE_PLAN.format(
             query=query_nl,
-            ans_total=iteration.reasoning_total or "(no answer)",
             ans_clusters=iteration.reasoning_clusters or "(no answer)",
             ans_top100=iteration.reasoning_top100 or "(no answer)",
+            anchor_coverage=render_anchor_coverage(anchor_cov),
             noise_diagnoses=noise_diag_block,
             total=total,
+            diff_new=diff_new,
+            diff_seen=diff_seen,
             query_tree=render_query_tree(query_tree),
             top10_block=top10_block,
             random10_block=random10_block,
@@ -670,10 +707,9 @@ def run_v3_worker(
             user=diagnose_msg,
             category="v3_worker_diagnose_plan",
         )
-        diagnosis = str(parsed.get("diagnosis") or "").strip()
-        intended_change = str(parsed.get("intended_change") or "").strip()
-        iteration.diagnosis = diagnosis
-        iteration.intended_change = intended_change
+        iteration.diagnosis = str(parsed.get("diagnosis") or "").strip()
+        iteration.intended_change = str(parsed.get("intended_change") or "").strip()
+        coverage_ok_flag = bool(parsed.get("coverage_ok") is True)
 
         state.iterations.append(iteration)
 
@@ -688,19 +724,27 @@ def run_v3_worker(
                 "new": diff_new,
                 "seen": diff_seen,
                 "n_clusters": len(clusters),
-                "reasoning_total": iteration.reasoning_total[:200],
                 "reasoning_clusters": iteration.reasoning_clusters[:200],
                 "reasoning_top100": iteration.reasoning_top100[:200],
-                "diagnosis": diagnosis[:200],
-                "intended_change": intended_change[:200],
+                "diagnosis": iteration.diagnosis[:200],
+                "intended_change": iteration.intended_change[:200],
+                "coverage_ratio": round(coverage_ratio(anchor_cov), 3),
+                "n_transformations": len(applied_ops),
             },
         )
 
+        # Early termination: strong coverage + LLM confirms coverage_ok AND
+        # no flagged noise clusters/papers.
+        if (
+            coverage_ok_flag
+            and coverage_ratio(anchor_cov) >= _COVERAGE_SATISFIED_THRESHOLD
+            and not unrelated
+            and not off_topic
+        ):
+            satisfied_early = True
+            break
+
     # -- Final summary -----------------------------------------------------
-    # Return the LAST iteration's paper_ids — that is the agent's
-    # committed query after refinement. Unioning across iterations
-    # would permanently bake in iter-0's exploratory noise, defeating
-    # the purpose of refinement.
     last_iter = state.iterations[-1] if state.iterations else None
     final_ids: list[str] = list(last_iter.paper_ids) if last_iter else []
     final_papers = [
@@ -713,26 +757,38 @@ def run_v3_worker(
         if final_papers else []
     )
 
-    summary_text = ""
+    final_coverage: dict[str, str] = {}
+    if final_papers and state.anchor_titles:
+        final_coverage = check_anchor_coverage(
+            state.anchor_titles,
+            [p.get("title") or "" for p in final_papers],
+        )
+
     try:
         _, parsed = _llm(
             user=WORKER_FINAL_SUMMARY.format(
                 n_unique=len(final_ids),
                 clusters=render_clusters(clusters_final),
+                anchor_coverage=render_anchor_coverage(final_coverage),
             ),
             category="v3_worker_final",
         )
-        summary_text = str(parsed.get("summary") or "")
+        _ = str(parsed.get("summary") or "")
     except Exception:  # noqa: BLE001
-        summary_text = ""
+        pass
 
+    status = "success" if state.iterations else "failed"
+    failure = "" if state.iterations else "no iterations completed"
     return SubTopicResultV3(
         spec_id=spec.id,
         description=spec.description,
-        status="success" if state.iterations else "failed",
+        status=status,
         paper_ids=final_ids,
         iterations=state.iterations,
         top_titles_final=top_titles_final,
         clusters_final=clusters_final,
-        failure_reason="" if state.iterations else "no iterations completed",
+        anchor_papers=list(anchors),
+        skeleton_amendments=state.skeleton_amendments,
+        anchor_coverage_final=final_coverage,
+        failure_reason=failure if not satisfied_early else "",
     )
