@@ -12,15 +12,22 @@ paper list into the data view an agent sees:
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import Any
 
-import numpy as np
-from sklearn.cluster import MiniBatchKMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
-
 from citeclaw.agents.v3.state import QueryTreeNode, TopicCluster
+from citeclaw.cluster.representation import (
+    extract_keywords_ctfidf,
+    select_representative_papers,
+)
+from citeclaw.cluster.topic_model import cluster_embeddings
 
 log = logging.getLogger("citeclaw.agents.v3.analysis")
+
+# Inside ExpandBySearch all papers share the topic's anchor vocabulary,
+# so the pipeline-wide adaptive min_cluster_size collapses everything
+# into one huge cluster. Halve the threshold so sub-areas surface.
+_EXPAND_SIZE_FACTOR = 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -130,73 +137,86 @@ def render_query_tree(nodes: list[QueryTreeNode]) -> str:
 def topic_model(
     papers: list[dict],
     *,
-    k: int | None = None,
+    s2_client: Any = None,
+    size_factor: float = _EXPAND_SIZE_FACTOR,
+    k: int | None = None,  # kept for back-compat; unused (HDBSCAN is density-based)
 ) -> list[TopicCluster]:
-    """TF-IDF + MiniBatchKMeans over title+abstract.
+    """Cluster ``papers`` via UMAP + HDBSCAN on cached SPECTER2 embeddings,
+    then fill in c-TF-IDF keywords + centroid-closest representative
+    titles per cluster.
 
-    Returns clusters sorted by size descending. Each cluster has its
-    top-8 TF-IDF terms and top-3 centroid-closest titles.
+    ``papers`` is a list of ``{"paperId", "title", "abstract"}`` dicts.
+    ``s2_client`` is required — it supplies the SPECTER2 embedding
+    (:meth:`SemanticScholarClient.fetch_embeddings_batch`). Papers with
+    no embedding end up in the noise (-1) bucket and are dropped from
+    the returned list. ``size_factor`` defaults to 0.5 which halves
+    the pipeline-wide adaptive ``min_cluster_size`` / ``min_samples``
+    so shared-anchor corpora still surface sub-clusters.
     """
-    if not papers:
+    if not papers or s2_client is None:
         return []
-    texts: list[str] = []
-    for p in papers:
-        title = (p.get("title") or "").strip()
-        abstract = (p.get("abstract") or "").strip()
-        texts.append(f"{title} {abstract}".strip() or "untitled")
-    n = len(texts)
-    if k is None:
-        k = max(4, min(10, int(np.sqrt(n) / 2) or 4))
-    k = max(2, min(k, n))
-    vectorizer = TfidfVectorizer(
-        stop_words="english",
-        max_features=2000,
-        min_df=2 if n > 30 else 1,
-        ngram_range=(1, 2),
-    )
-    try:
-        X = vectorizer.fit_transform(texts)
-    except ValueError:
+    ids = [p["paperId"] for p in papers if p.get("paperId")]
+    if not ids:
         return []
     try:
-        km = MiniBatchKMeans(
-            n_clusters=k,
-            random_state=42,
-            batch_size=min(256, max(32, n // 4)),
-            n_init=3,
-        )
-        labels = km.fit_predict(X)
+        embeddings = s2_client.fetch_embeddings_batch(ids)
     except Exception as exc:  # noqa: BLE001
-        log.debug("kmeans failed: %s", exc)
+        log.warning("topic_model: fetch_embeddings_batch failed: %s", exc)
         return []
-    terms = vectorizer.get_feature_names_out()
+
+    membership, eff = cluster_embeddings(
+        ids=ids,
+        embeddings_by_id=embeddings,
+        size_factor=size_factor,
+    )
+    # Drop noise papers; we only surface real clusters.
+    clustered = {pid: cid for pid, cid in membership.items() if cid >= 0}
+    if not clustered:
+        return []
+
+    # c-TF-IDF keywords per cluster (shared helper)
+    paper_proxies = {
+        p["paperId"]: SimpleNamespace(
+            paper_id=p["paperId"],
+            title=p.get("title") or "",
+            abstract=p.get("abstract") or "",
+        )
+        for p in papers if p.get("paperId")
+    }
+    keywords_by_cid = extract_keywords_ctfidf(
+        clustered, paper_proxies, n_keywords=8, ngram_range=(1, 3),
+    )
+
+    # Representative papers per cluster (centroid-closest in embedding space)
+    rep_ids_by_cid = select_representative_papers(clustered, embeddings, n=3)
+    titles_by_pid = {p["paperId"]: (p.get("title") or "") for p in papers if p.get("paperId")}
+
+    sizes: dict[int, int] = {}
+    for cid in clustered.values():
+        sizes[cid] = sizes.get(cid, 0) + 1
+
     out: list[TopicCluster] = []
-    for c_id in range(k):
-        mask = labels == c_id
-        count = int(mask.sum())
-        if count == 0:
-            continue
-        centroid = km.cluster_centers_[c_id]
-        top_t = np.argsort(centroid)[::-1][:8]
-        keywords = [str(terms[i]) for i in top_t if centroid[i] > 0]
-        member_idx = np.where(mask)[0]
-        member_vecs = X[member_idx]
-        sims = np.asarray(member_vecs.dot(centroid)).ravel()
-        local_order = np.argsort(-sims)[:3]
-        rep_titles = [(papers[member_idx[i]].get("title") or "").strip() for i in local_order]
+    for cid, size in sizes.items():
+        rep_titles = [titles_by_pid.get(pid, "") for pid in rep_ids_by_cid.get(cid, [])]
         rep_titles = [t for t in rep_titles if t][:3]
         out.append(
             TopicCluster(
-                cluster_id=int(c_id),
-                count=count,
-                keywords=keywords[:8],
+                cluster_id=int(cid),
+                count=size,
+                keywords=list(keywords_by_cid.get(cid, [])[:8]),
                 representative_titles=rep_titles,
             )
         )
+    # Sort by size desc, re-id contiguously so the display is stable.
     out.sort(key=lambda c: -c.count)
-    # Re-id clusters to be contiguous in display order (0..N-1 by size)
     for new_id, c in enumerate(out):
         c.cluster_id = new_id
+    if eff:
+        log.debug(
+            "topic_model: %d clusters (mcs=%d, min_samples=%d, n_neighbors=%d)",
+            len(out), eff.get("min_cluster_size", 0),
+            eff.get("min_samples", 0), eff.get("n_neighbors", 0),
+        )
     return out
 
 

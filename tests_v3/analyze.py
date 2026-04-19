@@ -163,8 +163,8 @@ def main() -> None:
          "citationCount": r.citation_count or 0}
         for r in enriched
     ]
-    clusters = topic_model(paper_dicts, k=8)
-    print("\n# topic clusters (k=8)")
+    clusters = topic_model(paper_dicts, s2_client=s2)
+    print("\n# topic clusters (UMAP+HDBSCAN on SPECTER2, size_factor=0.5)")
     for c in clusters:
         kw = ", ".join(c.keywords[:6])
         print(f"  cluster {c.cluster_id} ({c.count}p): {kw}")

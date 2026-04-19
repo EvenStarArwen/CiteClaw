@@ -379,7 +379,7 @@ def run_v3_worker(
 
         enriched_sorted = sorted(enriched, key=lambda p: -(p.get("citationCount") or 0))
         top_titles = [p["title"] for p in enriched_sorted[:100] if p.get("title")]
-        clusters = topic_model(enriched, k=config.topic_k)
+        clusters = topic_model(enriched, s2_client=s2_client, k=config.topic_k)
 
         prior_ids_set: set[str] = set()
         for it in state.iterations:
@@ -551,7 +551,10 @@ def run_v3_worker(
     union_papers = [enriched_pool[pid] for pid in all_ids[:_ENRICH_CAP] if pid in enriched_pool]
     final_sorted = sorted(union_papers, key=lambda p: -(p.get("citationCount") or 0))
     top_titles_final = [p["title"] for p in final_sorted[:30] if p.get("title")]
-    clusters_final = topic_model(union_papers, k=config.topic_k) if union_papers else []
+    clusters_final = (
+        topic_model(union_papers, s2_client=s2_client, k=config.topic_k)
+        if union_papers else []
+    )
 
     summary_text = ""
     try:

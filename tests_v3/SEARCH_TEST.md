@@ -97,10 +97,13 @@
 - Engineered pegRNAs (Nelson 2021):**Grok + Gemma ✓**,OpenAI 不在 top-20 但未必缺席 union。
 - twinPE (Anzalone 2022):**三家都找到**。
 
-**Precision / 噪声比例**(enriched 2000 上)
-- Gemma: cluster 0 = 1984/2000 = 99.2% on-topic,但 top-cited 里被无关心理学/医学综述占了 5-6 个位置(奇怪的命中,可能来自 therapeutic facet 里 `disease*` / `model*` / `variant*` 这类通用词)。
-- Grok: cluster 0 = 1990/2000 = 99.5% on-topic。
-- OpenAI: cluster 0 = 1969/2000 = 98.5%,但 top-cited 20 里近**一半**是 SARS-CoV-2 Cas12a 检测和癌症综述,这是用户最先看见的 top-cited,感知上是 failed run。
+**Precision / 噪声比例**(enriched 2000 上,UMAP+HDBSCAN on SPECTER2,`size_factor=0.5` —— 真实的 cluster 分布,不是早期 k-means 的 artifact)
+
+- **Gemma**:cluster 0 (1707p prime editing 主流) + cluster 1 (260p plant editing,来自 `pe_agriculture` 漂移) + ~33 篇 noise。On-topic ≈ 85%(plant 算 off-topic),是三家最干净的。
+- **Grok**:极度污染。cluster 0 **360p = preeclampsia** (PE 名缩碰撞);cluster 1 337p = 治疗蛋白递送(非 editing,PE 歧义);cluster 5 123p 随机噪声;加上 cluster 3 plant (269p,对 therapeutic scope 来说 off-topic)。真正 prime-editing 核心 cluster 2+4+6+8 合计 666/2000 = 33%。**噪声 >50%**。
+- **OpenAI**:cluster 0 (1655p 主流 on-topic) + cluster 1 (219p **SARS-CoV-2 CRISPR 检测** —— `RT` acronym 拉进的);cluster 2 (113p plant)。Noise ≈ 17%,介于 Gemma 和 Grok 之间。
+
+早期用 k-means + TF-IDF 的 "99% on-topic" 结论是 **聚类算法 artifact**,不是真实精度。换成 UMAP+HDBSCAN on SPECTER2 embedding (size_factor=0.5 halve ExpandBySearch-specific 的 min_cluster_size) 后,各家差异变得非常明显。Grok 的 bare-`PE` 问题从 top-cited 单篇看不出有多严重,cluster 聚类才暴露出 700+ 篇被 PE=preeclampsia / PE=drug-delivery 拉进来。
 
 **Union 大小的诡异对比**
 - OpenAI 42K >> Grok 14K >> Gemma 6.4K

@@ -34,7 +34,7 @@ _EXTRAS_HINT = (
 )
 
 
-def _compute_cluster_params(n: int) -> dict[str, int]:
+def _compute_cluster_params(n: int, *, size_factor: float = 1.0) -> dict[str, int]:
     """Adaptive UMAP + HDBSCAN parameters tuned to corpus size ``n``.
 
     Three coupled knobs scale together:
@@ -52,19 +52,113 @@ def _compute_cluster_params(n: int) -> dict[str, int]:
       clamped to ``[5, 30]`` so small corpora preserve local structure
       and large corpora use the global-structure default.
 
-    Worked examples::
+    Worked examples (size_factor=1.0)::
 
         n=50    → mcs=5,  min_samples=1,  n_neighbors=5
         n=300   → mcs=10, min_samples=2,  n_neighbors=6
         n=1000  → mcs=33, min_samples=7,  n_neighbors=20
         n=3000  → mcs=100,min_samples=20, n_neighbors=30
         n=10000 → mcs=100 (cap), min_samples=20 (cap), n_neighbors=30 (cap)
+
+    ``size_factor`` shrinks ``min_cluster_size`` (and, via the 0.2× ratio,
+    ``min_samples`` — the density / noise threshold) so shared-anchor
+    corpora (e.g. every paper in the set already passes the topic's core
+    terms) still surface meaningfully-sized sub-clusters. ExpandBySearch
+    passes ``size_factor=0.5``; the pipeline-wide ``Cluster`` step keeps
+    the default 1.0.
     """
-    mcs = max(5, min(100, n // 30))
+    mcs_base = max(5, min(100, n // 30))
+    mcs = max(2, int(round(mcs_base * size_factor)))
     return {
         "min_cluster_size": mcs,
         "min_samples": max(1, int(0.2 * mcs)),
         "n_neighbors": max(5, min(30, n // 50)),
+    }
+
+
+def cluster_embeddings(
+    ids: list[str],
+    embeddings_by_id: dict[str, list[float] | None],
+    *,
+    size_factor: float = 1.0,
+    min_cluster_size: int | None = None,
+    min_samples: int | None = None,
+    n_neighbors: int | None = None,
+    n_components: int = 5,
+    random_state: int = 42,
+    umap_metric: str = "cosine",
+    hdbscan_metric: str = "euclidean",
+    cluster_selection_method: str = "eom",
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Pure UMAP → HDBSCAN over pre-fetched embeddings.
+
+    Returns ``(membership, effective_params)``. ``membership`` maps each
+    input id to a cluster id (or -1 for noise / missing embedding).
+    ``effective_params`` lists the actual ``min_cluster_size`` /
+    ``min_samples`` / ``n_neighbors`` that were applied (useful for
+    downstream display / logging).
+    """
+    try:
+        import numpy as np
+        import umap
+        import hdbscan
+    except ImportError as exc:
+        raise RuntimeError(_EXTRAS_HINT) from exc
+
+    if not ids:
+        return {}, {"min_cluster_size": 0, "min_samples": 0, "n_neighbors": 0}
+
+    kept_ids: list[str] = []
+    kept_vectors: list[list[float]] = []
+    missing: list[str] = []
+    for pid in ids:
+        v = embeddings_by_id.get(pid)
+        if v:
+            kept_ids.append(pid)
+            kept_vectors.append(v)
+        else:
+            missing.append(pid)
+
+    membership: dict[str, int] = {pid: -1 for pid in missing}
+
+    adaptive = _compute_cluster_params(len(kept_ids), size_factor=size_factor)
+    effective_mcs = min_cluster_size if min_cluster_size is not None else adaptive["min_cluster_size"]
+    effective_min_samples = min_samples if min_samples is not None else adaptive["min_samples"]
+    effective_n_neighbors = n_neighbors if n_neighbors is not None else adaptive["n_neighbors"]
+
+    if len(kept_ids) < max(2, effective_mcs):
+        for pid in kept_ids:
+            membership[pid] = -1
+        return membership, {
+            "min_cluster_size": effective_mcs,
+            "min_samples": effective_min_samples,
+            "n_neighbors": effective_n_neighbors,
+        }
+
+    X = np.asarray(kept_vectors, dtype=np.float32)
+    nn = min(effective_n_neighbors, max(2, len(kept_ids) - 1))
+    reducer = umap.UMAP(
+        n_neighbors=nn,
+        n_components=min(n_components, max(2, len(kept_ids) - 1)),
+        min_dist=0.0,
+        metric=umap_metric,
+        random_state=random_state,
+    )
+    X_reduced = reducer.fit_transform(X)
+
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=max(2, effective_mcs),
+        min_samples=effective_min_samples,
+        metric=hdbscan_metric,
+        cluster_selection_method=cluster_selection_method,
+    )
+    labels = clusterer.fit_predict(X_reduced)
+    for pid, label in zip(kept_ids, labels):
+        membership[pid] = int(label)
+    return membership, {
+        "min_cluster_size": effective_mcs,
+        "min_samples": effective_min_samples,
+        "n_neighbors": effective_n_neighbors,
     }
 
 
@@ -87,6 +181,9 @@ class TopicModelClusterer:
         min_samples: int | None = None,
         hdbscan_metric: str = "euclidean",
         cluster_selection_method: str = "eom",
+        # size_factor < 1 shrinks adaptive min_cluster_size + min_samples;
+        # ExpandBySearch passes 0.5. Ignored when min_cluster_size is pinned.
+        size_factor: float = 1.0,
     ) -> None:
         self.n_neighbors = n_neighbors
         self.n_components = n_components
@@ -97,6 +194,7 @@ class TopicModelClusterer:
         self.min_samples = min_samples
         self.hdbscan_metric = hdbscan_metric
         self.cluster_selection_method = cluster_selection_method
+        self.size_factor = size_factor
 
     def cluster(self, signal, ctx) -> ClusterResult:
         try:
@@ -137,7 +235,7 @@ class TopicModelClusterer:
         # Resolve adaptive parameters from the number of papers we can
         # actually cluster. Caller-set values (non-None attributes) always
         # win over the adaptive defaults.
-        adaptive = _compute_cluster_params(len(kept_ids))
+        adaptive = _compute_cluster_params(len(kept_ids), size_factor=self.size_factor)
         effective_mcs = (
             self.min_cluster_size if self.min_cluster_size is not None
             else adaptive["min_cluster_size"]
