@@ -239,56 +239,35 @@ def _handle_add_sub_topics(args: dict, state: SupervisorStateV3, max_subtopics: 
     }
 
 
-def _handle_dispatch(
-    args: dict,
-    state: SupervisorStateV3,
-    *,
-    config: AgentConfigV3,
-    s2_client: Any,
-    llm_client: Any,
-    logger: Any,
-) -> dict:
-    spec_id = args.get("spec_id")
-    if not isinstance(spec_id, str) or not spec_id:
-        raise _SupervisorError("missing 'spec_id'", "")
-    if state.strategy is None:
-        raise _SupervisorError("call set_strategy first", "")
-    spec = next((s for s in state.strategy.sub_topics if s.id == spec_id), None)
-    if spec is None:
-        raise _SupervisorError(
-            f"spec_id {spec_id!r} not in strategy",
-            f"valid ids: {[s.id for s in state.strategy.sub_topics]}",
-        )
-    if any(r.spec_id == spec_id for r in state.sub_topic_results):
-        raise _SupervisorError(
-            f"spec_id {spec_id!r} already dispatched",
-            "each sub-topic runs at most once",
-        )
-    log.info("V3 supervisor dispatching worker for %s", spec_id)
-    result = run_v3_worker(
-        spec=spec,
-        config=config,
-        s2_client=s2_client,
-        llm_client=llm_client,
-        logger=logger,
-    )
-    state.sub_topic_results.append(result)
-    return {
-        "spec_id": result.spec_id,
-        "status": result.status,
-        "n_papers": len(result.paper_ids),
-        "n_iterations": len(result.iterations),
-    }
-
-
 def _handle_done(args: dict) -> dict:
     summary = str(args.get("summary") or "")
     return {"acknowledged": True, "summary": summary, "closed": True}
 
 
 # ---------------------------------------------------------------------------
-# Supervisor main loop
+# Supervisor main loop — queue-driven, system dispatches workers
 # ---------------------------------------------------------------------------
+
+
+def _ask_supervisor(
+    *,
+    llm_client: "LLMClient",
+    system_prompt: str,
+    user_msg: str,
+) -> tuple[str, dict]:
+    """Fresh single-call supervisor prompt. No history accumulation."""
+    try:
+        resp = llm_client.call(system_prompt, user_msg, category="v3_supervisor")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("V3 supervisor LLM call failed: %s", exc)
+        return "", {}
+    text = (resp.text or "").strip()
+    parsed = _extract_json(text)
+    tool_name = str(parsed.get("tool_name") or "")
+    tool_args = parsed.get("tool_args") or {}
+    if not isinstance(tool_args, dict):
+        tool_args = {}
+    return tool_name, tool_args
 
 
 def run_v3_supervisor(
@@ -303,89 +282,173 @@ def run_v3_supervisor(
     state = SupervisorStateV3()
     system_prompt = SUPERVISOR_SYSTEM.format(max_subtopics=config.max_subtopics)
 
-    messages: list[dict[str, str]] = []
-    last_tool_name = ""
-    last_tool_result: dict[str, Any] = {}
+    # ----- Turn 1: set_strategy (required) -----------------------------
+    state.turn_index = 1
+    first_user = SUPERVISOR_USER_FIRST.format(
+        topic_description=topic_description,
+        max_subtopics=config.max_subtopics,
+        supervisor_max_turns=supervisor_max_turns,
+        max_iter=config.max_iter,
+    )
+    tool_name, tool_args = _ask_supervisor(
+        llm_client=llm_client,
+        system_prompt=system_prompt,
+        user_msg=first_user,
+    )
+    if tool_name != "set_strategy":
+        result = {
+            "error": f"turn 1 must call set_strategy (got {tool_name!r})",
+            "hint": "retry with set_strategy",
+        }
+        logger.log_tool_call(
+            scope="v3_supervisor", turn=1,
+            tool_name=tool_name, args=tool_args, result=result,
+        )
+        return state, []
+    try:
+        result = _handle_set_strategy(tool_args, state, config.max_subtopics)
+    except _SupervisorError as exc:
+        result = {"error": str(exc), "hint": exc.hint}
+        logger.log_tool_call(
+            scope="v3_supervisor", turn=1,
+            tool_name="set_strategy", args=tool_args, result=result,
+        )
+        return state, []
+    logger.log_tool_call(
+        scope="v3_supervisor", turn=1,
+        tool_name="set_strategy", args=tool_args, result=result,
+    )
 
-    for turn in range(1, supervisor_max_turns + 1):
+    # ----- Drain the queue with per-worker supervisor check -----------
+    queue: list[str] = [s.id for s in state.strategy.sub_topics]
+    turn = 1
+    closed_early = False
+    while queue and turn < supervisor_max_turns:
+        spec_id = queue.pop(0)
+        spec = next(s for s in state.strategy.sub_topics if s.id == spec_id)
+        log.info("V3 supervisor dispatching worker for %s", spec_id)
+        worker_result = run_v3_worker(
+            spec=spec,
+            config=config,
+            s2_client=s2_client,
+            llm_client=llm_client,
+            logger=logger,
+        )
+        state.sub_topic_results.append(worker_result)
+        logger.log_tool_call(
+            scope="v3_supervisor", turn=turn,
+            tool_name="system_dispatch",
+            args={"spec_id": spec_id},
+            result={
+                "status": worker_result.status,
+                "n_papers": len(worker_result.paper_ids),
+                "n_iterations": len(worker_result.iterations),
+            },
+        )
+
+        # Ask supervisor what to do next
+        turn += 1
         state.turn_index = turn
-        if turn == 1:
-            user_msg = SUPERVISOR_USER_FIRST.format(
-                topic_description=topic_description,
-                max_subtopics=config.max_subtopics,
-                supervisor_max_turns=supervisor_max_turns,
-                max_iter=config.max_iter,
-            )
-        else:
-            dispatched_ids = {r.spec_id for r in state.sub_topic_results}
-            tool_res_str = (
-                f"Previous tool `{last_tool_name}` result:\n{json.dumps(last_tool_result, indent=2)}"
-                if last_tool_name
-                else ""
-            )
-            user_msg = SUPERVISOR_USER_CONTINUE.format(
-                tool_results=tool_res_str,
-                dispatched_block=_render_dispatched(state.sub_topic_results),
-                remaining_block=_render_remaining(state.strategy, dispatched_ids),
-                overlap_matrix=_render_overlap_matrix(state.sub_topic_results),
-            )
-
-        messages.append({"role": "user", "content": user_msg})
-        joined = "\n\n".join(
-            f"[{m['role'].upper()}]\n{m['content']}" for m in messages
+        dispatched_ids = {r.spec_id for r in state.sub_topic_results}
+        tool_res_str = (
+            f"Last worker dispatched: `{spec_id}` "
+            f"(status={worker_result.status}, "
+            f"{len(worker_result.paper_ids)} papers, "
+            f"{len(worker_result.iterations)} iterations)."
+        )
+        remaining_block = (
+            "\n".join(
+                f"  - {sid}" for sid in queue
+            ) or "  (queue empty — add_sub_topics or done)"
+        )
+        user_msg = SUPERVISOR_USER_CONTINUE.format(
+            tool_results=tool_res_str,
+            dispatched_block=_render_dispatched(state.sub_topic_results),
+            remaining_block=remaining_block,
+            overlap_matrix=_render_overlap_matrix(state.sub_topic_results),
+        )
+        tool_name, tool_args = _ask_supervisor(
+            llm_client=llm_client,
+            system_prompt=system_prompt,
+            user_msg=user_msg,
         )
         try:
-            resp = llm_client.call(
-                system_prompt,
-                joined,
-                category="v3_supervisor",
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.warning("V3 supervisor LLM call failed: %s", exc)
-            break
-        text = (resp.text or "").strip()
-        messages.append({"role": "assistant", "content": text})
-        parsed = _extract_json(text)
-        tool_name = str(parsed.get("tool_name") or "")
-        tool_args = parsed.get("tool_args") or {}
-        if not isinstance(tool_args, dict):
-            tool_args = {}
-
-        try:
-            if tool_name == "set_strategy":
-                result = _handle_set_strategy(tool_args, state, config.max_subtopics)
-            elif tool_name == "add_sub_topics":
+            if tool_name == "add_sub_topics":
                 result = _handle_add_sub_topics(tool_args, state, config.max_subtopics)
-            elif tool_name == "dispatch_sub_topic_worker":
-                result = _handle_dispatch(
-                    tool_args, state,
-                    config=config,
-                    s2_client=s2_client,
-                    llm_client=llm_client,
-                    logger=logger,
-                )
+                # Append the newly added ids to the queue
+                queue.extend(result.get("added", []))
+            elif tool_name == "continue":
+                result = {"acknowledged": True, "action": "continue"}
             elif tool_name == "done":
                 result = _handle_done(tool_args)
+                closed_early = True
             else:
+                # Malformed / unexpected tool — treat as continue (do not
+                # stall the pipeline on a bad LLM reply).
                 result = {
                     "error": f"unknown tool {tool_name!r}",
-                    "hint": "one of: set_strategy, add_sub_topics, dispatch_sub_topic_worker, done",
+                    "hint": "expected add_sub_topics / continue / done; continuing",
                 }
         except _SupervisorError as exc:
             result = {"error": str(exc), "hint": exc.hint}
-
         logger.log_tool_call(
-            scope="v3_supervisor",
-            turn=turn,
-            tool_name=tool_name,
-            args=tool_args,
-            result=result,
+            scope="v3_supervisor", turn=turn,
+            tool_name=tool_name or "(none)", args=tool_args, result=result,
         )
-        last_tool_name = tool_name
-        last_tool_result = result
-
         if tool_name == "done" and result.get("closed"):
             break
+
+    # ----- If queue emptied without explicit done, ask for one --------
+    if not closed_early:
+        turn += 1
+        state.turn_index = turn
+        user_msg = SUPERVISOR_USER_CONTINUE.format(
+            tool_results="All queued sub-topics have been dispatched.",
+            dispatched_block=_render_dispatched(state.sub_topic_results),
+            remaining_block="  (queue empty)",
+            overlap_matrix=_render_overlap_matrix(state.sub_topic_results),
+        ) + "\n\nCall `done(summary)` now, or `add_sub_topics` if a "\
+            "genuinely new retrieval axis is still uncovered."
+        tool_name, tool_args = _ask_supervisor(
+            llm_client=llm_client,
+            system_prompt=system_prompt,
+            user_msg=user_msg,
+        )
+        if tool_name == "add_sub_topics" and turn < supervisor_max_turns:
+            try:
+                result = _handle_add_sub_topics(tool_args, state, config.max_subtopics)
+                queue.extend(result.get("added", []))
+            except _SupervisorError as exc:
+                result = {"error": str(exc), "hint": exc.hint}
+            logger.log_tool_call(
+                scope="v3_supervisor", turn=turn,
+                tool_name=tool_name, args=tool_args, result=result,
+            )
+            # Drain the newly-added queue
+            while queue and turn < supervisor_max_turns:
+                turn += 1
+                spec_id = queue.pop(0)
+                spec = next(s for s in state.strategy.sub_topics if s.id == spec_id)
+                worker_result = run_v3_worker(
+                    spec=spec, config=config,
+                    s2_client=s2_client, llm_client=llm_client, logger=logger,
+                )
+                state.sub_topic_results.append(worker_result)
+                logger.log_tool_call(
+                    scope="v3_supervisor", turn=turn,
+                    tool_name="system_dispatch",
+                    args={"spec_id": spec_id},
+                    result={
+                        "status": worker_result.status,
+                        "n_papers": len(worker_result.paper_ids),
+                    },
+                )
+        else:
+            result = {"acknowledged": True, "final": True}
+            logger.log_tool_call(
+                scope="v3_supervisor", turn=turn,
+                tool_name=tool_name or "done", args=tool_args, result=result,
+            )
 
     aggregate = state.aggregate_paper_ids()
     return state, aggregate
