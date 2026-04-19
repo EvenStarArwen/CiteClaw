@@ -148,6 +148,24 @@ NOT in words), nothing else.
 """
 
 
+WORKER_SYNTAX_ERROR = """\
+Your proposed query has Semantic Scholar syntax problems that would
+cause the API to reject it (or silently mis-interpret it). Fix them
+and resubmit.
+
+Your query:
+  {query}
+
+Issues found:
+
+{issues}
+
+Rewrite the query to fix every ERROR. Warnings (lower-case `warn`)
+are advisory — address them if the advice matches your intent.
+Respond with JSON: `{{"query": "..."}}`.
+"""
+
+
 WORKER_CHECK_TOTAL = """\
 Your current query: `{query}`
 

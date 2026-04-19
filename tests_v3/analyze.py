@@ -109,30 +109,34 @@ def main() -> None:
 
     worker_ids: dict[str, list[str]] = {}
     for wid, es in by_worker.items():
+        # Use ONLY the LAST iteration's query — that is the worker's
+        # committed final query after refinement. Earlier iterations
+        # are exploratory and meant to be superseded.
+        props = [e for e in es if e.get("tool_name") == "propose_query"]
+        if not props:
+            worker_ids[wid] = []
+            continue
+        last = props[-1]
+        q_lucene = (last.get("result") or {}).get("query_lucene") or ""
+        if not q_lucene:
+            q_nl = (last.get("result") or {}).get("query", "")
+            from citeclaw.agents.v3.query_translate import to_lucene
+            q_lucene = to_lucene(q_nl)
         all_ids: list[str] = []
-        for e in es:
-            if e.get("tool_name") != "propose_query":
-                continue
-            q_lucene = (e.get("result") or {}).get("query_lucene") or ""
-            if not q_lucene:
-                # fallback: if only query_nl was logged (older worker), re-translate
-                q_nl = (e.get("result") or {}).get("query", "")
-                from citeclaw.agents.v3.query_translate import to_lucene
-                q_lucene = to_lucene(q_nl)
-            token = None
-            while len(all_ids) < 10000:
-                try:
-                    resp = s2.search_bulk(query=q_lucene, limit=500, token=token)
-                except Exception:
-                    break
-                data = resp.get("data") or []
-                for row in data:
-                    pid = row.get("paperId")
-                    if pid and pid not in all_ids:
-                        all_ids.append(pid)
-                token = resp.get("token")
-                if not token or not data:
-                    break
+        token = None
+        while len(all_ids) < 10000:
+            try:
+                resp = s2.search_bulk(query=q_lucene, limit=500, token=token)
+            except Exception:
+                break
+            data = resp.get("data") or []
+            for row in data:
+                pid = row.get("paperId")
+                if pid and pid not in all_ids:
+                    all_ids.append(pid)
+            token = resp.get("token")
+            if not token or not data:
+                break
         worker_ids[wid] = all_ids[:10000]
 
     print("\n# paper counts")

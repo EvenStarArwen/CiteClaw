@@ -15,6 +15,12 @@ import logging
 from types import SimpleNamespace
 from typing import Any
 
+from citeclaw.agents.v3.query_translate import (
+    decompose_query,
+    parse_or_alternatives,
+    term_matches,
+    to_natural,
+)
 from citeclaw.agents.v3.state import QueryTreeNode, TopicCluster
 from citeclaw.cluster.representation import (
     extract_keywords_ctfidf,
@@ -31,58 +37,7 @@ _EXPAND_SIZE_FACTOR = 0.5
 
 
 # ---------------------------------------------------------------------------
-# Query tokeniser
-# ---------------------------------------------------------------------------
-
-
-def decompose_query(query: str) -> list[str]:
-    """Split a Lucene query into top-level clauses.
-
-    A clause is a quoted string or a parenthesised group, optionally
-    prefixed with ``+`` or ``-``. For ``("A" | "B") +"C" -"D"`` returns
-    ``['("A" | "B")', '+"C"', '-"D"']``. Best-effort: bare tokens are
-    kept as-is.
-    """
-    clauses: list[str] = []
-    i = 0
-    n = len(query)
-    while i < n:
-        while i < n and query[i].isspace():
-            i += 1
-        if i >= n:
-            break
-        start = i
-        if query[i] in "+-":
-            i += 1
-        while i < n and query[i].isspace():
-            i += 1
-        if i >= n:
-            break
-        ch = query[i]
-        if ch == '"':
-            i += 1
-            while i < n and query[i] != '"':
-                i += 1
-            if i < n:
-                i += 1
-        elif ch == "(":
-            depth = 1
-            i += 1
-            while i < n and depth > 0:
-                if query[i] == "(":
-                    depth += 1
-                elif query[i] == ")":
-                    depth -= 1
-                i += 1
-        else:
-            while i < n and not query[i].isspace():
-                i += 1
-        clauses.append(query[start:i].strip())
-    return [c for c in clauses if c]
-
-
-# ---------------------------------------------------------------------------
-# Query tree (per-clause counts)
+# Query tree (per-clause + per-OR-alternative counts)
 # ---------------------------------------------------------------------------
 
 
@@ -91,16 +46,32 @@ def build_query_tree(
     full_total: int,
     *,
     s2_client: Any,
+    enriched_papers: list[dict] | None = None,
 ) -> list[QueryTreeNode]:
-    """For each top-level clause, issue a count-only S2 search and
-    return ``QueryTreeNode(clause, count)``. The final row is the full
-    query's own total, so the agent can see how the clauses combine.
+    """Decompose a Lucene query into its top-level facets and count each.
 
-    Uses S2 ``search_bulk`` with ``limit=1`` — only the ``total`` field
-    matters. S2 caches by query hash so repeated calls are cheap.
+    Top-level clause counts (how many papers each facet matches alone)
+    come from count-only S2 probes. Inside each OR-group clause, we
+    break it into its alternatives and count — IN MEMORY, against the
+    already-fetched ``enriched_papers`` — how many papers match each
+    individual alternative. That in-memory pass needs no S2 round-trip
+    and lets the agent see, for ``+("ESM" | "ProtBERT" | "ProtT5")``,
+    whether one of the three names is carrying all the recall.
+
+    A trailing ``<full query>`` row shows the overall intersection total.
     """
     nodes: list[QueryTreeNode] = []
     clauses = decompose_query(query)
+
+    # Build a lower-cased corpus index once — reused for every
+    # in-memory OR-alternative probe.
+    corpus: list[str] = []
+    if enriched_papers:
+        for p in enriched_papers:
+            title = (p.get("title") or "")
+            abstract = (p.get("abstract") or "")
+            corpus.append((title + " " + abstract).lower())
+
     for cl in clauses:
         stripped = cl.lstrip("+-").strip()
         if not stripped:
@@ -111,21 +82,59 @@ def build_query_tree(
         except Exception as exc:  # noqa: BLE001
             log.debug("query_tree probe failed for %r: %s", stripped, exc)
             count = -1
-        nodes.append(QueryTreeNode(clause=cl, count=count))
-    nodes.append(QueryTreeNode(clause=f"<full query>", count=full_total))
+        # Per-OR-alternative breakdown (in-memory regex on fetched papers).
+        children: list[QueryTreeNode] = []
+        alts = parse_or_alternatives(cl)
+        if alts and corpus:
+            for alt in alts:
+                n_hits = sum(1 for text in corpus if term_matches(alt, text))
+                children.append(QueryTreeNode(clause=alt, count=n_hits))
+        nodes.append(QueryTreeNode(clause=cl, count=count, children=children))
+    nodes.append(QueryTreeNode(clause="<full query>", count=full_total))
     return nodes
 
 
-def render_query_tree(nodes: list[QueryTreeNode]) -> str:
-    """Pretty-print a query tree for the prompt."""
+def render_query_tree(nodes: list[QueryTreeNode], *, as_natural: bool = True) -> str:
+    """Pretty-print a query tree for the worker prompt.
+
+    ``as_natural`` (default) shows every clause in AND/OR/NOT form so it
+    matches the natural-language query the worker wrote. Turning it off
+    surfaces the raw Lucene form — useful for debug / tests.
+
+    Top-level clauses print at 2-space indent; OR-alternative children
+    (if any) print at 6-space indent with a ``·`` marker. Children note
+    the hit count from in-memory matching on the enriched sample.
+    """
     if not nodes:
         return "(unable to decompose query)"
-    # Find max clause width for alignment
-    width = max(len(n.clause) for n in nodes) + 2
-    lines = []
+
+    def _label(clause: str) -> str:
+        if not as_natural:
+            return clause
+        if clause.startswith("<") and clause.endswith(">"):
+            return clause  # the sentinel rows like <full query>
+        try:
+            return to_natural(clause) or clause
+        except Exception:  # noqa: BLE001
+            return clause
+
+    all_labels: list[str] = []
     for n in nodes:
+        all_labels.append(_label(n.clause))
+        for ch in n.children:
+            all_labels.append(_label(ch.clause))
+    width = max((len(l) for l in all_labels), default=10) + 4
+
+    lines: list[str] = []
+    for n in nodes:
+        label = _label(n.clause)
         count_str = str(n.count) if n.count >= 0 else "(probe failed)"
-        lines.append(f"  {n.clause.ljust(width)} {count_str}")
+        lines.append(f"  {label.ljust(width)} {count_str}")
+        for ch in n.children:
+            ch_label = _label(ch.clause)
+            ch_count = str(ch.count) if ch.count >= 0 else "(probe failed)"
+            note = " (in-memory on fetched sample)" if ch == n.children[0] else ""
+            lines.append(f"      · {ch_label.ljust(width - 4)} {ch_count}{note}")
     return "\n".join(lines)
 
 

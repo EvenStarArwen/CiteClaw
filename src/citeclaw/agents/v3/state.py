@@ -59,12 +59,23 @@ class StrategyV3:
 
 @dataclass
 class QueryTreeNode:
-    """One row of the query-tree breakdown. `clause` is a human-readable
-    description of which part of the Lucene query was measured; `count`
-    is the S2 `total` for that sub-clause alone."""
+    """One row of the query-tree breakdown.
+
+    ``clause`` is the human-readable form (AND/OR/NOT, not the Lucene
+    symbols) of the sub-clause that was measured. ``count`` is the
+    paper count for that clause in isolation — S2's ``total`` from a
+    count-only probe for top-level facets, or an in-memory regex-match
+    count over the enriched fetched papers for OR-alternative children.
+
+    ``children`` carry per-alternative breakdown inside an OR group:
+    for ``+(A | B | "C D")`` the top node reports the facet's full
+    count and each child reports how many fetched papers match just
+    that one alternative.
+    """
 
     clause: str
     count: int
+    children: list["QueryTreeNode"] = field(default_factory=list)
 
 
 @dataclass

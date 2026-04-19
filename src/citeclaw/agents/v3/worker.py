@@ -35,6 +35,11 @@ from citeclaw.agents.v3.state import (
     SubTopicSpecV3,
     WorkerStateV3,
 )
+from citeclaw.agents.v3.syntax_check import (
+    has_blocking_error,
+    render_issues,
+    syntax_check,
+)
 from citeclaw.prompts.search_agent_v3 import (
     WORKER_CHECK_CLUSTERS,
     WORKER_CHECK_TOP100,
@@ -42,6 +47,7 @@ from citeclaw.prompts.search_agent_v3 import (
     WORKER_DIAGNOSE_PLAN,
     WORKER_FINAL_SUMMARY,
     WORKER_PROPOSE_FIRST,
+    WORKER_SYNTAX_ERROR,
     WORKER_SYSTEM,
     WORKER_WRITE_NEXT,
 )
@@ -169,7 +175,12 @@ def _fetch_and_analyse(
                 "citationCount": r.citation_count or 0,
             })
 
-    query_tree = build_query_tree(query_lucene, full_total=total, s2_client=s2_client)
+    query_tree = build_query_tree(
+        query_lucene,
+        full_total=total,
+        s2_client=s2_client,
+        enriched_papers=enriched,
+    )
     return paper_ids, total, query_tree, enriched
 
 
@@ -356,7 +367,44 @@ def run_v3_worker(
                 spec.id, iter_idx,
             )
             break
+
+        # Pre-S2 syntax check loop — up to 3 rewrites if the query has
+        # errors S2 would reject (short wildcard, unmatched parens /
+        # quotes, no mandatory clause, etc.).
         query_lucene = to_lucene(query_nl)
+        for syntax_retry in range(3):
+            issues = syntax_check(query_lucene)
+            logger.log_tool_call(
+                scope=f"v3_worker::{spec.id}",
+                turn=iter_idx,
+                tool_name="syntax_check",
+                args={"retry": syntax_retry, "query_nl": query_nl},
+                result={
+                    "n_errors": sum(1 for i in issues if i.severity == "error"),
+                    "n_warnings": sum(1 for i in issues if i.severity == "warning"),
+                    "codes": [i.code for i in issues],
+                },
+            )
+            if not has_blocking_error(issues):
+                break
+            _, parsed_fix = _single_call(
+                llm_client=llm_client,
+                system=system_prompt,
+                user=WORKER_SYNTAX_ERROR.format(
+                    query=query_nl,
+                    issues=render_issues(issues),
+                ),
+                category="v3_worker_syntax_fix",
+            )
+            new_nl = (parsed_fix.get("query") or "").strip()
+            if not new_nl:
+                log.warning(
+                    "V3 worker %s iter %d: syntax-fix retry returned no query",
+                    spec.id, iter_idx,
+                )
+                break
+            query_nl = new_nl
+            query_lucene = to_lucene(query_nl)
 
         logger.log_tool_call(
             scope=f"v3_worker::{spec.id}",
@@ -547,13 +595,20 @@ def run_v3_worker(
         )
 
     # -- Final summary -----------------------------------------------------
-    all_ids = state.aggregate_paper_ids
-    union_papers = [enriched_pool[pid] for pid in all_ids[:_ENRICH_CAP] if pid in enriched_pool]
-    final_sorted = sorted(union_papers, key=lambda p: -(p.get("citationCount") or 0))
+    # Return the LAST iteration's paper_ids — that is the agent's
+    # committed query after refinement. Unioning across iterations
+    # would permanently bake in iter-0's exploratory noise, defeating
+    # the purpose of refinement.
+    last_iter = state.iterations[-1] if state.iterations else None
+    final_ids: list[str] = list(last_iter.paper_ids) if last_iter else []
+    final_papers = [
+        enriched_pool[pid] for pid in final_ids[:_ENRICH_CAP] if pid in enriched_pool
+    ]
+    final_sorted = sorted(final_papers, key=lambda p: -(p.get("citationCount") or 0))
     top_titles_final = [p["title"] for p in final_sorted[:30] if p.get("title")]
     clusters_final = (
-        topic_model(union_papers, s2_client=s2_client, k=config.topic_k)
-        if union_papers else []
+        topic_model(final_papers, s2_client=s2_client, k=config.topic_k)
+        if final_papers else []
     )
 
     summary_text = ""
@@ -562,7 +617,7 @@ def run_v3_worker(
             llm_client=llm_client,
             system=system_prompt,
             user=WORKER_FINAL_SUMMARY.format(
-                n_unique=len(all_ids),
+                n_unique=len(final_ids),
                 clusters=render_clusters(clusters_final),
             ),
             category="v3_worker_final",
@@ -575,7 +630,7 @@ def run_v3_worker(
         spec_id=spec.id,
         description=spec.description,
         status="success" if state.iterations else "failed",
-        paper_ids=all_ids,
+        paper_ids=final_ids,
         iterations=state.iterations,
         top_titles_final=top_titles_final,
         clusters_final=clusters_final,
