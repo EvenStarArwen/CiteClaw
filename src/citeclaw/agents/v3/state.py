@@ -82,8 +82,12 @@ class QueryTreeNode:
 class TopicCluster:
     cluster_id: int
     count: int
-    keywords: list[str]  # top TF-IDF terms for this cluster
+    keywords: list[str]  # top c-TF-IDF terms for this cluster
     representative_titles: list[str]  # top-3 titles in the cluster
+    # Populated by v3.analysis.topic_model so downstream tools
+    # (inspect_topic, in-cluster query tree) can grab the cluster's
+    # actual member papers without re-running the clusterer.
+    paper_ids: list[str] = field(default_factory=list)
 
 
 @dataclass

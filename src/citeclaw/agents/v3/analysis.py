@@ -94,6 +94,114 @@ def build_query_tree(
     return nodes
 
 
+def build_in_cluster_tree(
+    cluster_papers: list[dict],
+    query_lucene: str,
+) -> dict[str, Any]:
+    """Break down how the query's OR-alternative COMBINATIONS contribute
+    to a single cluster.
+
+    All papers in a cluster already satisfy every AND facet (that's how
+    they passed the query in the first place), so we only enumerate
+    OR-group alternatives and count the Cartesian product of
+    (alt1 of facet1, alt2 of facet2, …). For ``(A | B) AND (C | D)``
+    the cells are ``A+C, A+D, B+C, B+D``. For ``(A | B) AND C``
+    (single OR facet) the cells are ``A, B`` (``C`` is implicit).
+
+    Returns::
+
+        {
+          "total": N,
+          "or_facets": [{"clause": str_natural, "alternatives": [str, ...]}, ...],
+          "marginals": [                  # per-facet single-term breakdown
+              {"facet": natural, "per_alt": {alt: hits_in_cluster}},
+              ...
+          ],
+          "combinations": [                # Cartesian product counts
+              {"alts": [alt_facet1, alt_facet2, ...], "count": int},
+              ...
+          ],
+        }
+
+    Matching is in-memory regex over title+abstract — no S2 calls.
+    """
+    from itertools import product
+
+    total = len(cluster_papers)
+    out: dict[str, Any] = {
+        "total": total,
+        "or_facets": [],
+        "marginals": [],
+        "combinations": [],
+    }
+    if total == 0:
+        return out
+
+    clauses = decompose_query(query_lucene)
+    or_facets: list[tuple[str, list[str]]] = []
+    for cl in clauses:
+        alts = parse_or_alternatives(cl)
+        if alts:
+            or_facets.append((cl, alts))
+
+    corpus: list[str] = [
+        ((p.get("title") or "") + " " + (p.get("abstract") or "")).lower()
+        for p in cluster_papers
+    ]
+
+    if not or_facets:
+        return out  # nothing OR-shaped to break down
+
+    for clause, alts in or_facets:
+        try:
+            label = to_natural(clause) or clause
+        except Exception:  # noqa: BLE001
+            label = clause
+        per_alt = {alt: sum(1 for t in corpus if term_matches(alt, t)) for alt in alts}
+        out["or_facets"].append({"clause": label, "alternatives": list(alts)})
+        out["marginals"].append({"facet": label, "per_alt": per_alt})
+
+    combo_alts = [alts for _, alts in or_facets]
+    for combo in product(*combo_alts):
+        count = sum(1 for t in corpus if all(term_matches(a, t) for a in combo))
+        out["combinations"].append({"alts": list(combo), "count": count})
+
+    # Sort combinations by count desc for easier reading.
+    out["combinations"].sort(key=lambda r: -r["count"])
+    return out
+
+
+def render_in_cluster_tree(tree: dict[str, Any]) -> str:
+    """Pretty-print an in-cluster query tree for the worker prompt."""
+    total = tree.get("total", 0)
+    or_facets = tree.get("or_facets") or []
+    marginals = tree.get("marginals") or []
+    combos = tree.get("combinations") or []
+    if total == 0:
+        return "  (cluster is empty)"
+    lines: list[str] = [f"  cluster_total = {total}"]
+    if not or_facets:
+        lines.append("  (query has no OR facets — no breakdown available)")
+        return "\n".join(lines)
+    lines.append("")
+    lines.append("  Per-facet marginals (papers matching each alternative alone):")
+    for m in marginals:
+        lines.append(f"    facet: {m['facet']}")
+        # Sort alternatives by hit count desc.
+        items = sorted(m["per_alt"].items(), key=lambda kv: -kv[1])
+        for alt, n in items:
+            pct = 100 * n / total
+            lines.append(f"      · {alt:<40s} {n:5d}  ({pct:5.1f}%)")
+    lines.append("")
+    lines.append("  Combinations (how many papers match every listed alternative):")
+    for r in combos:
+        n = r["count"]
+        pct = 100 * n / total
+        combo_str = "  +  ".join(r["alts"])
+        lines.append(f"      · {combo_str}  →  {n}  ({pct:5.1f}%)")
+    return "\n".join(lines)
+
+
 def render_query_tree(nodes: list[QueryTreeNode], *, as_natural: bool = True) -> str:
     """Pretty-print a query tree for the worker prompt.
 
@@ -201,8 +309,10 @@ def topic_model(
     titles_by_pid = {p["paperId"]: (p.get("title") or "") for p in papers if p.get("paperId")}
 
     sizes: dict[int, int] = {}
-    for cid in clustered.values():
+    pids_by_cid: dict[int, list[str]] = {}
+    for pid, cid in clustered.items():
         sizes[cid] = sizes.get(cid, 0) + 1
+        pids_by_cid.setdefault(cid, []).append(pid)
 
     out: list[TopicCluster] = []
     for cid, size in sizes.items():
@@ -214,6 +324,7 @@ def topic_model(
                 count=size,
                 keywords=list(keywords_by_cid.get(cid, [])[:8]),
                 representative_titles=rep_titles,
+                paper_ids=list(pids_by_cid.get(cid, [])),
             )
         )
     # Sort by size desc, re-id contiguously so the display is stable.

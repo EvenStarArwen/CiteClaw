@@ -101,15 +101,19 @@ if that cleans the intersection.
 
 # How this tutorial works
 
-1. You write an initial query (Steps 1-3 above).
+1. You write an initial query (Steps 1-4 above).
 2. I run it on S2, auto-analyse the results, and show you the analysis
    one slice at a time — total size, the query tree, topic clusters,
    top-cited titles.
-3. You answer each diagnostic question (yes/no + 1-2 sentences of
-   reasoning). Each answer narrows where the query is weak.
-4. After the diagnostics, you synthesise what's wrong and plan the next
-   query. You may call `inspect_topic(cluster_id)` or
-   `inspect_paper(title)` to dig deeper first.
+3. You answer each diagnostic question (short — one sentence of
+   reasoning). Where you flag a cluster as unrelated or a paper as
+   off-topic, I'll then automatically show you the in-cluster query
+   tree (which OR alternatives pulled those papers in) or the paper's
+   abstract, and ask you — in one sentence — to name the specific
+   mechanism in your query responsible. These per-item diagnoses come
+   back to you combined in the plan step.
+4. After all diagnostics you synthesise ONE plan (diagnosis +
+   intended change for the next query).
 5. You write the next query.
 6. Repeat until budget is used.
 
@@ -145,6 +149,42 @@ sub-topic. Precision gets tightened later.
 
 Respond with JSON: `{{"query": "..."}}` — just the query (AND / OR /
 NOT in words), nothing else.
+"""
+
+
+WORKER_NOISE_TOPIC_DIAG = """\
+You flagged cluster {cluster_id} as unrelated to the sub-topic
+(`{description}`). I've pulled the cluster's in-cluster breakdown for
+you — it shows exactly which OR alternatives across your facets are
+responsible for these papers landing here.
+
+{inspect_output}
+
+# Question (DIAGNOSIS ONLY — do NOT propose a fix)
+
+In ONE short sentence, name the specific mechanism in your current
+query that is letting this cluster in. Identify the culprit OR
+alternative(s) or term(s). Don't describe a fix — just the mechanism.
+
+Respond with JSON: `{{"reason": "..."}}`.
+"""
+
+
+WORKER_NOISE_PAPER_DIAG = """\
+You flagged the following paper as off-topic:
+
+  title: {title}
+
+Here is what S2 knows about it (pulled to save you a tool call):
+
+{inspect_output}
+
+# Question (DIAGNOSIS ONLY — do NOT propose a fix)
+
+In ONE short sentence, name the specific part of your current query
+that let this paper through. Don't describe a fix.
+
+Respond with JSON: `{{"reason": "..."}}`.
 """
 
 
@@ -236,11 +276,15 @@ to ONE short sentence.
 WORKER_DIAGNOSE_PLAN = """\
 Your current query: `{query}`
 
-# What you just answered this iteration (one sentence each)
+# What you answered this iteration (short — one sentence each)
 
 - check_total:    {ans_total}
 - check_clusters: {ans_clusters}
 - check_top100:   {ans_top100}
+
+# Per-noise-item diagnoses (from the forced Phase 4b / 5b questions)
+
+{noise_diagnoses}
 
 # Raw analysis (full data — use this to synthesise)
 
@@ -256,52 +300,46 @@ Your current query: `{query}`
 ## 10 random papers (title + abstract)
 {random10_block}
 
-## topic clusters (TF-IDF keywords + representative titles)
+## topic clusters (c-TF-IDF keywords + representative titles)
 {clusters}
 
-# Synthesise
-
-What's wrong with the current query, and what would the next query do
-differently?
+# Synthesise — ONE plan covering everything
 
 Each refinement round targets two success conditions:
 (a) top clusters are mostly on-topic, and
 (b) no major expected sub-area is missing.
-If both are met, the query is good enough — further iteration risks
+If both are met the query is good enough — further iteration risks
 over-optimizing.
 
-Refinement modes — combine as needed:
+You now have per-noise-item diagnoses that name the specific mechanisms
+letting bad papers in. Combine those with the overall picture and
+commit to ONE plan for the next query. Multiple noise sources may
+point to conflicting fixes (tighten here, loosen there) — pick the
+single coherent plan that wins the trade-off, don't list both.
 
-- **Pearl growing** — expand an OR list with vocabulary you saw in
-  top-cited titles but didn't anticipate.
-- **Syntax tightening** — promote a term from AND to proximity, or
-  proximity to exact phrase. Use when precision is low but the facet
-  decomposition is correct.
+Refinement modes you can combine:
+- **Pearl growing** — expand an OR list with vocabulary you saw in the
+  top-cited / random titles but didn't anticipate.
+- **Syntax tightening** — promote a term from bag-of-words AND to
+  proximity (``"A B"~N``), or proximity to exact phrase. Use when
+  precision is low but the facet decomposition is correct.
 - **Syntax loosening** — demote in the reverse direction. Use when
   recall is suspiciously low or canonical papers are missing.
-- **Exclusion (NOT)** — add a NOT clause listing a noise cluster's
-  characteristic vocabulary. Use sparingly, and only when the noise is
-  driven by an ambiguous term that can't be disambiguated structurally
-  (Step 2 AND-with-disambiguator is preferred when possible).
-- **Pruning** — remove OR-branches that contribute no new relevant
-  documents, or drop a facet whose removal doesn't change the relevant
-  top-K.
+- **AND-gate a leaky acronym** — if a short acronym like ``PE`` is
+  pulling in unrelated papers, replace the bare alternative with an
+  AND-gated pair such as ``("prime editing" OR ("PE" AND pegRNA))``.
+- **Exclusion (NOT)** — last resort; only when a noise cluster shares
+  an unambiguous characteristic term you can exclude without
+  collateral damage.
+- **Pruning** — drop OR alternatives that the in-cluster tree shows
+  contribute no unique relevant papers.
 
-You may call one of these tools first, or go straight to a plan:
-- `inspect_topic(cluster_id)` — see 5 representative abstracts from a
-  cluster.
-- `inspect_paper(title)` — look up a paper by title (tells you if it's
-  in the current results, and shows its abstract if S2 knows it).
-- `plan` — commit to a next-query plan.
+Respond with JSON:
+`{{"diagnosis": "...", "intended_change": "..."}}`.
 
-Respond with JSON, ONE of:
-- `{{"tool": "inspect_topic", "cluster_id": N}}`
-- `{{"tool": "inspect_paper", "title": "..."}}`
-- `{{"tool": "plan", "diagnosis": "...", "intended_change": "..."}}`
-
-Keep `diagnosis` and `intended_change` SHORT — one sentence each. If
-you call a tool, I'll show you the result and then you answer this
-prompt again.
+Keep both SHORT — one sentence each. ``diagnosis`` summarises what's
+wrong; ``intended_change`` names the specific edit(s) for the next
+query.
 """
 
 

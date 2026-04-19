@@ -21,9 +21,11 @@ import re
 from typing import Any, TYPE_CHECKING
 
 from citeclaw.agents.v3.analysis import (
+    build_in_cluster_tree,
     build_query_tree,
     diff_vs_prev,
     render_clusters,
+    render_in_cluster_tree,
     render_query_tree,
     topic_model,
 )
@@ -61,7 +63,6 @@ log = logging.getLogger("citeclaw.agents.v3.worker")
 
 
 _ENRICH_CAP = 2000
-_MAX_DIAGNOSE_TOOL_CALLS = 3
 _RANDOM_SAMPLE_SIZE = 10
 _TOP_ABSTRACTS_SIZE = 10
 
@@ -237,6 +238,28 @@ def _render_top100_titles(enriched_sorted: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _render_noise_diagnoses(
+    topic_diagnoses: list[dict[str, Any]],
+    paper_diagnoses: list[dict[str, Any]],
+) -> str:
+    """Render the per-item diagnostic answers gathered during Phase 4b / 5b."""
+    if not topic_diagnoses and not paper_diagnoses:
+        return "  (no cluster or paper was flagged as noisy this iteration)"
+    lines: list[str] = []
+    if topic_diagnoses:
+        lines.append("  Flagged clusters (you answered what let each one in):")
+        for td in topic_diagnoses:
+            lines.append(f"    · cluster {td['cluster_id']}: {td.get('reason') or '(no answer)'}")
+    if paper_diagnoses:
+        lines.append("  Flagged off-topic papers (you answered what let each one through):")
+        for pd in paper_diagnoses:
+            title = pd.get("title") or ""
+            short = title if len(title) <= 100 else title[:97] + "..."
+            lines.append(f"    · {short}")
+            lines.append(f"       → {pd.get('reason') or '(no answer)'}")
+    return "\n".join(lines)
+
+
 def _render_history(iters: list[QueryIterationV3]) -> str:
     """Prior-iter history for the write-next prompt — includes the
     natural-language query (translated back), total_count, the query
@@ -279,15 +302,41 @@ def _inspect_topic(
     cluster_id: int,
     *,
     enriched_by_id: dict[str, dict],
+    query_lucene: str,
 ) -> str:
+    """Render a worker-facing report for one cluster, including:
+
+    - cluster keywords + representative titles with abstracts
+    - an IN-CLUSTER query tree that shows WHICH OR-alternatives
+      (across facets) are responsible for pulling papers into this
+      cluster — per-facet marginals + Cartesian-product combinations
+      (see :func:`citeclaw.agents.v3.analysis.build_in_cluster_tree`).
+
+    No S2 calls — all counts come from regex matching the
+    already-fetched papers' title + abstract text.
+    """
     cluster = next((c for c in iteration.clusters if c.cluster_id == cluster_id), None)
     if cluster is None:
         valid = [c.cluster_id for c in iteration.clusters]
         return f"(no cluster {cluster_id}; valid ids: {valid})"
+
+    # Pull the actual member papers (populated by topic_model).
+    cluster_papers = [
+        enriched_by_id[pid] for pid in cluster.paper_ids if pid in enriched_by_id
+    ]
+
     lines = [
         f"Cluster {cluster_id} — {cluster.count} papers.",
         f"Keywords: {', '.join(cluster.keywords[:8])}",
     ]
+
+    # In-cluster breakdown: which OR-alternative combinations are in this cluster.
+    tree = build_in_cluster_tree(cluster_papers, query_lucene)
+    lines.append("")
+    lines.append("In-cluster query-tree (which OR alternatives brought papers in):")
+    lines.append(render_in_cluster_tree(tree))
+    lines.append("")
+    lines.append("Representative papers:")
     for title in cluster.representative_titles[:5]:
         match = next(
             (p for p in enriched_by_id.values() if (p.get("title") or "").strip() == title.strip()),
@@ -486,6 +535,39 @@ def run_v3_worker(
             ans_clusters_reasoning + ((" (" + "; ".join(extras) + ")") if extras else "")
         ).strip()
 
+        # -- Phase 4b: FORCED per-cluster noise diagnosis -------------------
+        # When the agent flagged clusters as unrelated, we MUST show it the
+        # in-cluster query-tree breakdown and force a per-cluster diagnosis
+        # of WHICH part of the query let the cluster through. The agent does
+        # NOT propose a fix yet — fixes are chosen holistically in
+        # diagnose_plan after all per-item diagnoses are in.
+        noise_topic_diagnoses: list[dict[str, Any]] = []
+        for raw_cid in unrelated[:5]:  # cap to 5 to bound LLM calls
+            try:
+                cid_int = int(raw_cid)
+            except (TypeError, ValueError):
+                continue
+            inspect_output = _inspect_topic(
+                iteration, cid_int,
+                enriched_by_id=enriched_pool,
+                query_lucene=query_lucene,
+            )
+            _, parsed_diag = _single_call(
+                llm_client=llm_client,
+                system=system_prompt,
+                user=WORKER_NOISE_TOPIC_DIAG.format(
+                    cluster_id=cid_int,
+                    description=spec.description,
+                    inspect_output=inspect_output,
+                ),
+                category="v3_worker_noise_topic_diag",
+            )
+            reason = str(parsed_diag.get("reason") or "").strip()
+            noise_topic_diagnoses.append({
+                "cluster_id": cid_int,
+                "reason": reason,
+            })
+
         # -- Phase 5: CHECK_TOP100 -----------------------------------------
         titles_block = _render_top100_titles(enriched_sorted)
         _, parsed = _single_call(
@@ -503,73 +585,57 @@ def run_v3_worker(
             ans_top100_reasoning += f" (off_topic_titles={off_topic[:5]})"
         iteration.reasoning_top100 = ans_top100_reasoning.strip()
 
-        # -- Phase 6: DIAGNOSE + PLAN (fresh; loop with tool calls) --------
+        # -- Phase 5b: FORCED per-paper noise diagnosis ---------------------
+        noise_paper_diagnoses: list[dict[str, Any]] = []
+        for raw_title in off_topic[:5]:
+            title = str(raw_title or "").strip()
+            if not title:
+                continue
+            inspect_output = _inspect_paper(title, s2_client=s2_client, iteration=iteration)
+            _, parsed_diag = _single_call(
+                llm_client=llm_client,
+                system=system_prompt,
+                user=WORKER_NOISE_PAPER_DIAG.format(
+                    title=title,
+                    inspect_output=inspect_output,
+                ),
+                category="v3_worker_noise_paper_diag",
+            )
+            reason = str(parsed_diag.get("reason") or "").strip()
+            noise_paper_diagnoses.append({"title": title, "reason": reason})
+
+        # -- Phase 6: DIAGNOSE + PLAN (fresh, no tool loop) ----------------
+        # Agent now has: global query tree, per-cluster keywords +
+        # representative titles, top-10 abstracts, 10-random abstracts,
+        # PLUS per-noise-item diagnostic answers from Phase 4b / 5b.
         top10_block = _render_top10_abstracts(enriched_sorted)
         random10_block = _render_random10(enriched, seed=iter_idx)
         clusters_block = render_clusters(clusters)
 
-        base_diagnose_msg = WORKER_DIAGNOSE_PLAN.format(
+        noise_diag_block = _render_noise_diagnoses(
+            noise_topic_diagnoses, noise_paper_diagnoses,
+        )
+
+        diagnose_msg = WORKER_DIAGNOSE_PLAN.format(
             query=query_nl,
             ans_total=iteration.reasoning_total or "(no answer)",
             ans_clusters=iteration.reasoning_clusters or "(no answer)",
             ans_top100=iteration.reasoning_top100 or "(no answer)",
+            noise_diagnoses=noise_diag_block,
             total=total,
             query_tree=render_query_tree(query_tree),
             top10_block=top10_block,
             random10_block=random10_block,
             clusters=clusters_block,
         )
-        tool_trail: list[str] = []
-        diagnosis = ""
-        intended_change = ""
-        for tool_round in range(_MAX_DIAGNOSE_TOOL_CALLS + 1):
-            user_msg = base_diagnose_msg
-            if tool_trail:
-                user_msg += "\n\n# Tool results so far this phase\n" + "\n\n".join(tool_trail)
-            _, parsed = _single_call(
-                llm_client=llm_client,
-                system=system_prompt,
-                user=user_msg,
-                category="v3_worker_diagnose_plan",
-            )
-            tool = (parsed.get("tool") or "").strip()
-            if tool == "plan":
-                diagnosis = str(parsed.get("diagnosis") or "").strip()
-                intended_change = str(parsed.get("intended_change") or "").strip()
-                break
-            if tool_round >= _MAX_DIAGNOSE_TOOL_CALLS:
-                tool_trail.append(
-                    "[system] You've used your tool-call budget. Commit a plan now: "
-                    '{"tool": "plan", "diagnosis": "...", "intended_change": "..."}'
-                )
-                _, forced = _single_call(
-                    llm_client=llm_client,
-                    system=system_prompt,
-                    user=base_diagnose_msg + "\n\n" + "\n\n".join(tool_trail),
-                    category="v3_worker_diagnose_plan_forced",
-                )
-                diagnosis = str(forced.get("diagnosis") or "").strip()
-                intended_change = str(forced.get("intended_change") or "").strip()
-                break
-            if tool == "inspect_topic":
-                cid = parsed.get("cluster_id")
-                try:
-                    cid_int = int(cid)
-                except (TypeError, ValueError):
-                    cid_int = -1
-                result = _inspect_topic(iteration, cid_int, enriched_by_id=enriched_pool)
-                tool_trail.append(f"[inspect_topic({cid_int})]\n{result}")
-            elif tool == "inspect_paper":
-                title = str(parsed.get("title") or "")
-                if not title:
-                    tool_trail.append("[error] inspect_paper needs a 'title' string.")
-                else:
-                    result = _inspect_paper(title, s2_client=s2_client, iteration=iteration)
-                    tool_trail.append(f"[inspect_paper({title!r})]\n{result}")
-            else:
-                tool_trail.append(
-                    "[error] Unknown tool. Respond with inspect_topic / inspect_paper / plan."
-                )
+        _, parsed = _single_call(
+            llm_client=llm_client,
+            system=system_prompt,
+            user=diagnose_msg,
+            category="v3_worker_diagnose_plan",
+        )
+        diagnosis = str(parsed.get("diagnosis") or "").strip()
+        intended_change = str(parsed.get("intended_change") or "").strip()
         iteration.diagnosis = diagnosis
         iteration.intended_change = intended_change
 
