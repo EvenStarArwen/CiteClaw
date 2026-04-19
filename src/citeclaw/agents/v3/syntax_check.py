@@ -120,6 +120,58 @@ def _check_short_wildcard(q: str) -> list[SyntaxIssue]:
     return issues
 
 
+def _check_wildcard_in_phrase(q: str) -> list[SyntaxIssue]:
+    """Flag ``*`` inside a quoted phrase — Lucene phrase queries don't
+    expand wildcards, so ``"edit* LNP"`` searches for the literal
+    string "edit* LNP" (with the asterisk character), not
+    "editing LNP" / "editor LNP".
+    """
+    issues: list[SyntaxIssue] = []
+    for m in re.finditer(r'"([^"]+)"', q):
+        phrase = m.group(1)
+        if "*" in phrase:
+            issues.append(SyntaxIssue(
+                severity="error",
+                code="wildcard_in_phrase",
+                message=(
+                    f'wildcard "*" inside quoted phrase "{phrase}" — phrase '
+                    f"queries match the literal asterisk, they do not expand"
+                ),
+                hint=(
+                    'either drop the quotes (use AND: edit* AND LNP) or drop '
+                    'the wildcard inside the phrase'
+                ),
+                location=m.group(0),
+            ))
+    return issues
+
+
+def _check_operator_word_in_phrase(q: str) -> list[SyntaxIssue]:
+    """Flag AND / OR / NOT appearing as a word inside a quoted phrase.
+    Probably the worker intended a Boolean combination but left the
+    operators inside the quotes, so the query looks for the literal
+    sequence of tokens (almost never useful).
+    """
+    issues: list[SyntaxIssue] = []
+    for m in re.finditer(r'"([^"]+)"', q):
+        phrase = m.group(1)
+        if re.search(r"\b(AND|OR|NOT)\b", phrase):
+            issues.append(SyntaxIssue(
+                severity="warning",
+                code="operator_word_in_phrase",
+                message=(
+                    f'quoted phrase "{phrase}" contains AND/OR/NOT as a '
+                    f"literal word — almost certainly you meant a Boolean"
+                ),
+                hint=(
+                    "if you meant a Boolean combination, move the operator "
+                    "outside the quotes (e.g. \"prime editing\" AND \"pegRNA\")"
+                ),
+                location=m.group(0),
+            ))
+    return issues
+
+
 def _check_proximity_on_single_word(q: str) -> list[SyntaxIssue]:
     issues: list[SyntaxIssue] = []
     # Proximity on a single-word quoted phrase is meaningless.
@@ -288,9 +340,11 @@ def syntax_check(lucene_query: str) -> list[SyntaxIssue]:
     if any(i.severity == "error" for i in issues):
         return issues
     issues.extend(_check_short_wildcard(q))
+    issues.extend(_check_wildcard_in_phrase(q))
     issues.extend(_check_empty_groups(q))
     issues.extend(_check_mandatory_clause(q))
     issues.extend(_check_proximity_on_single_word(q))
+    issues.extend(_check_operator_word_in_phrase(q))
     issues.extend(_check_subsumed_phrases(q))
     issues.extend(_check_ambiguous_short_acronym(q))
     return issues
