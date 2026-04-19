@@ -25,8 +25,6 @@ from citeclaw.agents.v3.anchor_discovery import discover_anchors
 from citeclaw.agents.v3.state import (
     AgentConfigV3,
     AnchorPaper,
-    Facet,
-    FacetSkeleton,
     StrategyV3,
     SubTopicResultV3,
     SubTopicSpecV3,
@@ -122,13 +120,6 @@ def _render_dispatched(results: list[SubTopicResultV3]) -> str:
             lines.append(
                 f"      anchors: {len(r.anchor_papers)} confirmed"
             )
-        if r.skeleton_amendments:
-            lines.append("      worker amendments to your skeleton:")
-            for amend in r.skeleton_amendments[:5]:
-                op = amend.get("op", "?")
-                fid = amend.get("facet_id") or amend.get("id") or "?"
-                reason = (amend.get("reason") or "")[:80]
-                lines.append(f"          · {op} {fid}: {reason}")
         if r.anchor_coverage_final:
             present = sum(1 for v in r.anchor_coverage_final.values() if v == "present")
             total = len(r.anchor_coverage_final)
@@ -179,60 +170,11 @@ class _SupervisorError(Exception):
         self.hint = hint
 
 
-def _parse_facet_skeleton(raw: Any, *, idx: int) -> FacetSkeleton | None:
-    """Parse the ``facet_skeleton`` entry inside one sub_topic.
-
-    Optional for backwards-compat: if missing the worker will design
-    facets from the description alone (degraded mode). When present it
-    must be a list of ``{id, concept, seed_terms}`` under a ``facets``
-    key."""
-    if raw is None:
-        return None
-    if not isinstance(raw, dict):
-        raise _SupervisorError(
-            f"sub_topics[{idx}].facet_skeleton must be an object",
-            'shape: {"facets": [{"id": "...", "concept": "...", "seed_terms": [...]}]}',
-        )
-    facets_raw = raw.get("facets")
-    if not isinstance(facets_raw, list) or not facets_raw:
-        raise _SupervisorError(
-            f"sub_topics[{idx}].facet_skeleton.facets must be a non-empty list",
-            "at least one facet is required when a skeleton is emitted",
-        )
-    facets: list[Facet] = []
-    seen_ids: set[str] = set()
-    for j, item in enumerate(facets_raw):
-        if not isinstance(item, dict):
-            raise _SupervisorError(
-                f"sub_topics[{idx}].facet_skeleton.facets[{j}] must be an object",
-                '{"id": "...", "concept": "...", "seed_terms": [...]}',
-            )
-        fid = str(item.get("id") or "").strip()
-        if not fid:
-            raise _SupervisorError(
-                f"sub_topics[{idx}].facet_skeleton.facets[{j}].id missing",
-                "unique slug per facet",
-            )
-        if fid in seen_ids:
-            raise _SupervisorError(
-                f"sub_topics[{idx}].facet_skeleton.facets[{j}].id {fid!r} duplicate",
-                "each facet id must be unique within the skeleton",
-            )
-        seen_ids.add(fid)
-        concept = str(item.get("concept") or "").strip() or fid
-        seed_raw = item.get("seed_terms") or []
-        if not isinstance(seed_raw, list):
-            seed_raw = []
-        seeds = tuple(str(s).strip() for s in seed_raw if str(s).strip())
-        facets.append(Facet(id=fid, concept=concept, seed_terms=seeds))
-    return FacetSkeleton(facets=tuple(facets))
-
-
 def _validate_sub_topic_entry(raw: Any, *, idx: int, existing: set[str]) -> SubTopicSpecV3:
     if not isinstance(raw, dict):
         raise _SupervisorError(
             f"sub_topics[{idx}] must be an object",
-            "{id, description, facet_skeleton}",
+            "{id, description}",
         )
     sid = str(raw.get("id") or "").strip()
     desc = str(raw.get("description") or "").strip()
@@ -247,8 +189,7 @@ def _validate_sub_topic_entry(raw: Any, *, idx: int, existing: set[str]) -> SubT
             f"sub_topics[{idx}].description missing",
             "1-2 sentence English description",
         )
-    skeleton = _parse_facet_skeleton(raw.get("facet_skeleton"), idx=idx)
-    return SubTopicSpecV3(id=sid, description=desc, facet_skeleton=skeleton)
+    return SubTopicSpecV3(id=sid, description=desc)
 
 
 def _handle_set_strategy(args: dict, state: SupervisorStateV3, max_subtopics: int) -> dict:
@@ -402,7 +343,6 @@ def run_v3_supervisor(
         log.info("V3 supervisor dispatching worker for %s", spec_id)
         anchors = discover_anchors(
             description=spec.description,
-            skeleton=spec.facet_skeleton,
             s2_client=s2_client,
             llm_client=llm_client,
             logger=logger,
@@ -445,6 +385,7 @@ def run_v3_supervisor(
             ) or "  (queue empty — add_sub_topics or done)"
         )
         user_msg = SUPERVISOR_USER_CONTINUE.format(
+            topic_description=topic_description,
             tool_results=tool_res_str,
             dispatched_block=_render_dispatched(state.sub_topic_results),
             remaining_block=remaining_block,
@@ -486,6 +427,7 @@ def run_v3_supervisor(
         turn += 1
         state.turn_index = turn
         user_msg = SUPERVISOR_USER_CONTINUE.format(
+            topic_description=topic_description,
             tool_results="All queued sub-topics have been dispatched.",
             dispatched_block=_render_dispatched(state.sub_topic_results),
             remaining_block="  (queue empty)",

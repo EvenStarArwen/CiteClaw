@@ -182,6 +182,16 @@ MODEL_BLOCKS: dict[str, dict] = {
         "search_model": "gpt-5.4-nano",
         "models_block": "",
     },
+    "mini": {
+        # OpenAI fallthrough (gpt-5.4-mini)
+        "search_model": "gpt-5.4-mini",
+        "models_block": "",
+    },
+    "gemini": {
+        # Gemini fallthrough — factory auto-detects the gemini-* prefix.
+        "search_model": "gemini-3-flash-preview",
+        "models_block": "",
+    },
 }
 
 

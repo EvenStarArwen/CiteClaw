@@ -1,27 +1,23 @@
 """Prompt templates for V3 ExpandBySearch.
 
-V4.0 revision:
+V4.1 revision:
 
-- Supervisor emits a concrete ``facet_skeleton`` per sub-topic; the
-  skeleton is the operational form of the anchor-shared judgement
-  (same facets across candidates → one sub-topic; structurally
-  different facets → decompose).
-- Anchor-discovery agent runs between supervisor and worker: writes
-  a precise S2 query, confirms 5-15 canonical papers, hands them to
-  the worker as real domain vocabulary.
-- Worker gets ONE amendment turn on the skeleton before
-  ``propose_first``; amendments flow back to the supervisor.
-- Refinement iterations pick up to two transformations from a
-  closed set (add / remove OR alternative, tighten / loosen term,
-  swap operator, add facet, add exclusion) instead of retyping the
-  query from scratch. System applies each op to a structured
-  QueryPlan.
-- Total-count check is demoted from a standalone phase to context
-  alongside the query tree — topical cleanliness + anchor coverage
-  are the refinement signals.
-- Direction-neutral framing: each iteration combines gap-filling
-  and noise-killing ops, not "refine toward precision — never the
-  reverse".
+- Supervisor goes back to plan-only. It dispatches sub-topics with
+  just ``{id, description}`` — no facet skeleton. The anchor-shared
+  decomposition judgement is still the supervisor's job, but the
+  output is a count, not a skeleton.
+- Anchor-discovery agent runs between supervisor and worker, ungated
+  by any skeleton — it asks the description alone for a precise
+  query, confirms 5-15 canonical papers.
+- Worker's first act is to READ the anchor papers and design its own
+  facets from real author vocabulary, then emit an initial
+  :class:`QueryPlan`. No amendment turn — the worker owns the facet
+  set and can ``add_facet`` / ``remove_facet`` in later iterations.
+- Refinement iterations still pick up to two transformations from a
+  closed set (now eight ops, adding ``remove_facet``); the plan is
+  mutated in place, never retyped.
+- Anchor coverage is the refinement signal; total count + the query
+  tree are informational context inside ``diagnose_plan``.
 """
 
 from __future__ import annotations
@@ -98,37 +94,13 @@ S2's default matching folds plurals and common inflections together
 (`edit` catches `edits` / `editing`; `protein` catches `proteins`;
 `pegRNA` catches `pegRNAs`), so you don't need to list both.
 
+When you pass a term into any transformation or propose-first shape,
+supply it WITHOUT surrounding double-quotes. Strictness is a
+separate field — the `raw` field is just the text. Writing
+`"prime editing"` as the raw would double-wrap it on render.
+
 Output format: each turn, respond with a single JSON object shaped
 to the current question — I'll tell you the shape.
-"""
-
-
-WORKER_AMEND_SKELETON = """\
-The supervisor proposed this facet skeleton for your sub-topic:
-
-{skeleton_block}
-
-Anchor papers found by a precise-query pass (use these to sanity-check
-the skeleton — do their titles and abstracts use the vocabulary the
-skeleton implies?):
-
-{anchors_block}
-
-# Question
-
-Flag any STRUCTURAL problem with the skeleton — a missing dimension,
-a redundant facet, or misaligned seed vocabulary. Minor synonym gaps
-are not problems; you'll expand each OR group fully on the next
-turn.
-
-Respond with JSON:
-`{{"amendments": [...], "accept": true|false, "reason": "..."}}`.
-Each amendment object is one of:
-- `{{"op": "add_facet", "facet_id": "...", "concept": "...", "seed_terms": [...]}}`
-- `{{"op": "remove_facet", "facet_id": "..."}}`
-- `{{"op": "reshape_terms", "facet_id": "...", "seed_terms": [...]}}`
-No changes needed: `{{"amendments": [], "accept": true, "reason": "..."}}`.
-Keep `reason` to one short sentence.
 """
 
 
@@ -139,24 +111,25 @@ Here's everything you have to work from for the initial query:
 
 {description}
 
-# Facet skeleton (post-amendment)
-
-{skeleton_block}
-
 # Anchor papers (real canonical work for this sub-topic)
 
 {anchors_block}
 
 # Task
 
-For each facet in the skeleton, write a full OR group of terms.
-Expand from the seeds: add the synonyms, alternate names, and
-acronyms a domain expert would use. Let the anchor papers' titles
-and abstracts guide vocabulary — prefer what authors actually write
-over theoretically neat labels. Don't filter for topic leakage at
-this step; the AND across facets handles that.
+Design the facets for this sub-topic by reading the anchor papers'
+titles and abstracts. A facet is one AND'd concept whose
+co-occurrence with the other facets is a near-guarantee of on-topic.
+Typical counts: 2-4 facets. Fewer AND'd facets = higher recall;
+more = higher precision. Err toward the minimum set that captures
+the sub-topic.
 
-For each term pick a strictness:
+For each facet, write an OR group of the terms a domain expert
+would use. Mine the anchor abstracts for real vocabulary rather
+than listing the theoretically neat labels; authors' wording is
+what S2 indexed.
+
+For each term, pick a strictness:
 - `and_words` — multi-word term matched as AND'd words (loosest).
 - `proximity` — `"A B"~N` within N positions.
 - `phrase` — exact contiguous quoted phrase (strictest; default).
@@ -166,7 +139,7 @@ Single-word terms are always rendered bare regardless.
 Respond with JSON:
 ```
 {{"facets": [
-    {{"id": "technology",
+    {{"id": "technology", "concept": "prime editing technique",
       "terms": [
         "prime editing",
         {{"raw": "pegRNA", "strictness": "phrase"}},
@@ -174,12 +147,14 @@ Respond with JSON:
       ]}},
     ...
   ],
-  "exclusions": []
+  "exclusions": [],
+  "reasoning": "one short sentence on why these facets capture the sub-topic"
 }}
 ```
 
-Use the skeleton's facet ids. Exclusions are rare — leave empty
-unless a concrete noise source is already obvious.
+`id` must be a unique slug — later transformations reference it.
+Exclusions are rare — leave empty unless a concrete noise source
+is already obvious from the anchors.
 """
 
 
@@ -226,11 +201,12 @@ mechanically — you never retype the query. Available ops:
   obvious reason.
 - `swap_operator(to, ...)` — rare. `to: "OR"` merges facet_id + b
   into one OR group. `to: "AND"` splits a facet_id on a
-  `split_on` term list into two AND'd facets. Reserve for cases
-  where the skeleton is wrong.
+  `split_on` term list into two AND'd facets.
 - `add_facet(facet_id, concept, terms)` — add a whole new AND
-  dimension. Supervisor will be told when this fires; use only
-  when a real dimension is missing.
+  dimension. Use when a real dimension is missing.
+- `remove_facet(facet_id)` — drop an AND dimension that isn't
+  topic-defining. Use when diagnosis shows one facet is subsumed
+  by another or was a bad call from iter 0.
 - `add_exclusion(term)` — NOT clause. Last resort; use only when
   the noise source shares one unambiguous characteristic term
   with no collateral damage.
@@ -343,13 +319,6 @@ to ONE short sentence.
 """
 
 
-# ---------------------------------------------------------------------------
-# Diagnose + plan — this is the ONE phase that sees all the data plus the
-# prior diagnostic answers. Total count + query tree live here now as
-# informational context alongside everything else.
-# ---------------------------------------------------------------------------
-
-
 WORKER_DIAGNOSE_PLAN = """\
 Your current query: `{query}`
 
@@ -406,6 +375,9 @@ Refinement modes you can combine (one of each is a common pattern):
   AND pegRNA))`.
 - **Pruning** — drop OR alternatives the in-cluster tree shows add
   no unique relevant papers.
+- **Facet add / remove** — add a new AND dimension when a real
+  one is missing, or remove one whose presence is clearly not
+  topic-defining.
 - **Exclusion (NOT)** — last resort; only when a noise cluster
   shares one unambiguous characteristic term with no collateral
   damage.
@@ -475,16 +447,12 @@ ANCHOR_DISCOVERY_QUERY = """\
 
 {description}
 
-# Supervisor's facet skeleton (for reference)
-
-{skeleton_block}
-
 # Task
 
-Write a precise query. Use the facets' concepts as scaffolding, but
-include only terms you are 100% sure authors use for these exact
-concepts. It is fine (expected) for this query to be narrow — we're
-looking for the canonical papers, not full coverage.
+Write a precise query. Include only terms you are 100% sure authors
+use for these exact concepts. It is fine (expected) for this query
+to be narrow — we're looking for the canonical papers, not full
+coverage.
 
 Respond with JSON: `{{"query": "...", "reasoning": "one short sentence"}}`.
 """
@@ -494,10 +462,6 @@ ANCHOR_DISCOVERY_CONFIRM = """\
 # Sub-topic
 
 {description}
-
-# Skeleton (for reference)
-
-{skeleton_block}
 
 # Top candidates (by citation count)
 
@@ -520,7 +484,7 @@ to a short phrase.
 
 
 # ---------------------------------------------------------------------------
-# Supervisor — anchor-shared detection, operationalised as facet_skeleton
+# Supervisor — plan-only, anchor-shared decomposition
 # ---------------------------------------------------------------------------
 
 
@@ -529,14 +493,14 @@ You are a literature-search SUPERVISOR. You analyse the parent topic
 and decide whether it needs sub-topic decomposition. The system
 dispatches workers for you — you never call dispatch yourself.
 
-# Decomposition decision — write the facet skeleton
+# Decomposition decision
 
-A facet skeleton is the smallest set of AND'd concepts whose
-co-occurrence in a document's title+abstract is a near-guarantee of
-on-topic. You write one skeleton per sub-topic inside `set_strategy`.
+Each worker designs its own facets after reading anchor papers; your
+job is to decide how many workers the parent topic needs.
 
-Before picking a count, literally write down the facet set of each
-candidate sub-topic. Then apply this test:
+Before picking a count, sketch in your head the facet set (the AND'd
+concepts whose co-occurrence guarantees on-topic) of each candidate
+sub-topic. Then apply this test:
 
 - If every candidate would use the SAME facets — differing only in
   synonym variants within each facet — ONE sub-topic suffices. The
@@ -551,26 +515,24 @@ Abstract illustration:
   AND (Q)`, sub-area 3 `(X) AND (R)`, where P, Q, R are genuinely
   different concepts → three sub-topics.
 
-Default toward fewer. Only decompose when you can write each
-sub-topic's facet set AND show they differ structurally.
+Default toward fewer. Respect the parent topic's explicit scope —
+any `NOT X` phrase in the description excludes X as a sub-topic axis.
 
 # Signals between turns
 
-After each worker returns, you see a pairwise paper-ID overlap matrix
-across all completed workers plus any amendments the worker proposed
-to your skeleton. High overlap (>50%) means the decomposition was
-redundant. Repeated big amendments mean a skeleton was miscast — use
-that as a signal when adding sub-topics later.
+After each worker returns, you see a pairwise paper-ID overlap
+matrix. High overlap (>50%) means the decomposition was redundant —
+treat it as a strong signal against adding more sub-topics.
 
 # Turn flow
 
 1. Turn 1: `set_strategy` with your initial decomposition (1 to
-   {max_subtopics} sub-topics), each carrying a `facet_skeleton`.
+   {max_subtopics} sub-topics).
 2. System runs anchor-discovery and dispatches sub-topics one at a
    time in queue order. After each worker returns, you get a turn:
-   - `add_sub_topics` — add a new sub-topic (with skeleton) if the
-     returned clusters reveal a genuinely new retrieval axis not
-     covered by any existing sub-topic.
+   - `add_sub_topics` — add a new sub-topic if the returned clusters
+     reveal a genuinely new retrieval axis not covered by any
+     existing sub-topic AND still in the parent's scope.
    - `continue` — no change, let the system dispatch the next queued
      sub-topic.
    - `done(summary)` — close early.
@@ -582,16 +544,14 @@ that as a signal when adding sub-topics later.
 Every reply is `{{"reasoning": "...", "tool_name": "<tool>", "tool_args": {{...}}}}`.
 Keep `reasoning` to one short sentence.
 
-- `set_strategy(sub_topics: [{{id, description, facet_skeleton}}])` —
-  call once at turn 1. `description` is 1-2 English sentences naming
-  the sub-area. `facet_skeleton` is
-  `{{"facets": [{{"id": "...", "concept": "...", "seed_terms": [...]}}, ...]}}`.
-  `seed_terms` is a minimal starter list (3-5 items per facet is a
-  good target); the worker expands each into a full OR group.
-- `add_sub_topics(sub_topics: [{{id, description, facet_skeleton}}])` —
-  add only when the new facet set differs structurally from every
-  existing sub-topic's. Never to cover a narrow gap within an
-  existing sub-topic's coverage — that's the worker's job.
+- `set_strategy(sub_topics: [{{id, description}}])` — call once at
+  turn 1. `description` is 1-2 English sentences naming the
+  sub-area. No query syntax; no facets.
+- `add_sub_topics(sub_topics: [{{id, description}}])` — add only
+  when the new sub-area needs a structurally different facet set
+  from every existing sub-topic AND is in the parent's scope.
+  Never to cover a narrow gap within an existing sub-topic's
+  coverage — that's the worker's job.
 - `continue` — no arguments. Proceed to the next queued worker.
 - `done(summary)` — close the run.
 """
@@ -608,14 +568,18 @@ SUPERVISOR_USER_FIRST = """\
 - Max supervisor turns: {supervisor_max_turns}
 - Each worker will run {max_iter} query iterations.
 
-Call `set_strategy` now. First write the facet skeleton you'd use
-for the parent as a whole — if every candidate sub-topic would reuse
-it with only synonym variation, emit one sub-topic. If structurally
-different skeletons are needed, emit one per sub-topic.
+Call `set_strategy` now. If every candidate sub-topic would use the
+same facet set (synonym variation only), emit one sub-topic. If
+structurally different facet sets are needed, emit one per
+sub-topic. Respect the parent's `NOT` scope.
 """
 
 
 SUPERVISOR_USER_CONTINUE = """\
+# Parent topic (re-shown every turn — respect its scope)
+
+{topic_description}
+
 {tool_results}
 
 # Dispatched so far

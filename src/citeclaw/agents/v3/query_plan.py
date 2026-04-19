@@ -18,7 +18,6 @@ from __future__ import annotations
 import re
 
 from citeclaw.agents.v3.state import (
-    FacetSkeleton,
     MutableFacet,
     QueryPlan,
     TermSpec,
@@ -141,6 +140,22 @@ def render_plan_lucene(plan: QueryPlan) -> str:
 _VALID_STRICTNESS = {"and_words", "proximity", "phrase"}
 
 
+def _unquote_raw(s: str) -> str:
+    """Strip one layer of surrounding double-quotes.
+
+    LLMs sometimes emit a quoted phrase as the JSON string ``"\"prime
+    editing\""`` — after JSON decode ``raw`` contains literal double
+    quotes around the phrase, which the renderer would double-wrap
+    (``""prime editing""``) and S2 would then silently split into two
+    empty phrases plus the middle word. Strictness is already carried
+    as a separate field, so the leading/trailing quotes are always
+    extraneous. Only one layer is peeled; anything inside stays."""
+    s = (s or "").strip()
+    if len(s) >= 2 and s.startswith('"') and s.endswith('"'):
+        s = s[1:-1].strip()
+    return s
+
+
 def _normalise_strictness(raw: str | None, slop: int) -> tuple[str, int]:
     s = (raw or "").strip().lower()
     if s == "exact_phrase":
@@ -158,13 +173,13 @@ def _normalise_strictness(raw: str | None, slop: int) -> tuple[str, int]:
 
 def _parse_term_entry(entry: object) -> TermSpec | None:
     if isinstance(entry, str):
-        raw = entry.strip()
+        raw = _unquote_raw(entry)
         if not raw:
             return None
         return TermSpec(raw=raw, strictness="phrase")
     if not isinstance(entry, dict):
         return None
-    raw = str(entry.get("raw") or entry.get("term") or "").strip()
+    raw = _unquote_raw(str(entry.get("raw") or entry.get("term") or ""))
     if not raw:
         return None
     strictness, slop = _normalise_strictness(
@@ -174,47 +189,43 @@ def _parse_term_entry(entry: object) -> TermSpec | None:
     return TermSpec(raw=raw, strictness=strictness, slop=slop)
 
 
-def plan_from_propose_first(
-    response: dict,
-    *,
-    skeleton: FacetSkeleton | None,
-) -> QueryPlan:
+def plan_from_propose_first(response: dict) -> QueryPlan:
     """Parse a ``WORKER_PROPOSE_FIRST`` JSON reply into a QueryPlan.
 
     Expected shape::
 
         {
           "facets": [
-            {"id": "technology",
+            {"id": "technology", "concept": "...",
              "terms": ["prime editing", {"raw": "PE", "strictness": "phrase"}, ...]},
             ...
           ],
           "exclusions": ["review"]           # optional, rare
         }
 
-    Missing ``id`` entries are matched positionally against the skeleton
-    when one is available; missing ``concept`` falls back to the
-    skeleton's concept. Facets not present in the response but in the
-    skeleton are kept empty so downstream transformations can see the
-    missing dimension.
+    Each entry needs a unique ``id`` the worker can later refer to in
+    transformations (``add_or_alternative(facet_id=...)``). Missing
+    ``id`` falls back to a positional ``facet_N`` slug so we never
+    crash on a malformed reply — the worker can self-correct by
+    re-reading the plan tree on the next iter.
     """
     plan = QueryPlan()
     raw_facets = response.get("facets") if isinstance(response, dict) else None
     raw_facets = raw_facets if isinstance(raw_facets, list) else []
-    skeleton_facets = list(skeleton.facets) if skeleton else []
-    by_id: dict[str, MutableFacet] = {}
 
+    seen_ids: set[str] = set()
     for i, item in enumerate(raw_facets):
         if not isinstance(item, dict):
             continue
-        fid = str(item.get("id") or "").strip()
-        concept = str(item.get("concept") or "").strip()
-        if not fid and i < len(skeleton_facets):
-            fid = skeleton_facets[i].id
-            concept = concept or skeleton_facets[i].concept
-        if not fid:
-            fid = f"facet_{i+1}"
-        concept = concept or fid
+        fid = str(item.get("id") or "").strip() or f"facet_{i+1}"
+        # dedupe ids by suffixing
+        base = fid
+        j = 2
+        while fid in seen_ids:
+            fid = f"{base}_{j}"
+            j += 1
+        seen_ids.add(fid)
+        concept = str(item.get("concept") or fid).strip()
         terms_raw = item.get("terms") or []
         terms_raw = terms_raw if isinstance(terms_raw, list) else []
         terms: list[TermSpec] = []
@@ -222,16 +233,7 @@ def plan_from_propose_first(
             spec = _parse_term_entry(entry)
             if spec:
                 terms.append(spec)
-        facet = MutableFacet(id=fid, concept=concept, terms=terms)
-        by_id[fid] = facet
-        plan.facets.append(facet)
-
-    # Re-align to skeleton order: any skeleton facet missing from the
-    # response gets an empty placeholder at the end so the worker can
-    # add_or_alternative to it later.
-    for f in skeleton_facets:
-        if f.id not in by_id:
-            plan.facets.append(MutableFacet(id=f.id, concept=f.concept, terms=[]))
+        plan.facets.append(MutableFacet(id=fid, concept=concept, terms=terms))
 
     raw_excl = response.get("exclusions") if isinstance(response, dict) else None
     raw_excl = raw_excl if isinstance(raw_excl, list) else []
@@ -268,64 +270,3 @@ def render_plan_tree(plan: QueryPlan) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Skeleton rendering (supervisor → worker) + amendment application
-# ---------------------------------------------------------------------------
-
-
-def render_skeleton(skeleton: FacetSkeleton | None) -> str:
-    if skeleton is None or not skeleton.facets:
-        return "  (no skeleton — worker designs facets from the description alone)"
-    lines: list[str] = []
-    for f in skeleton.facets:
-        seeds = ", ".join(f.seed_terms) if f.seed_terms else "(no seeds)"
-        lines.append(f"  facet {f.id} — {f.concept}")
-        lines.append(f"      seed terms: {seeds}")
-    return "\n".join(lines)
-
-
-def apply_skeleton_amendments(
-    skeleton: FacetSkeleton | None,
-    amendments: list[dict],
-) -> FacetSkeleton | None:
-    """Apply a worker's amendment list to the supervisor's skeleton.
-
-    Supported ops: ``add_facet``, ``remove_facet``, ``reshape_terms``.
-    Malformed entries are skipped silently — the caller decides
-    whether to log them."""
-    if not skeleton:
-        return skeleton
-    facets = list(skeleton.facets)
-    from citeclaw.agents.v3.state import Facet
-
-    for amend in amendments or []:
-        if not isinstance(amend, dict):
-            continue
-        op = str(amend.get("op") or "").strip()
-        fid = str(amend.get("facet_id") or amend.get("id") or "").strip()
-        if not fid:
-            continue
-        if op == "remove_facet":
-            facets = [f for f in facets if f.id != fid]
-        elif op == "add_facet":
-            if any(f.id == fid for f in facets):
-                continue
-            concept = str(amend.get("concept") or fid).strip()
-            seeds = tuple(
-                str(s).strip() for s in (amend.get("seed_terms") or []) if str(s).strip()
-            )
-            facets.append(Facet(id=fid, concept=concept, seed_terms=seeds))
-        elif op == "reshape_terms":
-            new_seeds = tuple(
-                str(s).strip() for s in (amend.get("seed_terms") or []) if str(s).strip()
-            )
-            new_concept = str(amend.get("concept") or "").strip()
-            facets = [
-                Facet(
-                    id=f.id,
-                    concept=new_concept or f.concept,
-                    seed_terms=new_seeds if new_seeds else f.seed_terms,
-                ) if f.id == fid else f
-                for f in facets
-            ]
-    return FacetSkeleton(facets=tuple(facets))

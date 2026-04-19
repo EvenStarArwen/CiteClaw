@@ -37,42 +37,16 @@ class AgentConfigV3:
 
 
 @dataclass(frozen=True)
-class Facet:
-    """One AND'd concept in a sub-topic's query.
-
-    ``seed_terms`` is a minimal starter list the supervisor writes
-    while deciding decomposition; the worker expands each into a full
-    OR group during query construction. ``concept`` is the
-    human-readable name of the dimension (e.g. "prime editing
-    technique") — used for diagnostics and supervisor review, never
-    sent to S2 verbatim.
-    """
-
-    id: str
-    concept: str
-    seed_terms: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class FacetSkeleton:
-    """Supervisor-written facet set for one sub-topic. Makes the
-    anchor-shared decomposition judgement concrete: if every candidate
-    sub-topic would use the same facets (synonym variation only),
-    decomposition isn't justified."""
-
-    facets: tuple[Facet, ...]
-
-
-@dataclass(frozen=True)
 class SubTopicSpecV3:
-    """One sub-topic assigned to a worker. ``facet_skeleton`` is the
-    supervisor's proposed AND'd-concept set; the worker gets one
-    amendment turn before query construction (can add/remove a facet
-    or reshape seed terms)."""
+    """One sub-topic assigned to a worker — just id + description.
+
+    Facet design is the worker's responsibility: it happens inside
+    ``propose_first`` after the worker has read the anchor papers,
+    so the vocabulary is grounded in real domain usage rather than
+    the supervisor's pre-training prior."""
 
     id: str
     description: str
-    facet_skeleton: FacetSkeleton | None = None
 
 
 @dataclass(frozen=True)
@@ -225,10 +199,6 @@ class SubTopicResultV3:
     clusters_final: list[TopicCluster] = field(default_factory=list)
     # Anchor papers resolved by anchor_discovery (before worker dispatch).
     anchor_papers: list[AnchorPaper] = field(default_factory=list)
-    # Worker amendments to the supervisor's skeleton — visible to
-    # supervisor in its next react turn so repeated big amendments
-    # signal the skeleton was miscast.
-    skeleton_amendments: list[dict[str, Any]] = field(default_factory=list)
     # Final anchor coverage ({title: present/absent/ambiguous}).
     anchor_coverage_final: dict[str, str] = field(default_factory=dict)
     failure_reason: str = ""
@@ -244,15 +214,13 @@ class WorkerStateV3:
     sub_topic_id: str
     description: str
     iterations: list[QueryIterationV3] = field(default_factory=list)
-    # Post-amendment skeleton + live query plan (filled on iter 0,
-    # mutated in place by §3 transformations on subsequent iters).
-    skeleton: FacetSkeleton | None = None
+    # Live query plan: populated on iter 0 from ``propose_first`` and
+    # then mutated in place by transformations on subsequent iters.
     plan: QueryPlan | None = None
     # Anchor titles checked every iteration by check_anchor_coverage;
     # sourced from pre-worker anchor_discovery plus anything the worker
     # explicitly adds later.
     anchor_titles: list[str] = field(default_factory=list)
-    skeleton_amendments: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def aggregate_paper_ids(self) -> list[str]:

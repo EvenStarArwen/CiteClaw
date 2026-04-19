@@ -47,12 +47,10 @@ from citeclaw.agents.v3.anchor_coverage import (
 )
 from citeclaw.agents.v3.anchor_discovery import render_anchors
 from citeclaw.agents.v3.query_plan import (
-    apply_skeleton_amendments,
     plan_from_propose_first,
     render_plan_lucene,
     render_plan_natural,
     render_plan_tree,
-    render_skeleton,
 )
 from citeclaw.agents.v3.query_translate import to_lucene
 from citeclaw.agents.v3.state import (
@@ -73,7 +71,6 @@ from citeclaw.agents.v3.transformations import (
     render_transformations,
 )
 from citeclaw.prompts.search_agent_v3 import (
-    WORKER_AMEND_SKELETON,
     WORKER_CHECK_CLUSTERS,
     WORKER_CHECK_TOP100,
     WORKER_DIAGNOSE_PLAN,
@@ -415,7 +412,6 @@ def run_v3_worker(
     system_prompt = WORKER_SYSTEM.format(description=spec.description)
     anchors = anchors or []
     state = WorkerStateV3(sub_topic_id=spec.id, description=spec.description)
-    state.skeleton = spec.facet_skeleton
     state.anchor_titles = titles_for_coverage(anchors)
     enriched_pool: dict[str, dict] = {}
 
@@ -433,30 +429,6 @@ def run_v3_worker(
         _tracker.record(text)
         return text, parsed
 
-    # -- Amendment turn (only when a skeleton is present) ------------------
-    if state.skeleton is not None:
-        _, parsed = _llm(
-            user=WORKER_AMEND_SKELETON.format(
-                skeleton_block=render_skeleton(state.skeleton),
-                anchors_block=render_anchors(anchors),
-            ),
-            category="v3_worker_amend",
-        )
-        amendments = parsed.get("amendments") if isinstance(parsed, dict) else None
-        amendments = amendments if isinstance(amendments, list) else []
-        state.skeleton_amendments = [a for a in amendments if isinstance(a, dict)]
-        state.skeleton = apply_skeleton_amendments(state.skeleton, state.skeleton_amendments)
-        logger.log_tool_call(
-            scope=f"v3_worker::{spec.id}",
-            turn=-1,
-            tool_name="amend_skeleton",
-            args={"n_amendments": len(state.skeleton_amendments)},
-            result={
-                "ops": [a.get("op") for a in state.skeleton_amendments],
-                "accept": bool(parsed.get("accept", True) if isinstance(parsed, dict) else True),
-            },
-        )
-
     # -- Iteration loop ---------------------------------------------------
     satisfied_early = False
     for iter_idx in range(config.max_iter):
@@ -472,7 +444,6 @@ def run_v3_worker(
             _, parsed = _llm(
                 user=WORKER_PROPOSE_FIRST.format(
                     description=spec.description,
-                    skeleton_block=render_skeleton(state.skeleton),
                     anchors_block=render_anchors(anchors),
                 ),
                 category="v3_worker_propose",
@@ -480,7 +451,7 @@ def run_v3_worker(
             if not parsed:
                 log.warning("V3 worker %s iter 0: propose returned empty", spec.id)
                 break
-            state.plan = plan_from_propose_first(parsed, skeleton=state.skeleton)
+            state.plan = plan_from_propose_first(parsed)
             applied_ops: list[dict[str, Any]] = []
         else:
             # Transformations: shown coverage + noise diagnoses from prior iter
@@ -788,7 +759,6 @@ def run_v3_worker(
         top_titles_final=top_titles_final,
         clusters_final=clusters_final,
         anchor_papers=list(anchors),
-        skeleton_amendments=state.skeleton_amendments,
         anchor_coverage_final=final_coverage,
         failure_reason=failure if not satisfied_early else "",
     )

@@ -22,6 +22,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from citeclaw.agents.v3.query_plan import _unquote_raw
 from citeclaw.agents.v3.state import (
     MutableFacet,
     QueryPlan,
@@ -42,6 +43,7 @@ SUPPORTED_OPS = {
     "loosen_term",
     "swap_operator",
     "add_facet",
+    "remove_facet",
     "add_exclusion",
 }
 
@@ -82,9 +84,9 @@ def _op_add_or_alternative(plan: QueryPlan, args: dict) -> str | None:
         return "'terms' must be a non-empty list"
     for entry in terms:
         if isinstance(entry, str):
-            raw, strictness, slop = entry.strip(), "phrase", 0
+            raw, strictness, slop = _unquote_raw(entry), "phrase", 0
         elif isinstance(entry, dict):
-            raw = str(entry.get("raw") or entry.get("term") or "").strip()
+            raw = _unquote_raw(str(entry.get("raw") or entry.get("term") or ""))
             strictness = str(entry.get("strictness") or "phrase").strip().lower()
             if strictness == "exact_phrase":
                 strictness = "phrase"
@@ -109,7 +111,7 @@ def _op_add_or_alternative(plan: QueryPlan, args: dict) -> str | None:
 
 def _op_remove_or_alternative(plan: QueryPlan, args: dict) -> str | None:
     fid = str(args.get("facet_id") or "").strip()
-    raw = str(args.get("term") or "").strip()
+    raw = _unquote_raw(str(args.get("term") or ""))
     facet = _find_facet(plan, fid)
     if facet is None:
         return f"facet_id {fid!r} not in plan"
@@ -125,7 +127,7 @@ def _op_remove_or_alternative(plan: QueryPlan, args: dict) -> str | None:
 
 
 def _op_tighten_term(plan: QueryPlan, args: dict) -> str | None:
-    raw = str(args.get("term") or "").strip()
+    raw = _unquote_raw(str(args.get("term") or ""))
     to = str(args.get("to") or "").strip().lower()
     if to.startswith("proximity_"):
         try:
@@ -147,7 +149,7 @@ def _op_tighten_term(plan: QueryPlan, args: dict) -> str | None:
 
 
 def _op_loosen_term(plan: QueryPlan, args: dict) -> str | None:
-    raw = str(args.get("term") or "").strip()
+    raw = _unquote_raw(str(args.get("term") or ""))
     to = str(args.get("to") or "").strip().lower()
     if to.startswith("proximity_"):
         try:
@@ -246,11 +248,11 @@ def _op_add_facet(plan: QueryPlan, args: dict) -> str | None:
     terms: list[TermSpec] = []
     for entry in terms_raw:
         if isinstance(entry, str):
-            raw = entry.strip()
+            raw = _unquote_raw(entry)
             if raw:
                 terms.append(TermSpec(raw=raw, strictness="phrase"))
         elif isinstance(entry, dict):
-            raw = str(entry.get("raw") or entry.get("term") or "").strip()
+            raw = _unquote_raw(str(entry.get("raw") or entry.get("term") or ""))
             if not raw:
                 continue
             strictness = str(entry.get("strictness") or "phrase").strip().lower()
@@ -268,8 +270,22 @@ def _op_add_facet(plan: QueryPlan, args: dict) -> str | None:
     return None
 
 
+def _op_remove_facet(plan: QueryPlan, args: dict) -> str | None:
+    fid = str(args.get("facet_id") or args.get("id") or "").strip()
+    if not fid:
+        return "'facet_id' is required"
+    facet = _find_facet(plan, fid)
+    if facet is None:
+        return f"facet_id {fid!r} not in plan"
+    remaining = [f for f in plan.facets if f.id != fid and f.terms]
+    if not remaining:
+        return f"removing facet {fid!r} would leave the plan with no non-empty facet"
+    plan.facets = [f for f in plan.facets if f.id != fid]
+    return None
+
+
 def _op_add_exclusion(plan: QueryPlan, args: dict) -> str | None:
-    raw = str(args.get("term") or "").strip()
+    raw = _unquote_raw(str(args.get("term") or ""))
     if not raw:
         return "'term' is empty"
     for t in plan.exclusions:
@@ -292,6 +308,7 @@ _OP_DISPATCH = {
     "loosen_term": _op_loosen_term,
     "swap_operator": _op_swap_operator,
     "add_facet": _op_add_facet,
+    "remove_facet": _op_remove_facet,
     "add_exclusion": _op_add_exclusion,
 }
 

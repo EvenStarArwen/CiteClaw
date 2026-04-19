@@ -11,8 +11,8 @@ worker's ``propose_first`` with real domain vocabulary and giving
 
 The bias risk is bounded: anchors can only be as biased as the
 precise query that found them, which is in turn bounded by the
-supervisor's facet skeleton. Worker-supplied anchors are a
-different story and not part of this module.
+sub-topic description the supervisor wrote. Worker-supplied anchors
+are a different story and not part of this module.
 """
 
 from __future__ import annotations
@@ -22,8 +22,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from citeclaw.agents.v3.query_plan import render_skeleton
-from citeclaw.agents.v3.state import AnchorPaper, FacetSkeleton
+from citeclaw.agents.v3.state import AnchorPaper
 from citeclaw.prompts.search_agent_v3 import (
     ANCHOR_DISCOVERY_CONFIRM,
     ANCHOR_DISCOVERY_QUERY,
@@ -131,7 +130,6 @@ def _fetch_top_by_citation(
 def discover_anchors(
     *,
     description: str,
-    skeleton: FacetSkeleton | None,
     s2_client: "SemanticScholarClient",
     llm_client: "LLMClient",
     logger: "SearchLogger",
@@ -144,10 +142,7 @@ def discover_anchors(
     proceeds without anchors in that case.
     """
     system = ANCHOR_DISCOVERY_SYSTEM
-    user_query = ANCHOR_DISCOVERY_QUERY.format(
-        description=description,
-        skeleton_block=render_skeleton(skeleton),
-    )
+    user_query = ANCHOR_DISCOVERY_QUERY.format(description=description)
     try:
         resp = llm_client.call(system, user_query, category="v3_anchor_query")
         text = (resp.text or "").strip()
@@ -184,7 +179,6 @@ def discover_anchors(
 
     confirm_user = ANCHOR_DISCOVERY_CONFIRM.format(
         description=description,
-        skeleton_block=render_skeleton(skeleton),
         candidates=_format_candidates(candidates),
     )
     try:
