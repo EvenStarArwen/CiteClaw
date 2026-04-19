@@ -1,0 +1,42 @@
+# prime_editing — grok
+screening_model: "stub"
+search_model: "grok-4-fast-reasoning"
+
+models:
+  grok-4-fast-reasoning:
+    base_url: "https://api.x.ai/v1"
+    served_model_name: "grok-4-1-fast-reasoning"
+    api_key_env: "XAI_API_KEY"
+    # grok-4-*-fast-reasoning reasons by default and rejects
+    # the reasoning_effort kwarg; "none" skips the kwarg.
+    reasoning_parser: "none"
+
+data_dir: "tests_v3/data/prime_editing_grok"
+max_papers_total: 1000
+
+topic_description: >
+  CRISPR prime editing for correcting pathogenic genetic variants —
+  includes prime editor architectures (PE1/PE2/PE3/PE4/PE5/PEmax,
+  twinPE, PASTE, engineered prime editing), prime editing guide RNA
+  (pegRNA / epegRNA) design, mechanisms, delivery (lipid
+  nanoparticle, AAV), specificity / off-targets, and therapeutic
+  application to disease-causing mutations. Scope is prime editing
+  specifically — NOT base editing (CBE / ABE) except where directly
+  compared, NOT wild-type SpCas9 knockout / knock-in editing, NOT
+  gene silencing / RNAi, NOT CRISPR screens.
+
+seed_papers:
+  - title: "placeholder (V3 does not show seeds to LLMs)"
+
+blocks:
+  noop_screener:
+    type: Sequential
+    layers: []
+
+pipeline:
+  - step: ExpandBySearchV3
+    agent:
+      max_subtopics: 5
+      max_iter: 5
+      max_papers_per_query: 10000
+      reasoning_effort: "medium"
