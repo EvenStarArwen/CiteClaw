@@ -29,7 +29,7 @@ from citeclaw.prompts.pdf_extraction import (
 if TYPE_CHECKING:
     from citeclaw.clients.llm.base import LLMClient
 
-log = logging.getLogger("citeclaw.agents.pdf_reference_extractor")
+log = logging.getLogger("citeclaw.steps._pdf_reference_extractor")
 
 # ---------------------------------------------------------------------------
 # Reference-list splitting

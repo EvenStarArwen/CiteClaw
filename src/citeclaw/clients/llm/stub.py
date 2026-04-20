@@ -50,7 +50,7 @@ def _extract_n(user: str) -> int:
 def stub_respond(system: str, user: str) -> str:
     """Return a deterministic JSON / text response for the given prompt."""
     if '"relevant_references"' in user:
-        # PDF reference extraction (citeclaw.agents.pdf_reference_extractor).
+        # PDF reference extraction (citeclaw.steps._pdf_reference_extractor).
         # Return one deterministic reference so the pipeline has something
         # to resolve via search_match.
         return json.dumps({

@@ -42,7 +42,7 @@ import logging
 import re
 from typing import Any
 
-from citeclaw.agents.pdf_reference_extractor import (
+from citeclaw.steps._pdf_reference_extractor import (
     ExtractedReference,
     extract_pdf_references,
 )

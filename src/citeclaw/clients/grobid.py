@@ -12,7 +12,7 @@ This module is intentionally thin: one function,
 returns a single string in the shape :func:`citeclaw.clients.pdf.parse_pdf_bytes`
 already emits — body text, followed by a ``References`` heading, followed
 by the formatted reference list. This lets the downstream
-:func:`~citeclaw.agents.pdf_reference_extractor.split_references` heuristic
+:func:`~citeclaw.steps._pdf_reference_extractor.split_references` heuristic
 pick up the cleanly-delimited references without any schema changes.
 
 The client is used only when ``CITECLAW_GROBID_URL`` is set in the
