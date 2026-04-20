@@ -32,6 +32,13 @@ def _resolve(name_or_dict: Any, blocks: dict):
     return build_blocks({"_anon": name_or_dict})["_anon"]
 
 
+def _optional_screener(d: dict, blocks: dict):
+    """Resolve ``d['screener']`` if present (named ref or inline dict), else None."""
+    if "screener" not in d:
+        return None
+    return _resolve(d["screener"], blocks)
+
+
 def _build_load_seeds(d: dict, blocks: dict) -> BaseStep:
     return LoadSeeds(file=d.get("file"))
 
@@ -45,13 +52,13 @@ def _build_resolve_seeds(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_forward(d: dict, blocks: dict) -> BaseStep:
     return ExpandForward(
         max_citations=int(d.get("max_citations", 100)),
-        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        screener=_optional_screener(d, blocks),
     )
 
 
 def _build_expand_backward(d: dict, blocks: dict) -> BaseStep:
     return ExpandBackward(
-        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        screener=_optional_screener(d, blocks),
         pdf_references=bool(d.get("pdf_references", False)),
         pdf_model=d.get("pdf_model"),
         headless=bool(d.get("headless", True)),
@@ -74,7 +81,7 @@ def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
         )
     return ExpandBySearch(
         agent=agent_raw,
-        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        screener=_optional_screener(d, blocks),
         topic_description=d.get("topic_description"),
         max_anchor_papers=int(d.get("max_anchor_papers", 20)),
         apply_local_query_args=d.get("apply_local_query_args"),
@@ -84,7 +91,7 @@ def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_by_pdf(d: dict, blocks: dict) -> BaseStep:
     """Build an ``ExpandByPDF`` step from its YAML dict."""
     return ExpandByPDF(
-        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        screener=_optional_screener(d, blocks),
         topic_description=d.get("topic_description"),
         model=d.get("model"),
         reasoning_effort=d.get("reasoning_effort", "high"),
@@ -97,7 +104,7 @@ def _build_expand_by_pdf(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_by_semantics(d: dict, blocks: dict) -> BaseStep:
     """Build an ``ExpandBySemantics`` step from its YAML dict."""
     return ExpandBySemantics(
-        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        screener=_optional_screener(d, blocks),
         max_anchor_papers=int(d.get("max_anchor_papers", 10)),
         limit=int(d.get("limit", 100)),
         use_rejected_as_negatives=bool(d.get("use_rejected_as_negatives", False)),
@@ -107,7 +114,7 @@ def _build_expand_by_semantics(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_by_author(d: dict, blocks: dict) -> BaseStep:
     """Build an ``ExpandByAuthor`` step from its YAML dict."""
     return ExpandByAuthor(
-        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        screener=_optional_screener(d, blocks),
         top_k_authors=int(d.get("top_k_authors", 10)),
         author_metric=str(d.get("author_metric", "degree_in_collab_graph")),
         papers_per_author=int(d.get("papers_per_author", 50)),
@@ -155,7 +162,7 @@ def _build_rerank(d: dict, blocks: dict) -> BaseStep:
 
 def _build_rescreen(d: dict, blocks: dict) -> BaseStep:
     return ReScreen(
-        screener=_resolve(d["screener"], blocks) if "screener" in d else None,
+        screener=_optional_screener(d, blocks),
     )
 
 
