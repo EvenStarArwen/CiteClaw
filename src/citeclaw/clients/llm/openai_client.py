@@ -21,6 +21,7 @@ from citeclaw.clients.llm._reasoning import (
     custom_endpoint_reasoning_kwargs,
     is_thinking_active,
 )
+from citeclaw.clients.llm._schema import pop_strict_openai
 from citeclaw.clients.llm._token_extract import extract_openai_usage
 from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
@@ -255,21 +256,17 @@ class OpenAIClient:
             and self._config.structured_output_enabled
             and not thinking_active
         ):
-            # Honour an optional ``_strict_openai`` sentinel on the
-            # schema (default True). Set to False for polymorphic
-            # schemas where ``tool_args`` is an open object — OpenAI
-            # strict mode requires ``additionalProperties: false`` on
-            # every nested object, which breaks our 14-tool dispatcher
-            # schema. The key is popped before the schema is sent so
-            # the wire payload stays clean.
-            schema_copy = dict(response_schema)
-            strict = bool(schema_copy.pop("_strict_openai", True))
+            # ``_strict_openai`` is a routing sentinel — see _schema.py.
+            # Polymorphic schemas (tool_args open objects) opt out of
+            # OpenAI strict mode, otherwise additionalProperties=false
+            # would have to be threaded through every nested object.
+            schema_clean, strict = pop_strict_openai(response_schema)
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "citeclaw_screening_results",
                     "strict": strict,
-                    "schema": schema_copy,
+                    "schema": schema_clean,
                 },
             }
 

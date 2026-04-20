@@ -14,6 +14,7 @@ from tenacity import (
 )
 
 from citeclaw.clients.llm._reasoning import gemini_thinking_level
+from citeclaw.clients.llm._schema import strip_for_gemini
 from citeclaw.clients.llm._token_extract import extract_gemini_usage
 from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
@@ -21,34 +22,6 @@ from citeclaw.config import Settings
 from citeclaw.models import BudgetExhaustedError
 
 log = logging.getLogger("citeclaw.llm.gemini")
-
-
-def _strip_additional_properties(schema: Any) -> Any:
-    """Recursively remove ``additionalProperties`` from a JSON schema.
-
-    Gemini's ``response_schema`` validator (Google API) does not accept the
-    ``additionalProperties`` keyword — it's strict-OpenAI-only — and rejects
-    the whole request with HTTP 400 ``INVALID_ARGUMENT`` if it sees one.
-    OpenAI uses the same shared schema (in ``citeclaw.screening.schemas``) so
-    we strip the field on the way out to Gemini rather than maintaining a
-    second copy of every schema.
-    """
-    if isinstance(schema, dict):
-        return {
-            k: _strip_additional_properties(v)
-            for k, v in schema.items()
-            if k not in (
-                "additionalProperties",
-                "additional_properties",
-                # Not a JSON Schema keyword — our provider-routing
-                # sentinel for OpenAI strict mode; irrelevant to
-                # Gemini and rejected by its schema validator.
-                "_strict_openai",
-            )
-        }
-    if isinstance(schema, list):
-        return [_strip_additional_properties(v) for v in schema]
-    return schema
 
 
 class GeminiClient:
@@ -158,7 +131,7 @@ class GeminiClient:
                 gen_config["response_mime_type"] = "application/json"
             else:
                 gen_config["response_mime_type"] = "application/json"
-                gen_config["response_schema"] = _strip_additional_properties(response_schema)
+                gen_config["response_schema"] = strip_for_gemini(response_schema)
 
         resp = client.models.generate_content(
             model=self._model,

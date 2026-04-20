@@ -10,13 +10,13 @@ Gemini client strips it on the way out.
 
 from __future__ import annotations
 
-from citeclaw.clients.llm.gemini import _strip_additional_properties
+from citeclaw.clients.llm._schema import strip_for_gemini
 from citeclaw.screening.schemas import screening_json_schema
 
 
 def test_strip_top_level():
     schema = {"type": "object", "additionalProperties": False, "properties": {}}
-    out = _strip_additional_properties(schema)
+    out = strip_for_gemini(schema)
     assert "additionalProperties" not in out
     assert out["type"] == "object"
 
@@ -36,7 +36,7 @@ def test_strip_nested():
         },
         "additionalProperties": False,
     }
-    out = _strip_additional_properties(schema)
+    out = strip_for_gemini(schema)
     assert "additionalProperties" not in out
     assert "additionalProperties" not in out["properties"]["results"]["items"]
     # Other fields untouched.
@@ -46,13 +46,13 @@ def test_strip_nested():
 def test_strip_snake_case_variant():
     """Some serializers emit ``additional_properties`` (snake) — strip both."""
     schema = {"type": "object", "additional_properties": False}
-    out = _strip_additional_properties(schema)
+    out = strip_for_gemini(schema)
     assert "additional_properties" not in out
 
 
 def test_strip_screening_schema():
     """The shared screening schema must come out clean for Gemini."""
-    out = _strip_additional_properties(screening_json_schema())
+    out = strip_for_gemini(screening_json_schema())
     # Walk recursively and assert no additionalProperties anywhere.
     def _walk(node):
         if isinstance(node, dict):
@@ -73,14 +73,14 @@ def test_strip_screening_schema():
 def test_strip_idempotent():
     """Running the stripper twice is a no-op the second time."""
     schema = screening_json_schema()
-    once = _strip_additional_properties(schema)
-    twice = _strip_additional_properties(once)
+    once = strip_for_gemini(schema)
+    twice = strip_for_gemini(once)
     assert once == twice
 
 
 def test_non_dict_passthrough():
     """Non-dict / non-list values are returned unchanged."""
-    assert _strip_additional_properties(42) == 42
-    assert _strip_additional_properties("hello") == "hello"
-    assert _strip_additional_properties(None) is None
-    assert _strip_additional_properties([1, 2, 3]) == [1, 2, 3]
+    assert strip_for_gemini(42) == 42
+    assert strip_for_gemini("hello") == "hello"
+    assert strip_for_gemini(None) is None
+    assert strip_for_gemini([1, 2, 3]) == [1, 2, 3]
