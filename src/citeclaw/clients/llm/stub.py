@@ -29,6 +29,7 @@ import json
 import re
 from typing import Any
 
+from citeclaw.clients.llm._token_extract import estimate_stub_usage
 from citeclaw.clients.llm.base import LLMResponse
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
@@ -275,8 +276,8 @@ class StubClient:
         # for match-queries so it parses identically to a real structured
         # response.
         text = stub_respond(system, user)
-        # Deterministic fake token bookkeeping
+        usage = estimate_stub_usage(user, text)
         self._budget.record_llm(
-            len(user) // 4, len(text) // 4, category, model=self._model,
+            usage.prompt, usage.completion, category, model=self._model,
         )
         return LLMResponse(text=text, logprob_tokens=[])

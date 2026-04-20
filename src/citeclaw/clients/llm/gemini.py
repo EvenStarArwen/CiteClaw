@@ -14,6 +14,7 @@ from tenacity import (
 )
 
 from citeclaw.clients.llm._reasoning import gemini_thinking_level
+from citeclaw.clients.llm._token_extract import extract_gemini_usage
 from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
@@ -168,14 +169,11 @@ class GeminiClient:
         text_parts = [p.text for p in parts if getattr(p, "text", None) and not getattr(p, "thought", False)]
         text = "\n".join(text_parts) if text_parts else (getattr(resp, "text", "") or "")
 
-        um = getattr(resp, "usage_metadata", None)
-        prompt_tokens = (getattr(um, "prompt_token_count", 0) or 0) if um else 0
-        completion_tokens = (getattr(um, "candidates_token_count", 0) or 0) if um else 0
-        reasoning_tokens = (getattr(um, "thinking_token_count", 0) or 0) if um else 0
-        if prompt_tokens or completion_tokens:
+        usage = extract_gemini_usage(getattr(resp, "usage_metadata", None))
+        if usage.is_meaningful:
             self._budget.record_llm(
-                prompt_tokens, completion_tokens, category,
-                reasoning_tokens=reasoning_tokens,
+                usage.prompt, usage.completion, category,
+                reasoning_tokens=usage.reasoning,
                 model=self._model,
             )
         return LLMResponse(text=text, logprob_tokens=[])

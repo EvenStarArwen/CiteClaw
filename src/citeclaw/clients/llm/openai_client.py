@@ -21,6 +21,7 @@ from citeclaw.clients.llm._reasoning import (
     custom_endpoint_reasoning_kwargs,
     is_thinking_active,
 )
+from citeclaw.clients.llm._token_extract import extract_openai_usage
 from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
@@ -37,13 +38,6 @@ def _strip_think_tags(text: str) -> str:
     cleaned = _THINK_TAG_RE.sub("", text)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
-
-
-def _extract_reasoning_tokens(usage: Any) -> int:
-    details = getattr(usage, "completion_tokens_details", None)
-    if details is None:
-        return 0
-    return getattr(details, "reasoning_tokens", 0) or 0
 
 
 def _build_timeout(total: float) -> httpx.Timeout:
@@ -280,13 +274,13 @@ class OpenAIClient:
             }
 
         resp = self._sdk.chat.completions.create(**kwargs)
-        usage = resp.usage
-        if usage:
+        usage = extract_openai_usage(resp.usage)
+        if usage.is_meaningful:
             self._budget.record_llm(
-                usage.prompt_tokens,
-                usage.completion_tokens,
+                usage.prompt,
+                usage.completion,
                 category,
-                reasoning_tokens=_extract_reasoning_tokens(usage),
+                reasoning_tokens=usage.reasoning,
                 model=self._model,
             )
         text = resp.choices[0].message.content or ""
