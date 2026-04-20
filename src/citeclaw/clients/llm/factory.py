@@ -94,18 +94,14 @@ def build_llm_client(
             entry=config.models[effective_model],
             reasoning_effort=reasoning_effort,
         )
-    elif config.llm_base_url:
-        # Legacy: a single global custom endpoint hosts whatever model the
-        # user picked. The registry path above supersedes this for new
-        # configs but old YAMLs keep working.
-        inner = OpenAIClient(
-            config, budget, model=model, reasoning_effort=reasoning_effort,
-        )
-    elif GeminiClient.matches(effective_model):
+    elif not config.llm_base_url and GeminiClient.matches(effective_model):
         inner = GeminiClient(
             config, budget, model=model, reasoning_effort=reasoning_effort,
         )
     else:
+        # Either a Gemini-named alias overridden by ``llm_base_url`` (the
+        # base_url wins, route through OpenAIClient) or plain SaaS
+        # OpenAI / a custom endpoint.
         inner = OpenAIClient(
             config, budget, model=model, reasoning_effort=reasoning_effort,
         )
