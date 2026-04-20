@@ -32,10 +32,6 @@ scratch/
 *.db
 *.log
 
-# V3 test run outputs — scripts/configs/SEARCH_TEST.md tracked, data+reports not
-tests_v3/data/
-tests_v3/reports/
-
 # Office and temp files
 *.pptx
 *.tmp
