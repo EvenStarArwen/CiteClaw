@@ -4,9 +4,10 @@ Every fixture here is built around two guarantees:
 
 1. **No real LLM traffic.** The ``basic_settings`` fixture forces
    ``screening_model="stub"``, so any ``build_llm_client(...)`` call
-   returns the deterministic :class:`StubClient`. Tests that still want
-   a hand-rolled LLM client can inject one by writing to the
-   ``_LLM_CLIENTS`` dict in ``citeclaw.screening.llm_runner``.
+   returns the deterministic :class:`StubClient`. Tests that need to
+   override the client can write to ``ctx._llm_client_cache`` directly,
+   keyed by ``(model, reasoning_effort)`` (use ``(None, None)`` for the
+   default-config case).
 
 2. **No real S2 traffic by default.** The ``ctx`` fixture wires in
    :class:`tests.fakes.FakeS2Client`, an in-memory duck-type of the
@@ -25,7 +26,6 @@ import pytest
 from citeclaw.cache import Cache
 from citeclaw.config import BudgetTracker, Settings
 from citeclaw.context import Context
-from citeclaw.screening import llm_runner as _llm_runner
 from tests.fakes import FakeS2Client, build_chain_corpus
 
 
@@ -35,14 +35,6 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "live_s2: hits the real Semantic Scholar API; opt in with CITECLAW_LIVE_S2=1",
     )
-
-
-@pytest.fixture(autouse=True)
-def _reset_llm_client_cache():
-    """Clear the LLM client cache between tests so they never leak state."""
-    _llm_runner._LLM_CLIENTS.clear()
-    yield
-    _llm_runner._LLM_CLIENTS.clear()
 
 
 @pytest.fixture

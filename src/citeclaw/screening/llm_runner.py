@@ -65,11 +65,6 @@ def _parse_matches(raw: str, n: int) -> list[bool] | None:
     return out
 
 
-# Legacy module-level cache retained only so existing tests that reach in
-# and poison it keep working; new code should use ``_client_for``.
-_LLM_CLIENTS: dict[int, object] = {}
-
-
 def _client_for(ctx: "Context", llm_filter: "LLMFilter | None" = None):
     """Return a cached LLMClient for the given filter's resolved (model, reasoning).
 
@@ -81,11 +76,6 @@ def _client_for(ctx: "Context", llm_filter: "LLMFilter | None" = None):
     """
     model = getattr(llm_filter, "model", None) if llm_filter is not None else None
     reasoning = getattr(llm_filter, "reasoning_effort", None) if llm_filter is not None else None
-    # Legacy poison path: if a test has set ``_LLM_CLIENTS[id(ctx)]`` directly,
-    # honor it so existing tests keep working.
-    legacy = _LLM_CLIENTS.get(id(ctx))
-    if legacy is not None and model is None and reasoning is None:
-        return legacy
     cache: dict[tuple[str | None, str | None], object] = ctx.__dict__.setdefault(
         "_llm_client_cache", {},
     )

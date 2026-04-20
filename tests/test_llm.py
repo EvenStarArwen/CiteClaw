@@ -843,13 +843,13 @@ class TestDispatchBatch:
         dispatch_batch(papers, f2, ctx)
         assert "f1" in recorded and "f2" in recorded
 
-    def test_llm_exception_defaults_to_false(self, ctx, monkeypatch):
+    def test_llm_exception_defaults_to_false(self, ctx):
         """If the client raises, every item in that batch defaults to False."""
         class Broken:
             def call(self, *a, **kw):
                 raise RuntimeError("down")
 
-        monkeypatch.setitem(llm_runner._LLM_CLIENTS, id(ctx), Broken())
+        ctx.__dict__.setdefault("_llm_client_cache", {})[(None, None)] = Broken()
         lf = LLMFilter(scope="title", prompt="x")
         out = dispatch_batch(self._papers(3), lf, ctx)
         assert all(v is False for v in out.values())
@@ -967,20 +967,6 @@ class TestPerFilterOverrides:
         assert out == {"p1": True}
         assert len(built) == 1
         assert built[0]["model"] == "gemini-2.5-flash"
-
-    def test_cache_survives_poison_of_legacy_global(self, ctx):
-        """Existing tests that poison ``_LLM_CLIENTS`` still work — the
-        legacy path returns the poisoned client when no per-filter override
-        is in play."""
-        class Poisoned:
-            marker = "poisoned"
-
-        llm_runner._LLM_CLIENTS[id(ctx)] = Poisoned()
-        try:
-            c = _client_for(ctx)
-            assert getattr(c, "marker", None) == "poisoned"
-        finally:
-            llm_runner._LLM_CLIENTS.pop(id(ctx), None)
 
     def test_dispatch_batch_uses_filter_override(self, ctx, monkeypatch):
         """``dispatch_batch`` should route the LLMFilter's overrides through
