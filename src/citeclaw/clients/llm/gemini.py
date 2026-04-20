@@ -13,19 +13,13 @@ from tenacity import (
     wait_random_exponential,
 )
 
+from citeclaw.clients.llm._reasoning import gemini_thinking_level
 from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
 from citeclaw.models import BudgetExhaustedError
 
 log = logging.getLogger("citeclaw.llm.gemini")
-
-_REASONING_TO_THINKING: dict[str, str] = {
-    "low": "low",
-    "medium": "medium",
-    "high": "high",
-    "minimal": "minimal",
-}
 
 
 def _strip_additional_properties(schema: Any) -> Any:
@@ -124,7 +118,7 @@ class GeminiClient:
             "temperature": 0.0,
             "system_instruction": system,
         }
-        thinking_level = _REASONING_TO_THINKING.get(self._reasoning_effort, "")
+        thinking_level = gemini_thinking_level(self._reasoning_effort)
         if thinking_level:
             gen_config["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
 

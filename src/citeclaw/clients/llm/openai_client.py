@@ -17,6 +17,10 @@ from tenacity import (
     wait_random_exponential,
 )
 
+from citeclaw.clients.llm._reasoning import (
+    custom_endpoint_reasoning_kwargs,
+    is_thinking_active,
+)
 from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
@@ -26,19 +30,6 @@ log = logging.getLogger("citeclaw.llm.openai")
 
 _OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4")
 _THINK_TAG_RE = re.compile(r"<think\b[^>]*>.*?</think>", re.DOTALL | re.IGNORECASE)
-
-# ``reasoning_parser`` discriminator values that activate each dispatch
-# shape. Empty string is treated as "vllm" for backward compatibility —
-# registry entries from the vLLM-only era didn't set the field. See
-# :func:`_custom_endpoint_reasoning_kwargs` for the actual dispatch.
-_VLLM_PARSERS = frozenset({"", "vllm", "gemma4", "qwen3", "deepseek_r1", "deepseek-r1"})
-# Providers whose OpenAI-compatible endpoint accepts ``reasoning_effort``
-# as a native top-level kwarg the same way OpenAI's o-series does: xAI
-# Grok 3/4, DeepSeek-reasoner via OpenAI-compat, Mistral Magistral.
-_NATIVE_REASONING_PARSERS = frozenset({"openai", "grok", "xai", "mistral", "magistral"})
-# Explicit opt-out: the endpoint is OpenAI-compatible but the model
-# doesn't support reasoning — used e.g. for plain Together AI models.
-_NO_REASONING_PARSERS = frozenset({"none", "off", "disabled"})
 
 
 def _strip_think_tags(text: str) -> str:
@@ -53,159 +44,6 @@ def _extract_reasoning_tokens(usage: Any) -> int:
     if details is None:
         return 0
     return getattr(details, "reasoning_tokens", 0) or 0
-
-
-# Default thinking-token budgets per effort level.  These prevent OSS
-# reasoning models (Gemma 4, Qwen3, DeepSeek-R1) from spending 60–100 K
-# tokens on a single call while still giving them useful thinking room.
-# Commercial models (o3, Claude) handle this internally; the budget is
-# only sent to vLLM / custom endpoints via ``thinking_token_budget``.
-_EFFORT_THINKING_BUDGET: dict[str, int] = {
-    "high": 16384,
-    "medium": 8192,
-    "low": 4096,
-}
-
-# Hard ceiling on total completion (thinking + content).  The soft
-# ``thinking_budget`` in chat_template_kwargs is only a hint that the
-# model can ignore; ``max_completion_tokens`` is enforced by vLLM's
-# sampler and will truncate generation at this limit.  We use 3× the
-# thinking budget: empirically Gemma 4 can exceed the soft hint by
-# 2–3× on complex prompts, and we need headroom for the actual
-# content output (structured JSON).  3× prevents 100K+ runaway
-# (observed on 128K context) while rarely truncating useful output.
-_COMPLETION_HEADROOM_FACTOR = 3.0
-
-# Tokens we reserve for the prompt portion of the context window when
-# clamping ``max_completion_tokens`` against a vLLM endpoint's
-# ``--max-model-len``. vLLM enforces ``prompt + completion ≤ max_model_len``
-# at the sampler; if our ``max_completion_tokens`` alone equals (or
-# exceeds) ``max_model_len`` the server rejects the request with HTTP
-# 400 before the model sees it. The agent prompts in CiteClaw top out
-# around 6–7 K tokens on continue-turns that carry a full
-# ``fetch_results`` digest (12 K chars ≈ 3 K tokens of tool result plus
-# ~3 K of SYSTEM + state). 8 K is a safe pad that leaves room for
-# longer SYSTEM rewrites without falling off the cliff.
-_INPUT_RESERVE_TOKENS = 8192
-
-
-def _custom_endpoint_reasoning_kwargs(
-    reasoning_effort: str,
-    thinking_budget: int = 0,
-    reasoning_parser: str = "",
-    max_model_len: int = 0,
-) -> dict[str, Any]:
-    """Map ``reasoning_effort`` to provider-specific request kwargs.
-
-    Dispatch is driven by ``reasoning_parser`` (from
-    ``ModelEndpoint.reasoning_parser``). This is what lets a single
-    OpenAIClient serve vLLM-hosted Gemma 4, xAI Grok, Together AI
-    Llama, and Mistral Magistral correctly — each provider has its
-    own wire shape for thinking / reasoning.
-
-    Dispatch table
-    --------------
-    ``reasoning_parser`` empty / ``vllm`` / ``gemma4`` / ``qwen3`` /
-    ``deepseek_r1``: vLLM chat-template shape (see below).
-
-    ``reasoning_parser = openai`` / ``grok`` / ``xai`` / ``mistral`` /
-    ``magistral``: native OpenAI-style ``reasoning_effort`` kwarg —
-    the provider interprets it on the server side.
-
-    ``reasoning_parser = none`` / ``off`` / ``disabled``: no reasoning
-    kwargs are sent (the endpoint is OpenAI-compatible but the model
-    doesn't support reasoning — e.g. plain Together AI Llama).
-
-    vLLM chat-template shape
-    ------------------------
-    Two interlocked knobs are required for Gemma 4 thinking mode to
-    actually surface clean content + separate reasoning:
-
-    1. ``chat_template_kwargs.enable_thinking=True`` tells the chat
-       template to inject the ``<|think|>`` capability marker so the
-       model is allowed to emit a thinking block.
-
-    2. ``skip_special_tokens=False`` tells vLLM's tokenizer NOT to
-       strip the ``<|channel>`` / ``<channel|>`` thinking-block
-       delimiters during decode. Without this flag, the markers vanish
-       from the response text and vLLM's ``gemma4`` reasoning parser
-       can no longer find them — every thinking trace then leaks into
-       ``message.content`` as a raw text block starting with
-       ``thought\\n`` while ``message.reasoning`` stays None.
-       Empirically verified against the live Modal Gemma 4 31B endpoint:
-       with the flag, content is the clean answer (e.g. ``"YES"``) and
-       reasoning is the full thinking trace; without it, content is the
-       polluted blob.
-
-    The flag is harmless when thinking is OFF (the model just doesn't
-    emit any special tokens to keep), so we set it whenever the
-    reasoning_effort knob is touched at all — including the explicit
-    "off" path, since some chat templates inject an empty
-    ``<|channel>thought\\n<channel|>`` placeholder there too.
-
-    ``thinking_budget`` (from ``ModelEndpoint.thinking_budget``)
-    overrides the default effort-based cap. ``0`` means use the default.
-    """
-    effort = (reasoning_effort or "").strip().lower()
-    if not effort:
-        return {}
-
-    parser = (reasoning_parser or "").strip().lower()
-
-    # Explicit opt-out: send nothing so plain OpenAI-compatible
-    # endpoints (e.g. Together AI Llama-3) don't receive kwargs they
-    # reject.
-    if parser in _NO_REASONING_PARSERS:
-        return {}
-
-    # Native ``reasoning_effort`` dispatch — same shape OpenAI o-series
-    # and xAI Grok expect. The provider maps the string onto its own
-    # internal thinking budget.
-    if parser in _NATIVE_REASONING_PARSERS:
-        if effort in ("off", "none", "false", "disable", "disabled"):
-            return {}
-        return {"reasoning_effort": effort}
-
-    # Default / vLLM path (empty, ``vllm``, or any of the parser names
-    # vLLM's reasoning-parser framework recognises). This preserves the
-    # historical behaviour for Modal Gemma / Qwen3 / DeepSeek-R1
-    # deployments.
-    extra_body: dict[str, Any] = {
-        "chat_template_kwargs": {"enable_thinking": False},
-        # See docstring above — must be False to keep the channel markers
-        # visible in the response so the reasoning parser can split.
-        "skip_special_tokens": False,
-    }
-    if effort in ("off", "none", "false", "disable", "disabled"):
-        return {"extra_body": extra_body}
-    extra_body["chat_template_kwargs"]["enable_thinking"] = True
-    # Cap reasoning tokens to prevent runaway thinking.  Passed as
-    # ``thinking_budget`` inside ``chat_template_kwargs`` — this is a
-    # Gemma 4 chat-template feature that limits the thinking trace
-    # without requiring vLLM's ``--reasoning-config`` server flag.
-    # NOTE: this is a *soft hint* — the model may exceed it.  The hard
-    # ceiling is ``max_completion_tokens`` set in the returned dict.
-    budget = thinking_budget or _EFFORT_THINKING_BUDGET.get(effort, 16384)
-    desired_completion = int(budget * _COMPLETION_HEADROOM_FACTOR)
-    # Clamp against the endpoint's ``--max-model-len`` when it is known.
-    # vLLM rejects with HTTP 400 if ``max_completion_tokens`` alone
-    # exceeds ``max_model_len`` (it has to leave room for the prompt).
-    # If the ceiling squeezes the completion, proportionally shrink the
-    # soft thinking_budget hint too — the 3× headroom is a shared pool
-    # between thought and content, so keeping the ratio preserves the
-    # content margin the model needs to emit structured JSON.
-    if max_model_len > 0:
-        safe_ceiling = max(1024, max_model_len - _INPUT_RESERVE_TOKENS)
-        if desired_completion > safe_ceiling:
-            desired_completion = safe_ceiling
-            budget = min(budget, int(desired_completion / _COMPLETION_HEADROOM_FACTOR))
-    extra_body["chat_template_kwargs"]["thinking_budget"] = budget
-    return {
-        "reasoning_effort": effort,
-        "extra_body": extra_body,
-        # Hard ceiling: thinking budget + headroom for content output.
-        "max_completion_tokens": desired_completion,
-    }
 
 
 def _build_timeout(total: float) -> httpx.Timeout:
@@ -399,36 +237,24 @@ class OpenAIClient:
             if with_logprobs:
                 kwargs["logprobs"] = True
         if self._is_custom:
-            kwargs.update(_custom_endpoint_reasoning_kwargs(
+            kwargs.update(custom_endpoint_reasoning_kwargs(
                 self._reasoning_effort,
-                self._thinking_budget,
-                self._reasoning_parser,
-                self._max_model_len,
+                reasoning_parser=self._reasoning_parser,
+                thinking_budget=self._thinking_budget,
+                max_model_len=self._max_model_len,
             ))
         elif self._is_reasoning and self._reasoning_effort:
             kwargs["reasoning_effort"] = self._reasoning_effort
 
-        # Structured output: when a schema is provided *and* the operator
-        # hasn't disabled it, pass ``response_format={"type": "json_schema", ...}``
-        # so the model is constrained at decode time instead of relying on
-        # post-hoc JSON parsing.
-        #
-        # EXCEPTION: skip structured output when the custom endpoint has
-        # *vLLM* thinking enabled.  vLLM's guided decoding interacts badly
-        # with reasoning-mode generation — the guided decoder counts rejected
-        # candidate tokens toward ``max_completion_tokens``, causing the
-        # model to exhaust its budget on decoding overhead and truncate
-        # the actual JSON output.  Providers with native reasoning support
-        # (OpenAI o-series, xAI Grok, Mistral Magistral) handle structured
-        # output correctly during thinking, so this exception is scoped to
-        # the vLLM parsers.
-        parser = (self._reasoning_parser or "").strip().lower()
-        thinking_active = (
-            self._is_custom
-            and self._reasoning_effort
-            and self._reasoning_effort.strip().lower()
-            not in ("off", "none", "false", "disable", "disabled", "")
-            and parser in _VLLM_PARSERS
+        # Structured output: send the schema as ``response_format`` for
+        # decode-time constraints. SKIP when the request will run vLLM
+        # thinking mode — guided decoding's rejected candidates count
+        # against ``max_completion_tokens`` and exhaust the budget on
+        # decode overhead. Native-reasoning providers (OpenAI o-series,
+        # Grok, Mistral) handle structured output during thinking fine.
+        thinking_active = self._is_custom and is_thinking_active(
+            self._reasoning_effort,
+            reasoning_parser=self._reasoning_parser,
         )
         if (
             response_schema is not None
