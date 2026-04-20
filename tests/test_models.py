@@ -8,9 +8,7 @@ from citeclaw.models import (
     BudgetExhaustedError,
     CiteClawError,
     FilterResult,
-    LLMParseError,
     LLMVerdict,
-    OpenAlexAPIError,
     PaperRecord,
     PaperSource,
     ScreeningResult,
@@ -195,8 +193,6 @@ class TestEnums:
 class TestExceptions:
     def test_hierarchy(self):
         for cls in (
-            LLMParseError,
-            OpenAlexAPIError,
             SemanticScholarAPIError,
             BudgetExhaustedError,
         ):
