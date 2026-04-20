@@ -109,7 +109,13 @@ def _walk_pipeline(pipeline) -> Iterable[str]:
     for step in pipeline or []:
         agent = getattr(step, "agent", None)
         if agent is not None:
-            m = getattr(agent, "model", None)
+            # ``agent`` may be a dataclass (legacy / future agent
+            # backend) or a plain dict (current ExpandBySearch shell
+            # passes the YAML mapping straight through).
+            m = (
+                agent.get("model") if isinstance(agent, dict)
+                else getattr(agent, "model", None)
+            )
             if isinstance(m, str) and m:
                 yield m
         m = getattr(step, "model", None)
