@@ -16,13 +16,11 @@ from pydantic import BaseModel, Field
 class PaperSource:
     """String constants for the ``PaperRecord.source`` field.
 
-    Was a ``str`` enum until PA-07 — replaced with a plain namespace
-    class so the expansion family can introduce new sources (``search``,
-    ``semantic``, ``author``, ``reinforced``) without a schema migration
-    or enum-extension dance. Existing comparisons like
-    ``p.source == PaperSource.BACKWARD`` keep working because the class
-    attributes are now plain strings rather than enum members whose
-    ``str`` value happens to match.
+    Plain attributes instead of an enum so new expansion modes can
+    introduce their own source labels at runtime without a schema
+    migration. Existing equality checks (``p.source ==
+    PaperSource.BACKWARD``) keep working — the attributes are just
+    strings.
     """
 
     SEED = "seed"
@@ -55,9 +53,9 @@ class PaperRecord(BaseModel):
     influential_citation_count: int | None = None
     references: list[str] = Field(default_factory=list)
     depth: int = 0
-    # Free-form string label (PA-07). Use :class:`PaperSource` constants
-    # for the canonical values; new expansion modes can supply their own
-    # string without requiring a model migration.
+    # Free-form string label — use :class:`PaperSource` constants for
+    # the canonical values. New expansion modes can supply their own
+    # string without a model migration.
     source: str = "backward"
     llm_verdict: LLMVerdict | None = None
     llm_reasoning: str | None = None
@@ -70,22 +68,21 @@ class PaperRecord(BaseModel):
     # "ArXiv": "2301.00001", "PubMed": "12345"}``. Populated from S2 metadata
     # during fetch and consumed by the duplicate-detection step.
     external_ids: dict[str, str] = Field(default_factory=dict)
-    # Alternate paper IDs that have been folded into this record by the
+    # Alternate paper IDs folded into this record by the
     # ``MergeDuplicates`` step (e.g. the preprint ID of a peer-reviewed
-    # canonical paper). An empty list is the common case.
+    # paper). Empty in the common case.
     aliases: list[str] = Field(default_factory=list)
     # S2 ``fieldsOfStudy`` + ``s2FieldsOfStudy.category`` merged and
-    # deduplicated. Used by the local query engine (PA-09) and by
-    # filters that want to gate on subject area without needing the LLM.
+    # deduplicated; lets filters gate on subject area without an LLM.
     fields_of_study: list[str] = Field(default_factory=list)
-    # S2 ``publicationTypes`` (e.g. ``["JournalArticle", "Review"]``) — a
-    # cheap structured signal for distinguishing surveys / methods /
+    # S2 ``publicationTypes`` (e.g. ``["JournalArticle", "Review"]``) —
+    # a cheap structured signal for distinguishing surveys / methods /
     # editorials.
     publication_types: list[str] = Field(default_factory=list)
-    # PH-06: parsed body text from the open-access PDF, populated by
-    # ``citeclaw.clients.pdf.PdfFetcher.prefetch`` for ``LLMFilter`` blocks
-    # whose scope is ``full_text``. Stays None for closed-access papers
-    # (the filter falls back to abstract content for them).
+    # Parsed body text from the open-access PDF, populated by
+    # ``citeclaw.clients.pdf.PdfFetcher.prefetch`` for ``LLMFilter``
+    # blocks whose scope is ``full_text``. None for closed-access
+    # papers (the filter falls back to abstract content).
     full_text: str | None = None
 
     model_config = {"use_enum_values": True}

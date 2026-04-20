@@ -1,9 +1,8 @@
-"""ResolveSeeds — pre-pipeline seed expansion (PC-04).
+"""ResolveSeeds — pre-pipeline seed expansion.
 
-Reads ``ctx.config.seed_papers`` (which may now mix
-``{paper_id: ...}``- and ``{title: ...}``-style entries thanks to
-PC-04's schema relaxation) and writes a flat list of resolved S2 paper
-IDs to ``ctx.resolved_seed_ids`` for ``LoadSeeds`` to consume.
+Reads ``ctx.config.seed_papers`` (a mix of ``{paper_id: ...}``- and
+``{title: ...}``-style entries) and writes a flat list of resolved S2
+paper IDs to ``ctx.resolved_seed_ids`` for ``LoadSeeds`` to consume.
 
 Per-entry resolution:
 

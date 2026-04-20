@@ -21,12 +21,11 @@ def _compute_edge_weights(
 ) -> list[float]:
     """Compute the per-edge ``weight`` attribute used by Gephi rendering.
 
-    PH-09: the weight is computed from REF / CIT similarity ONLY —
-    semantic similarity is intentionally excluded so the visual
-    layout reflects citation-graph structure (who cites whom, who is
-    cited by whom) rather than abstract embedding similarity. The
-    semantic_similarity attribute is still computed and stored on each
-    edge by the caller; it just no longer drives the layout.
+    Weight is computed from REF / CIT similarity ONLY — semantic
+    similarity is intentionally excluded so the visual layout reflects
+    citation-graph structure rather than abstract embedding similarity.
+    Semantic similarity is still stored on each edge as its own
+    attribute; it just doesn't drive the layout.
 
     Algorithm:
         1. norm_ref[i] = raw_ref[i] / global_max(raw_ref)
@@ -134,16 +133,14 @@ def export_graphml(
     resulting cosine similarity is stored as a per-edge ``semantic_similarity``
     attribute.
 
-    PH-09: the edge-level ``weight`` attribute is computed by
-    :func:`_compute_edge_weights` from REF and CIT similarity ONLY —
-    semantic similarity is excluded from the weight (but still stored
-    on the edge as ``semantic_similarity``). Each measure is normalised
-    by its global maximum so the two are on a comparable [0, 1] scale,
-    then ``weight = max(norm_ref, norm_cit)``. Edges where BOTH
-    ref_similarity and cit_similarity are zero get the lower 25% quantile
-    (Q1) of the non-zero edge weights, so "no signal" edges stay
-    visible in Gephi at a meaningful baseline rather than at the
-    previous 1e-5 floor.
+    The edge-level ``weight`` attribute is computed by
+    :func:`_compute_edge_weights` from REF and CIT similarity only —
+    semantic similarity is excluded from the weight (still stored as
+    its own ``semantic_similarity`` attribute). Each measure is
+    normalised by its global max for a comparable [0, 1] scale, then
+    ``weight = max(norm_ref, norm_cit)``. Edges where both
+    ref_similarity and cit_similarity are zero get the Q1 of the
+    non-zero edge weights so "no signal" edges stay visible in Gephi.
 
     When ``clusters`` is provided, each entry (a
     :class:`~citeclaw.cluster.base.ClusterResult`) becomes two node attributes
@@ -245,11 +242,10 @@ def export_graphml(
         ss = _semantic_cosine(src_pid, tgt_pid, embeddings)
         edge_list.append(key)
         edge_pair_keys.append((src_pid, tgt_pid))
-        # PH-09: store raw ref / cit similarity (no floor) so the
-        # attribute reflects the true Jaccard score. The weight floor
-        # is now applied AFTER all edges are built, by
-        # ``_compute_edge_weights``, which uses Q1 of non-zero weights
-        # as the floor instead of the previous 1e-5 sentinel.
+        # Store raw ref / cit similarity (no floor) so the attribute
+        # reflects the true Jaccard score. ``_compute_edge_weights``
+        # applies the Q1-of-non-zero floor to ``weight`` after all
+        # edges are built.
         edge_ref_sim.append(rs)
         edge_cit_sim.append(cs)
         edge_sem_sim.append(ss)
@@ -270,9 +266,8 @@ def export_graphml(
         g.es["ref_similarity"] = edge_ref_sim
         g.es["cit_similarity"] = edge_cit_sim
         g.es["semantic_similarity"] = edge_sem_sim
-        # PH-09: weight = max of normalised ref / cit similarity, with
+        # weight = max of normalised ref / cit similarity, with
         # zero-signal edges promoted to Q1 of the non-zero edge weights.
-        # Semantic similarity is intentionally excluded from the weight.
         g.es["weight"] = _compute_edge_weights(edge_ref_sim, edge_cit_sim)
 
         contexts_attr: list[str] = []

@@ -55,18 +55,16 @@ class Context:
 
     rejection_counts: Counter[str] = field(default_factory=Counter)
 
-    # PC-04: paper IDs produced by ``ResolveSeeds`` (resolves title-only
-    # YAML entries to S2 paper IDs and optionally pulls preprint /
-    # published siblings via ``external_ids``). When non-empty, ``LoadSeeds``
-    # consumes this list instead of ``cfg.seed_papers``; when empty, the
-    # legacy direct path applies. Order matches the original
-    # ``cfg.seed_papers`` order, with siblings appended after their primary.
+    # Paper IDs produced by ``ResolveSeeds`` (resolves title-only YAML
+    # entries to S2 paper IDs, optionally adding preprint / published
+    # siblings via ``external_ids``). When non-empty, ``LoadSeeds``
+    # consumes this list instead of ``cfg.seed_papers``. Order matches
+    # ``cfg.seed_papers`` with siblings appended after their primary.
     resolved_seed_ids: list[str] = field(default_factory=list)
 
-    # PA-08: per-paper rejection categories. Mirrors ``rejection_counts``
-    # but keyed by paper id so ``HumanInTheLoop`` can sample papers
-    # rejected by a specific filter and surface their full screening
-    # history. Populated by ``record_rejections``; may contain duplicate
+    # Per-paper rejection categories — keyed by paper id so
+    # ``HumanInTheLoop`` can sample papers rejected by a specific
+    # filter. Populated by ``record_rejections``; may contain duplicate
     # category strings if a paper was rejected at multiple stages.
     rejection_ledger: dict[str, list[str]] = field(default_factory=dict)
 
@@ -89,10 +87,9 @@ class Context:
     # ``run_pipeline``; ``None`` outside of an active run.
     pipeline_started_at: float | None = None
 
-    # PA-08: idempotency set for the ``ExpandBy*`` family. Each step
-    # adds a fingerprint over (step name, signal ids, agent config) so a
-    # second invocation with identical inputs is a no-op rather than
-    # duplicating work / spending budget.
+    # Idempotency set for the ``ExpandBy*`` family. Each step adds a
+    # fingerprint over (step name, signal ids, agent config) so a
+    # repeat invocation with identical inputs becomes a no-op.
     searched_signals: set[str] = field(default_factory=set)
 
     # Per-edge metadata indexed by (src_paper_id, dst_paper_id) where src
@@ -124,10 +121,10 @@ class Context:
     # at start of run when stdout is interactive.
     dashboard: DashboardLike = field(default_factory=NullDashboard)
 
-    # PE-09: web-mode HITL synchronization gate. When set, the
-    # ``HumanInTheLoop`` step emits an ``hitl_request`` event and blocks
-    # on ``hitl_gate.event`` instead of prompting via rich CLI. The web
-    # backend writes labels into ``hitl_gate.labels`` and sets the event.
+    # Web-mode HITL synchronization gate. When set, ``HumanInTheLoop``
+    # emits an ``hitl_request`` event and blocks on ``hitl_gate.event``
+    # instead of prompting via rich CLI. The web backend writes labels
+    # into ``hitl_gate.labels`` and sets the event.
     hitl_gate: HitlGate | None = None
 
     # Event sink for streaming pipeline events to the web UI. Steps can

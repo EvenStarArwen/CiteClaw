@@ -69,11 +69,9 @@ log = logging.getLogger("citeclaw.pdf")
 # scans, malformed files) without dropping legitimate papers.
 #
 # 50 MB ceiling: most bioRxiv preprints with full supplementary
-# material end up in the 20-40 MB range, and dropping them at 20 MB
-# (the original cap) excluded a meaningful fraction of legitimate
-# preprints during PH-06 live testing. 50 MB is the practical sweet
-# spot — well above honest preprint sizes, well below pathological
-# scanned-image PDFs.
+# material end up in the 20-40 MB range. 20 MB used to be the cap and
+# excluded too many legitimate preprints; 50 MB is well above honest
+# preprint sizes and well below pathological scanned-image PDFs.
 DEFAULT_TIMEOUT_S = 60.0
 DEFAULT_MAX_SIZE_MB = 50
 # 80K chars ≈ 25K BPE tokens. Sized to fit a single paper into Gemma 4

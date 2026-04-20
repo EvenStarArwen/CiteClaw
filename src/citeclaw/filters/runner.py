@@ -172,7 +172,7 @@ def record_rejections(
         ctx.rejected.add(paper.paper_id)
         key = outcome.category or "unknown"
         ctx.rejection_counts[key] = ctx.rejection_counts.get(key, 0) + 1
-        # PA-08: per-paper ledger so ``HumanInTheLoop`` can sample by
-        # rejection reason. Same key as ``rejection_counts`` so the two
-        # views are guaranteed to stay in sync.
+        # Per-paper ledger so ``HumanInTheLoop`` can sample by rejection
+        # reason. Same key as ``rejection_counts`` so the two views stay
+        # in sync.
         ctx.rejection_ledger.setdefault(paper.paper_id, []).append(key)

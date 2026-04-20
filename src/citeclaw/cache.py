@@ -12,8 +12,7 @@ from typing import Any, Generator
 
 log = logging.getLogger("citeclaw.cache")
 
-# Default freshness window for cached search results (PA-04). PA-05 will
-# reuse this when wiring search_bulk through the cache layer.
+# Default freshness window for cached search results.
 _SEARCH_TTL_DAYS_DEFAULT = 30
 
 _SCHEMA = """
@@ -54,10 +53,10 @@ CREATE TABLE IF NOT EXISTS author_papers (
     fetched_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS paper_full_text (
-    -- PH-06: cached full-text body for open-access PDFs.
-    -- ``text`` is NULL when fetch/parse failed; ``error`` describes why
-    -- ("no_pdf", "download_failed", "parse_failed", "too_large") so a
-    -- second pass doesn't redo a known-failing fetch.
+    -- Cached full-text body for open-access PDFs. ``text`` is NULL when
+    -- fetch/parse failed; ``error`` records why ("no_pdf",
+    -- "download_failed", "parse_failed", "too_large") so a second pass
+    -- doesn't redo a known-failing fetch.
     paper_id   TEXT PRIMARY KEY,
     text       TEXT,
     error      TEXT,
@@ -205,7 +204,7 @@ class Cache:
     def has_author_metadata(self, author_id: str) -> bool:
         return self._has("author_metadata", author_id, key_col="author_id")
 
-    # --- search query results (PA-04) — keyed by hash, TTL-aware ---
+    # --- search query results — keyed by hash, TTL-aware ---
 
     def _is_fresh(self, fetched_at_iso: str, ttl_days: int) -> bool:
         """True iff ``fetched_at_iso`` is within ``ttl_days`` of now."""
@@ -221,9 +220,9 @@ class Cache:
     def get_search_results(
         self, query_hash: str, ttl_days: int = _SEARCH_TTL_DAYS_DEFAULT,
     ) -> dict[str, Any] | None:
-        """Return cached search response for ``query_hash``, or None on miss
-        / expired entry. The TTL knob exists so callers can override the
-        default freshness window when policy demands it (e.g. PA-05)."""
+        """Return cached search response for ``query_hash``, or None on
+        miss / expired entry. The TTL knob lets callers override the
+        default freshness window."""
         with self._cursor() as cur:
             cur.execute(
                 "SELECT result_json, fetched_at FROM search_queries WHERE query_hash = ?",
@@ -269,7 +268,7 @@ class Cache:
             return False
         return self._is_fresh(row[0], ttl_days)
 
-    # --- author papers (PA-04) — full paper list per author ---
+    # --- author papers — full paper list per author ---
 
     def get_author_papers(self, author_id: str) -> list[dict[str, Any]] | None:
         """Return cached paper list for ``author_id``, or None on miss."""
@@ -297,7 +296,7 @@ class Cache:
             )
         log.debug("Cache STORE [author_papers] %s", author_id)
 
-    # --- full-text PDF body (PH-06) ---
+    # --- full-text PDF body ---
 
     def get_full_text(self, paper_id: str) -> dict[str, Any] | None:
         """Return ``{"text": str | None, "error": str | None}`` for the

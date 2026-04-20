@@ -1,10 +1,8 @@
 """Pipeline event sink — abstract interface for streaming run events.
 
-PE-03: ``run_pipeline`` accepts an optional ``event_sink`` keyword that
-defaults to :class:`NullEventSink` (a no-op that preserves the legacy
-CLI behavior). The web backend will wire in a fan-out sink that
-forwards every event to all subscribed WebSocket clients (PE-09 lands
-on this same protocol).
+``run_pipeline`` takes an optional ``event_sink`` keyword that
+defaults to :class:`NullEventSink`. The web backend wires in a
+fan-out sink that forwards each event to its WebSocket subscribers.
 
 Event taxonomy
 --------------
@@ -14,25 +12,20 @@ Event taxonomy
   * ``step_end(idx, name, in_count, out_count, delta_collection, stats)``
     — fired after ``step.run()`` returns and the shape table row has
     been recorded.
-  * ``paper_added(paper_id, source)`` — synthesised by the runner: for
-    every paper that's in ``ctx.collection`` after a step but wasn't
-    before, one ``paper_added`` event is emitted between
-    ``step_start`` and ``step_end``.
+  * ``paper_added(paper_id, source)`` — synthesised by the runner: one
+    event per paper that appears in ``ctx.collection`` after a step
+    but wasn't there before, emitted between ``step_start`` and
+    ``step_end``.
   * ``paper_rejected(paper_id, category)`` — declared on the Protocol
-    so third-party sinks can wire it up early. Not emitted by the
-    runner in v1; future step-level callers will fan out via their
-    own sink reference.
-  * ``shape_table_update(rendered_shape)`` — fired once at the end of
-    the run with the rendered shape table.
+    for third-party sinks; not emitted by the runner itself.
+  * ``shape_table_update(rendered_shape)`` — fired once at run end.
 
 Implementations
 ---------------
 
-  * :class:`NullEventSink` — no-op default, used by every existing
-    test that calls ``run_pipeline`` without an explicit sink.
-  * :class:`RecordingEventSink` — captures every event in order. Used
-    by ``tests/test_event_sink.py`` and any future test asserting
-    event ordering.
+  * :class:`NullEventSink` — no-op default for CLI runs.
+  * :class:`RecordingEventSink` — captures every event in order; used
+    by tests to assert event sequencing.
 """
 
 from __future__ import annotations
@@ -43,12 +36,7 @@ from typing import Any, Protocol, runtime_checkable
 
 @runtime_checkable
 class EventSink(Protocol):
-    """Protocol for sinks consuming pipeline run events.
-
-    The default in-process sink is :class:`NullEventSink`. The web
-    backend will provide a fan-out sink in PE-04+ that forwards events
-    to WebSocket subscribers.
-    """
+    """Protocol for sinks consuming pipeline run events."""
 
     def step_start(self, idx: int, name: str, description: str) -> None: ...
 
@@ -82,8 +70,7 @@ class EventSink(Protocol):
 
 
 class NullEventSink:
-    """No-op sink. Used as the default so existing CLI runs are
-    unchanged when no caller provides an explicit sink."""
+    """No-op sink — used as the default when no caller provides one."""
 
     def step_start(self, idx: int, name: str, description: str) -> None:
         return None

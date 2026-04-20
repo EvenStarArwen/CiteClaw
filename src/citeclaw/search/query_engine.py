@@ -9,10 +9,10 @@ floors, fields-of-study tags, publication types. It cannot express:
   - the union of two unrelated criteria,
   - "at least one of these tags" without sending them as the OR query.
 
-The expansion family (PA-09 onward) handles those cases by fetching a
-slightly-too-broad superset from S2 and then trimming the result with
-:func:`apply_local_query` before LLM screening. This module is pure:
-no S2, no LLM, no Context — just a function from a list to a list.
+The expansion family handles those cases by fetching a slightly-too-broad
+superset from S2 and then trimming the result with :func:`apply_local_query`
+before LLM screening. This module is pure: no S2, no LLM, no Context —
+just a function from a list to a list.
 """
 
 from __future__ import annotations

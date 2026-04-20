@@ -281,14 +281,11 @@ class OpenAIClient:
                 model=self._model,
             )
         text = resp.choices[0].message.content or ""
-        # PH-07: vLLM's reasoning parser exposes the thinking trace on
-        # the message under either ``reasoning`` (Gemma 4) or
-        # ``reasoning_content`` (Qwen3 / DeepSeek-R1) depending on the
-        # parser. Read both and surface whichever is non-empty so
-        # downstream callers can introspect the model's chain of
-        # thought without re-parsing the raw response. The presence of
-        # this field is the canonical signal that the parser worked
-        # and ``content`` is the clean answer.
+        # vLLM's reasoning parser exposes the thinking trace on the
+        # message under ``reasoning`` (Gemma 4) or ``reasoning_content``
+        # (Qwen3 / DeepSeek-R1). Surface whichever is non-empty so
+        # downstream callers can read the chain of thought without
+        # re-parsing the raw response.
         reasoning_content = ""
         msg = resp.choices[0].message
         for attr in ("reasoning", "reasoning_content"):

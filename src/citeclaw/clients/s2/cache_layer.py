@@ -77,7 +77,7 @@ class S2CacheLayer:
     def has_author_metadata(self, author_id: str) -> bool:
         return self._cache.has_author_metadata(author_id)
 
-    # ----- author papers (PA-03) -----
+    # ----- author papers -----
     def get_author_papers(self, author_id: str) -> list[dict[str, Any]] | None:
         cached = self._cache.get_author_papers(author_id)
         if cached is not None:
@@ -89,7 +89,7 @@ class S2CacheLayer:
     ) -> None:
         self._cache.put_author_papers(author_id, papers)
 
-    # ----- search results (PA-05) -----
+    # ----- search results -----
     def get_search_results(self, query_hash: str) -> dict[str, Any] | None:
         cached = self._cache.get_search_results(query_hash)
         if cached is not None:

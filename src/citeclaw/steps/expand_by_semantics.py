@@ -56,7 +56,7 @@ class ExpandBySemantics:
     Composable at the same level as ``ExpandForward`` /
     ``ExpandBackward`` / ``ExpandBySearch``. Like ``ExpandBySearch``
     this step has no source paper, so its screener cascade must
-    tolerate ``fctx.source=None`` (audited in PC-05).
+    tolerate ``fctx.source=None``.
     """
 
     name = "ExpandBySemantics"

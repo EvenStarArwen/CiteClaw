@@ -25,9 +25,9 @@ PAPER_FIELDS = ",".join([
     "paperId", "title", "abstract", "venue", "year", "citationCount", "referenceCount",
     "influentialCitationCount", "openAccessPdf", "externalIds",
     "authors.authorId", "authors.name",
-    # PA-06: subject-area + publication-type signals for the local query
-    # engine and filters. ``fieldsOfStudy`` is the legacy flat list while
-    # ``s2FieldsOfStudy`` is S2's richer per-source list — converters.py
+    # Subject-area + publication-type signals for the local query
+    # engine and filters. ``fieldsOfStudy`` is the legacy flat list and
+    # ``s2FieldsOfStudy`` is S2's richer per-source list — converters
     # merges both into PaperRecord.fields_of_study.
     "fieldsOfStudy", "s2FieldsOfStudy", "publicationTypes",
 ])
@@ -77,7 +77,7 @@ class SemanticScholarClient:
         return rec
 
     # ------------------------------------------------------------------
-    # Search (PA-01: bare HTTP surface; cache wiring lands in PA-05)
+    # Search
     # ------------------------------------------------------------------
 
     # Whitelist of S2-recognized filter parameters that ``search_bulk``
@@ -142,11 +142,11 @@ class SemanticScholarClient:
         metadata. Filters are forwarded only when present in
         :attr:`_SEARCH_BULK_FILTER_KEYS`.
 
-        Cache (PA-05): the response is keyed by a sha256 over
-        ``{q, filters, sort, token}`` (limit is intentionally excluded so
-        a wider call can serve a narrower follower from cache). Cache
-        hits bump ``BudgetTracker._s2_cache["search"]``; misses go to
-        the network and persist the response.
+        Cached: keyed by sha256 over ``{q, filters, sort, token}``
+        (``limit`` is intentionally excluded so a wider call can serve
+        a narrower follower from cache). Hits bump
+        ``BudgetTracker._s2_cache["search"]``; misses go to the network
+        and persist the response.
         """
         cache_key_payload = {"q": query, "filters": filters, "sort": sort, "token": token}
         query_hash = hashlib.sha256(
@@ -201,7 +201,7 @@ class SemanticScholarClient:
         return None
 
     # ------------------------------------------------------------------
-    # Recommendations (PA-02: powers ExpandBySemantics; no caching, freshness wins)
+    # Recommendations — powers ExpandBySemantics; no caching, freshness wins.
     # ------------------------------------------------------------------
 
     def fetch_recommendations(
@@ -469,18 +469,13 @@ class SemanticScholarClient:
 
     def enrich_batch(self, candidates: list[dict[str, Any]]) -> list[PaperRecord]:
         """Hydrate ``candidates`` (list of ``{paper_id: ...}`` dicts) into
-        :class:`PaperRecord` objects, using ``paper_metadata`` cache where
-        available.
+        :class:`PaperRecord` objects, serving from ``paper_metadata``
+        cache where possible.
 
-        Cache-first behavior was added in PH-09 — the original
-        implementation always called ``_batch_fetch`` over the network for
-        every id, even when every id was already cached. ExpandForward and
-        ExpandBackward both call this method on EVERY citer / reference,
-        which meant a second run with the same seeds re-fetched the entire
-        candidate set from S2 (~1k requests against the 1 rps cap = many
-        minutes of pure rate-limit waiting). Now: papers already in
-        ``paper_metadata`` are served from cache; only the genuine misses
-        go over the wire.
+        Cache-first matters here because ExpandForward / ExpandBackward
+        call this on every citer / reference; a second run with the
+        same seeds would otherwise re-fetch the whole candidate set
+        against the 1 rps S2 cap.
         """
         ids = [c.get("paper_id", "") for c in candidates if c.get("paper_id")]
         if not ids:
@@ -630,12 +625,11 @@ class SemanticScholarClient:
         return out
 
     # ------------------------------------------------------------------
-    # Author papers (PA-03: powers ExpandByAuthor)
+    # Author papers — powers ExpandByAuthor.
     # ------------------------------------------------------------------
 
-    # S2's max page size for the author/papers endpoint. Mirrors the
-    # PAGE_SIZE constant in http.py for consistency with the existing
-    # references / citations paginator.
+    # S2's max page size for the author/papers endpoint. Mirrors
+    # PAGE_SIZE in http.py.
     _AUTHOR_PAPERS_PAGE_SIZE = 100
 
     def fetch_author_papers(
@@ -649,12 +643,11 @@ class SemanticScholarClient:
         ``GET /author/{author_id}/papers``.
 
         Cache-first: when a per-author entry exists in the
-        ``author_papers`` cache table (PA-04), the cached list is
-        returned (sliced to ``limit``) without any S2 traffic. Otherwise
-        the endpoint is paginated using S2's standard
-        ``offset``/``limit`` query params, capped at ``limit`` rows so
-        very prolific authors don't blow up the budget. The full
-        result-set we collected is then persisted under ``author_id``.
+        ``author_papers`` table, the cached list is returned (sliced
+        to ``limit``) with no S2 traffic. Otherwise the endpoint is
+        paginated via S2's ``offset``/``limit``, capped at ``limit``
+        so very prolific authors don't blow up the budget. The
+        collected result is then persisted under ``author_id``.
 
         ``limit`` is the upper bound on the *returned* list — pagination
         stops as soon as ``limit`` items are accumulated. ``fields``

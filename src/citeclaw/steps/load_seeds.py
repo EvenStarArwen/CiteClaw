@@ -21,12 +21,12 @@ class LoadSeeds:
         cfg = ctx.config
         dash = ctx.dashboard
 
-        # PC-04: prefer the IDs resolved by an upstream ``ResolveSeeds``
-        # step (which may have expanded title-only entries and added
+        # Prefer the IDs resolved by an upstream ``ResolveSeeds`` step
+        # (which may have expanded title-only entries and added
         # preprint/published siblings). Fall back to ``cfg.seed_papers``
-        # for the legacy single-step pipeline. Each item is
-        # ``(paper_id, source_seed_paper_or_None)`` so the existing
-        # title/abstract fallback logic still applies for direct entries.
+        # when there's no resolver upstream. Each item is
+        # ``(paper_id, source_seed_paper_or_None)`` so direct entries
+        # can still pass title/abstract fallbacks down.
         items: list[tuple[str, object | None]]
         if ctx.resolved_seed_ids:
             items = [(pid, None) for pid in ctx.resolved_seed_ids if pid]
