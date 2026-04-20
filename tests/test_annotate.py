@@ -17,7 +17,8 @@ from citeclaw.annotate import (
     annotate_graph,
 )
 from citeclaw.clients.llm import build_llm_client
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 
 
 class TestLabelOne:

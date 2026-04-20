@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from citeclaw.cache import Cache
-from citeclaw.config import BudgetTracker
+from citeclaw.budget import BudgetTracker
 
 
 class S2CacheLayer:

@@ -18,7 +18,7 @@ import pytest
 from citeclaw.cache import Cache
 from citeclaw.clients.llm.base import LLMResponse
 from citeclaw.clients.llm.caching import CachingLLMClient, make_cache_key
-from citeclaw.config import BudgetTracker
+from citeclaw.budget import BudgetTracker
 
 
 class _RecordingClient:

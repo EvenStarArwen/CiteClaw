@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from citeclaw.clients.llm import build_llm_client
-from citeclaw.config import BudgetTracker
+from citeclaw.budget import BudgetTracker
 from citeclaw.models import BudgetExhaustedError
 from citeclaw.progress import console
 from citeclaw.prompts.annotation import BATCH_SYSTEM as _BATCH_SYSTEM

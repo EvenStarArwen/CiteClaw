@@ -8,7 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+
+from citeclaw.config import Settings
 from citeclaw.models import PaperRecord
 
 from citeclaw.progress import DashboardLike, NullDashboard

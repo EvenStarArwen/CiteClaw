@@ -46,7 +46,7 @@ from rich.text import Text
 from rich.theme import Theme
 
 if TYPE_CHECKING:
-    from citeclaw.config import BudgetTracker
+    from citeclaw.budget import BudgetTracker
     from citeclaw.context import Context
     from citeclaw.models import PaperRecord
 

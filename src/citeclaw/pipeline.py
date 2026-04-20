@@ -9,7 +9,8 @@ import time
 
 from citeclaw.cache import Cache
 from citeclaw.clients.s2 import SemanticScholarClient
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 from citeclaw.context import Context
 from citeclaw.event_sink import EventSink, NullEventSink
 from citeclaw.progress import (

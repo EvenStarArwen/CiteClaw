@@ -19,7 +19,8 @@ import pytest
 
 from citeclaw.cache import Cache
 from citeclaw.clients.s2 import SemanticScholarClient
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 
 
 @pytest.fixture

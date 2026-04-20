@@ -24,7 +24,8 @@ from pathlib import Path
 import pytest
 
 from citeclaw.cache import Cache
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 from citeclaw.context import Context
 from tests.fakes import FakeS2Client, build_chain_corpus
 

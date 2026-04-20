@@ -112,7 +112,8 @@ def _build_llm_client() -> tuple["LLMClient", str] | None:
     credentials are configured.
     """
     from citeclaw.clients.llm import build_llm_client
-    from citeclaw.config import BudgetTracker, Settings
+    from citeclaw.budget import BudgetTracker
+    from citeclaw.config import Settings
 
     # Option 1: explicit PDFCLAW_LLM_* (any OpenAI-compatible endpoint).
     base_url = os.environ.get("PDFCLAW_LLM_BASE_URL") or ""

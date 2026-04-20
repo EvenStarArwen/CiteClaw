@@ -8,7 +8,7 @@ from pathlib import Path
 import igraph as ig
 
 from citeclaw.author_graph import build_author_graph, export_author_graphml
-from citeclaw.config import BudgetTracker
+from citeclaw.budget import BudgetTracker
 from citeclaw.models import PaperRecord
 from citeclaw.output import (
     build_output,

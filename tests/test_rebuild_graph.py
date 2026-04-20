@@ -17,7 +17,8 @@ import yaml
 
 from citeclaw.__main__ import _run_rebuild_graph
 from citeclaw.cache import Cache
-from citeclaw.config import BudgetTracker, load_settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import load_settings
 from citeclaw.context import Context
 from citeclaw.pipeline import run_pipeline
 from tests.fakes import build_chain_corpus

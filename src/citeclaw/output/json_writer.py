@@ -8,7 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from citeclaw.config import BudgetTracker
+from citeclaw.budget import BudgetTracker
 from citeclaw.models import PaperRecord
 
 log = logging.getLogger("citeclaw.output.json")

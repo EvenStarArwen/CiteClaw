@@ -30,7 +30,8 @@ import re
 from typing import Any
 
 from citeclaw.clients.llm.base import LLMResponse
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 
 _RE_EXACTLY_N = re.compile(r"exactly\s+(\d+)\s+objects", re.IGNORECASE)
 _RE_CLUSTER_ID = re.compile(r"cluster_id=(-?\d+)")

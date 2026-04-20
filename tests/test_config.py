@@ -6,7 +6,9 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from citeclaw.config import BudgetTracker, SeedPaper, Settings, load_settings
+from citeclaw.budget import BudgetTracker
+
+from citeclaw.config import SeedPaper, Settings, load_settings
 
 
 # ---------------------------------------------------------------------------

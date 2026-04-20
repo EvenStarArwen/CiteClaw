@@ -26,7 +26,8 @@ from citeclaw.steps._pdf_reference_extractor import (
     split_references,
 )
 from citeclaw.cache import Cache
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 from citeclaw.context import Context
 from citeclaw.models import PaperRecord
 from citeclaw.steps.expand_by_pdf import ExpandByPDF

@@ -9,7 +9,8 @@ from citeclaw.clients.llm.caching import CachingLLMClient
 from citeclaw.clients.llm.gemini import GeminiClient
 from citeclaw.clients.llm.openai_client import OpenAIClient
 from citeclaw.clients.llm.stub import StubClient
-from citeclaw.config import BudgetTracker, ModelEndpoint, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import ModelEndpoint, Settings
 
 if TYPE_CHECKING:
     from citeclaw.cache import Cache

@@ -49,7 +49,7 @@ from citeclaw.clients.llm.base import LLMResponse
 if TYPE_CHECKING:
     from citeclaw.cache import Cache
     from citeclaw.clients.llm.base import LLMClient
-    from citeclaw.config import BudgetTracker
+    from citeclaw.budget import BudgetTracker
 
 log = logging.getLogger("citeclaw.clients.llm.cache")
 

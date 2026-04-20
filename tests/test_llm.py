@@ -14,7 +14,8 @@ import pytest
 from citeclaw.clients.llm.base import LLMResponse
 from citeclaw.clients.llm.factory import build_llm_client, is_stub, supports_logprobs
 from citeclaw.clients.llm.stub import StubClient, stub_respond
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 from citeclaw.filters.atoms.llm_query import LLMFilter
 from citeclaw.models import BudgetExhaustedError, PaperRecord
 from citeclaw.screening import llm_runner
@@ -1171,7 +1172,8 @@ class TestStructuredOutput:
 
     def test_openai_client_passes_response_format(self, tmp_path, monkeypatch):
         from citeclaw.clients.llm.openai_client import OpenAIClient
-        from citeclaw.config import BudgetTracker, Settings
+        from citeclaw.budget import BudgetTracker
+        from citeclaw.config import Settings
 
         captured: dict = {}
 
@@ -1229,7 +1231,8 @@ class TestStructuredOutput:
 
     def test_openai_client_skips_response_format_without_schema(self, tmp_path, monkeypatch):
         from citeclaw.clients.llm.openai_client import OpenAIClient
-        from citeclaw.config import BudgetTracker, Settings
+        from citeclaw.budget import BudgetTracker
+        from citeclaw.config import Settings
 
         captured: dict = {}
 
@@ -1265,7 +1268,8 @@ class TestStructuredOutput:
 
     def test_openai_kill_switch_disables_structured_output(self, tmp_path, monkeypatch):
         from citeclaw.clients.llm.openai_client import OpenAIClient
-        from citeclaw.config import BudgetTracker, Settings
+        from citeclaw.budget import BudgetTracker
+        from citeclaw.config import Settings
 
         captured: dict = {}
 

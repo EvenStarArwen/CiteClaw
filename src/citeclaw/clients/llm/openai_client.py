@@ -18,7 +18,8 @@ from tenacity import (
 )
 
 from citeclaw.clients.llm.base import LLMResponse
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 from citeclaw.models import BudgetExhaustedError
 
 log = logging.getLogger("citeclaw.llm.openai")

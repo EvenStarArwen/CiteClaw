@@ -8,7 +8,7 @@ lookups misreport cost.
 
 from __future__ import annotations
 
-from citeclaw.config import BudgetTracker, MODEL_PRICING
+from citeclaw.budget import BudgetTracker, MODEL_PRICING
 
 
 def test_record_llm_without_model_stays_out_of_by_model():

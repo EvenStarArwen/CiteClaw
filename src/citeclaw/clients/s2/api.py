@@ -13,7 +13,8 @@ from citeclaw.cache import Cache
 from citeclaw.clients.s2.cache_layer import S2CacheLayer
 from citeclaw.clients.s2.converters import edge_to_record, paper_to_record
 from citeclaw.clients.s2.http import BATCH_URL, S2Http
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 from citeclaw.models import PaperRecord, SemanticScholarAPIError
 
 log = logging.getLogger("citeclaw.s2")

@@ -18,7 +18,9 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+
+from citeclaw.config import Settings
 from citeclaw.models import S2OutageError
 
 log = logging.getLogger("citeclaw.s2.http")

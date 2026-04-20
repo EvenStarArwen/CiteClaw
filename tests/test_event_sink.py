@@ -20,7 +20,8 @@ from typing import Any
 import pytest
 
 from citeclaw.cache import Cache
-from citeclaw.config import BudgetTracker, SeedPaper, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import SeedPaper, Settings
 from citeclaw.context import Context
 from citeclaw.event_sink import (
     EventSink,

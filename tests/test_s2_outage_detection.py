@@ -17,7 +17,8 @@ import pytest
 from tenacity import RetryError
 
 from citeclaw.clients.s2.http import S2Http
-from citeclaw.config import BudgetTracker, Settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import Settings
 from citeclaw.models import S2OutageError
 
 

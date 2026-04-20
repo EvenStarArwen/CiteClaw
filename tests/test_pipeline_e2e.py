@@ -20,7 +20,8 @@ import pytest
 import yaml
 
 from citeclaw.cache import Cache
-from citeclaw.config import BudgetTracker, load_settings
+from citeclaw.budget import BudgetTracker
+from citeclaw.config import load_settings
 from citeclaw.context import Context
 from citeclaw.pipeline import run_pipeline
 from tests.fakes import FakeS2Client, build_chain_corpus, make_paper
