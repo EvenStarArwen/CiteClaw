@@ -1,4 +1,23 @@
-"""Data models and domain exceptions."""
+"""Core data shapes, ID normalizers, and the domain exception hierarchy.
+
+This module is the bottom of the dependency graph for the rest of the
+package — every other module imports types from here, so it MUST stay
+free of intra-package imports.
+
+Sections, in order:
+
+  * :class:`PaperSource` / :class:`LLMVerdict` — string constants for the
+    enum-style fields on :class:`PaperRecord`.
+  * :class:`PaperRecord` / :class:`ScreeningResult` — the two pydantic
+    models the pipeline threads through every step.
+  * :func:`normalize_openalex_id` / :func:`normalize_s2_id` — strict
+    parsers that reject malformed IDs at the boundary instead of letting
+    them sail through to the downstream API.
+  * Domain exceptions — :class:`CiteClawError` plus subclasses.
+    :class:`S2OutageError` deliberately subclasses :class:`BaseException`,
+    not :class:`Exception`, so generic ``except Exception`` clauses don't
+    swallow the outage signal; the CLI catches it explicitly.
+"""
 
 from __future__ import annotations
 
@@ -44,6 +63,20 @@ class LLMVerdict(str, enum.Enum):
 # ---------------------------------------------------------------------------
 
 class PaperRecord(BaseModel):
+    """Single-paper record threaded through the entire pipeline.
+
+    The same instance is reused as the unit of work for filters, expansion
+    steps, clustering, reranking, dedup, and output. Fields fall into four
+    groups: bibliographic identity (``paper_id`` + ``external_ids`` +
+    ``aliases``), bibliographic content (``title`` / ``abstract`` /
+    ``authors`` / ``venue`` / ``year`` / ``fields_of_study`` /
+    ``publication_types``), graph signal (``references`` /
+    ``reference_edges`` / ``citation_count`` /
+    ``influential_citation_count`` / ``depth``), and pipeline-state
+    annotations (``source`` / ``llm_verdict`` / ``llm_reasoning`` /
+    ``supporting_papers`` / ``expanded`` / ``pdf_url`` / ``full_text``).
+    """
+
     paper_id: str
     title: str = ""
     abstract: str | None = None
@@ -56,7 +89,7 @@ class PaperRecord(BaseModel):
     # Free-form string label — use :class:`PaperSource` constants for
     # the canonical values. New expansion modes can supply their own
     # string without a model migration.
-    source: str = "backward"
+    source: str = PaperSource.BACKWARD
     llm_verdict: LLMVerdict | None = None
     llm_reasoning: str | None = None
     supporting_papers: list[str] = Field(default_factory=list)
@@ -93,6 +126,17 @@ class PaperRecord(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ScreeningResult(BaseModel):
+    """One LLM verdict on one paper, as returned by the screener.
+
+    ``id`` echoes the paper id the LLM was asked about (the screener uses
+    it to associate verdicts back to records when batching). ``verdict``
+    is the raw string from the model — values are constrained to the
+    members of :class:`LLMVerdict` by the screener's structured-output
+    schema. ``reasoning`` is the model's free-text justification and may
+    be empty when the prompt didn't request it. ``confidence`` is
+    ``None`` for models that don't return calibrated scores.
+    """
+
     id: str
     verdict: str
     reasoning: str = ""
