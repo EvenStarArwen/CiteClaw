@@ -62,24 +62,18 @@ def _build_expand_backward(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
     """Build an ``ExpandBySearch`` step from its YAML dict.
 
-    The ``agent:`` sub-dict is forwarded into ``AgentConfig`` kwargs
-    so users can override any combination of worker/supervisor turns,
-    angle caps, model, reasoning_effort, etc. without learning a
-    second schema.
+    The ``agent:`` sub-dict is passed straight through as a raw
+    mapping. The agent backend is being rewritten; whatever schema it
+    settles on is its own responsibility. The step shell only cares
+    that ``agent`` is a mapping (or omitted).
     """
-    from citeclaw.agents.state import AgentConfig
-
     agent_raw = d.get("agent") or {}
-    if isinstance(agent_raw, AgentConfig):
-        agent_cfg = agent_raw
-    elif isinstance(agent_raw, dict):
-        agent_cfg = AgentConfig(**agent_raw)
-    else:
+    if not isinstance(agent_raw, dict):
         raise ValueError(
             "ExpandBySearch.agent must be a mapping (or omitted to use defaults)"
         )
     return ExpandBySearch(
-        agent=agent_cfg,
+        agent=agent_raw,
         screener=_resolve(d["screener"], blocks) if "screener" in d else None,
         topic_description=d.get("topic_description"),
         max_anchor_papers=int(d.get("max_anchor_papers", 20)),

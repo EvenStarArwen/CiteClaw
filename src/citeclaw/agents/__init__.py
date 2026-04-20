@@ -1,40 +1,8 @@
-"""LLM-driven search agents.
+"""Reserved for the next ExpandBySearch agent backend.
 
-Houses the supervisor/worker two-level agent that powers
-``ExpandBySearch``. The v1 single-loop ``run_iterative_search`` module
-has been removed — recover from git history if needed.
-
-Re-exports the core dataclasses so callers can write
-``from citeclaw.agents import AgentConfig`` without knowing the
-submodule path.
+The v2 supervisor/worker implementation that previously lived here was
+cleared on 2026-04-20 pending a rewrite. The pipeline-side wiring
+(``citeclaw.steps.expand_by_search.ExpandBySearch``) is intact and
+exposes a ``_screen_and_finalize`` helper that the new agent should
+hand its aggregate paper_ids to.
 """
-
-from __future__ import annotations
-
-from citeclaw.agents.state import (
-    AgentConfig,
-    QueryMeta,
-    QueryResult,
-    SearchStrategy,
-    StructuralPriors,
-    SubTopicResult,
-    SubTopicSpec,
-    SupervisorState,
-    WorkerState,
-)
-from citeclaw.agents.supervisor import run_supervisor
-from citeclaw.agents.worker import run_sub_topic_worker
-
-__all__ = [
-    "AgentConfig",
-    "QueryMeta",
-    "QueryResult",
-    "SearchStrategy",
-    "StructuralPriors",
-    "SubTopicResult",
-    "SubTopicSpec",
-    "SupervisorState",
-    "WorkerState",
-    "run_supervisor",
-    "run_sub_topic_worker",
-]
