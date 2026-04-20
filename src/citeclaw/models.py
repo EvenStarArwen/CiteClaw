@@ -174,14 +174,6 @@ class CiteClawError(Exception):
     """Base exception for the citeclaw package."""
 
 
-class LLMParseError(CiteClawError):
-    """Raised when the LLM returns output that cannot be parsed as JSON."""
-
-
-class OpenAlexAPIError(CiteClawError):
-    """Raised on non-retryable OpenAlex API errors."""
-
-
 class SemanticScholarAPIError(CiteClawError):
     """Raised on non-retryable Semantic Scholar API errors."""
 
