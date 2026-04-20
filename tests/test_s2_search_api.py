@@ -293,48 +293,6 @@ class TestSearchMatch:
 
 
 # ---------------------------------------------------------------------------
-# search_relevance
-# ---------------------------------------------------------------------------
-
-
-class TestSearchRelevance:
-    def test_basic_call_shape(self, client: SemanticScholarClient):
-        rec = _Recorder(
-            {
-                "total": 2,
-                "offset": 0,
-                "data": [
-                    {"paperId": "r1", "title": "Result 1"},
-                    {"paperId": "r2", "title": "Result 2"},
-                ],
-            }
-        )
-        rec.install(client)
-
-        result = client.search_relevance("graph neural networks")
-
-        assert rec.last["path"] == "/paper/search"
-        assert rec.last["req_type"] == "search"
-        params = rec.last["params"]
-        assert params["query"] == "graph neural networks"
-        assert params["fields"] == "paperId,title"
-        assert params["limit"] == 100  # default
-        assert params["offset"] == 0  # default
-        assert result["total"] == 2
-        assert len(result["data"]) == 2
-
-    def test_custom_limit_and_offset(self, client: SemanticScholarClient):
-        rec = _Recorder({"data": [], "total": 0, "offset": 50})
-        rec.install(client)
-
-        client.search_relevance("topic", limit=50, offset=50)
-
-        params = rec.last["params"]
-        assert params["limit"] == 50
-        assert params["offset"] == 50
-
-
-# ---------------------------------------------------------------------------
 # fetch_recommendations (PA-02)
 # ---------------------------------------------------------------------------
 
@@ -438,71 +396,6 @@ class TestFetchRecommendations:
         sent = rec.last["json_body"]["positivePaperIds"]
         assert sent == ids
         assert sent is not ids  # was list-copied
-
-
-# ---------------------------------------------------------------------------
-# fetch_recommendations_for_paper (PA-02)
-# ---------------------------------------------------------------------------
-
-
-class TestFetchRecommendationsForPaper:
-    def test_basic_get_call_shape(self, client: SemanticScholarClient):
-        rec = _Recorder(
-            {
-                "recommendedPapers": [
-                    {"paperId": "fp-1", "title": "Forpaper 1"},
-                    {"paperId": "fp-2", "title": "Forpaper 2"},
-                ]
-            }
-        )
-        rec.install_get_url(client)
-
-        result = client.fetch_recommendations_for_paper("anchor")
-
-        assert (
-            rec.last["url"]
-            == "https://api.semanticscholar.org/recommendations/v1/papers/forpaper/anchor"
-        )
-        assert rec.last["req_type"] == "recommendations"
-        params = rec.last["params"]
-        assert params["fields"] == "paperId,title"
-        assert params["limit"] == 100
-        assert len(result) == 2
-        assert result[0]["paperId"] == "fp-1"
-
-    def test_custom_limit_and_fields(self, client: SemanticScholarClient):
-        rec = _Recorder({"recommendedPapers": []})
-        rec.install_get_url(client)
-
-        client.fetch_recommendations_for_paper(
-            "anchor", limit=50, fields="paperId,title,abstract",
-        )
-
-        params = rec.last["params"]
-        assert params["limit"] == 50
-        assert params["fields"] == "paperId,title,abstract"
-
-    def test_url_includes_paper_id(self, client: SemanticScholarClient):
-        rec = _Recorder({"recommendedPapers": []})
-        rec.install_get_url(client)
-
-        client.fetch_recommendations_for_paper("DOI:10.1234/abc")
-
-        assert rec.last["url"].endswith("/forpaper/DOI:10.1234/abc")
-
-    def test_unwraps_envelope(self, client: SemanticScholarClient):
-        rec = _Recorder({"recommendedPapers": [{"paperId": "p"}]})
-        rec.install_get_url(client)
-
-        result = client.fetch_recommendations_for_paper("a")
-
-        assert result == [{"paperId": "p"}]
-
-    def test_returns_empty_list_when_envelope_missing(self, client: SemanticScholarClient):
-        rec = _Recorder({})
-        rec.install_get_url(client)
-
-        assert client.fetch_recommendations_for_paper("a") == []
 
 
 # ---------------------------------------------------------------------------
@@ -777,16 +670,6 @@ class TestUncachedSurfaces:
         client.fetch_recommendations(["anchor"])
 
         assert len(rec.calls) == 2
-
-    def test_fetch_recommendations_for_paper_is_not_cached(self, client: SemanticScholarClient):
-        rec = _Recorder({"recommendedPapers": [{"paperId": "fp-1"}]})
-        rec.install_get_url(client)
-
-        client.fetch_recommendations_for_paper("anchor")
-        client.fetch_recommendations_for_paper("anchor")
-
-        assert len(rec.calls) == 2
-
 
 # ---------------------------------------------------------------------------
 # enrich_batch cache wiring (PH-09)

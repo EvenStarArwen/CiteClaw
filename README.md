@@ -329,7 +329,7 @@ src/citeclaw/
     metrics.py         compute_metric(name, signal, ctx)
     diversity.py       cluster_diverse_top_k (floor-then-proportional)
   clients/
-    s2/                SemanticScholarClient — search_bulk / search_match / search_relevance /
+    s2/                SemanticScholarClient — search_bulk / search_match /
                        fetch_recommendations / fetch_author_papers;
                        split: api.py / http.py / cache_layer.py / converters.py
     llm/               base.py (LLMClient Protocol + LLMResponse), caching.py (CachingLLMClient),

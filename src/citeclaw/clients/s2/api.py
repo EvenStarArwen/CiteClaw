@@ -43,7 +43,6 @@ _MAX_AUTHOR_BATCH = 1000
 # Recommendations API lives outside ``/graph/v1`` so it must be addressed
 # by full URL rather than the BASE_URL-relative path used by ``S2Http.get``.
 RECOMMENDATIONS_BATCH_URL = "https://api.semanticscholar.org/recommendations/v1/papers"
-RECOMMENDATIONS_FORPAPER_URL = "https://api.semanticscholar.org/recommendations/v1/papers/forpaper"
 
 
 class SemanticScholarClient:
@@ -200,27 +199,6 @@ class SemanticScholarClient:
             return data[0]
         return None
 
-    def search_relevance(
-        self,
-        query: str,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> dict[str, Any]:
-        """Relevance-ranked search via ``GET /paper/search``.
-
-        Lighter-weight than :meth:`search_bulk` for exploratory single
-        queries. Returns the raw JSON dict; only ``paperId,title`` are
-        requested. Does NOT cache.
-        """
-        params: dict[str, Any] = {
-            "query": query,
-            "fields": "paperId,title",
-            "limit": limit,
-            "offset": offset,
-        }
-        return self._http.get("/paper/search", params, req_type="search")
-
     # ------------------------------------------------------------------
     # Recommendations (PA-02: powers ExpandBySemantics; no caching, freshness wins)
     # ------------------------------------------------------------------
@@ -250,32 +228,6 @@ class SemanticScholarClient:
             RECOMMENDATIONS_BATCH_URL,
             params={"fields": fields, "limit": limit},
             json_body=body,
-            req_type="recommendations",
-        )
-        if isinstance(result, dict):
-            recs = result.get("recommendedPapers")
-            if isinstance(recs, list):
-                return recs
-        return []
-
-    def fetch_recommendations_for_paper(
-        self,
-        paper_id: str,
-        *,
-        limit: int = 100,
-        fields: str = "paperId,title",
-    ) -> list[dict[str, Any]]:
-        """Single-anchor SPECTER2 kNN via
-        ``GET /recommendations/v1/papers/forpaper/{paper_id}``.
-
-        Convenience wrapper for the common case of "recommendations for
-        ONE paper" — saves callers the boilerplate of wrapping a single
-        id in a list and posting. Returns the unwrapped
-        ``recommendedPapers`` list.
-        """
-        result = self._http.get_url(
-            f"{RECOMMENDATIONS_FORPAPER_URL}/{paper_id}",
-            {"fields": fields, "limit": limit},
             req_type="recommendations",
         )
         if isinstance(result, dict):

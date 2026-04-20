@@ -1,15 +1,11 @@
 """Phase A end-to-end smoke test for the new search surface against
 :class:`tests.fakes.FakeS2Client`.
 
-PA-01..PA-05 added six new methods to the real
-``SemanticScholarClient`` (``search_bulk``, ``search_match``,
-``search_relevance``, ``fetch_recommendations``,
-``fetch_recommendations_for_paper``, ``fetch_author_papers``). Phase B
-and C tests will lean on the offline fake to canned responses for the
-meta-LLM agent and the ``ExpandBy*`` step family. This file is the
-contract test that proves the fake's surface for the four methods PA-10
-extends — ``search_bulk`` / ``search_match`` / ``fetch_recommendations``
-/ ``fetch_author_papers`` — behaves the way downstream test code will
+PA-01..PA-05 added the search/recommendations/author surface to
+``SemanticScholarClient``. This file is the contract test that proves
+the fake's surface for the four methods PA-10 extends —
+``search_bulk`` / ``search_match`` / ``fetch_recommendations`` /
+``fetch_author_papers`` — behaves the way downstream test code will
 assume: registration → canned data, no registration → empty payload in
 the same shape the real client returns.
 
