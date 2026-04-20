@@ -123,6 +123,14 @@ class Cache:
             )
         log.debug("Cache STORE [%s] %s", table, paper_id)
 
+    def _has(self, table: str, paper_id: str, *, key_col: str = "paper_id") -> bool:
+        """SELECT 1 existence check; cheaper than _get for has_*-style lookups."""
+        with self._cursor() as cur:
+            cur.execute(
+                f"SELECT 1 FROM {table} WHERE {key_col} = ? LIMIT 1", (paper_id,)
+            )
+            return cur.fetchone() is not None
+
     # --- public API ---
 
     def get_metadata(self, paper_id: str) -> dict[str, Any] | None:
@@ -145,15 +153,11 @@ class Cache:
 
     def has_references(self, paper_id: str) -> bool:
         """Check if references exist in cache without reading them."""
-        with self._cursor() as cur:
-            cur.execute("SELECT 1 FROM paper_references WHERE paper_id = ? LIMIT 1", (paper_id,))
-            return cur.fetchone() is not None
+        return self._has("paper_references", paper_id)
 
     def has_citations(self, paper_id: str) -> bool:
         """Check if citations exist in cache without reading them."""
-        with self._cursor() as cur:
-            cur.execute("SELECT 1 FROM paper_citations WHERE paper_id = ? LIMIT 1", (paper_id,))
-            return cur.fetchone() is not None
+        return self._has("paper_citations", paper_id)
 
     def get_embedding(self, paper_id: str) -> list[float] | None:
         """Return cached embedding, or None if not cached.
@@ -171,9 +175,7 @@ class Cache:
 
     def has_embedding(self, paper_id: str) -> bool:
         """True if we've recorded a lookup (hit or confirmed miss)."""
-        with self._cursor() as cur:
-            cur.execute("SELECT 1 FROM paper_embeddings WHERE paper_id = ? LIMIT 1", (paper_id,))
-            return cur.fetchone() is not None
+        return self._has("paper_embeddings", paper_id)
 
     def put_embedding(self, paper_id: str, vector: list[float]) -> None:
         """Store an embedding. Pass ``[]`` to record 'confirmed no embedding'."""
@@ -201,9 +203,7 @@ class Cache:
         log.debug("Cache STORE [author_metadata] %s", author_id)
 
     def has_author_metadata(self, author_id: str) -> bool:
-        with self._cursor() as cur:
-            cur.execute("SELECT 1 FROM author_metadata WHERE author_id = ? LIMIT 1", (author_id,))
-            return cur.fetchone() is not None
+        return self._has("author_metadata", author_id, key_col="author_id")
 
     # --- search query results (PA-04) — keyed by hash, TTL-aware ---
 
