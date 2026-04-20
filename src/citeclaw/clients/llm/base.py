@@ -6,6 +6,28 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
+class LLMClientError(Exception):
+    """Base for every LLM-client-side error.
+
+    Concrete clients raise subclasses (currently :class:`LLMConfigError`)
+    so consumers can ``except LLMClientError`` to catch any client-side
+    failure without binding to provider-specific error types. Network /
+    rate-limit errors continue to propagate as the underlying SDK's
+    exception (httpx / google.genai / openai) — those are runtime
+    transients tenacity already handles.
+    """
+
+
+class LLMConfigError(LLMClientError):
+    """Raised when an LLM client is asked to call a model it cannot reach.
+
+    Today this means a missing API key for a SaaS provider; in future
+    could cover unreachable custom endpoints, malformed model aliases,
+    etc. A surface caller can catch this to fail fast with an actionable
+    message rather than letting a network-level error bubble.
+    """
+
+
 @dataclass
 class LLMResponse:
     """Single LLM call result.

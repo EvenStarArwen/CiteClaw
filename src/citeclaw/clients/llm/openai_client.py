@@ -17,7 +17,7 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from citeclaw.clients.llm.base import LLMResponse
+from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
 from citeclaw.models import BudgetExhaustedError
@@ -267,7 +267,7 @@ def _build_openai_sdk(
         )
     api_key = config.openai_api_key
     if not api_key:
-        raise ValueError(
+        raise LLMConfigError(
             f"Model '{config.screening_model}' requires openai_api_key "
             f"(or set llm_base_url for a custom OpenAI-compatible endpoint). "
             f"Set it in config.yaml or OPENAI_API_KEY / CITECLAW_OPENAI_API_KEY env."

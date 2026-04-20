@@ -13,7 +13,7 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from citeclaw.clients.llm.base import LLMResponse
+from citeclaw.clients.llm.base import LLMConfigError, LLMResponse
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
 from citeclaw.models import BudgetExhaustedError
@@ -117,7 +117,7 @@ class GeminiClient:
 
         api_key = self._config.gemini_api_key
         if not api_key:
-            raise ValueError(f"Model '{self._model}' requires gemini_api_key.")
+            raise LLMConfigError(f"Model '{self._model}' requires gemini_api_key.")
 
         client = genai.Client(api_key=api_key)
         gen_config: dict[str, Any] = {
