@@ -39,11 +39,11 @@ def _compute_cluster_params(n: int, *, size_factor: float = 1.0) -> dict[str, in
 
     Three coupled knobs scale together:
 
-    * ``min_cluster_size`` — HDBSCAN's minimum-cluster threshold. Hard-coded
-      to 10 under the old defaults; that collapses every topic into noise
-      on corpora below ~50 papers. Scales as ``n // 30`` clamped to
-      ``[5, 100]``: 5 on small corpora, 100 on large ones so the agent
-      doesn't surface micro-clusters at scale.
+    * ``min_cluster_size`` — HDBSCAN's minimum-cluster threshold. A
+      static value of 10 collapses every topic into noise on corpora
+      below ~50 papers. Scales as ``n // 30`` clamped to ``[5, 100]``:
+      5 on small corpora, 100 on large ones so micro-clusters don't
+      flood at scale.
     * ``min_samples`` — HDBSCAN density strictness. Defaults to
       ``min_cluster_size`` when unset (overly strict); we cap it at 20%
       of ``min_cluster_size`` so ~30% more papers escape the ``-1`` noise
