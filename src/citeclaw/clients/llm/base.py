@@ -1,4 +1,19 @@
-"""LLMClient Protocol and small response container."""
+"""LLMClient Protocol, LLMResponse value type, and the client error hierarchy.
+
+The pipeline never type-checks individual LLM providers — every screener,
+reranker, annotator, and ad-hoc caller goes through the :class:`LLMClient`
+Protocol. Concrete clients live in sibling modules
+(:mod:`citeclaw.clients.llm.openai_client`, :mod:`.gemini`, :mod:`.stub`)
+and the :func:`citeclaw.clients.llm.factory.build_llm_client` factory
+picks one based on the configured model alias.
+
+Errors fall into two layers. Configuration / construction problems
+(missing API key, unreachable endpoint) raise :class:`LLMConfigError`,
+which is catchable as :class:`LLMClientError`. Network / rate-limit
+errors propagate as the underlying SDK's exception (httpx /
+google.genai / openai) — those are runtime transients
+:mod:`tenacity` already handles at the call site.
+"""
 
 from __future__ import annotations
 
@@ -11,37 +26,43 @@ class LLMClientError(Exception):
 
     Concrete clients raise subclasses (currently :class:`LLMConfigError`)
     so consumers can ``except LLMClientError`` to catch any client-side
-    failure without binding to provider-specific error types. Network /
-    rate-limit errors continue to propagate as the underlying SDK's
-    exception (httpx / google.genai / openai) — those are runtime
-    transients tenacity already handles.
+    failure without binding to provider-specific error types.
     """
 
 
 class LLMConfigError(LLMClientError):
-    """Raised when an LLM client is asked to call a model it cannot reach.
+    """Raised when an LLM client cannot reach the requested model.
 
-    Today this means a missing API key for a SaaS provider; in future
-    could cover unreachable custom endpoints, malformed model aliases,
-    etc. A surface caller can catch this to fail fast with an actionable
+    Today this means a missing API key for a SaaS provider; in future it
+    may cover unreachable custom endpoints, malformed model aliases, etc.
+    Surface callers can catch this to fail fast with an actionable
     message rather than letting a network-level error bubble.
     """
 
 
-@dataclass
+@dataclass(frozen=True)
 class LLMResponse:
-    """Single LLM call result.
+    """One LLM call's output, frozen so providers can return shared instances.
 
     ``text`` is the clean assistant answer (the OpenAI ``message.content``
-    field for chat models). ``reasoning_content`` is the model's thinking
-    trace, when the provider exposes it as a separate field — vLLM with
-    a working reasoning parser populates ``message.reasoning``, OpenAI's
-    o-series populates ``completion_tokens_details``, and Gemini 2.5/3
-    surfaces it via ``thinking`` parts on the response. Empty string when
-    the model didn't think or the provider didn't expose it.
+    field for chat models — never None; providers normalise to "" on
+    refusal / empty completion).
 
-    ``logprob_tokens`` is empty for providers that don't expose logprobs
-    (Gemini, reasoning models, stub).
+    ``reasoning_content`` carries the model's thinking trace when the
+    provider exposes it as a separate field: vLLM with a working
+    reasoning parser populates ``message.reasoning``; OpenAI's o-series
+    keeps it inside ``completion_tokens_details`` (token count only, not
+    surfaced); Gemini 2.5/3 surfaces ``thinking`` parts on the response.
+    Empty string when the model didn't think or the provider didn't
+    expose it.
+
+    ``logprob_tokens`` is the per-token log-probability list for
+    providers that support it (OpenAI chat completions —
+    ``logprobs.content``). Empty for providers that don't expose
+    logprobs (Gemini, all reasoning models, the stub). The type is
+    intentionally loose so each provider can pass through its native
+    shape; consumers either iterate looking for ``.token`` / ``.logprob``
+    attributes or JSON-serialise the whole list.
     """
 
     text: str
@@ -51,19 +72,7 @@ class LLMResponse:
 
 @runtime_checkable
 class LLMClient(Protocol):
-    """Provider-agnostic chat-style LLM client.
-
-    All concrete clients (OpenAIClient, GeminiClient, StubClient) implement
-    this single ``call`` method. The screener / reranker / annotator never
-    type-check the provider — they always call ``client.call(...)``.
-
-    ``response_schema`` is an optional JSON Schema dict that the concrete
-    client translates into provider-native structured-output constraints
-    (OpenAI ``response_format={"type": "json_schema", ...}``; Gemini
-    ``response_schema`` + ``response_mime_type="application/json"``). The
-    stub ignores it (its output is already well-formed). Clients that
-    don't support structured output silently fall back to free-form text.
-    """
+    """Provider-agnostic chat-style LLM client."""
 
     def call(
         self,
@@ -73,7 +82,44 @@ class LLMClient(Protocol):
         with_logprobs: bool = False,
         category: str = "other",
         response_schema: dict[str, Any] | None = None,
-    ) -> LLMResponse: ...
+    ) -> LLMResponse:
+        """Run one chat-style completion.
+
+        Parameters
+        ----------
+        system, user
+            Standard chat-completion role contents.
+        with_logprobs
+            Request per-token logprobs in the response. Silently
+            ignored by providers that don't support them — check
+            :attr:`supports_logprobs` if the caller needs to gate
+            behaviour. The returned :attr:`LLMResponse.logprob_tokens`
+            is empty when logprobs are unavailable, regardless of this
+            flag.
+        category
+            Free-form bucket key passed through to
+            :class:`citeclaw.budget.BudgetTracker` for per-category
+            token / call accounting. The default ``"other"`` lands every
+            unattributed call in a single bucket; specialised callers
+            (annotation, PDF reference extraction, screening) pass
+            their own label so the run summary breaks costs down.
+        response_schema
+            Optional JSON Schema dict translated into the provider's
+            native structured-output constraint (OpenAI
+            ``response_format={"type": "json_schema", ...}``; Gemini
+            ``response_schema`` + ``response_mime_type="application/json"``).
+            Stub clients ignore it. Providers without structured-output
+            support fall back to free-form text — the caller is
+            responsible for parsing.
+        """
+        ...
 
     @property
-    def supports_logprobs(self) -> bool: ...
+    def supports_logprobs(self) -> bool:
+        """True iff the provider can return per-token logprobs.
+
+        Used by callers (e.g. confidence calibration) to decide whether
+        to pass ``with_logprobs=True`` at all rather than silently
+        receiving an empty list.
+        """
+        ...
