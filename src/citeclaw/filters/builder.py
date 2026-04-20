@@ -34,10 +34,10 @@ ATOM_TYPES = {
 }
 
 PREDICATE_KEYS = {
-    "venue_in": VenueIn,
-    "venue_preset": VenuePreset,
-    "cit_at_least": CitAtLeast,
-    "year_at_least": YearAtLeast,
+    "VenueIn": VenueIn,
+    "VenuePreset": VenuePreset,
+    "CitAtLeast": CitAtLeast,
+    "YearAtLeast": YearAtLeast,
 }
 
 
@@ -48,9 +48,9 @@ def _build_predicate(d: dict) -> Any:
     cls = PREDICATE_KEYS.get(key)
     if cls is None:
         raise ValueError(f"Unknown predicate {key!r}")
-    if key == "venue_in":
+    if key == "VenueIn":
         return cls(name=key, values=list(val))
-    if key == "venue_preset":
+    if key == "VenuePreset":
         return cls(name=key, presets=list(val))
     return cls(name=key, n=int(val))
 

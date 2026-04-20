@@ -1,11 +1,11 @@
 """Curated venue-name presets for common journal families.
 
-Designed to be used from YAML configs via the ``venue_preset`` Route
+Designed to be used from YAML configs via the ``VenuePreset`` Route
 predicate::
 
-    - if: {venue_preset: ["nature", "science", "cell"]}
+    - if: {VenuePreset: ["nature", "science", "cell"]}
       pass_to: ...
-    - if: {venue_preset: ["preprint"]}
+    - if: {VenuePreset: ["preprint"]}
       pass_to: ...
 
 Matching is normalized (lowercase + whitespace-collapsed) exact match.

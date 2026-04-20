@@ -144,7 +144,7 @@ blocks:
   tiered_cit:
     type: Route
     routes:
-      - if: {venue_in: ["arXiv", "bioRxiv", "medRxiv"]}
+      - if: {VenueIn: ["arXiv", "bioRxiv", "medRxiv"]}
         pass_to: cit_strict
       - default: cit_base
 

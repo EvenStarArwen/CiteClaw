@@ -12,7 +12,7 @@ def _normalize_venue(s: str) -> str:
 
 
 class VenueIn:
-    def __init__(self, name: str = "venue_in", *, values: list[str]) -> None:
+    def __init__(self, name: str = "VenueIn", *, values: list[str]) -> None:
         self.name = name
         self._values = [v.lower() for v in values]
 
@@ -33,7 +33,7 @@ class VenuePreset:
     safer than substring match for large curated lists.
     """
 
-    def __init__(self, name: str = "venue_preset", *, presets: list[str]) -> None:
+    def __init__(self, name: str = "VenuePreset", *, presets: list[str]) -> None:
         self.name = name
         self._presets = list(presets)
         self._venues = {_normalize_venue(v) for v in resolve_presets(self._presets)}
@@ -48,7 +48,7 @@ class VenuePreset:
 
 
 class CitAtLeast:
-    def __init__(self, name: str = "cit_at_least", *, n: int) -> None:
+    def __init__(self, name: str = "CitAtLeast", *, n: int) -> None:
         self.name = name
         self._n = n
 
@@ -59,7 +59,7 @@ class CitAtLeast:
 
 
 class YearAtLeast:
-    def __init__(self, name: str = "year_at_least", *, n: int) -> None:
+    def __init__(self, name: str = "YearAtLeast", *, n: int) -> None:
         self.name = name
         self._n = n
 

@@ -186,7 +186,7 @@ class TestRouteBlock:
             "r": {
                 "type": "Route",
                 "routes": [
-                    {"if": {"venue_in": ["arXiv", "bioRxiv"]}, "pass_to": "cit_strict"},
+                    {"if": {"VenueIn": ["arXiv", "bioRxiv"]}, "pass_to": "cit_strict"},
                     {"default": "cit_loose"},
                 ],
             },
@@ -204,8 +204,8 @@ class TestRouteBlock:
             "r": {
                 "type": "Route",
                 "routes": [
-                    {"if": {"cit_at_least": 100}, "pass_to": "target"},
-                    {"if": {"year_at_least": 2023}, "pass_to": "target"},
+                    {"if": {"CitAtLeast": 100}, "pass_to": "target"},
+                    {"if": {"YearAtLeast": 2023}, "pass_to": "target"},
                 ],
             },
         })
@@ -230,9 +230,9 @@ class TestRouteBlock:
             "r": {
                 "type": "Route",
                 "routes": [
-                    {"if": {"venue_preset": ["nature", "science", "cell"]},
+                    {"if": {"VenuePreset": ["nature", "science", "cell"]},
                      "pass_to": "cit_loose"},
-                    {"if": {"venue_preset": ["preprint"]},
+                    {"if": {"VenuePreset": ["preprint"]},
                      "pass_to": "cit_strict"},
                     {"default": "cit_loose"},
                 ],
