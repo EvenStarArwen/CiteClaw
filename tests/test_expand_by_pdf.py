@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from citeclaw.agents.pdf_reference_extractor import (
+from citeclaw.steps._pdf_reference_extractor import (
     ExtractedReference,
     Mention,
     PdfExtractionResult,
@@ -96,7 +96,7 @@ class TestJsonSalvage:
     """Test _try_salvage_json for truncated LLM output."""
 
     def test_salvage_one_complete_ref(self):
-        from citeclaw.agents.pdf_reference_extractor import _try_salvage_json
+        from citeclaw.steps._pdf_reference_extractor import _try_salvage_json
         truncated = '{"relevant_references": [{"citation_marker": "[1]", "reference_text": "Author. Title. 2023.", "title": "Good Title", "mentions": [{"quote": "Q", "relevance": "R"}], "relevance_explanation": "Relevant"}, {"citation_marker": "[2]", "reference_text": "Trunc'
         result = _try_salvage_json(truncated)
         assert result is not None
@@ -104,12 +104,12 @@ class TestJsonSalvage:
         assert result["relevant_references"][0]["title"] == "Good Title"
 
     def test_salvage_no_json(self):
-        from citeclaw.agents.pdf_reference_extractor import _try_salvage_json
+        from citeclaw.steps._pdf_reference_extractor import _try_salvage_json
         assert _try_salvage_json("not json at all") is None
         assert _try_salvage_json("") is None
 
     def test_salvage_complete_json(self):
-        from citeclaw.agents.pdf_reference_extractor import _try_salvage_json
+        from citeclaw.steps._pdf_reference_extractor import _try_salvage_json
         complete = json.dumps({"relevant_references": [
             {"citation_marker": "[1]", "reference_text": "X", "title": "T",
              "mentions": [], "relevance_explanation": "Y"}
