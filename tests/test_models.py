@@ -7,7 +7,6 @@ import pytest
 from citeclaw.models import (
     BudgetExhaustedError,
     CiteClawError,
-    FilterResult,
     LLMVerdict,
     PaperRecord,
     PaperSource,
@@ -168,11 +167,6 @@ class TestScreeningResult:
 
 
 class TestEnums:
-    def test_filter_result(self):
-        assert FilterResult.SKIP.value == "skip"
-        assert FilterResult.REJECT.value == "reject"
-        assert FilterResult.PENDING_LLM.value == "pending_llm"
-
     def test_paper_source(self):
         # PA-07: PaperSource is a constants namespace, not an enum.
         assert PaperSource.SEED == "seed"

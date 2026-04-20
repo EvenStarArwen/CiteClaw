@@ -13,12 +13,6 @@ from pydantic import BaseModel, Field
 # Enums
 # ---------------------------------------------------------------------------
 
-class FilterResult(enum.Enum):
-    SKIP = "skip"
-    REJECT = "reject"
-    PENDING_LLM = "pending_llm"
-
-
 class PaperSource:
     """String constants for the ``PaperRecord.source`` field.
 
