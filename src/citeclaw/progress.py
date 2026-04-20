@@ -121,26 +121,6 @@ def stat_line(label: str, value: str) -> None:
     console.print(f"    [dim]{label}:[/] [metric]{value}[/]")
 
 
-def paper_accepted(
-    title: str,
-    citations: int | None,
-    year: int | None,
-    venue: str | None = None,
-    mdr: float | None = None,
-    confidence: float | None = None,
-) -> None:
-    """Print a compact accepted-paper line via rich (legacy helper)."""
-    t = f"{(title or '')[:55]:<55}"
-    c = str(citations) if citations is not None else "?"
-    y = str(year) if year is not None else "?"
-    v = f"  {venue[:30]}" if venue else ""
-    m = f"  mdr={mdr:.2f}" if mdr is not None else ""
-    cf = f"  conf={confidence:.2f}" if confidence is not None else ""
-    console.print(
-        f"  [bright_green]✓[/] {t}  [dim]cit={c:<5} yr={y:<4}{cf}{m}{v}[/]"
-    )
-
-
 # ── active-dashboard ContextVar (used by S2 retry callback) ────────────────
 
 _active_dashboard: contextvars.ContextVar[Optional["DashboardLike"]] = contextvars.ContextVar(
