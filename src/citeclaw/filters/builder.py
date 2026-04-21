@@ -1,7 +1,28 @@
 """Block builder: turn raw block dicts into Filter instances.
 
-Topological build: each name resolves on demand, recursively. Cycle protection
-via an "in-progress" set raises a clear error.
+The user describes filters in YAML as a flat ``{name: {type: ..., ...}}``
+mapping; :func:`build_blocks` walks that mapping and produces a parallel
+``{name: Filter}`` dict that the pipeline (and other blocks) can
+reference by name.
+
+Resolution is *lazy + topological*. A compositor block (Sequential, Any,
+Not, Route) may name another block by string in its ``layers:`` /
+``layer:`` / ``pass_to:`` field; the builder resolves each reference on
+first use, caches the result, and detects cycles via an in-progress
+set. Inline anonymous blocks (a dict where a name was expected) are
+also legal — they get a synthesised name like ``"parent.layer0"`` for
+debugging.
+
+Two registries plug new filter types into the builder:
+
+* :data:`ATOM_TYPES` — leaf filter classes (`YearFilter`, `CitationFilter`,
+  `LLMFilter`, the keyword filters).
+* :data:`PREDICATE_KEYS` — Route-predicate classes (`VenueIn`,
+  `VenuePreset`, `CitAtLeast`, `YearAtLeast`).
+
+Compositor blocks (Sequential / Any / Not / Route / SimilarityFilter)
+are dispatched directly in :func:`_build_one` because each has a
+distinct schema.
 """
 
 from __future__ import annotations
@@ -40,8 +61,22 @@ PREDICATE_KEYS = {
     "YearAtLeast": YearAtLeast,
 }
 
+# Compositor blocks that take an identical ``layers: [...]`` schema.
+# Keyed by YAML ``type:`` discriminator.
+_LAYERED_BLOCKS = {
+    "Sequential": Sequential,
+    "Any": Any_,
+}
+
 
 def _build_predicate(d: dict) -> Any:
+    """Build one Route predicate from a single-key YAML dict.
+
+    The predicate dict must contain exactly one entry whose key is in
+    :data:`PREDICATE_KEYS`. Value shape varies per predicate:
+    ``VenueIn`` and ``VenuePreset`` take a list; ``CitAtLeast`` /
+    ``YearAtLeast`` take an int.
+    """
     if not isinstance(d, dict) or len(d) != 1:
         raise ValueError(f"Predicate must be one-key dict, got {d!r}")
     key, val = next(iter(d.items()))
@@ -56,6 +91,7 @@ def _build_predicate(d: dict) -> Any:
 
 
 def _build_measure(d: dict) -> Any:
+    """Build one SimilarityMeasure from a ``{type: ..., ...}`` dict."""
     if not isinstance(d, dict) or "type" not in d:
         raise ValueError(f"Measure must be a dict with 'type', got {d!r}")
     cls = MEASURE_TYPES.get(d["type"])
@@ -66,6 +102,13 @@ def _build_measure(d: dict) -> Any:
 
 
 def build_blocks(raw: dict[str, dict]) -> dict[str, Any]:
+    """Build the ``{name: Filter}`` dict from raw YAML block definitions.
+
+    See module docstring for the lazy / topological resolution strategy.
+    Cycles raise :class:`ValueError`; references to undefined block
+    names raise :class:`KeyError`; unknown block types raise
+    :class:`ValueError`.
+    """
     built: dict[str, Any] = {}
     in_progress: set[str] = set()
 
@@ -89,12 +132,13 @@ def build_blocks(raw: dict[str, dict]) -> dict[str, Any]:
         t = d.get("type")
         if t is None:
             raise ValueError(f"Block {name!r} missing 'type'")
-        if t == "Sequential":
-            layers = [resolve(x, f"{name}.layer{i}") for i, x in enumerate(d.get("layers", []))]
-            return Sequential(name=name, layers=layers)
-        if t == "Any":
-            layers = [resolve(x, f"{name}.layer{i}") for i, x in enumerate(d.get("layers", []))]
-            return Any_(name=name, layers=layers)
+        if t in _LAYERED_BLOCKS:
+            cls = _LAYERED_BLOCKS[t]
+            layers = [
+                resolve(x, f"{name}.layer{i}")
+                for i, x in enumerate(d.get("layers", []) or [])
+            ]
+            return cls(name=name, layers=layers)
         if t == "Not":
             if "layer" not in d:
                 raise ValueError(f"Not block {name!r} requires 'layer:' (singular)")
