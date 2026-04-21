@@ -74,6 +74,26 @@ class ExpandByAuthor:
         author_metric: str = "degree_in_collab_graph",
         papers_per_author: int = 50,
     ) -> None:
+        """Configure author-graph traversal.
+
+        Parameters
+        ----------
+        screener:
+            Filter block for candidate papers. ``None`` is a no-op
+            (returns empty + ``reason="no screener"``).
+        top_k_authors:
+            How many distinct authors to pull papers from per run.
+        author_metric:
+            One of ``"h_index"`` / ``"citation_count"`` /
+            ``"degree_in_collab_graph"``. The first two pull from S2
+            author metadata; the third builds an inline collaboration
+            graph over the input signal and ranks by node degree.
+            Invalid values raise :class:`ValueError` immediately so
+            YAML typos fail fast.
+        papers_per_author:
+            S2-side cap on `fetch_author_papers` per chosen author —
+            keeps prolific authors from blowing the budget.
+        """
         if author_metric not in _VALID_METRICS:
             raise ValueError(
                 f"ExpandByAuthor.author_metric must be one of "
@@ -138,6 +158,19 @@ class ExpandByAuthor:
         return {aid: float(deg_by_key.get(aid, 0)) for aid in author_ids}
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
+        """Author-rank → fetch top-K author papers → shared screen pipeline.
+
+        Eight-step flow (full numbered list in the module docstring):
+        idempotency check → collect distinct authorIds → batch-fetch
+        author metadata → score by ``author_metric`` → take top-K →
+        per-author `fetch_author_papers` (continues on individual
+        failures, WARNING-logged) → shared
+        :func:`~citeclaw.steps._expand_helpers.screen_expand_candidates`
+        pipeline → mark fingerprint. The ``fetch_authors_batch`` and
+        per-author fetch failures all log at WARNING and degrade
+        gracefully (empty result / skip the author) rather than
+        aborting the pipeline.
+        """
         if self.screener is None:
             return StepResult(
                 signal=[],
