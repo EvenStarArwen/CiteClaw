@@ -67,14 +67,31 @@ def _largest_remainder_allocate(
     return alloc
 
 
-def cluster_diverse_top_k(
-    signal: list[PaperRecord],
-    scores: dict[str, float],
-    ctx,
-    k: int,
-    cfg: dict | str,
+def _plain_top_k(
+    signal: list[PaperRecord], scores: dict[str, float], k: int,
 ) -> list[PaperRecord]:
-    """Top-K with stratified selection: >=1 per cluster (floor), then proportional."""
+    """Plain top-K fallback when there's no usable cluster signal.
+
+    Used when (a) ``membership`` is empty altogether, or (b) every
+    paper landed in the noise bucket. Papers without a score default
+    to 0 so the sort is total-order-stable.
+    """
+    ranked = sorted(signal, key=lambda p: scores.get(p.paper_id, 0), reverse=True)
+    return ranked[:k]
+
+
+def _resolve_membership(
+    cfg: dict | str, signal: list[PaperRecord], ctx,
+) -> dict[str, int]:
+    """Pick the right ``{paper_id -> cluster_id}`` source for ``cfg``.
+
+    ``cfg`` may be ``{"cluster": "<store_as>"}`` (look up in
+    ``ctx.clusters``) or any other shape that
+    :func:`citeclaw.cluster.build_clusterer` accepts (build inline +
+    run on the signal). Raises :class:`ValueError` when the named
+    cluster doesn't exist so a config typo fails fast rather than
+    silently degrading to plain top-K.
+    """
     if isinstance(cfg, dict) and "cluster" in cfg:
         name = cfg["cluster"]
         result = ctx.clusters.get(name)
@@ -83,16 +100,46 @@ def cluster_diverse_top_k(
                 f"Rerank diversity references unknown cluster {name!r}; "
                 f"add a Cluster step earlier in the pipeline that stores it"
             )
-        membership = result.membership
-    else:
-        clusterer = build_clusterer(cfg)
-        result = clusterer.cluster(signal, ctx)
-        membership = result.membership
+        return result.membership
+    clusterer = build_clusterer(cfg)
+    return clusterer.cluster(signal, ctx).membership
+
+
+def cluster_diverse_top_k(
+    signal: list[PaperRecord],
+    scores: dict[str, float],
+    ctx,
+    k: int,
+    cfg: dict | str,
+) -> list[PaperRecord]:
+    """Top-K with stratified selection: >=1 per cluster, then proportional.
+
+    Algorithm:
+
+    1. Resolve a ``{paper_id -> cluster_id}`` map from ``cfg`` (either
+       a previously-stored cluster reference or an inline build).
+    2. If no usable cluster signal exists → plain top-K fallback.
+    3. Group signal papers by cluster id (skipping noise = -1) and
+       sort each group descending by score.
+    4. Allocate slots:
+       - **k <= n_clusters**: pick the k largest clusters, one slot each.
+         Smaller clusters and noise papers fall through to the
+         leftover-fill at the bottom.
+       - **k > n_clusters**: floor 1 slot per cluster, then distribute
+         the surplus ``(k - n_clusters)`` proportionally to cluster
+         size via Hamilton's largest-remainder method (capped by
+         per-cluster size).
+    5. Take the top-N papers from each cluster per its allocation.
+    6. Leftover fill: if step 5 produced fewer than k papers (some
+       clusters didn't fill their quota or were shut out by step 4a),
+       mop up the highest-scored remaining papers across the whole
+       signal — noise papers (-1) are eligible here so they aren't
+       permanently locked out.
+    """
+    membership = _resolve_membership(cfg, signal, ctx)
 
     if not membership:
-        # Fallback: plain top-k
-        ranked = sorted(signal, key=lambda p: scores.get(p.paper_id, 0), reverse=True)
-        return ranked[:k]
+        return _plain_top_k(signal, scores, k)
 
     by_comm: dict[int, list[PaperRecord]] = {}
     for p in signal:
@@ -107,8 +154,7 @@ def cluster_diverse_top_k(
 
     if not by_comm:
         # Every paper landed in -1 (noise). Fall back to plain top-k.
-        ranked = sorted(signal, key=lambda p: scores.get(p.paper_id, 0), reverse=True)
-        return ranked[:k]
+        return _plain_top_k(signal, scores, k)
 
     # Allocation in two phases:
     #   Phase A — reserve 1 slot per cluster (the floor that the user wants).
