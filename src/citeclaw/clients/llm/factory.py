@@ -16,8 +16,12 @@ if TYPE_CHECKING:
     from citeclaw.cache import Cache
 
 
+_STUB_MODEL = "stub"
+
+
 def is_stub(config: Settings) -> bool:
-    return (config.screening_model or "").strip().lower() == "stub"
+    """True iff the configured ``screening_model`` is the offline stub."""
+    return (config.screening_model or "").strip().lower() == _STUB_MODEL
 
 
 def _build_registry_client(
@@ -82,7 +86,7 @@ def build_llm_client(
     so repeat calls skip the model entirely and pay zero tokens.
     """
     effective_model = (model or config.screening_model or "").strip()
-    if effective_model.lower() == "stub":
+    if effective_model.lower() == _STUB_MODEL:
         # Stub responses are deterministic and free; no point caching.
         return StubClient(config, budget, model=model, reasoning_effort=reasoning_effort)
 
@@ -116,4 +120,9 @@ def build_llm_client(
 
 
 def supports_logprobs(client: LLMClient) -> bool:
+    """True iff ``client`` is willing to return per-token logprobs.
+
+    Defensive ``getattr`` so duck-typed test stand-ins that don't
+    implement the property don't trip an AttributeError.
+    """
     return bool(getattr(client, "supports_logprobs", False))
