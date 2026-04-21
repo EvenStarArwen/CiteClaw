@@ -117,19 +117,29 @@ class PdfClawBridge:
         return None
 
     def close(self) -> None:
-        """Release browser and HTTP resources."""
+        """Release browser and HTTP resources.
+
+        Both the browser context exit and the http-client close can
+        legitimately raise during interpreter shutdown (playwright and
+        httpx can each fail to talk to their event loops at that
+        point). The bridge's contract is "must not propagate" —
+        consumers rely on ``with PdfClawBridge(...) as b: ...`` or a
+        bare ``b.close()`` in a finally block, neither of which tolerate
+        a close failure. DEBUG logs give a diagnostic trail without
+        breaking shutdown.
+        """
         if self._browser_ctx_manager is not None:
             try:
                 self._browser_ctx_manager.__exit__(None, None, None)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                log.debug("pdfclaw browser context exit failed: %s", exc)
             self._browser_ctx_manager = None
             self._browser_page = None
         if self._http is not None:
             try:
                 self._http.close()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                log.debug("pdfclaw bridge http client close failed: %s", exc)
 
     def __enter__(self):
         return self
