@@ -34,6 +34,32 @@ _EXTRAS_HINT = (
 )
 
 
+def _split_by_embedding(
+    ids: list[str],
+    embeddings_by_id: dict[str, list[float] | None],
+) -> tuple[list[str], list[list[float]], list[str]]:
+    """Split ``ids`` into ``(kept_ids, kept_vectors, missing_ids)``.
+
+    Truthy embedding values land in the kept lists; missing keys or
+    empty / ``None`` vectors land in ``missing``. Used by both the
+    free :func:`cluster_embeddings` function and the full
+    :class:`TopicModelClusterer` pipeline so the "papers without
+    SPECTER2 vectors → noise" split stays consistent across both
+    entry points.
+    """
+    kept_ids: list[str] = []
+    kept_vectors: list[list[float]] = []
+    missing: list[str] = []
+    for pid in ids:
+        v = embeddings_by_id.get(pid)
+        if v:
+            kept_ids.append(pid)
+            kept_vectors.append(v)
+        else:
+            missing.append(pid)
+    return kept_ids, kept_vectors, missing
+
+
 def _compute_cluster_params(n: int, *, size_factor: float = 1.0) -> dict[str, int]:
     """Adaptive UMAP + HDBSCAN parameters tuned to corpus size ``n``.
 
@@ -108,16 +134,7 @@ def cluster_embeddings(
     if not ids:
         return {}, {"min_cluster_size": 0, "min_samples": 0, "n_neighbors": 0}
 
-    kept_ids: list[str] = []
-    kept_vectors: list[list[float]] = []
-    missing: list[str] = []
-    for pid in ids:
-        v = embeddings_by_id.get(pid)
-        if v:
-            kept_ids.append(pid)
-            kept_vectors.append(v)
-        else:
-            missing.append(pid)
+    kept_ids, kept_vectors, missing = _split_by_embedding(ids, embeddings_by_id)
 
     membership: dict[str, int] = {pid: -1 for pid in missing}
 
@@ -179,6 +196,21 @@ def cluster_embeddings(
 
 
 class TopicModelClusterer:
+    """Cluster papers via UMAP-on-SPECTER2 → HDBSCAN.
+
+    Operates on whatever ``signal`` papers the pipeline supplies; the
+    embeddings come from S2's ``paper_embeddings`` cache (warmed by a
+    single batch fetch in :meth:`cluster`), so a typical run is
+    network-free after the first invocation.
+
+    All UMAP / HDBSCAN hyperparameters can be pinned via the
+    constructor; passing ``None`` (the default) for
+    ``min_cluster_size`` / ``min_samples`` / ``n_neighbors`` activates
+    the size-aware adaptive defaults from
+    :func:`_compute_cluster_params` so small corpora don't collapse
+    into all-noise. Hand-set values always win.
+    """
+
     name = "topic_model"
 
     def __init__(
@@ -213,6 +245,18 @@ class TopicModelClusterer:
         self.size_factor = size_factor
 
     def cluster(self, signal, ctx) -> ClusterResult:
+        """Fetch SPECTER2 embeddings and cluster them via UMAP → HDBSCAN.
+
+        Seven-step pipeline: (1) batch-fetch embeddings from the S2
+        client (cache-warm — only newly-seen IDs hit the network),
+        (2) split papers by embedding availability, (3) short-circuit
+        to all-noise when there are fewer papers than
+        ``min_cluster_size``, (4) UMAP-reduce to ``n_components``
+        dims, (5) HDBSCAN with the effective parameters resolved from
+        adaptive + caller overrides, (6) build the ``paper_id → cid``
+        map (``-1`` for noise and papers without embeddings), (7)
+        derive per-cluster sizes (excluding noise).
+        """
         try:
             import numpy as np
             import umap
@@ -229,16 +273,7 @@ class TopicModelClusterer:
 
         # 2. Split into vectors-we-have vs vectors-we-don't. Papers with no
         #    embedding can't be clustered, so they all go to cluster -1.
-        kept_ids: list[str] = []
-        kept_vectors: list[list[float]] = []
-        missing: list[str] = []
-        for pid in ids:
-            v = embeddings.get(pid)
-            if v:
-                kept_ids.append(pid)
-                kept_vectors.append(v)
-            else:
-                missing.append(pid)
+        kept_ids, kept_vectors, missing = _split_by_embedding(ids, embeddings)
         if missing:
             log.warning(
                 "topic_model: %d/%d papers have no SPECTER2 embedding; "
