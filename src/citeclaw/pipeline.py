@@ -1,4 +1,31 @@
-"""Pipeline orchestrator: build a Context, run the configured Step list."""
+"""Pipeline orchestrator — build a :class:`Context` + run the configured steps.
+
+Public surface:
+
+* :func:`build_context` — construct the Context + S2 client + cache
+  triple from a :class:`Settings`. Used by the CLI before
+  :func:`run_pipeline` and by the resume path.
+* :func:`run_pipeline` — main entry point. Takes a built Context,
+  walks ``cfg.pipeline`` step-by-step, records :class:`ShapeLog` rows,
+  injects a :class:`MergeDuplicates` before :class:`Finalize` if not
+  already present, and writes ``shape_summary.{txt,json}``.
+* :func:`finalize_partial` — Ctrl-C / KeyboardInterrupt safety net
+  used by the CLI to ensure a partial run still flushes
+  ``literature_collection.json`` / ``run_state.json`` before exit.
+
+Internal helpers (underscore-prefixed):
+
+* :func:`_block_contains_similarity_filter` / :func:`_warn_similarity_in_sourceless_steps`
+  — pre-flight warning when a SimilarityFilter would silently
+  degrade in a source-less ExpandBy* step.
+* :func:`_ensure_merge_duplicates` — auto-injects a default-config
+  :class:`MergeDuplicates` immediately before :class:`Finalize` when
+  the user's YAML doesn't list one explicitly. Documented in
+  CLAUDE.md as the "auto-injection" rule.
+* :func:`_build_dashboard` / :func:`_describe_step` — TUI helpers.
+* :func:`_run_injected_finalize` — single-Finalize entry point used
+  by both the explicit-Finalize and auto-injected paths.
+"""
 
 from __future__ import annotations
 
@@ -39,6 +66,14 @@ _SOURCELESS_STEP_NAMES = frozenset({
 
 
 def build_context(config: Settings) -> tuple[Context, SemanticScholarClient, Cache]:
+    """Construct a fresh ``(Context, SemanticScholarClient, Cache)`` triple.
+
+    Single instance of each — the pipeline shares one Cache across the
+    SemanticScholarClient (read-through) and any later writers (Finalize
+    enrichment, fetch-pdfs CLI). The S2 client is what
+    ``--continue-from`` resumes against, so it must be the same instance
+    that runs the next pipeline pass.
+    """
     budget = BudgetTracker()
     cache = Cache(config.data_dir / "cache.db")
     s2 = SemanticScholarClient(config, cache, budget)
@@ -396,4 +431,12 @@ def run_pipeline(
 
 
 def finalize_partial(ctx: Context) -> None:
+    """Force a Finalize over whatever ``ctx`` already holds.
+
+    Called by the CLI's signal handler (Ctrl-C / SIGTERM) so a
+    partial pipeline run still flushes ``literature_collection.json``
+    and ``run_state.json`` to disk before the process exits — the
+    user can then resume with ``--continue-from`` rather than losing
+    everything that was screened so far.
+    """
     Finalize().run([], ctx)
