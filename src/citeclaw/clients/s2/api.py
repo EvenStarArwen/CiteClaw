@@ -1,4 +1,30 @@
-"""SemanticScholarClient — public methods composing http + cache + converters."""
+"""SemanticScholarClient — the high-level S2 surface composed from
+:mod:`citeclaw.clients.s2.http` (rate-limited transport),
+:mod:`citeclaw.clients.s2.cache_layer` (read-through SQLite cache),
+and :mod:`citeclaw.clients.s2.converters` (raw-JSON → PaperRecord).
+
+Twelve public methods, grouped in this file by concern:
+
+* Single-paper metadata: ``fetch_metadata``
+* Search: ``search_bulk`` / ``search_match``
+* Recommendations (SPECTER2 kNN): ``fetch_recommendations``
+* References: ``fetch_references`` / ``fetch_reference_ids`` /
+  ``fetch_reference_edges`` / ``cached_reference_ids`` /
+  ``has_cached_references``
+* Citations: ``fetch_citation_ids_and_counts`` /
+  ``fetch_citation_edges`` / ``has_cached_citations``
+* Batch / enrichment: ``enrich_batch`` / ``enrich_with_abstracts``
+* Embeddings (SPECTER2 vectors): ``fetch_embedding`` /
+  ``fetch_embeddings_batch`` / ``has_cached_embedding``
+* Authors: ``fetch_authors_batch`` / ``fetch_author_papers``
+* Lifecycle: ``close``
+
+The cache-first pattern is uniform: every ``fetch_*`` consults the
+SQLite cache before issuing a network request, and the network result
+is persisted on the way out. Edge methods (``fetch_*_edges``) read from
+the same cache that ``fetch_references`` / ``fetch_citation_ids_and_counts``
+populated — they NEVER trigger a fresh fetch.
+"""
 
 from __future__ import annotations
 
@@ -279,22 +305,11 @@ class SemanticScholarClient:
         cached entry pre-dates the edge-metadata field expansion, the rich
         fields come back empty / False — we never re-fetch.
         """
-        cached = self._cache.get_references(paper_id)
-        if cached is None:
-            return []
-        out: list[dict[str, Any]] = []
-        for e in cached:
-            inner = e.get("citedPaper") or {}
-            tid = inner.get("paperId")
-            if not tid:
-                continue
-            out.append({
-                "target_id": tid,
-                "contexts": e.get("contexts") or [],
-                "intents": e.get("intents") or [],
-                "is_influential": bool(e.get("isInfluential", False)),
-            })
-        return out
+        return self._edges_from_cached(
+            self._cache.get_references(paper_id),
+            inner_key="citedPaper",
+            output_key="target_id",
+        )
 
     def has_cached_references(self, paper_id: str) -> bool:
         return self._cache.has_references(paper_id)
@@ -352,17 +367,38 @@ class SemanticScholarClient:
         edge-metadata field expansion, the rich fields come back empty /
         False — we never re-fetch.
         """
-        cached = self._cache.get_citations(paper_id)
+        return self._edges_from_cached(
+            self._cache.get_citations(paper_id),
+            inner_key="citingPaper",
+            output_key="source_id",
+        )
+
+    @staticmethod
+    def _edges_from_cached(
+        cached: list[dict[str, Any]] | None,
+        *,
+        inner_key: str,
+        output_key: str,
+    ) -> list[dict[str, Any]]:
+        """Project a cached reference / citation list to ``[{<output_key>, contexts, intents, is_influential}, ...]``.
+
+        ``inner_key`` is ``"citedPaper"`` for references or
+        ``"citingPaper"`` for forward citations; ``output_key`` is the
+        public field name the caller wants on each edge dict
+        (``"target_id"`` / ``"source_id"``). Returns ``[]`` when the
+        cache is empty (``None``) — no network fetch is triggered.
+        Edges whose inner paper lacks a ``paperId`` are dropped.
+        """
         if cached is None:
             return []
         out: list[dict[str, Any]] = []
         for e in cached:
-            inner = e.get("citingPaper") or {}
-            sid = inner.get("paperId")
-            if not sid:
+            inner = e.get(inner_key) or {}
+            pid = inner.get("paperId")
+            if not pid:
                 continue
             out.append({
-                "source_id": sid,
+                output_key: pid,
                 "contexts": e.get("contexts") or [],
                 "intents": e.get("intents") or [],
                 "is_influential": bool(e.get("isInfluential", False)),
@@ -386,13 +422,7 @@ class SemanticScholarClient:
         for rec in needs:
             cached = self._cache.get_metadata(rec.paper_id)
             if cached and cached.get("abstract"):
-                rec.abstract = cached["abstract"]
-                if not rec.venue and cached.get("venue"):
-                    rec.venue = cached["venue"]
-                if rec.citation_count is None and cached.get("citationCount") is not None:
-                    rec.citation_count = cached["citationCount"]
-                if rec.year is None and cached.get("year") is not None:
-                    rec.year = cached["year"]
+                self._apply_metadata_patch(rec, cached)
             else:
                 still_missing.append(rec)
 
@@ -408,14 +438,7 @@ class SemanticScholarClient:
             if not data:
                 continue
             self._cache.put_metadata(rec.paper_id, data)
-            if data.get("abstract"):
-                rec.abstract = data["abstract"]
-            if not rec.venue and data.get("venue"):
-                rec.venue = data["venue"]
-            if rec.citation_count is None and data.get("citationCount") is not None:
-                rec.citation_count = data["citationCount"]
-            if rec.year is None and data.get("year") is not None:
-                rec.year = data["year"]
+            self._apply_metadata_patch(rec, data)
 
         # 3) OpenAlex fallback for records still missing an abstract. We
         # only attempt this for papers that carry a DOI in external_ids
@@ -431,6 +454,25 @@ class SemanticScholarClient:
             self._openalex_abstract_fallback(oa_needs)
 
         return records
+
+    @staticmethod
+    def _apply_metadata_patch(rec: PaperRecord, source: dict[str, Any]) -> None:
+        """Copy abstract / venue / citationCount / year from ``source`` into ``rec``.
+
+        Only fills fields the record is missing — never overwrites a
+        pre-populated value (the abstract is the exception: any S2-side
+        abstract wins because that's the one the caller asked for).
+        Used twice in :meth:`enrich_with_abstracts` to keep the cache
+        and post-fetch passes byte-identical.
+        """
+        if source.get("abstract"):
+            rec.abstract = source["abstract"]
+        if not rec.venue and source.get("venue"):
+            rec.venue = source["venue"]
+        if rec.citation_count is None and source.get("citationCount") is not None:
+            rec.citation_count = source["citationCount"]
+        if rec.year is None and source.get("year") is not None:
+            rec.year = source["year"]
 
     def _openalex_abstract_fallback(self, records: list[PaperRecord]) -> None:
         """Best-effort fallback: query OpenAlex for abstracts we couldn't
@@ -457,13 +499,19 @@ class SemanticScholarClient:
                 if abstract:
                     rec.abstract = abstract
                     # Also write-through to the metadata cache so rerun
-                    # doesn't re-hit OpenAlex.
+                    # doesn't re-hit OpenAlex. Cache write-failure is
+                    # non-fatal (the in-memory record already has the
+                    # abstract for this run) but log at DEBUG so the
+                    # silent failure leaves a diagnostic trail.
                     try:
                         cached = self._cache.get_metadata(rec.paper_id) or {}
                         cached["abstract"] = abstract
                         self._cache.put_metadata(rec.paper_id, cached)
-                    except Exception:  # noqa: BLE001
-                        pass
+                    except Exception as cache_exc:  # noqa: BLE001
+                        log.debug(
+                            "OpenAlex abstract cache write-through failed for %s: %s",
+                            rec.paper_id[:20], cache_exc,
+                        )
         finally:
             client.close()
 
