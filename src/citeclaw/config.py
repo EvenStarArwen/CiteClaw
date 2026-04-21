@@ -1,4 +1,25 @@
-"""Configuration: globals + raw blocks/pipeline dicts."""
+"""User-facing configuration: YAML loader + pydantic Settings.
+
+Loading flow (driven by :func:`load_settings`):
+
+  1. Read the YAML file (if any), reject API-key fields outright via
+     :data:`_FORBIDDEN_YAML_KEYS` so credentials never end up committed
+     to a config file.
+  2. Apply caller-supplied ``overrides`` (CLI flags) on top of YAML.
+  3. Pull the canonical API-key fields from environment variables (both
+     the prefixed ``CITECLAW_*`` form and the bare ``OPENAI_API_KEY`` /
+     ``GEMINI_API_KEY`` / ``S2_API_KEY`` forms most users have already
+     exported).
+  4. Construct :class:`Settings`. Its ``model_validator`` then builds
+     the filter blocks (:func:`citeclaw.filters.builder.build_blocks`)
+     and the pipeline steps (:func:`citeclaw.steps.build_step`) using
+     the raw block / pipeline dicts from YAML.
+
+The two helper models in this file —  :class:`SeedPaper` and
+:class:`ModelEndpoint` — are pure data containers consumed by the
+pipeline; :class:`Settings` is the single object the rest of the
+package treats as configuration of record.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +30,9 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings
+
+
+_DEFAULT_LLM_REQUEST_TIMEOUT_SEC = 300.0
 
 
 class SeedPaper(BaseModel):
@@ -128,7 +152,22 @@ class ModelEndpoint(BaseModel):
 
 
 class Settings(BaseSettings):
-    # API keys
+    """Single configuration object the pipeline reads from.
+
+    Fields are organised below by purpose (API keys / LLM / budgets /
+    topic + IO / annotation / pipeline schema). The two-section schema
+    (``blocks`` + ``pipeline``) mirrors the YAML layout: callers supply
+    the raw dicts and the ``model_validator`` lazily builds the matching
+    Filter / Step objects via the registries.
+
+    Env-var loading is configured via ``model_config``: anything prefixed
+    with ``CITECLAW_`` is picked up automatically; the bare ``OPENAI_API_KEY``
+    / ``GEMINI_API_KEY`` / ``S2_API_KEY`` forms are also honoured by
+    :func:`load_settings` for compatibility with the global env most users
+    already export.
+    """
+
+    # --- API keys ----------------------------------------------------
     openai_api_key: str = ""
     gemini_api_key: str = ""
     s2_api_key: str = ""
@@ -140,7 +179,7 @@ class Settings(BaseSettings):
     openalex_api_key: str = ""
     openalex_email: str = ""
 
-    # LLM
+    # --- LLM ---------------------------------------------------------
     screening_model: str = "stub"
     # Dedicated model override for the ExpandBySearch supervisor + workers
     # (citeclaw.agents.supervisor / .worker). Empty (the default) means
@@ -152,7 +191,7 @@ class Settings(BaseSettings):
     reasoning_effort: str = ""
     llm_base_url: str = ""
     llm_api_key: str = ""
-    llm_request_timeout: float = 300.0
+    llm_request_timeout: float = _DEFAULT_LLM_REQUEST_TIMEOUT_SEC
     # Per-model endpoint registry. Each key is a YAML alias the user picks
     # (e.g. ``gemma-4-31b``); each value is a :class:`ModelEndpoint`. When
     # a block sets ``model: gemma-4-31b``, the factory looks up that alias
@@ -174,7 +213,7 @@ class Settings(BaseSettings):
     # OpenAI-compatible endpoints (vLLM/Ollama) that don't honor the flag.
     structured_output_enabled: bool = True
 
-    # Budgets / rate limits
+    # --- Budgets / rate limits ---------------------------------------
     s2_rps: float = Field(default=0.9, validation_alias="s2_requests_per_second")
     max_llm_tokens: int = 50_000_000
     max_s2_requests: int = 100_000
@@ -193,19 +232,19 @@ class Settings(BaseSettings):
     # the polite pool happy without aggressive bursts.
     openalex_rps: float = 5.0
 
-    # Topic + IO
+    # --- Topic + IO --------------------------------------------------
     topic_description: str = ""
     data_dir: Path = Path("data")
     seed_papers: list[SeedPaper] = Field(default_factory=list)
 
-    # Annotate hook (used by annotate.py)
+    # --- Annotation hook (annotate.py) -------------------------------
     graph_label_instruction: str = ""
 
-    # Two-section schema
+    # --- Two-section pipeline schema ---------------------------------
     blocks: dict[str, dict] = Field(default_factory=dict)
     pipeline: list[dict] = Field(default_factory=list)
 
-    # Built lazily after validation
+    # --- Built lazily by the validator -------------------------------
     blocks_built: dict = Field(default_factory=dict, exclude=True)
     pipeline_built: list = Field(default_factory=list, exclude=True)
 
@@ -219,7 +258,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _build(self):
-        # Defer to avoid circular imports
+        # Defer the registry imports to avoid the
+        # filters/steps -> config import cycle.
         if self.blocks:
             from citeclaw.filters.builder import build_blocks
             object.__setattr__(self, "blocks_built", build_blocks(self.blocks))
@@ -252,7 +292,20 @@ _FORBIDDEN_YAML_KEYS = {
 }
 
 
+# Bare env-var fallbacks honoured in addition to the ``CITECLAW_`` prefix
+# that ``BaseSettings`` already loads automatically. First non-empty value
+# wins — checked in declaration order.
+_ENV_OVERRIDE_TABLE: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("CITECLAW_OPENAI_API_KEY", "OPENAI_API_KEY"), "openai_api_key"),
+    (("CITECLAW_GEMINI_API_KEY", "GEMINI_API_KEY"), "gemini_api_key"),
+    (("CITECLAW_S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "S2_API_KEY"), "s2_api_key"),
+    (("CITECLAW_OPENALEX_API_KEY", "OPENALEX_API_KEY"), "openalex_api_key"),
+    (("CITECLAW_OPENALEX_EMAIL", "OPENALEX_EMAIL"), "openalex_email"),
+)
+
+
 def _normalize_yaml(raw: dict[str, Any]) -> dict[str, Any]:
+    """Reject API-key fields and return a shallow copy of ``raw``."""
     if not raw:
         return {}
     found = [k for k in raw if k in _FORBIDDEN_YAML_KEYS]
@@ -268,13 +321,8 @@ def _normalize_yaml(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _env_overrides(values: dict[str, Any]) -> None:
-    for env_keys, field in [
-        (("CITECLAW_OPENAI_API_KEY", "OPENAI_API_KEY"), "openai_api_key"),
-        (("CITECLAW_GEMINI_API_KEY", "GEMINI_API_KEY"), "gemini_api_key"),
-        (("CITECLAW_S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "S2_API_KEY"), "s2_api_key"),
-        (("CITECLAW_OPENALEX_API_KEY", "OPENALEX_API_KEY"), "openalex_api_key"),
-        (("CITECLAW_OPENALEX_EMAIL", "OPENALEX_EMAIL"), "openalex_email"),
-    ]:
+    """Fill in API-key fields from non-prefixed env vars when set."""
+    for env_keys, field in _ENV_OVERRIDE_TABLE:
         for k in env_keys:
             v = os.environ.get(k)
             if v:
@@ -282,7 +330,21 @@ def _env_overrides(values: dict[str, Any]) -> None:
                 break
 
 
-def load_settings(config_path: Path | None = None, overrides: dict[str, Any] | None = None) -> Settings:
+def load_settings(
+    config_path: Path | None = None,
+    overrides: dict[str, Any] | None = None,
+) -> Settings:
+    """Load and construct a :class:`Settings` object.
+
+    Reads YAML at ``config_path`` (tolerated as missing or ``None``),
+    applies caller ``overrides`` on top, then fills in API-key fields
+    from environment variables (see :data:`_ENV_OVERRIDE_TABLE`). The
+    final dict is passed to :class:`Settings` whose ``model_validator``
+    builds the filter blocks and pipeline steps.
+
+    Raises :class:`ValueError` when the YAML is not a mapping or
+    contains a forbidden API-key field.
+    """
     values: dict[str, Any] = {}
     if config_path and Path(config_path).exists():
         with open(config_path) as f:
