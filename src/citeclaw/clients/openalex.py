@@ -40,6 +40,25 @@ log = logging.getLogger("citeclaw.openalex")
 
 _BASE_URL = "https://api.openalex.org"
 
+# Prefixes a DOI may carry on the wire. Stripped (case-insensitively, in
+# order) by :func:`_strip_doi_prefixes` to coerce any of these shapes to
+# the bare ``10.xxxx/yyyy`` form that S2's DOI lookup expects.
+_DOI_PREFIXES = ("https://doi.org/", "http://doi.org/", "doi:")
+
+
+def _strip_doi_prefixes(s: str) -> str:
+    """Return ``s`` with any leading DOI URL / ``doi:`` prefix removed.
+
+    Returns the input unchanged when no prefix matches. Lowercase
+    comparison so ``HTTPS://DOI.ORG/...`` is handled the same as the
+    canonical form.
+    """
+    lower = s.lower()
+    for prefix in _DOI_PREFIXES:
+        if lower.startswith(prefix):
+            return s[len(prefix):]
+    return s
+
 
 def _is_retryable(exc: BaseException) -> bool:
     """Match the S2 client's retry policy: transport errors + 429 + 5xx."""
@@ -130,12 +149,7 @@ class OpenAlexClient:
         """
         if not doi:
             return None
-        # Strip any URL prefix users might have passed in.
-        clean = doi.strip()
-        for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
-            if clean.lower().startswith(prefix):
-                clean = clean[len(prefix):]
-                break
+        clean = _strip_doi_prefixes(doi.strip())
         try:
             return self._get(f"/works/doi:{clean}")
         except (httpx.HTTPError, RetryError) as exc:
@@ -190,13 +204,11 @@ class OpenAlexClient:
             ref_doi = ref_work.get("doi")
             if isinstance(ref_doi, str):
                 # OpenAlex DOIs come back as ``https://doi.org/10.xxx/yyy`` —
-                # strip the URL prefix so the caller gets a bare DOI.
-                for prefix in ("https://doi.org/", "http://doi.org/"):
-                    if ref_doi.lower().startswith(prefix):
-                        ref_doi = ref_doi[len(prefix):]
-                        break
-                if ref_doi.startswith("10."):
-                    dois.append(ref_doi)
+                # the helper coerces them to the bare ``10.xxx/yyy`` form S2
+                # consumes.
+                bare = _strip_doi_prefixes(ref_doi)
+                if bare.startswith("10."):
+                    dois.append(bare)
         return dois
 
     def close(self) -> None:
