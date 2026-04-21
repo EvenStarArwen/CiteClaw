@@ -1,4 +1,24 @@
-"""Rerank step — non-destructive: score by metric, optional community-aware diversity."""
+"""``Rerank`` step — score the signal by a named metric and keep top-K.
+
+Non-destructive: ``ctx.collection`` is never modified — Rerank only
+filters the signal it returns. This invariant is what makes
+:class:`~citeclaw.steps.parallel.Parallel` work; one branch can
+rerank-and-forward while another sees the original input untouched.
+
+Two modes:
+
+* **Plain top-K** (``diversity: None``) — sort by score descending,
+  keep the first ``k``.
+* **Cluster-aware diversity** (``diversity: {cluster: <store_as>}``
+  or any other inline-clusterer config) — delegate to
+  :func:`citeclaw.rerank.diversity.cluster_diverse_top_k` for
+  floor-then-proportional allocation across clusters.
+
+Available metrics (registered in :mod:`citeclaw.rerank.metrics`):
+``"citation"`` (raw count) and ``"pagerank"`` (over the full
+``ctx.collection`` graph). Unknown metrics raise :class:`ValueError`
+at runtime so YAML typos surface immediately.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +33,8 @@ log = logging.getLogger("citeclaw.steps.rerank")
 
 
 class Rerank:
+    """Score-then-truncate step with optional cluster-aware diversity."""
+
     name = "Rerank"
 
     def __init__(
@@ -22,6 +44,28 @@ class Rerank:
         k: int = 100,
         diversity: dict | str | None = None,
     ) -> None:
+        """Configure scoring + truncation.
+
+        Parameters
+        ----------
+        metric:
+            Name of a metric registered in
+            :mod:`citeclaw.rerank.metrics` (``"citation"`` /
+            ``"pagerank"``). Unknown names raise :class:`ValueError`
+            at run time, not at construction — by design, so a
+            misconfigured Rerank in a Parallel branch fails when its
+            branch runs rather than at pipeline-build.
+        k:
+            How many top-scored papers to keep.
+        diversity:
+            ``None`` for plain top-K (score → sort → truncate). A
+            ``{"cluster": "<store_as>"}`` dict reuses an upstream
+            Cluster step's stored result; any other dict / string is
+            forwarded to :func:`citeclaw.cluster.build_clusterer` for
+            an inline build. See
+            :func:`citeclaw.rerank.diversity.cluster_diverse_top_k`
+            for the floor-then-proportional algorithm.
+        """
         self.metric = metric
         self.k = k
         self.diversity = diversity  # None = plain top-k
