@@ -1,4 +1,4 @@
-"""LLMFilter atom — yes/no LLM query, scoped to title / abstract / venue.
+"""LLMFilter atom — yes/no LLM query, scoped to title / abstract / venue / full_text.
 
 Note: ``check()`` is implemented but the runner short-circuits and dispatches
 batches via ``screening.llm_runner.dispatch_batch`` for efficiency. ``check()``
@@ -48,13 +48,21 @@ zero-change YAML configs keep working):
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from citeclaw.filters.base import PASS, FilterContext, FilterOutcome
 from citeclaw.models import PaperRecord
+from citeclaw.screening.formula import BooleanFormula, FormulaError
+
+log = logging.getLogger("citeclaw.filters.atoms.llm_query")
+
+_VALID_SCOPES = ("title", "title_abstract", "venue", "full_text")
 
 
 class LLMFilter:
+    """Atom that delegates accept/reject to an LLM call (or a batched fan-out)."""
+
     def __init__(
         self,
         name: str = "llm",
@@ -72,10 +80,9 @@ class LLMFilter:
         # ``full_text`` reads the parsed PDF body when available and
         # falls back to title+abstract for closed-access papers. Wire-up
         # is in ``citeclaw.screening.llm_runner._dispatch_simple``.
-        if scope not in ("title", "title_abstract", "venue", "full_text"):
+        if scope not in _VALID_SCOPES:
             raise ValueError(
-                f"LLMFilter.scope must be title|title_abstract|venue|full_text, "
-                f"got {scope!r}"
+                f"LLMFilter.scope must be one of {_VALID_SCOPES}, got {scope!r}"
             )
         self.scope = scope
         self.model = model
@@ -108,8 +115,6 @@ class LLMFilter:
                 )
             # Parse eagerly so config errors surface at build time, not at
             # first-batch time when the pipeline is already mid-run.
-            from citeclaw.screening.formula import BooleanFormula, FormulaError
-
             try:
                 self._formula = BooleanFormula(formula)
             except FormulaError as exc:
@@ -122,9 +127,7 @@ class LLMFilter:
                 )
             extras = sorted(set(self.queries.keys()) - referenced)
             if extras:
-                # Extra queries are tolerated but worth flagging.
-                import logging
-                logging.getLogger("citeclaw.filters.atoms.llm_query").warning(
+                log.warning(
                     "LLMFilter %r defines unused sub-queries: %s", name, extras,
                 )
         elif self.queries:
@@ -133,15 +136,19 @@ class LLMFilter:
             )
 
     def content_for(self, paper: PaperRecord) -> str:
+        """Return the text fed to the LLM, formatted per the filter's ``scope``.
+
+        ``full_text`` includes the parsed PDF body when ``paper.full_text``
+        is set (by ``PdfFetcher.prefetch`` upstream of dispatch); when the
+        body is missing (closed-access paper) it silently falls back to
+        the same title+abstract layout as the ``title_abstract`` scope so
+        the LLM still has something to read.
+        """
         if self.scope == "title":
             return paper.title or ""
         if self.scope == "venue":
             return paper.venue or ""
         if self.scope == "full_text":
-            # Read the parsed PDF body when present (set by
-            # PdfFetcher.prefetch upstream of dispatch_batch).
-            # Closed-access papers have body=None and fall back to
-            # the abstract so the filter still has something to read.
             body = getattr(paper, "full_text", None)
             if body:
                 return (
@@ -154,7 +161,17 @@ class LLMFilter:
         return f"Title: {paper.title}\nAbstract: {paper.abstract or '(no abstract)'}"
 
     def check(self, paper: PaperRecord, fctx: FilterContext) -> FilterOutcome:
-        # Synchronous fallback path: dispatch a batch of 1.
+        """Synchronous fallback Filter-Protocol path: dispatch a batch of 1.
+
+        The runner's main path goes through ``apply_block`` →
+        ``_apply_llm`` → ``dispatch_batch`` directly so ``check()`` is
+        only reached when an LLMFilter shows up in a path that doesn't
+        recognise the type (e.g. inside a Route predicate's ``pass_to``
+        chain that eventually reaches an atom-style call).
+        """
+        # Local import — ``screening.llm_runner`` imports back from
+        # ``filters.atoms.llm_query`` at module scope, so importing it
+        # at the top of this file would cycle.
         from citeclaw.screening.llm_runner import dispatch_batch
 
         verdicts = dispatch_batch([paper], self, fctx.ctx)
