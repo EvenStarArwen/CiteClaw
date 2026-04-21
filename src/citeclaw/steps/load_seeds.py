@@ -1,4 +1,18 @@
-"""LoadSeeds step — fetch seed paper metadata and add to ctx.collection."""
+"""``LoadSeeds`` step — fetch seed paper metadata and seed ``ctx.collection``.
+
+This is the first step of every pipeline. It reads the resolved seed
+IDs (from an upstream :class:`~citeclaw.steps.resolve_seeds.ResolveSeeds`
+when present, falling back to ``Settings.seed_papers``), fetches each
+paper's metadata via the S2 client, stamps ``depth=0`` /
+``source="seed"`` / ``llm_verdict="accept_seed"``, and adds them to
+``ctx.collection`` / ``ctx.seen`` / ``ctx.seed_ids``. Returns the
+loaded records as the next step's input signal.
+
+Per-seed S2 errors are logged at ERROR (not silent) and the seed is
+skipped — one bad DOI doesn't abort the whole run. Seeds already in
+the collection (e.g. from a ``--continue-from`` checkpoint) are
+preserved unchanged.
+"""
 
 from __future__ import annotations
 
@@ -12,9 +26,17 @@ log = logging.getLogger("citeclaw.steps.load_seeds")
 
 
 class LoadSeeds:
+    """Pipeline step that hydrates seed papers into ``ctx.collection``."""
+
     name = "LoadSeeds"
 
     def __init__(self, file: str | None = None) -> None:
+        # ``file`` is a placeholder for a future "load seeds from file"
+        # mode (currently always None — the YAML builder accepts the
+        # field for forward compatibility but the run() method ignores
+        # it; seeds come from ``Settings.seed_papers`` or the upstream
+        # ResolveSeeds step). Kept as a typed kwarg so the YAML schema
+        # stays stable when the file mode lands.
         self.file = file
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
