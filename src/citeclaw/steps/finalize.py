@@ -52,7 +52,12 @@ def _write_rejections_json(ctx, path: Path) -> None:
         entry: dict = {"categories": unique_cats}
         try:
             cached = ctx.cache.get_metadata(pid)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # Cache miss / corruption shouldn't break finalization
+            # for one rejection entry — DEBUG-log so postmortem can
+            # see the failure (audit "no silent failure" rule).
+            log.debug("Finalize: get_metadata(%s) failed for rejection enrich: %s",
+                      pid[:20], exc)
             cached = None
         if isinstance(cached, dict):
             title = cached.get("title")
@@ -119,7 +124,13 @@ def write_graphs(ctx, *, suffix: str = "") -> None:
     for p in ctx.collection.values():
         try:
             edges = ctx.s2.fetch_reference_edges(p.paper_id)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # Per-paper cache miss is the common case (the call only
+            # reads the existing cache; an absent entry isn't an
+            # error). DEBUG-log so postmortem can spot pathological
+            # cache corruption without spamming WARNING in normal use.
+            log.debug("Finalize: fetch_reference_edges(%s) failed: %s",
+                      p.paper_id[:20], exc)
             edges = []
         for edge in edges:
             tid = edge.get("target_id")
@@ -197,8 +208,13 @@ class Finalize:
             for p in no_refs:
                 try:
                     p.references = ctx.s2.fetch_reference_ids(p.paper_id)
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    # Per-paper enrich failure leaves the paper with
+                    # no references — non-fatal (graphml export still
+                    # writes the node, just without out-edges). DEBUG-
+                    # log so postmortem can correlate orphan nodes.
+                    log.debug("Finalize: fetch_reference_ids(%s) failed: %s",
+                              p.paper_id[:20], exc)
                 dash.tick_inner(1)
         no_abs = [p for p in ctx.collection.values() if not p.abstract]
         if no_abs:
