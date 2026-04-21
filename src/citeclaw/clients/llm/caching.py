@@ -111,6 +111,9 @@ class CachingLLMClient:
 
     @property
     def supports_logprobs(self) -> bool:
+        # Defensive ``getattr`` — duck-typed test stand-ins that don't
+        # implement the property shouldn't trip an AttributeError on
+        # the wrapper.
         return bool(getattr(self._inner, "supports_logprobs", False))
 
     def call(
@@ -169,5 +172,8 @@ class CachingLLMClient:
                 logprob_tokens=resp.logprob_tokens,
             )
         except Exception as exc:  # noqa: BLE001 — cache write is best-effort
-            log.debug("CachingLLMClient: cache write failed: %s", exc)
+            # Warn (not debug) — a write failure means every future
+            # request for this prompt re-pays for the LLM call. The
+            # user should see this in the file log even at default level.
+            log.warning("CachingLLMClient: cache write failed: %s", exc)
         return resp
