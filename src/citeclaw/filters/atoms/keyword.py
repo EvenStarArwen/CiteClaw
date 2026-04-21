@@ -55,15 +55,19 @@ on an all-False keyword vector.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from citeclaw.filters.base import PASS, FilterContext, FilterOutcome
 from citeclaw.models import PaperRecord
+from citeclaw.screening.formula import BooleanFormula, FormulaError
+
+log = logging.getLogger("citeclaw.filters.atoms.keyword")
 
 
 class _KeywordFilterBase:
-    """Shared logic for title / abstract keyword filters.
+    """Shared logic for title / abstract / venue keyword filters.
 
     Subclasses set :attr:`_scope_label` (used in rejection messages) and
     :attr:`_category` (the rejection bucket) and implement :meth:`_content`
@@ -124,8 +128,6 @@ class _KeywordFilterBase:
             raise ValueError(
                 f"{cls_name}: 'formula' requires a non-empty 'keywords' mapping"
             )
-        from citeclaw.screening.formula import BooleanFormula, FormulaError
-
         try:
             self._formula = BooleanFormula(formula)
         except FormulaError as exc:
@@ -143,9 +145,7 @@ class _KeywordFilterBase:
                 )
         extras = sorted(set(keywords.keys()) - referenced)
         if extras:
-            import logging
-
-            logging.getLogger("citeclaw.filters.atoms.keyword").warning(
+            log.warning(
                 "%s %r defines unused keywords: %s", cls_name, name, extras,
             )
         self.formula_expr = formula
@@ -155,20 +155,21 @@ class _KeywordFilterBase:
         raise NotImplementedError
 
     def _match_one(self, kw: str, text: str) -> bool:
+        """True iff ``kw`` matches ``text`` under the configured ``match`` mode."""
         if not text:
             return False
+        if self.match == "substring":
+            if self.case_sensitive:
+                return kw in text
+            return kw.lower() in text.lower()
+        flags = 0 if self.case_sensitive else re.IGNORECASE
         if self.match == "starts_with":
-            flags = 0 if self.case_sensitive else re.IGNORECASE
-            # ``re.match`` is anchored at the start of the string.
-            # ``\b`` after the keyword forbids matches like Cell→Cellulose.
+            # ``re.match`` is anchored at the start of the string; the
+            # trailing ``\b`` forbids matches like Cell -> Cellulose.
             # ``lstrip`` defends against stray leading whitespace in venue.
             return re.match(rf"{re.escape(kw)}\b", text.lstrip(), flags) is not None
-        if self.match == "whole_word":
-            flags = 0 if self.case_sensitive else re.IGNORECASE
-            return re.search(rf"\b{re.escape(kw)}\b", text, flags) is not None
-        if self.case_sensitive:
-            return kw in text
-        return kw.lower() in text.lower()
+        # whole_word
+        return re.search(rf"\b{re.escape(kw)}\b", text, flags) is not None
 
     def check(self, paper: PaperRecord, fctx: FilterContext) -> FilterOutcome:
         text = self._content(paper) or ""
