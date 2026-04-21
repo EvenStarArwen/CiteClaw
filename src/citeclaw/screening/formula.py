@@ -1,14 +1,33 @@
-"""Boolean formula DSL: ``(q1 | q2) & !q3`` over named YES/NO queries.
+"""Boolean formula DSL — ``(q1 | q2) & !q3`` over named yes/no queries.
 
-Standalone — no LLM, no config dependency. Tokenizer + recursive-descent
-parser + AST evaluator + a tiny ``FormulaError`` exception type.
+Used by :class:`citeclaw.filters.atoms.llm_query.LLMFilter` to combine
+multiple independent LLM sub-queries into one accept/reject verdict
+without forcing the model to reason about the combination itself.
+Standalone — no LLM, no config dependency. Tokenizer + recursive-
+descent parser + AST evaluator + a tiny ``FormulaError`` exception type.
+
+Grammar (tightest-binding first)::
+
+    expr   := or
+    or     := and ('|' and)*
+    and    := unary ('&' unary)*
+    unary  := '!' unary | atom
+    atom   := NAME | '(' expr ')'
+
+Example::
+
+    f = BooleanFormula("(q_ml | q_stats) & !q_survey")
+    f.query_names()  # {"q_ml", "q_stats", "q_survey"}
+    f.evaluate({"q_ml": True, "q_stats": False, "q_survey": False})  # True
 """
 
 from __future__ import annotations
 
 import re
 
-# AST node = tuple of (op, ...children)
+# An AST node is a tuple ``(kind, *children)`` where ``kind`` is one of
+# the four strings below. Kept as a plain tuple for cheap construction —
+# the grammar is too small to justify a dataclass hierarchy.
 ASTNode = tuple
 
 
@@ -29,7 +48,12 @@ _TOKEN_RE = re.compile(
 
 
 def tokenize(expr: str) -> list[tuple[str, str]]:
-    """Split a formula into ``[(kind, value), ...]`` tokens."""
+    """Split a formula into ``[(kind, value), ...]`` tokens.
+
+    ``kind`` is ``"NAME"`` for an identifier or ``"OP"`` for one of
+    ``& | ! ( )``. Whitespace is skipped. Anything else raises
+    :class:`FormulaError`.
+    """
     tokens: list[tuple[str, str]] = []
     pos = 0
     while pos < len(expr):
@@ -38,10 +62,12 @@ def tokenize(expr: str) -> list[tuple[str, str]]:
             continue
         m = _TOKEN_RE.match(expr, pos)
         if not m:
-            raise FormulaError(f"Unexpected character at position {pos}: '{expr[pos:]}'")
+            raise FormulaError(
+                f"Unexpected character at position {pos}: '{expr[pos:]}'"
+            )
         if m.group("NAME"):
             tokens.append(("NAME", m.group("NAME")))
-        elif m.group("OP"):
+        else:
             tokens.append(("OP", m.group("OP")))
         pos = m.end()
     return tokens
@@ -60,7 +86,9 @@ class _Parser:
     def parse(self) -> ASTNode:
         ast = self._parse_or()
         if self._pos < len(self._tokens):
-            raise FormulaError(f"Unexpected token after complete parse: {self._tokens[self._pos:]}")
+            raise FormulaError(
+                f"Unexpected token after complete parse: {self._tokens[self._pos:]}"
+            )
         return ast
 
     def _peek(self) -> tuple[str, str] | None:
@@ -116,7 +144,11 @@ class _Parser:
 
 
 class BooleanFormula:
-    """Parsed Boolean formula. Operators: ``&`` AND, ``|`` OR, ``!`` NOT."""
+    """Parsed Boolean formula. Operators: ``&`` AND, ``|`` OR, ``!`` NOT.
+
+    Construction parses the expression once; later
+    :meth:`evaluate` and :meth:`query_names` calls walk the cached AST.
+    """
 
     def __init__(self, expression: str) -> None:
         self._raw = expression
@@ -139,6 +171,13 @@ class BooleanFormula:
             self._collect(node[2], out)
 
     def evaluate(self, values: dict[str, bool]) -> bool:
+        """Evaluate against a ``{query_name: bool}`` map.
+
+        Names missing from ``values`` default to ``False`` — this keeps
+        downstream callers tolerant of a sub-query the screener never
+        ran (e.g. a batch was skipped on cache hit) instead of raising
+        mid-evaluation.
+        """
         return self._eval(self._ast, values)
 
     def _eval(self, node: ASTNode, values: dict[str, bool]) -> bool:
