@@ -173,6 +173,16 @@ class ResolveSeeds:
         return [matched_id]
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
+        """Walk ``ctx.config.seed_papers`` and write resolved IDs to ctx.
+
+        Two-step per-entry logic: (1) pick the primary paper_id by
+        direct lookup or title-match; (2) when ``include_siblings`` is
+        true, expand via the external_ids walk + title round-trip. The
+        signal is passed through unchanged — ResolveSeeds is purely a
+        preprocessor that populates ``ctx.resolved_seed_ids``;
+        :class:`LoadSeeds` consumes that list to fetch metadata and
+        seed ``ctx.collection``.
+        """
         cfg = ctx.config
         resolved: list[str] = []
         seen: set[str] = set()
