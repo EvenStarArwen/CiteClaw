@@ -45,6 +45,9 @@ COMPLETION_HEADROOM_FACTOR = 3.0
 # vLLM rejects with HTTP 400 if ``max_completion_tokens >= max_model_len``
 # (it has to leave room for the prompt).
 INPUT_RESERVE_TOKENS = 8192
+# Floor under the ceiling-clamp so a tiny `max_model_len` never produces
+# a non-positive completion budget.
+MIN_COMPLETION_TOKENS = 1024
 
 # ``ModelEndpoint.reasoning_parser`` discriminator buckets.
 VLLM_PARSERS = frozenset({"", "vllm", "gemma4", "qwen3", "deepseek_r1", "deepseek-r1"})
@@ -124,7 +127,7 @@ def vllm_reasoning_kwargs(
     budget = thinking_budget or VLLM_EFFORT_BUDGETS.get(e, 16384)
     desired_completion = int(budget * COMPLETION_HEADROOM_FACTOR)
     if max_model_len > 0:
-        safe_ceiling = max(1024, max_model_len - INPUT_RESERVE_TOKENS)
+        safe_ceiling = max(MIN_COMPLETION_TOKENS, max_model_len - INPUT_RESERVE_TOKENS)
         if desired_completion > safe_ceiling:
             desired_completion = safe_ceiling
             budget = min(budget, int(desired_completion / COMPLETION_HEADROOM_FACTOR))
@@ -134,6 +137,11 @@ def vllm_reasoning_kwargs(
         "extra_body": extra_body,
         "max_completion_tokens": desired_completion,
     }
+
+
+def _normalize_parser(reasoning_parser: str | None) -> str:
+    """Lowercase + strip the ``ModelEndpoint.reasoning_parser`` discriminator."""
+    return (reasoning_parser or "").strip().lower()
 
 
 def custom_endpoint_reasoning_kwargs(
@@ -150,7 +158,7 @@ def custom_endpoint_reasoning_kwargs(
     OpenAI-compatible models (e.g. Together AI Llama-3) don't receive
     kwargs they reject.
     """
-    parser = (reasoning_parser or "").strip().lower()
+    parser = _normalize_parser(reasoning_parser)
     if parser in NO_REASONING_PARSERS:
         return {}
     if parser in NATIVE_REASONING_PARSERS:
@@ -177,5 +185,4 @@ def is_thinking_active(
     e = normalize_effort(effort)
     if not e or e == OFF_LABEL:
         return False
-    parser = (reasoning_parser or "").strip().lower()
-    return parser in VLLM_PARSERS
+    return _normalize_parser(reasoning_parser) in VLLM_PARSERS
