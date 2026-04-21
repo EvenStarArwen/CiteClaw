@@ -34,8 +34,20 @@ from dataclasses import dataclass
 from typing import Any
 
 
+_CHARS_PER_TOKEN = 4
+
+
 @dataclass(frozen=True)
 class TokenUsage:
+    """Provider-agnostic token counts for one LLM call.
+
+    ``prompt`` / ``completion`` are the standard input/output counts
+    every provider reports. ``reasoning`` is the thinking-trace token
+    count when the provider exposes it separately (OpenAI o-series,
+    Gemini 2.5+); 0 for vLLM thinking models that fold thinking into
+    ``completion`` and for non-reasoning models.
+    """
+
     prompt: int
     completion: int
     reasoning: int
@@ -61,16 +73,14 @@ def extract_openai_usage(usage: Any) -> TokenUsage:
     """
     if usage is None:
         return TokenUsage(0, 0, 0)
+    # ``getattr(None, attr, default)`` returns ``default`` so a
+    # missing details object collapses through both lookups without a
+    # branch.
     details = getattr(usage, "completion_tokens_details", None)
-    reasoning = (
-        getattr(details, "reasoning_tokens", 0) or 0
-        if details is not None
-        else 0
-    )
     return TokenUsage(
         prompt=getattr(usage, "prompt_tokens", 0) or 0,
         completion=getattr(usage, "completion_tokens", 0) or 0,
-        reasoning=reasoning,
+        reasoning=getattr(details, "reasoning_tokens", 0) or 0,
     )
 
 
@@ -99,7 +109,7 @@ def estimate_stub_usage(prompt_text: str, response_text: str) -> TokenUsage:
     stub. Reasoning is always 0.
     """
     return TokenUsage(
-        prompt=len(prompt_text) // 4,
-        completion=len(response_text) // 4,
+        prompt=len(prompt_text) // _CHARS_PER_TOKEN,
+        completion=len(response_text) // _CHARS_PER_TOKEN,
         reasoning=0,
     )
