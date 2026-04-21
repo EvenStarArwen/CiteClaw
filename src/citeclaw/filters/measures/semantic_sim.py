@@ -11,14 +11,18 @@ from __future__ import annotations
 
 import logging
 import math
+from typing import Any
 
 from citeclaw.filters.base import FilterContext
 from citeclaw.models import PaperRecord
 
 log = logging.getLogger("citeclaw.filters.measures.semantic_sim")
 
+_S2_BACKEND = "s2"
+
 
 def _cosine(a: list[float], b: list[float]) -> float | None:
+    """Cosine similarity. Returns None on length-mismatch or zero-norm input."""
     if not a or not b or len(a) != len(b):
         return None
     dot = 0.0
@@ -33,6 +37,11 @@ def _cosine(a: list[float], b: list[float]) -> float | None:
     return dot / (math.sqrt(na) * math.sqrt(nb))
 
 
+def _paper_text(paper: PaperRecord) -> str:
+    """Concatenated title + abstract text used for external embedders."""
+    return (paper.title or "") + "\n" + (paper.abstract or "")
+
+
 class SemanticSimMeasure:
     """Cosine similarity over paper embeddings.
 
@@ -45,10 +54,17 @@ class SemanticSimMeasure:
             ``local:*``.
     """
 
-    def __init__(self, name: str = "semantic_sim", *, embedder: str | dict = "s2") -> None:
+    def __init__(
+        self,
+        name: str = "semantic_sim",
+        *,
+        embedder: str | dict[str, Any] = _S2_BACKEND,
+    ) -> None:
         self.name = name
         self._embedder_spec = embedder
-        self._is_s2 = isinstance(embedder, str) and embedder.lower() == "s2"
+        self._is_s2 = (
+            isinstance(embedder, str) and embedder.lower() == _S2_BACKEND
+        )
         self._embedder = None  # lazy for non-S2 backends
 
     # -------- optional batch hook (called by SimilarityFilter.check_batch) --------
@@ -106,8 +122,8 @@ class SemanticSimMeasure:
         if self._embedder is None:
             from citeclaw.clients.embeddings import build_embedder
             self._embedder = build_embedder(self._embedder_spec)
-        src_text = (fctx.source.title or "") + "\n" + (fctx.source.abstract or "")
-        cand_text = (paper.title or "") + "\n" + (paper.abstract or "")
+        src_text = _paper_text(fctx.source)
+        cand_text = _paper_text(paper)
         if not src_text.strip() or not cand_text.strip():
             return None
         embeds = self._embedder.embed([src_text, cand_text])  # raises NotImplementedError today
