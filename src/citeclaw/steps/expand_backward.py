@@ -249,11 +249,14 @@ class ExpandBackward:
             return []
         finally:
             # ``client.close`` is safe to call twice; ``try/finally``
-            # guarantees it runs even on the happy path.
+            # guarantees it runs even on the happy path. DEBUG-log the
+            # second-close failure (audit silent-failure flag) since
+            # the close-on-error path inside the try-block already
+            # logged the underlying exception at INFO.
             try:
                 client.close()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                log.debug("openalex client double-close failed: %s", exc)
 
         if not ref_dois:
             return []
@@ -262,7 +265,12 @@ class ExpandBackward:
         for ref_doi in ref_dois:
             try:
                 rec = ctx.s2.fetch_metadata(f"DOI:{ref_doi}")
-            except Exception:  # noqa: BLE001 — skip unresolvable DOIs
+            except Exception as exc:  # noqa: BLE001 — skip unresolvable DOIs
+                # Per-DOI miss is the common case (S2 doesn't have every
+                # OpenAlex-cited DOI). DEBUG-log so the diagnostic trail
+                # exists without spamming WARNING on a known-tolerable path.
+                log.debug("openalex fallback: S2 fetch_metadata(DOI:%s) failed: %s",
+                          ref_doi, exc)
                 continue
             if rec is not None:
                 records.append(rec)
@@ -311,7 +319,13 @@ class ExpandBackward:
         for title in titles:
             try:
                 match = ctx.s2.search_match(title)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                # Per-title search_match failure is recoverable (the
+                # heuristic title extraction is rough — many candidates
+                # legitimately don't match anything in S2). DEBUG-log
+                # so the diagnostic trail exists.
+                log.debug("pdf_references: search_match for %r failed: %s",
+                          title[:60], exc)
                 continue
             if match is None:
                 continue
