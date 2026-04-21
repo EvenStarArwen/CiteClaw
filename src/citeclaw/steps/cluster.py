@@ -50,6 +50,12 @@ log = logging.getLogger("citeclaw.steps.cluster")
 
 
 class Cluster:
+    """Run a clusterer over the signal and store the result on ``ctx``.
+
+    Standalone "lego block" for clustering — see module docstring for
+    the YAML config recipe and the ``Rerank`` cross-reference pattern.
+    """
+
     name = "Cluster"
 
     def __init__(
@@ -60,6 +66,28 @@ class Cluster:
         naming: dict | None = None,
         drop_noise: bool = False,
     ) -> None:
+        """Configure the cluster step.
+
+        Parameters
+        ----------
+        store_as:
+            Required key under which the resulting `ClusterResult` is
+            stored in `ctx.clusters` for downstream steps to look up.
+            Empty / missing raises `ValueError` immediately so YAML
+            typos fail fast.
+        algorithm:
+            Dict (or bare string) routed through
+            :func:`citeclaw.cluster.build_clusterer`. Required —
+            empty raises `ValueError`.
+        naming:
+            Optional ``{mode: none|tfidf|llm|both, n_keywords, n_representative,
+            model, reasoning_effort}`` dict. Invalid `mode` value
+            raises `ValueError`. Defaults to no naming.
+        drop_noise:
+            When True, papers in cluster -1 (noise / unembeddable) are
+            dropped from the returned signal. The cluster result still
+            stores their membership, just under -1.
+        """
         if not store_as:
             raise ValueError("Cluster step requires a non-empty 'store_as'")
         if not algorithm:
@@ -77,6 +105,19 @@ class Cluster:
             )
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
+        """Cluster → optional naming → store → optional noise-drop.
+
+        Four-step flow: (1) build the clusterer + run on the signal;
+        (2) optionally enrich `result.metadata` with c-TF-IDF keywords
+        and/or LLM-named labels (driven by ``naming.mode``); (3) store
+        the `ClusterResult` under `store_as` (logging at WARNING on
+        key collision so the user notices); (4) optionally drop
+        noise-bucket papers from the returned signal.
+
+        The embedding-fetch path for LLM naming logs at WARNING +
+        skips on failure (no LLM names attached, but the cluster
+        result + keywords still go to ctx).
+        """
         if not signal:
             return StepResult(
                 signal=[],
