@@ -1,4 +1,18 @@
-"""Route predicate atoms: VenueIn, VenuePreset, CitAtLeast, YearAtLeast."""
+"""Route-predicate atoms — used in YAML ``Route`` blocks' ``if:`` clauses.
+
+These are deliberately simpler than the full filter atoms (``YearFilter``,
+``CitationFilter``): they implement the same :class:`Filter` Protocol but
+get used as one-shot dispatch predicates inside ``Route.select(paper)``,
+not as full screeners. The four exported here cover the common dispatch
+keys a YAML config needs: venue substring (``VenueIn``), curated venue
+family exact match (``VenuePreset``), and "value at least N" gates for
+citations and years.
+
+Missing-data convention: ``CitAtLeast`` and ``YearAtLeast`` both fall
+back to ``0`` for ``None`` so a positive threshold rejects naturally
+(no need for a separate ``missing_data`` category — Route only needs
+yes/no).
+"""
 
 from __future__ import annotations
 
@@ -8,10 +22,19 @@ from citeclaw.models import PaperRecord
 
 
 def _normalize_venue(s: str) -> str:
+    """Lowercase + whitespace-collapse for venue exact-match comparisons."""
     return " ".join(s.lower().split())
 
 
 class VenueIn:
+    """Substring (case-insensitive) match against ``paper.venue``.
+
+    Loose by design — accepts ``"Nature"`` against ``"Nature Methods"``
+    because the dispatch use case wants any Nature-family venue to
+    match. Use :class:`VenuePreset` instead when you need exact match
+    against a curated list (e.g. excluding Nature-Inspired Computing).
+    """
+
     def __init__(self, name: str = "VenueIn", *, values: list[str]) -> None:
         self.name = name
         self._values = [v.lower() for v in values]
@@ -48,6 +71,8 @@ class VenuePreset:
 
 
 class CitAtLeast:
+    """Pass if ``paper.citation_count >= n``. Missing count is treated as 0."""
+
     def __init__(self, name: str = "CitAtLeast", *, n: int) -> None:
         self.name = name
         self._n = n
@@ -59,6 +84,8 @@ class CitAtLeast:
 
 
 class YearAtLeast:
+    """Pass if ``paper.year >= n``. Missing year is treated as 0."""
+
     def __init__(self, name: str = "YearAtLeast", *, n: int) -> None:
         self.name = name
         self._n = n
