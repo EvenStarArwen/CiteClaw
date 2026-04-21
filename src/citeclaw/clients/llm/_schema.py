@@ -37,6 +37,10 @@ def pop_strict_openai(schema: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     ``_strict_openai: False`` in the schema. The marker is consumed so
     it never reaches OpenAI's wire (OpenAI ignores unknown keys, but
     keeping wire payloads tidy helps debugging).
+
+    The returned schema is a *shallow* copy: the top-level marker is
+    removed but nested dicts / lists are shared with the input. Callers
+    that need a fully independent schema should ``copy.deepcopy`` first.
     """
     copy = dict(schema)
     strict = bool(copy.pop("_strict_openai", True))
@@ -46,10 +50,12 @@ def pop_strict_openai(schema: dict[str, Any]) -> tuple[dict[str, Any], bool]:
 def strip_for_gemini(schema: Any) -> Any:
     """Recursively remove keys Gemini's response-schema validator rejects.
 
-    Walks dicts and lists; leaves primitives alone. Used by
+    Walks dicts and lists; leaves primitives alone. Returns a fully
+    rebuilt structure — the input is not mutated, and the result shares
+    no mutable containers with it. Used by
     :class:`citeclaw.clients.llm.gemini.GeminiClient` so the shared
-    schema definitions in ``citeclaw.screening.schemas`` work for both
-    providers without maintaining two copies.
+    schema definitions in :mod:`citeclaw.screening.schemas` work for
+    both providers without maintaining two copies.
     """
     if isinstance(schema, dict):
         return {
