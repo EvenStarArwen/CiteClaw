@@ -69,10 +69,9 @@ def _build_expand_backward(d: dict, blocks: dict) -> BaseStep:
 def _build_expand_by_search(d: dict, blocks: dict) -> BaseStep:
     """Build an ``ExpandBySearch`` step from its YAML dict.
 
-    The ``agent:`` sub-dict is passed straight through as a raw
-    mapping. The agent backend is being rewritten; whatever schema it
-    settles on is its own responsibility. The step shell only cares
-    that ``agent`` is a mapping (or omitted).
+    The ``agent:`` sub-dict is passed straight through as a raw mapping;
+    the step shell only validates that it is a mapping (or omitted) and
+    leaves schema enforcement to whoever wires up the agent backend.
     """
     agent_raw = d.get("agent") or {}
     if not isinstance(agent_raw, dict):

@@ -181,11 +181,11 @@ class Settings(BaseSettings):
 
     # --- LLM ---------------------------------------------------------
     screening_model: str = "stub"
-    # Dedicated model override for the ExpandBySearch supervisor + workers
-    # (citeclaw.agents.supervisor / .worker). Empty (the default) means
-    # the agent inherits ``screening_model``; set this to a more capable
-    # model when you want screening to stay cheap but the search agent
-    # to think harder. ``ExpandBySearch`` reads it via the cascade
+    # Dedicated model override for the ExpandBySearch agent backend.
+    # Empty (the default) means the agent inherits ``screening_model``;
+    # set this to a more capable model when you want screening to stay
+    # cheap but the search agent to think harder. ``ExpandBySearch``
+    # reads it via the cascade
     # ``self.agent.model or ctx.config.search_model or ctx.config.screening_model``.
     search_model: str = ""
     reasoning_effort: str = ""

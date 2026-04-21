@@ -1,17 +1,9 @@
-"""ExpandBySearch step shell — agent backend cleared, ready for rewrite.
+"""ExpandBySearch step shell — no agent backend wired in.
 
-The v2 supervisor/worker that previously lived in
-``citeclaw.agents.*`` was wiped on 2026-04-20. This file keeps the
-public API the pipeline talks to and the screener / filter wiring the
-user asked to preserve:
-
-* ``ExpandBySearch.run`` performs the idempotency fingerprint check,
-  resolves the topic, and slices anchor papers — then raises
-  :class:`NotImplementedError`. Plug the new agent into ``run``.
-* ``_screen_and_finalize`` packages the standard post-agent pipe
-  (hydrate ``paperId`` dicts → ``screen_expand_candidates`` →
-  ``StepResult`` with ``ctx.searched_signals`` updated). The new
-  agent only has to produce a list of S2 paper_ids and call this.
+The pipeline-side wiring (idempotency fingerprint, screener, anchor
+slicing, post-agent screen-and-finalize) is intact and ready for the
+next agent backend to plug into ``run``. Until then the step raises
+:class:`NotImplementedError` when invoked.
 """
 
 from __future__ import annotations
@@ -32,7 +24,7 @@ log = logging.getLogger("citeclaw.steps.expand_by_search")
 
 
 class ExpandBySearch:
-    """Meta-LLM search expansion step (agent backend pending rewrite)."""
+    """Meta-LLM search expansion step (no agent backend wired in)."""
 
     name = "ExpandBySearch"
 
@@ -66,19 +58,18 @@ class ExpandBySearch:
         anchor_papers = signal[: self.max_anchor_papers]
         topic = self._resolve_topic(ctx)
 
-        # ---- AGENT BACKEND (cleared 2026-04-20, pending rewrite) ----
-        # Old v2 supervisor/worker lived in src/citeclaw/agents/.
-        # The new agent should consume (topic, anchor_papers, ctx,
-        # **self.agent), produce a list of S2 paper_ids, and call
-        # ``self._screen_and_finalize(...)`` to return a StepResult.
+        # No agent backend yet. A future backend should consume
+        # (topic, anchor_papers, ctx, **self.agent), produce a list of
+        # S2 paper_ids, and call ``self._screen_and_finalize(...)`` to
+        # return a StepResult.
         raise NotImplementedError(
-            "ExpandBySearch agent backend cleared for rewrite. "
-            "Implement here: feed (topic, anchor_papers, ctx) to the "
-            "new agent, then return self._screen_and_finalize("
-            "aggregate_ids=..., signal=signal, ctx=ctx, fp=fp)."
+            "ExpandBySearch has no agent backend. Wire one in here: feed "
+            "(topic, anchor_papers, ctx) to the agent, then return "
+            "self._screen_and_finalize(aggregate_ids=..., signal=signal, "
+            "ctx=ctx, fp=fp)."
         )
 
-    # ---- KEPT FOR THE REWRITE ---------------------------------------
+    # ---- Scaffolding helpers for a future agent ---------------------
 
     def _fingerprint(self, signal: list[PaperRecord]) -> str:
         return fingerprint_signal(
