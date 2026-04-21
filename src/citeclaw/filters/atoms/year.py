@@ -1,4 +1,4 @@
-"""YearFilter atom."""
+"""YearFilter — pass papers whose ``year`` is in ``[min, max]``."""
 
 from __future__ import annotations
 
@@ -7,7 +7,20 @@ from citeclaw.models import PaperRecord
 
 
 class YearFilter:
-    def __init__(self, name: str = "year", *, min: int | None = None, max: int | None = None) -> None:
+    """Accept papers whose publication year is inside ``[min, max]``.
+
+    Either bound can be ``None`` to disable that side. Papers with
+    ``year is None`` are always rejected (strict — prevents S2's
+    occasional missing-year records from silently slipping through).
+    """
+
+    def __init__(
+        self,
+        name: str = "year",
+        *,
+        min: int | None = None,
+        max: int | None = None,
+    ) -> None:
         self.name = name
         self._min = min
         self._max = max
