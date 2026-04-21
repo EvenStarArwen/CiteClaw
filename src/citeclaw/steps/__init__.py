@@ -1,4 +1,27 @@
-"""Step registry + builder."""
+"""Step registry + builder for the YAML pipeline schema.
+
+:func:`build_step` is the single entry point used by
+:mod:`citeclaw.config` to translate a step dict from a YAML
+``pipeline:`` list into a concrete :class:`BaseStep` instance.
+:data:`STEP_REGISTRY` maps the canonical step-name strings (the
+YAML ``step:`` field) to small ``_build_<name>(d, blocks)`` factory
+functions that read the per-step kwargs and forward them to the
+constructor.
+
+Adding a new step is a 4-step recipe:
+
+1. Implement the step class in ``citeclaw/steps/<name>.py``
+   exposing ``name`` and a ``run(signal, ctx) -> StepResult``.
+2. Import it at the top of this module.
+3. Add a ``_build_<name>(d, blocks)`` factory that pulls the
+   step-specific kwargs from ``d`` (the YAML dict) and forwards
+   them.
+4. Register it in :data:`STEP_REGISTRY` under the user-facing name.
+
+The ``_optional_screener`` / ``_resolve`` helpers handle the common
+"screener: <named-block-or-inline-dict>" YAML shape so individual
+step factories don't have to replicate the dispatch.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +46,15 @@ from citeclaw.steps.resolve_seeds import ResolveSeeds
 
 
 def _resolve(name_or_dict: Any, blocks: dict):
+    """Resolve a screener spec to a built filter block.
+
+    Accepts either a string (looked up in ``blocks``, the named
+    blocks dict from the YAML ``blocks:`` section) or an inline
+    block dict (built lazily via
+    :func:`citeclaw.filters.builder.build_blocks` under an anonymous
+    name). Raises :class:`KeyError` on unknown named refs so a YAML
+    typo fails fast.
+    """
     if isinstance(name_or_dict, str):
         if name_or_dict not in blocks:
             raise KeyError(f"Screener block {name_or_dict!r} not defined")
@@ -213,6 +245,14 @@ STEP_REGISTRY: dict[str, Callable[[dict, dict], BaseStep]] = {
 
 
 def build_step(d: dict, blocks: dict | None = None) -> BaseStep:
+    """Translate a YAML step dict into a concrete :class:`BaseStep`.
+
+    ``d["step"]`` selects the factory from :data:`STEP_REGISTRY`;
+    ``blocks`` is the dict of named filter blocks produced by
+    :func:`citeclaw.filters.builder.build_blocks`. Raises
+    :class:`ValueError` on an unknown step name so YAML typos fail
+    fast rather than silently dropping a pipeline stage.
+    """
     blocks = blocks or {}
     name = d.get("step")
     factory = STEP_REGISTRY.get(name)
