@@ -41,6 +41,63 @@ def _strip_think_tags(text: str) -> str:
     return cleaned.strip()
 
 
+def _extract_reasoning_content(message: Any) -> str:
+    """Pick the non-empty thinking-trace string off a vLLM message.
+
+    Gemma 4's reasoning parser exposes the trace under ``message.reasoning``;
+    Qwen3 / DeepSeek-R1 use ``message.reasoning_content``. Returns the
+    first non-empty string; ``""`` when neither attribute is present or set.
+    """
+    for attr in ("reasoning", "reasoning_content"):
+        val = getattr(message, attr, None)
+        if isinstance(val, str) and val:
+            return val
+    return ""
+
+
+def _build_response_format(
+    response_schema: dict[str, Any] | None,
+    *,
+    structured_output_enabled: bool,
+    thinking_active: bool,
+) -> dict[str, Any] | None:
+    """Build the ``response_format`` kwarg, or ``None`` to omit it.
+
+    Returns ``None`` (caller skips the kwarg) when (a) no schema was
+    provided, (b) the user disabled structured output globally, or (c)
+    vLLM thinking mode is active — guided decoding's rejected candidates
+    count against ``max_completion_tokens`` and exhaust the budget on
+    decode overhead. Native-reasoning providers (OpenAI o-series, Grok,
+    Mistral) handle structured output during thinking fine.
+    """
+    if response_schema is None or not structured_output_enabled or thinking_active:
+        return None
+    schema_clean, strict = pop_strict_openai(response_schema)
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "citeclaw_screening_results",
+            "strict": strict,
+            "schema": schema_clean,
+        },
+    }
+
+
+def _log_retry(retry_state: Any) -> None:
+    """tenacity ``before_sleep`` hook: warn-log the failure + attempt count."""
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    detail = (
+        f"{type(exc).__name__}: {str(exc)[:400]}"
+        if exc is not None
+        else "unknown"
+    )
+    log.warning(
+        "LLM call failed (attempt %d): %s — retrying",
+        retry_state.attempt_number,
+        detail,
+    )
+
+
 def _build_timeout(total: float) -> httpx.Timeout:
     """Build an httpx.Timeout with explicit per-phase bounds.
 
@@ -197,16 +254,7 @@ class OpenAIClient:
         # Observed iter-12 (data_loop_weather worker 2) stalled 20+ min on
         # one turn before the bash-level kill.
         stop=(stop_after_attempt(6) | stop_after_delay(600)),
-        before_sleep=lambda rs: logging.getLogger("citeclaw.llm.openai").warning(
-            "LLM call failed (attempt %d): %s — retrying",
-            rs.attempt_number,
-            (
-                f"{type(rs.outcome.exception()).__name__}: "
-                f"{str(rs.outcome.exception())[:400]}"
-                if rs.outcome and rs.outcome.exception() is not None
-                else "unknown"
-            ),
-        ),
+        before_sleep=_log_retry,
     )
     def call(
         self,
@@ -241,34 +289,22 @@ class OpenAIClient:
         elif self._is_reasoning and self._reasoning_effort:
             kwargs["reasoning_effort"] = self._reasoning_effort
 
-        # Structured output: send the schema as ``response_format`` for
-        # decode-time constraints. SKIP when the request will run vLLM
-        # thinking mode — guided decoding's rejected candidates count
-        # against ``max_completion_tokens`` and exhaust the budget on
-        # decode overhead. Native-reasoning providers (OpenAI o-series,
-        # Grok, Mistral) handle structured output during thinking fine.
         thinking_active = self._is_custom and is_thinking_active(
             self._reasoning_effort,
             reasoning_parser=self._reasoning_parser,
         )
-        if (
-            response_schema is not None
-            and self._config.structured_output_enabled
-            and not thinking_active
-        ):
-            # ``_strict_openai`` is a routing sentinel — see _schema.py.
-            # Polymorphic schemas (tool_args open objects) opt out of
-            # OpenAI strict mode, otherwise additionalProperties=false
-            # would have to be threaded through every nested object.
-            schema_clean, strict = pop_strict_openai(response_schema)
-            kwargs["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "citeclaw_screening_results",
-                    "strict": strict,
-                    "schema": schema_clean,
-                },
-            }
+        # ``pop_strict_openai`` (inside the helper) consumes the routing
+        # sentinel — see _schema.py. Polymorphic schemas (tool_args open
+        # objects) opt out of OpenAI strict mode, otherwise
+        # additionalProperties=false would have to be threaded through
+        # every nested object.
+        response_format = _build_response_format(
+            response_schema,
+            structured_output_enabled=self._config.structured_output_enabled,
+            thinking_active=thinking_active,
+        )
+        if response_format is not None:
+            kwargs["response_format"] = response_format
 
         resp = self._sdk.chat.completions.create(**kwargs)
         usage = extract_openai_usage(resp.usage)
@@ -280,19 +316,9 @@ class OpenAIClient:
                 reasoning_tokens=usage.reasoning,
                 model=self._model,
             )
-        text = resp.choices[0].message.content or ""
-        # vLLM's reasoning parser exposes the thinking trace on the
-        # message under ``reasoning`` (Gemma 4) or ``reasoning_content``
-        # (Qwen3 / DeepSeek-R1). Surface whichever is non-empty so
-        # downstream callers can read the chain of thought without
-        # re-parsing the raw response.
-        reasoning_content = ""
-        msg = resp.choices[0].message
-        for attr in ("reasoning", "reasoning_content"):
-            val = getattr(msg, attr, None)
-            if isinstance(val, str) and val:
-                reasoning_content = val
-                break
+        choice = resp.choices[0]
+        text = choice.message.content or ""
+        reasoning_content = _extract_reasoning_content(choice.message)
         if self._is_custom:
             # Defensive strip: when the parser worked, content is clean
             # already. The strip is a no-op in that case but still
@@ -300,15 +326,12 @@ class OpenAIClient:
             # content from older Qwen3 deploys that don't have the
             # reasoning parser configured.
             text = _strip_think_tags(text)
+        logprob_tokens: list[Any] = []
         if with_logprobs and not self._is_reasoning:
-            lp = resp.choices[0].logprobs
-            return LLMResponse(
-                text=text,
-                logprob_tokens=lp.content if lp else [],
-                reasoning_content=reasoning_content,
-            )
+            lp = choice.logprobs
+            logprob_tokens = lp.content if lp else []
         return LLMResponse(
             text=text,
-            logprob_tokens=[],
+            logprob_tokens=logprob_tokens,
             reasoning_content=reasoning_content,
         )
