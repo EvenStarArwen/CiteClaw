@@ -181,29 +181,11 @@ def _extract_references(root: ET.Element) -> list[str]:
         # Structured fallback — reconstruct a plausible citation line.
         parts: list[str] = []
 
-        # Authors — up to 3, then "et al."
-        authors = bibl.findall(".//tei:analytic/tei:author/tei:persName", NS)
-        if not authors:
-            authors = bibl.findall(".//tei:monogr/tei:author/tei:persName", NS)
-        if authors:
-            names: list[str] = []
-            for a in authors[:3]:
-                surname = a.find("tei:surname", NS)
-                forename = a.find("tei:forename", NS)
-                name = ""
-                if forename is not None and forename.text:
-                    name += forename.text[0] + ". "
-                if surname is not None and surname.text:
-                    name += surname.text
-                if name:
-                    names.append(name.strip())
-            if names:
-                author_str = ", ".join(names)
-                if len(authors) > 3:
-                    author_str += " et al."
-                parts.append(author_str)
+        author_str = _format_authors(bibl)
+        if author_str:
+            parts.append(author_str)
 
-        # Article title (analytic) or book/journal title (monogr)
+        # Article title (analytic) or book/journal title (monogr).
         title = bibl.find(".//tei:analytic/tei:title", NS)
         if title is None:
             title = bibl.find(".//tei:monogr/tei:title", NS)
@@ -212,25 +194,21 @@ def _extract_references(root: ET.Element) -> list[str]:
             if title_text:
                 parts.append(title_text)
 
-        # Venue — monogr title when analytic title was found
+        # Venue — only emit the monogr title when analytic title was found
+        # (otherwise we'd duplicate the entry already added above).
         venue = bibl.find(".//tei:monogr/tei:title", NS)
         if venue is not None and title is not None and venue is not title:
             venue_text = _plain(venue)
             if venue_text:
                 parts.append(venue_text)
 
-        # Year
-        date = bibl.find(".//tei:monogr/tei:imprint/tei:date", NS)
-        year = None
-        if date is not None:
-            year = date.get("when") or _plain(date)
+        year = _extract_year(bibl)
         if year:
-            parts.append(str(year)[:4])
+            parts.append(year)
 
-        # DOI
-        doi = bibl.find(".//tei:idno[@type='DOI']", NS)
-        if doi is not None and doi.text:
-            parts.append(f"doi:{doi.text.strip()}")
+        doi = _extract_doi(bibl)
+        if doi:
+            parts.append(doi)
 
         if not parts:
             continue
@@ -241,8 +219,65 @@ def _extract_references(root: ET.Element) -> list[str]:
     return refs
 
 
+def _format_authors(bibl: ET.Element) -> str | None:
+    """Format up to 3 authors as ``"F. Surname, F. Surname, F. Surname et al."``.
+
+    Looks for ``analytic/author/persName`` first (article authors); falls
+    back to ``monogr/author/persName`` (book / journal authors). Returns
+    ``None`` when no author elements are present or when none of them
+    have a usable name.
+    """
+    authors = bibl.findall(".//tei:analytic/tei:author/tei:persName", NS)
+    if not authors:
+        authors = bibl.findall(".//tei:monogr/tei:author/tei:persName", NS)
+    if not authors:
+        return None
+    names: list[str] = []
+    for a in authors[:3]:
+        surname = a.find("tei:surname", NS)
+        forename = a.find("tei:forename", NS)
+        name = ""
+        if forename is not None and forename.text:
+            name += forename.text[0] + ". "
+        if surname is not None and surname.text:
+            name += surname.text
+        if name:
+            names.append(name.strip())
+    if not names:
+        return None
+    out = ", ".join(names)
+    if len(authors) > 3:
+        out += " et al."
+    return out
+
+
+def _extract_year(bibl: ET.Element) -> str | None:
+    """Return the 4-character publication year from ``monogr/imprint/date``."""
+    date = bibl.find(".//tei:monogr/tei:imprint/tei:date", NS)
+    if date is None:
+        return None
+    raw = date.get("when") or _plain(date)
+    if not raw:
+        return None
+    return str(raw)[:4]
+
+
+def _extract_doi(bibl: ET.Element) -> str | None:
+    """Return ``doi:<value>`` for the entry's DOI, or ``None`` when absent."""
+    doi = bibl.find(".//tei:idno[@type='DOI']", NS)
+    if doi is None or not doi.text:
+        return None
+    return f"doi:{doi.text.strip()}"
+
+
 def _plain(el: ET.Element) -> str:
-    """Return all text inside *el*, collapsed to a single space-joined string."""
+    """Return all text inside *el*, collapsed to a single space-joined string.
+
+    Walks one level of children (TEI title / paragraph elements are
+    typically flat or one-deep). Joins ``el.text`` plus each child's
+    ``text`` and ``tail`` in document order, then collapses any
+    sequence of whitespace to a single space.
+    """
     chunks: list[str] = []
     if el.text:
         chunks.append(el.text)
