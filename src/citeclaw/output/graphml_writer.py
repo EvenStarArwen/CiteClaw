@@ -100,17 +100,83 @@ def _semantic_cosine(
 
 
 def _join_authors_names(authors: list[dict] | None) -> str:
+    """Render authors as a ``"; "``-joined string of names (Gephi-friendly)."""
     if not authors:
         return ""
     return "; ".join((a.get("name") or "") for a in authors if isinstance(a, dict))
 
 
 def _join_author_ids(authors: list[dict] | None) -> str:
+    """Render authors as a ``","``-joined string of S2 author IDs.
+
+    Drops authors without an ``authorId`` (S2 occasionally returns
+    name-only entries for unresolved authors).
+    """
     if not authors:
         return ""
     return ",".join(
         (a.get("authorId") or "") for a in authors if isinstance(a, dict) and a.get("authorId")
     )
+
+
+def _set_vertex_attributes(g, papers: list[PaperRecord]) -> None:
+    """Set the per-paper vertex attributes on ``g`` from ``papers``.
+
+    13 attributes total — paper_id / label / title / year / venue /
+    abstract / citation_count / influential_citation_count / depth /
+    source / pdf_url / authors (joined names) / author_ids (joined
+    S2 ids). Coerces None to safe defaults so igraph's GraphML writer
+    doesn't fail on missing fields.
+    """
+    g.vs["paper_id"] = [p.paper_id for p in papers]
+    g.vs["label"] = [p.title or "" for p in papers]
+    g.vs["title"] = [p.title or "" for p in papers]
+    g.vs["year"] = [p.year or 0 for p in papers]
+    g.vs["venue"] = [p.venue or "" for p in papers]
+    g.vs["abstract"] = [p.abstract or "" for p in papers]
+    g.vs["citation_count"] = [p.citation_count or 0 for p in papers]
+    g.vs["influential_citation_count"] = [
+        int(p.influential_citation_count or 0) for p in papers
+    ]
+    g.vs["depth"] = [p.depth for p in papers]
+    g.vs["source"] = [p.source or "" for p in papers]
+    g.vs["pdf_url"] = [p.pdf_url or "" for p in papers]
+    g.vs["authors"] = [_join_authors_names(p.authors) for p in papers]
+    g.vs["author_ids"] = [_join_author_ids(p.authors) for p in papers]
+
+
+def _set_cluster_attributes(
+    g, clusters: dict[str, Any], node_ids: list[str],
+) -> None:
+    """Add ``cluster_<name>`` (+ optional ``cluster_<name>_label``) per cluster.
+
+    For every entry in ``clusters`` (a
+    :class:`citeclaw.cluster.base.ClusterResult`):
+      - ``cluster_<name>`` carries the integer cluster id (``-1`` for
+        noise / unassigned papers).
+      - ``cluster_<name>_label`` carries the human-readable label
+        string when at least one cluster in the result was labelled;
+        the column is omitted when no labels were generated so empty
+        attributes don't pollute the GraphML.
+    """
+    for cluster_name, result in clusters.items():
+        membership = getattr(result, "membership", None) or {}
+        metadata_map = getattr(result, "metadata", None) or {}
+        cluster_ids: list[int] = []
+        cluster_labels: list[str] = []
+        any_label = False
+        for pid in node_ids:
+            cid = int(membership.get(pid, -1))
+            cluster_ids.append(cid)
+            md = metadata_map.get(cid)
+            label = (getattr(md, "label", "") or "") if md is not None else ""
+            if label:
+                any_label = True
+            cluster_labels.append(label)
+        attr_key = f"cluster_{cluster_name}"
+        g.vs[attr_key] = cluster_ids
+        if any_label:
+            g.vs[f"{attr_key}_label"] = cluster_labels
 
 
 def export_graphml(
@@ -179,45 +245,8 @@ def export_graphml(
     if metadata:
         for k, v in metadata.items():
             g[k] = v
-    g.vs["paper_id"] = node_ids
-    g.vs["label"] = [p.title or "" for p in papers]
-    g.vs["title"] = [p.title or "" for p in papers]
-    g.vs["year"] = [p.year or 0 for p in papers]
-    g.vs["venue"] = [p.venue or "" for p in papers]
-    g.vs["abstract"] = [p.abstract or "" for p in papers]
-    g.vs["citation_count"] = [p.citation_count or 0 for p in papers]
-    g.vs["influential_citation_count"] = [
-        int(p.influential_citation_count or 0) for p in papers
-    ]
-    g.vs["depth"] = [p.depth for p in papers]
-    g.vs["source"] = [p.source or "" for p in papers]
-    g.vs["pdf_url"] = [p.pdf_url or "" for p in papers]
-    g.vs["authors"] = [_join_authors_names(p.authors) for p in papers]
-    g.vs["author_ids"] = [_join_author_ids(p.authors) for p in papers]
-
-    # ------------------------------------------------------------------
-    # Cluster node attributes (one pair per named cluster in ctx.clusters):
-    #   cluster_<name>        — integer cluster id (-1 = noise/unassigned)
-    #   cluster_<name>_label  — human-readable label (empty if naming was skipped)
-    # ------------------------------------------------------------------
-    for cluster_name, result in clusters.items():
-        membership = getattr(result, "membership", None) or {}
-        metadata_map = getattr(result, "metadata", None) or {}
-        cluster_ids: list[int] = []
-        cluster_labels: list[str] = []
-        any_label = False
-        for pid in node_ids:
-            cid = int(membership.get(pid, -1))
-            cluster_ids.append(cid)
-            md = metadata_map.get(cid)
-            label = (getattr(md, "label", "") or "") if md is not None else ""
-            if label:
-                any_label = True
-            cluster_labels.append(label)
-        attr_key = f"cluster_{cluster_name}"
-        g.vs[attr_key] = cluster_ids
-        if any_label:
-            g.vs[f"{attr_key}_label"] = cluster_labels
+    _set_vertex_attributes(g, papers)
+    _set_cluster_attributes(g, clusters, node_ids)
 
     edge_list: list[tuple[int, int]] = []
     edge_pair_keys: list[tuple[str, str]] = []
