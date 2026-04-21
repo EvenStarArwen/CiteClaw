@@ -1,4 +1,28 @@
-"""Citation network graph — igraph-based, with PageRank and community detection."""
+"""Citation network graph — igraph-based, with PageRank + saturation metrics.
+
+Public API:
+
+* :func:`build_citation_graph` — build a directed igraph from a paper
+  collection. Edge convention: ``A → B`` when A is in B's reference
+  list (i.e. A is *cited by* B).
+* :func:`compute_pagerank` — personalised PageRank over the graph;
+  returns ``[(paper_id, score)]`` sorted descending. Optional
+  ``seed_ids`` set drives the personalisation vector.
+* :func:`compute_saturation` — pure 2-arg ratio helper; returns
+  ``NaN`` for the 0/0 case so callers can distinguish "no data"
+  from "0% saturation".
+* :func:`per_paper_saturation` — single-paper saturation derived
+  from a reference list and the current collection.
+* :func:`saturation_for_paper` — convenience wrapper used by every
+  ExpandBy* step that wants the dashboard metric; defensive against
+  fake S2 clients in tests and never triggers new S2 calls.
+
+The graph is directed (so PageRank can flow correctly along the
+"who cites whom" direction). Vertex attributes are populated from
+:class:`PaperRecord` fields and consumed by both the PageRank metric
+(via ``compute_metric("pagerank", ...)``) and the cluster step (via
+``WalktrapClusterer`` / ``LouvainClusterer``).
+"""
 
 from __future__ import annotations
 
@@ -13,12 +37,28 @@ log = logging.getLogger("citeclaw.network")
 
 
 def build_citation_graph(collection: dict[str, PaperRecord]) -> ig.Graph:
-    """
-    Build a directed citation graph from the paper collection.
+    """Build a directed citation graph from the paper collection.
 
-    Nodes: all papers in collection.
-    Edges: A -> B if A is in B's reference list (A is cited by B).
-           Only edges between papers in the collection are included.
+    Nodes: all papers in collection. Vertex attributes (``paper_id``,
+    ``title``, ``year``, ``citation_count``, ``depth``, ``source``)
+    are populated from the matching :class:`PaperRecord` fields.
+
+    Edges:
+
+    * ``A → B`` when A is in B's ``references`` list (A is *cited by*
+      B). Only edges between papers in the collection are included —
+      external references are dropped because we have no node for
+      them.
+    * ``supporting_papers`` adds an extra edge whose direction
+      depends on the citing paper's ``source``: a forward-expansion
+      paper inherits an edge **from** its supporting source (the
+      source cited the new paper); a backward-expansion paper
+      inherits an edge **to** its supporting source (the new paper
+      cites the source). The ``edge_set`` dedup handles overlap with
+      the references-pass.
+
+    Self-loops (``ref_id == pid``) are dropped — they reflect data
+    quirks in S2 references rather than real self-citations.
     """
     node_ids = sorted(collection.keys())
     id_to_idx = {pid: i for i, pid in enumerate(node_ids)}
