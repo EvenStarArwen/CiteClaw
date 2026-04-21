@@ -69,12 +69,44 @@ class ExpandBySemantics:
         limit: int = 100,
         use_rejected_as_negatives: bool = False,
     ) -> None:
+        """Configure the semantic kNN expansion.
+
+        Parameters
+        ----------
+        screener:
+            Filter block applied to recommendations before they reach
+            ``ctx.collection``. ``None`` is a no-op (the step returns
+            empty + ``reason="no screener"``).
+        max_anchor_papers:
+            Cap on the number of anchor papers passed to
+            ``fetch_recommendations`` — taken from the start of the
+            signal so callers can pre-rank to control which papers
+            drive the kNN.
+        limit:
+            Recommendations API result cap (S2-side).
+        use_rejected_as_negatives:
+            When True, sends the first 50 papers in ``ctx.rejected`` as
+            negative anchors so the kNN steers away from already-rejected
+            material.
+        """
         self.screener = screener
         self.max_anchor_papers = max_anchor_papers
         self.limit = limit
         self.use_rejected_as_negatives = use_rejected_as_negatives
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
+        """Fingerprint → fetch_recommendations → shared screen pipeline.
+
+        Six-step flow (see module docstring for the full numbered list):
+        idempotency check → pick anchors from the head of the signal →
+        optional negatives from ``ctx.rejected`` → one S2
+        Recommendations call → shared
+        :func:`~citeclaw.steps._expand_helpers.screen_expand_candidates`
+        pipeline → mark fingerprint. Failures of the
+        ``fetch_recommendations`` call are logged at WARNING and the
+        step returns an empty signal with ``reason="fetch_failed"`` —
+        the pipeline keeps running.
+        """
         if self.screener is None:
             return StepResult(
                 signal=[],
