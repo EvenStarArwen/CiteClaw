@@ -103,6 +103,7 @@ def create_progress(*, transient: bool = True) -> Progress:
 
 
 def phase_header(phase: str, message: str) -> None:
+    """Print the ``━━━ <phase> <message> ━━━`` header banner for a pipeline phase."""
     console.print()
     console.print(f"[phase]{'━' * 65}[/]")
     console.print(f"[phase]  {phase}[/]  [white]{message}[/]")
@@ -110,14 +111,17 @@ def phase_header(phase: str, message: str) -> None:
 
 
 def phase_done(message: str) -> None:
+    """Print the green-check ``✓`` success line below a phase header."""
     console.print(f"  [bright_green]✓[/] {message}")
 
 
 def phase_warn(message: str) -> None:
+    """Print the yellow-bang ``!`` warning line below a phase header."""
     console.print(f"  [bright_yellow]![/] {message}")
 
 
 def stat_line(label: str, value: str) -> None:
+    """Print a two-column ``<label>: <value>`` stat row (dim label, metric value)."""
     console.print(f"    [dim]{label}:[/] [metric]{value}[/]")
 
 
@@ -129,14 +133,28 @@ _active_dashboard: contextvars.ContextVar[Optional["DashboardLike"]] = contextva
 
 
 def get_active_dashboard() -> Optional["DashboardLike"]:
+    """Return the dashboard bound to the current execution context, or None.
+
+    Read by the S2 HTTP retry callback (and anyone else who can't be
+    threaded a dashboard through their constructor) to surface live
+    status messages without introducing a hard dependency on a
+    specific run's Dashboard instance.
+    """
     return _active_dashboard.get()
 
 
 def set_active_dashboard(dash: Optional["DashboardLike"]) -> contextvars.Token:
+    """Bind ``dash`` as the active dashboard for this context; return the token.
+
+    The returned token must be passed back to
+    :func:`reset_active_dashboard` to restore the prior binding — typical
+    usage wraps the binding in a try/finally around the pipeline run.
+    """
     return _active_dashboard.set(dash)
 
 
 def reset_active_dashboard(token: contextvars.Token) -> None:
+    """Restore the prior dashboard binding from the token returned by set_*."""
     _active_dashboard.reset(token)
 
 
