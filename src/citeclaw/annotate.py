@@ -83,7 +83,13 @@ def _parse_annotation_batch(raw: str) -> dict[int, str] | None:
         text = m.group(1).strip()
     try:
         data = json.loads(text)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # Malformed LLM JSON falls back to per-paper _label_one calls.
+        # DEBUG-log so postmortem can see which parse error fired
+        # without spamming WARNING on a known-tolerable path (LLMs
+        # occasionally emit stray text around the JSON).
+        log.debug("annotate: batched JSON parse failed: %s — head=%r",
+                  exc, text[:120])
         return None
     if isinstance(data, dict) and "results" in data:
         data = data["results"]
