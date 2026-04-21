@@ -137,7 +137,12 @@ def _refresh_pdf_urls_from_cache(
                 continue
             try:
                 data = json.loads(row[0])
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                # Corrupted cache row — skip this paper. DEBUG-log so
+                # postmortem can correlate missing PDF URLs with cache
+                # entries that failed to deserialise, without spamming
+                # WARNING on a per-paper loop.
+                log.debug("fetch_pdfs: cache row JSON decode failed: %s", exc)
                 continue
             blob = data.get("openAccessPdf") or {}
             url = blob.get("url") if isinstance(blob, dict) else None
