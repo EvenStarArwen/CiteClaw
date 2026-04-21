@@ -1,4 +1,25 @@
-"""CLI entry point — ``python -m citeclaw``, ``annotate``, and ``rebuild-graph``."""
+"""CLI entry point — ``python -m citeclaw [subcommand] ...``.
+
+Five subcommands, dispatched in :func:`main` by the first positional arg:
+
+* (no arg or anything not below) → :func:`_run_snowball` — the default
+  pipeline run that reads ``-c config.yaml`` + flags, validates the
+  config, builds a Context, runs the pipeline, and finalises.
+* ``annotate <graph>`` → :func:`_run_annotate` — the LLM-driven
+  graph-node-labelling subcommand (see :mod:`citeclaw.annotate`).
+* ``rebuild-graph <data_dir>`` → :func:`_run_rebuild_graph` —
+  re-emit citation_network / collaboration_network GraphML from an
+  existing run's literature_collection.json + cache.db (no S2 calls).
+* ``fetch-pdfs <data_dir>`` → :func:`_run_fetch_pdfs` — the bulk PDF
+  download CLI (see :mod:`citeclaw.fetch_pdfs`).
+* ``web`` → :func:`_run_web` — launch the FastAPI + React web UI
+  (see :mod:`citeclaw.web_server`).
+
+API keys are intentionally never read from YAML — :func:`_validate_config`
+walks the configured pipeline + filter blocks, computes the set of
+required env vars via :func:`citeclaw.preflight.find_missing_api_keys`,
+and exits with a clear error before any LLM/S2 spend if any are unset.
+"""
 
 from __future__ import annotations
 
@@ -87,6 +108,14 @@ def _build_fetch_pdfs_parser() -> argparse.ArgumentParser:
 
 
 def _validate_config(config) -> None:
+    """Pre-flight check: seeds + pipeline + every required env var.
+
+    Exits with status 1 + a structured error log if any check fails so
+    the user sees actionable errors before any LLM / S2 spend. API keys
+    are never read from YAML — :func:`citeclaw.preflight.find_missing_api_keys`
+    walks the built pipeline + filter blocks to compute the env-var set
+    that the configured providers will actually need at runtime.
+    """
     errors: list[str] = []
     if not config.seed_papers:
         errors.append("At least one seed paper is required.")
@@ -294,19 +323,27 @@ def _run_web(argv: list[str]) -> None:
     serve(host=args.host, port=args.port)
 
 
+# Subcommand dispatch table. Order here only matters for docs / --help;
+# ``main`` matches the first positional arg against the keys and falls
+# through to ``_run_snowball`` (the default pipeline run) when nothing
+# matches. Each handler parses the remaining argv tail itself.
+_SUBCOMMANDS: dict[str, "Callable[[list[str]], None]"] = {
+    "annotate": lambda argv: _run_annotate(argv),
+    "rebuild-graph": lambda argv: _run_rebuild_graph(argv),
+    "fetch-pdfs": lambda argv: _run_fetch_pdfs(argv),
+    "web": lambda argv: _run_web(argv),
+}
+
+
 def main(argv: list[str] | None = None) -> None:
+    """Parse ``argv[0]`` as a subcommand name and dispatch to its handler.
+
+    When no match is found (or argv is empty), falls through to
+    :func:`_run_snowball`, the default pipeline run.
+    """
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "annotate":
-        _run_annotate(argv[1:])
-        return
-    if argv and argv[0] == "rebuild-graph":
-        _run_rebuild_graph(argv[1:])
-        return
-    if argv and argv[0] == "fetch-pdfs":
-        _run_fetch_pdfs(argv[1:])
-        return
-    if argv and argv[0] == "web":
-        _run_web(argv[1:])
+    if argv and argv[0] in _SUBCOMMANDS:
+        _SUBCOMMANDS[argv[0]](argv[1:])
         return
     _run_snowball(argv)
 
