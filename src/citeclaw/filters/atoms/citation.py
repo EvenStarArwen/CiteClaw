@@ -1,4 +1,4 @@
-"""CitationFilter atom (citation count must outpace age × beta)."""
+"""CitationFilter — accept papers whose citation count outpaces ``beta × age``."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from citeclaw.models import PaperRecord
 
 
 def _current_year() -> int:
+    """Wall-clock year — extracted so tests can monkeypatch it deterministically."""
     return datetime.now().year
 
 
@@ -54,6 +55,18 @@ class CitationFilter:
         self._reference_year = reference_year
 
     def check(self, paper: PaperRecord, fctx: FilterContext) -> FilterOutcome:
+        """Evaluate ``paper`` in three stages.
+
+        1. Recency exemption — if configured and the paper falls inside
+           the window, pass without consulting the citation count.
+        2. Missing-data reject — papers with no ``citation_count`` reject
+           in the ``missing_data`` category, distinct from a real
+           citation-floor failure.
+        3. Threshold — ``citation_count >= max(anchor - paper.year, 1) * beta``.
+           Papers with ``year is None`` are effectively treated as
+           ancient (``years_since = anchor``), so only extreme citation
+           counts can pass.
+        """
         anchor = self._reference_year if self._reference_year is not None else _current_year()
         if (
             self._exemption_years is not None
