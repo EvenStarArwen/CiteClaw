@@ -1,4 +1,22 @@
-"""SQLite cache for API responses (Semantic Scholar / OpenAlex)."""
+"""SQLite read-through cache for S2 / OpenAlex / PDF / LLM responses.
+
+One sqlite database per run (typically ``<data_dir>/cache.db``) holding
+nine tables, each a JSON blob keyed by a stable identifier:
+
+  * ``paper_metadata`` / ``paper_references`` / ``paper_citations``
+    / ``paper_embeddings``  — keyed by ``paper_id``
+  * ``author_metadata`` / ``author_papers``  — keyed by ``author_id``
+  * ``search_queries``  — keyed by ``query_hash``, **TTL-aware**
+  * ``paper_full_text``  — keyed by ``paper_id``, dual-column
+    (``text`` for success, ``error`` for known failures)
+  * ``llm_response_cache``  — content-addressable LLM prompt cache
+    (key from :func:`citeclaw.clients.llm.caching.make_cache_key`)
+
+All non-search caches are unconditional — once a row exists, future
+calls trust it. The search table carries a freshness window
+(``_SEARCH_TTL_DAYS_DEFAULT``) so stale query results don't pin a
+month-old retrieval to a fast-moving topic.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +30,6 @@ from typing import Any, Generator
 
 log = logging.getLogger("citeclaw.cache")
 
-# Default freshness window for cached search results.
 _SEARCH_TTL_DAYS_DEFAULT = 30
 
 _SCHEMA = """
@@ -79,8 +96,20 @@ CREATE TABLE IF NOT EXISTS llm_response_cache (
 """
 
 
+def _now() -> str:
+    """Current UTC timestamp in ISO 8601 form — used as ``fetched_at``."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 class Cache:
-    """Thread-safe SQLite cache with WAL mode."""
+    """Thread-safe SQLite read-through cache.
+
+    Opens the database in WAL journal mode so concurrent readers don't
+    block writers — the pipeline runs many filter atoms against the
+    same Cache instance simultaneously. ``check_same_thread=False`` on
+    the connection lets worker threads share the handle; sqlite's own
+    locking serialises actual writes.
+    """
 
     def __init__(self, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,36 +130,50 @@ class Cache:
             self._conn.rollback()
             raise
 
-    # --- generic helpers ---
+    # --- generic helpers --------------------------------------------------
 
-    def _get(self, table: str, paper_id: str) -> dict[str, Any] | None:
-        with self._cursor() as cur:
-            cur.execute(f"SELECT data FROM {table} WHERE paper_id = ?", (paper_id,))
-            row = cur.fetchone()
-        if row:
-            log.debug("Cache HIT [%s] %s", table, paper_id)
-            return json.loads(row[0])
-        log.debug("Cache MISS [%s] %s", table, paper_id)
-        return None
+    def _get(
+        self, table: str, key: str, *, key_col: str = "paper_id",
+    ) -> Any | None:
+        """Read the JSON ``data`` blob from ``table`` keyed by ``key``.
 
-    def _put(self, table: str, paper_id: str, data: Any) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        Returns the deserialised value (any JSON shape) on hit, ``None``
+        on miss. The caller's wrapper re-types the result.
+        """
         with self._cursor() as cur:
             cur.execute(
-                f"INSERT OR REPLACE INTO {table} (paper_id, data, fetched_at) VALUES (?, ?, ?)",
-                (paper_id, json.dumps(data), now),
+                f"SELECT data FROM {table} WHERE {key_col} = ?", (key,),
             )
-        log.debug("Cache STORE [%s] %s", table, paper_id)
+            row = cur.fetchone()
+        if row is None:
+            log.debug("Cache MISS [%s] %s", table, key)
+            return None
+        log.debug("Cache HIT [%s] %s", table, key)
+        return json.loads(row[0])
 
-    def _has(self, table: str, paper_id: str, *, key_col: str = "paper_id") -> bool:
-        """SELECT 1 existence check; cheaper than _get for has_*-style lookups."""
+    def _put(
+        self, table: str, key: str, data: Any, *, key_col: str = "paper_id",
+    ) -> None:
+        """JSON-encode ``data`` and INSERT-OR-REPLACE under ``key``."""
         with self._cursor() as cur:
             cur.execute(
-                f"SELECT 1 FROM {table} WHERE {key_col} = ? LIMIT 1", (paper_id,)
+                f"INSERT OR REPLACE INTO {table} ({key_col}, data, fetched_at) "
+                "VALUES (?, ?, ?)",
+                (key, json.dumps(data), _now()),
+            )
+        log.debug("Cache STORE [%s] %s", table, key)
+
+    def _has(
+        self, table: str, key: str, *, key_col: str = "paper_id",
+    ) -> bool:
+        """SELECT 1 existence check; cheaper than `_get` for has_*-style lookups."""
+        with self._cursor() as cur:
+            cur.execute(
+                f"SELECT 1 FROM {table} WHERE {key_col} = ? LIMIT 1", (key,),
             )
             return cur.fetchone() is not None
 
-    # --- public API ---
+    # --- paper metadata / references / citations --------------------------
 
     def get_metadata(self, paper_id: str) -> dict[str, Any] | None:
         return self._get("paper_metadata", paper_id)
@@ -158,6 +201,8 @@ class Cache:
         """Check if citations exist in cache without reading them."""
         return self._has("paper_citations", paper_id)
 
+    # --- embeddings (with empty-list sentinel) ----------------------------
+
     def get_embedding(self, paper_id: str) -> list[float] | None:
         """Return cached embedding, or None if not cached.
 
@@ -166,11 +211,9 @@ class Cache:
         uniformly, but persists so we don't re-fetch.
         """
         data = self._get("paper_embeddings", paper_id)
-        if data is None:
-            return None
         if isinstance(data, list) and data:
             return data
-        return None  # sentinel (empty list) → no embedding available
+        return None
 
     def has_embedding(self, paper_id: str) -> bool:
         """True if we've recorded a lookup (hit or confirmed miss)."""
@@ -180,31 +223,32 @@ class Cache:
         """Store an embedding. Pass ``[]`` to record 'confirmed no embedding'."""
         self._put("paper_embeddings", paper_id, vector)
 
-    # --- author metadata (keyed by author_id, not paper_id) ---
+    # --- author metadata + papers (keyed by author_id) --------------------
 
     def get_author_metadata(self, author_id: str) -> dict[str, Any] | None:
-        with self._cursor() as cur:
-            cur.execute("SELECT data FROM author_metadata WHERE author_id = ?", (author_id,))
-            row = cur.fetchone()
-        if row:
-            log.debug("Cache HIT [author_metadata] %s", author_id)
-            return json.loads(row[0])
-        log.debug("Cache MISS [author_metadata] %s", author_id)
-        return None
+        return self._get("author_metadata", author_id, key_col="author_id")
 
     def put_author_metadata(self, author_id: str, data: dict[str, Any]) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        with self._cursor() as cur:
-            cur.execute(
-                "INSERT OR REPLACE INTO author_metadata (author_id, data, fetched_at) VALUES (?, ?, ?)",
-                (author_id, json.dumps(data), now),
-            )
-        log.debug("Cache STORE [author_metadata] %s", author_id)
+        self._put("author_metadata", author_id, data, key_col="author_id")
 
     def has_author_metadata(self, author_id: str) -> bool:
         return self._has("author_metadata", author_id, key_col="author_id")
 
-    # --- search query results — keyed by hash, TTL-aware ---
+    def get_author_papers(self, author_id: str) -> list[dict[str, Any]] | None:
+        """Return cached paper list for ``author_id``, or None on miss.
+
+        An empty list (``[]``) is a meaningful response — "we looked,
+        none found" — distinct from ``None`` ("we never looked").
+        """
+        return self._get("author_papers", author_id, key_col="author_id")
+
+    def put_author_papers(
+        self, author_id: str, data: list[dict[str, Any]],
+    ) -> None:
+        """Persist the full S2 paper list for ``author_id``."""
+        self._put("author_papers", author_id, data, key_col="author_id")
+
+    # --- search query results (keyed by hash, TTL-aware) ------------------
 
     def _is_fresh(self, fetched_at_iso: str, ttl_days: int) -> bool:
         """True iff ``fetched_at_iso`` is within ``ttl_days`` of now."""
@@ -245,12 +289,11 @@ class Cache:
         """Persist a search response keyed by its query hash. ``query`` is
         the original query dict (stored verbatim for debuggability) and
         ``result`` is the JSON-serialisable response payload."""
-        now = datetime.now(timezone.utc).isoformat()
         with self._cursor() as cur:
             cur.execute(
                 "INSERT OR REPLACE INTO search_queries "
                 "(query_hash, query_json, result_json, fetched_at) VALUES (?, ?, ?, ?)",
-                (query_hash, json.dumps(query), json.dumps(result), now),
+                (query_hash, json.dumps(query), json.dumps(result), _now()),
             )
         log.debug("Cache STORE [search_queries] %s", query_hash[:12])
 
@@ -268,35 +311,7 @@ class Cache:
             return False
         return self._is_fresh(row[0], ttl_days)
 
-    # --- author papers — full paper list per author ---
-
-    def get_author_papers(self, author_id: str) -> list[dict[str, Any]] | None:
-        """Return cached paper list for ``author_id``, or None on miss."""
-        with self._cursor() as cur:
-            cur.execute(
-                "SELECT data FROM author_papers WHERE author_id = ?", (author_id,),
-            )
-            row = cur.fetchone()
-        if row is None:
-            log.debug("Cache MISS [author_papers] %s", author_id)
-            return None
-        log.debug("Cache HIT [author_papers] %s", author_id)
-        return json.loads(row[0])
-
-    def put_author_papers(
-        self, author_id: str, data: list[dict[str, Any]],
-    ) -> None:
-        """Persist the full S2 paper list for ``author_id``."""
-        now = datetime.now(timezone.utc).isoformat()
-        with self._cursor() as cur:
-            cur.execute(
-                "INSERT OR REPLACE INTO author_papers (author_id, data, fetched_at) "
-                "VALUES (?, ?, ?)",
-                (author_id, json.dumps(data), now),
-            )
-        log.debug("Cache STORE [author_papers] %s", author_id)
-
-    # --- full-text PDF body ---
+    # --- full-text PDF body (dual-column success/error) -------------------
 
     def get_full_text(self, paper_id: str) -> dict[str, Any] | None:
         """Return ``{"text": str | None, "error": str | None}`` for the
@@ -334,19 +349,18 @@ class Cache:
         ``"too_large"``) for a failure. Exactly one of the two should be
         non-None — the caller decides which based on the fetch outcome.
         """
-        now = datetime.now(timezone.utc).isoformat()
         with self._cursor() as cur:
             cur.execute(
                 "INSERT OR REPLACE INTO paper_full_text "
                 "(paper_id, text, error, fetched_at) VALUES (?, ?, ?, ?)",
-                (paper_id, text, error, now),
+                (paper_id, text, error, _now()),
             )
         log.debug(
             "Cache STORE [paper_full_text] %s (text=%d chars, error=%r)",
             paper_id, len(text or ""), error,
         )
 
-    # --- LLM prompt cache ---
+    # --- LLM prompt cache -------------------------------------------------
 
     def get_llm_response(self, cache_key: str) -> dict[str, Any] | None:
         """Return the cached LLM response for ``cache_key`` or ``None``.
@@ -390,10 +404,7 @@ class Cache:
         ``logprob_tokens`` is JSON-serialised when present; pass ``None``
         (or an empty list) when the call didn't request logprobs.
         """
-        now = datetime.now(timezone.utc).isoformat()
-        logprob_blob = (
-            json.dumps(logprob_tokens) if logprob_tokens else None
-        )
+        logprob_blob = json.dumps(logprob_tokens) if logprob_tokens else None
         with self._cursor() as cur:
             cur.execute(
                 "INSERT OR REPLACE INTO llm_response_cache "
@@ -402,7 +413,7 @@ class Cache:
                 (
                     cache_key, model, text,
                     reasoning_content or None,
-                    logprob_blob, now,
+                    logprob_blob, _now(),
                 ),
             )
         log.debug(
