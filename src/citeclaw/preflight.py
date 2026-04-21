@@ -123,6 +123,26 @@ def _walk_pipeline(pipeline) -> Iterable[str]:
             yield from _walk_pipeline(branch)
 
 
+def _collect_required_models(config: Settings) -> list[str]:
+    """Collect every model alias the run will reach.
+
+    Four sources: ``screening_model`` + ``search_model`` (top-level
+    defaults), every ``LLMFilter.model`` override found in built
+    blocks, and every step-level ``model`` / ``agent.model`` override
+    in the built pipeline. Duplicates are preserved — the caller's
+    ``dict.setdefault`` handles dedup at the env-var level.
+    """
+    models: list[str] = []
+    if config.screening_model:
+        models.append(config.screening_model)
+    if config.search_model:
+        models.append(config.search_model)
+    for block in (config.blocks_built or {}).values():
+        models.extend(_walk_blocks(block))
+    models.extend(_walk_pipeline(config.pipeline_built))
+    return models
+
+
 def find_missing_api_keys(config: Settings) -> list[str]:
     """Return a list of human-readable error lines for every missing key.
 
@@ -143,17 +163,7 @@ def find_missing_api_keys(config: Settings) -> list[str]:
             "Semantic Scholar (always required for paper metadata + search)"
         )
 
-    # Collect every model alias the run will reach.
-    models: list[str] = []
-    if config.screening_model:
-        models.append(config.screening_model)
-    if config.search_model:
-        models.append(config.search_model)
-    for block in (config.blocks_built or {}).values():
-        models.extend(_walk_blocks(block))
-    models.extend(_walk_pipeline(config.pipeline_built))
-
-    for model in models:
+    for model in _collect_required_models(config):
         result = required_keys_for_model(model, config)
         if result is None:
             continue
