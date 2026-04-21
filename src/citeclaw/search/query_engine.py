@@ -54,44 +54,37 @@ def apply_local_query(
     venue_re = re.compile(venue_regex, re.IGNORECASE) if venue_regex else None
     title_re = re.compile(title_regex, re.IGNORECASE) if title_regex else None
     abstract_re = re.compile(abstract_regex, re.IGNORECASE) if abstract_regex else None
-
-    fos_wanted: set[str] | None = (
-        set(fields_of_study_any) if fields_of_study_any is not None else None
-    )
-    types_wanted: set[str] | None = (
+    fos_wanted = set(fields_of_study_any) if fields_of_study_any is not None else None
+    types_wanted = (
         set(publication_types_any) if publication_types_any is not None else None
     )
 
-    out: list[PaperRecord] = []
-    for p in papers:
-        if year_min is not None:
-            if p.year is None or p.year < year_min:
-                continue
-        if year_max is not None:
-            if p.year is None or p.year > year_max:
-                continue
-        if min_citations is not None:
-            if p.citation_count is None or p.citation_count < min_citations:
-                continue
-        if venue_re is not None:
-            if not p.venue or not venue_re.search(p.venue):
-                continue
-        if title_re is not None:
-            # ``title`` is always a string (default ""), so no None
-            # branch is needed; an empty title simply won't match a
-            # non-trivial regex.
-            if not title_re.search(p.title):
-                continue
-        if abstract_re is not None:
-            # LENIENT: missing abstract → pass. Only present-but-mismatched
-            # abstracts cause a reject.
-            if p.abstract is not None and not abstract_re.search(p.abstract):
-                continue
-        if fos_wanted is not None:
-            if not (fos_wanted & set(p.fields_of_study)):
-                continue
-        if types_wanted is not None:
-            if not (types_wanted & set(p.publication_types)):
-                continue
-        out.append(p)
-    return out
+    def matches(p: PaperRecord) -> bool:
+        if year_min is not None and (p.year is None or p.year < year_min):
+            return False
+        if year_max is not None and (p.year is None or p.year > year_max):
+            return False
+        if min_citations is not None and (
+            p.citation_count is None or p.citation_count < min_citations
+        ):
+            return False
+        if venue_re is not None and (not p.venue or not venue_re.search(p.venue)):
+            return False
+        # ``title`` is always a string (default ""), so an empty title
+        # simply fails to match a non-trivial regex — no None branch.
+        if title_re is not None and not title_re.search(p.title):
+            return False
+        # LENIENT: missing abstract → pass; only present-but-mismatched rejects.
+        if (
+            abstract_re is not None
+            and p.abstract is not None
+            and not abstract_re.search(p.abstract)
+        ):
+            return False
+        if fos_wanted is not None and fos_wanted.isdisjoint(p.fields_of_study):
+            return False
+        if types_wanted is not None and types_wanted.isdisjoint(p.publication_types):
+            return False
+        return True
+
+    return [p for p in papers if matches(p)]
