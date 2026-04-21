@@ -1,4 +1,11 @@
-"""Structured logging setup — console + file output."""
+"""Idempotent ``"citeclaw"`` logger setup — console + optional file output.
+
+Every module under :mod:`citeclaw` writes to a ``"citeclaw.<submodule>"``
+sub-logger. :func:`setup_logging` configures the shared parent logger
+once per process so handlers don't get duplicated when the CLI re-enters
+through ``--continue-from`` or when a long-lived web server reuses a
+worker.
+"""
 
 from __future__ import annotations
 
@@ -6,37 +13,56 @@ import logging
 import sys
 from pathlib import Path
 
+CITECLAW_LOGGER = "citeclaw"
+"""Root logger name shared by every ``citeclaw.*`` submodule."""
+
+_CONSOLE_FORMAT = "[%(asctime)s] %(message)s"
+_CONSOLE_DATEFMT = "%H:%M:%S"
+_FILE_FORMAT = "[%(asctime)s] %(levelname)-8s %(name)s — %(message)s"
+_FILE_DATEFMT = "%Y-%m-%d %H:%M:%S"
+_LOG_FILENAME = "citeclaw.log"
+
 _CONFIGURED = False
 
 
-def setup_logging(log_dir: Path | None = None, level: int = logging.INFO) -> None:
+def setup_logging(
+    log_dir: Path | None = None, level: int = logging.INFO,
+) -> None:
+    """Configure the ``"citeclaw"`` logger; idempotent across repeated calls.
+
+    Adds two handlers to the parent logger when first called:
+
+    * stderr console handler at ``level`` with a short ``HH:MM:SS``
+      timestamp (no logger name, to keep the dashboard readable);
+    * file handler at ``DEBUG`` writing to ``<log_dir>/citeclaw.log``
+      with the full ``YYYY-MM-DD HH:MM:SS LEVEL logger.name`` prefix
+      — only when ``log_dir`` is provided.
+
+    The parent logger itself is set to ``DEBUG`` so handlers can filter
+    independently. ``propagate`` is disabled so messages don't bubble
+    up to the root logger and double-print under pytest.
+
+    Calling :func:`setup_logging` a second time is a no-op (handlers
+    are not re-attached). Tests that need to reconfigure must reset
+    :data:`_CONFIGURED` directly.
+    """
     global _CONFIGURED
     if _CONFIGURED:
         return
     _CONFIGURED = True
 
-    root = logging.getLogger("citeclaw")
-    root.setLevel(logging.DEBUG)  # allow all levels through; handlers filter independently
+    root = logging.getLogger(CITECLAW_LOGGER)
+    root.setLevel(logging.DEBUG)
     root.propagate = False
 
-    # Console: short format (time only, no logger name)
-    console_fmt = logging.Formatter(
-        "[%(asctime)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
     console = logging.StreamHandler(sys.stderr)
     console.setLevel(level)
-    console.setFormatter(console_fmt)
+    console.setFormatter(logging.Formatter(_CONSOLE_FORMAT, datefmt=_CONSOLE_DATEFMT))
     root.addHandler(console)
 
-    # File: full format (date+time, level, logger name)
     if log_dir is not None:
         log_dir.mkdir(parents=True, exist_ok=True)
-        file_fmt = logging.Formatter(
-            "[%(asctime)s] %(levelname)-8s %(name)s — %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-        fh = logging.FileHandler(log_dir / "citeclaw.log", encoding="utf-8")
+        fh = logging.FileHandler(log_dir / _LOG_FILENAME, encoding="utf-8")
         fh.setLevel(logging.DEBUG)
-        fh.setFormatter(file_fmt)
+        fh.setFormatter(logging.Formatter(_FILE_FORMAT, datefmt=_FILE_DATEFMT))
         root.addHandler(fh)
