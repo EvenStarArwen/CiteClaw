@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Literal
+
 from citeclaw.filters.base import PASS, FilterContext, FilterOutcome
+from citeclaw.filters.measures.base import SimilarityMeasure
 from citeclaw.models import PaperRecord
+
+log = logging.getLogger("citeclaw.filters.blocks.similarity")
 
 
 class SimilarityFilter:
@@ -33,8 +39,8 @@ class SimilarityFilter:
         name: str = "similarity",
         *,
         threshold: float = 0.10,
-        measures: list,
-        on_no_data: str = "pass",
+        measures: list[SimilarityMeasure],
+        on_no_data: Literal["pass", "reject"] = "pass",
     ) -> None:
         self.name = name
         self.threshold = threshold
@@ -81,6 +87,13 @@ class SimilarityFilter:
             if callable(prefetch):
                 try:
                     prefetch(papers, fctx)
-                except Exception:
-                    pass  # non-fatal; per-paper compute will fall back
+                except Exception as exc:
+                    # Non-fatal — per-paper compute will fall back to
+                    # cache-miss / one-by-one fetch. Log at debug so the
+                    # failure is recoverable from the file handler when
+                    # diagnosing slow batch dispatches.
+                    log.debug(
+                        "SimilarityMeasure %r prefetch failed: %s",
+                        getattr(m, "name", type(m).__name__), exc,
+                    )
         return [self.check(p, fctx) for p in papers]
