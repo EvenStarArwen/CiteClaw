@@ -254,7 +254,12 @@ def _parse_naming_response(text: str) -> tuple[str, str] | None:
         text = m.group(1).strip()
     try:
         data = json.loads(text)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # Malformed LLM JSON is recoverable (caller falls back to
+        # keyword-only naming). DEBUG-log so the failure leaves a
+        # diagnostic trail without spamming the file log on a known-
+        # tolerable path (audit "no silent failure" rule).
+        log.debug("topic naming: single-cluster JSON parse failed: %s", exc)
         return None
     if not isinstance(data, dict):
         return None
@@ -281,7 +286,11 @@ def _parse_naming_batch(text: str) -> dict[int, tuple[str, str]] | None:
         text = m.group(1).strip()
     try:
         data = json.loads(text)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # Same tolerance as the single-cluster path: caller's batched
+        # naming flow recovers via keyword fallback when this returns
+        # None. DEBUG-log so the failure leaves a diagnostic trail.
+        log.debug("topic naming: batched JSON parse failed: %s", exc)
         return None
     if isinstance(data, dict) and "results" in data:
         data = data["results"]
