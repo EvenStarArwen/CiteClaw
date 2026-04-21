@@ -1,8 +1,30 @@
-"""MergeDuplicates step — fold preprint/published duplicates into one record.
+"""``MergeDuplicates`` step — fold preprint↔published duplicates.
 
-Destructive step that operates on ``ctx.collection``. Designed to run
-after expansion has added candidates and before Rerank / Finalize so
-double-counted preprints don't contaminate downstream scoring.
+Destructive step that operates on ``ctx.collection``. Designed to
+run after expansion has added candidates and before Rerank /
+Finalize so double-counted preprints don't contaminate downstream
+scoring.
+
+:func:`citeclaw.pipeline._ensure_merge_duplicates` auto-injects a
+default-config ``MergeDuplicates`` before ``Finalize`` when the
+user's YAML doesn't list one explicitly; adding it to the YAML is
+only necessary if you want dedup to run earlier in the pipeline
+(e.g. before a Rerank).
+
+Detection signals (all optional, composable):
+
+* title Jaccard similarity above ``title_threshold``
+* SPECTER2 embedding cosine above ``semantic_threshold`` (only when
+  ``use_embeddings=True`` and the S2 fetch succeeds; falls back to
+  title+author signals on failure, WARNING-logged)
+* year within ``year_window`` of the canonical
+
+Survivors land back in ``ctx.collection`` under their canonical id.
+Absorbed papers are recorded in ``ctx.alias_map`` so downstream code
+(including the step's own signal rewrite) can redirect references.
+The per-run count of folded duplicates is added to
+``ctx.rejection_counts["merged_duplicate"]`` so the dashboard shows
+the dedup footprint alongside other rejection categories.
 """
 
 from __future__ import annotations
@@ -17,6 +39,8 @@ log = logging.getLogger("citeclaw.steps.merge_duplicates")
 
 
 class MergeDuplicates:
+    """Fold preprint↔published duplicates in ``ctx.collection``."""
+
     name = "MergeDuplicates"
 
     def __init__(
@@ -27,12 +51,46 @@ class MergeDuplicates:
         year_window: int = 1,
         use_embeddings: bool = True,
     ) -> None:
+        """Configure detection thresholds.
+
+        Parameters
+        ----------
+        title_threshold:
+            Jaccard-over-token-sets cutoff for title-based duplicate
+            detection. 0.95 is strict enough to avoid cross-paper
+            false positives while catching preprint↔published pairs
+            where one side has a trailing colon / version marker.
+        semantic_threshold:
+            SPECTER2 cosine cutoff (only used when
+            ``use_embeddings=True`` AND the prefetch succeeds).
+            Intentionally high (0.98) — lower values start collapsing
+            same-topic-different-paper pairs.
+        year_window:
+            Allowable year difference between canonical and absorbed
+            paper. 1 catches preprint→published same-year and +/-1
+            publication-date pairs.
+        use_embeddings:
+            When False, skips the SPECTER2 prefetch entirely and uses
+            title + author signals only. Useful for runs where S2
+            embedding fetches are slow or unavailable.
+        """
         self.title_threshold = title_threshold
         self.semantic_threshold = semantic_threshold
         self.year_window = year_window
         self.use_embeddings = use_embeddings
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
+        """Detect + merge duplicate clusters, rewrite the signal.
+
+        Four-step flow: (1) short-circuit for < 2 papers (nothing to
+        merge); (2) optionally prefetch SPECTER2 embeddings (cache-
+        warm is free; failure logs WARNING and falls back to
+        title+author-only signals); (3) detect clusters via
+        :func:`citeclaw.dedup.detect_duplicate_clusters` and merge
+        each via :func:`citeclaw.dedup.merge_cluster`; (4) rewrite
+        the incoming signal so absorbed records are replaced by
+        their canonical form, deduped, and stale references dropped.
+        """
         collection = ctx.collection
         if len(collection) < 2:
             return StepResult(
