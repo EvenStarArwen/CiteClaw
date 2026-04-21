@@ -24,6 +24,42 @@ from citeclaw.models import BudgetExhaustedError
 log = logging.getLogger("citeclaw.llm.gemini")
 
 
+def _log_retry(retry_state: Any) -> None:
+    """tenacity ``before_sleep`` hook: warn-log the failure + attempt count."""
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    detail = (
+        f"{type(exc).__name__}: {str(exc)[:400]}"
+        if exc is not None
+        else "unknown"
+    )
+    log.warning(
+        "Gemini call failed (attempt %d): %s — retrying",
+        retry_state.attempt_number,
+        detail,
+    )
+
+
+def _extract_text_from_parts(resp: Any) -> str:
+    """Join the non-thought ``text`` parts on the first candidate.
+
+    Gemini 2.5/3 thinking-mode responses interleave ``thought=True`` parts
+    (the chain-of-reasoning) with ``thought=False`` parts (the user-facing
+    answer). We deliberately drop the thought parts so the returned
+    ``LLMResponse.text`` is the clean answer; the thinking trace itself
+    is currently NOT surfaced via ``reasoning_content`` (a known gap —
+    the parts list is walked here but the dropped trace isn't re-attached).
+    Falls back to ``resp.text`` when no parts came through.
+    """
+    parts = (resp.candidates[0].content.parts if resp.candidates else []) or []
+    text_parts = [
+        p.text for p in parts
+        if getattr(p, "text", None) and not getattr(p, "thought", False)
+    ]
+    if text_parts:
+        return "\n".join(text_parts)
+    return getattr(resp, "text", "") or ""
+
+
 class GeminiClient:
     """LLMClient backed by the native google-genai SDK.
 
@@ -51,22 +87,14 @@ class GeminiClient:
 
     @staticmethod
     def matches(model: str) -> bool:
+        """True for the ``gemini-*`` model alias family routed to this client."""
         return model.startswith("gemini-")
 
     @retry(
         retry=(retry_if_exception_type(Exception) & retry_if_not_exception_type(BudgetExhaustedError)),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        before_sleep=lambda rs: logging.getLogger("citeclaw.llm.gemini").warning(
-            "Gemini call failed (attempt %d): %s — retrying",
-            rs.attempt_number,
-            (
-                f"{type(rs.outcome.exception()).__name__}: "
-                f"{str(rs.outcome.exception())[:400]}"
-                if rs.outcome and rs.outcome.exception() is not None
-                else "unknown"
-            ),
-        ),
+        before_sleep=_log_retry,
     )
     def call(
         self,
@@ -120,17 +148,15 @@ class GeminiClient:
         # that case; the worker/supervisor JSON parsers are lenient and
         # handle free-form JSON plus fenced blocks.
         if response_schema is not None and self._config.structured_output_enabled:
+            # Always set ``application/json`` — without it the thinking-mode
+            # model emits all 2K+ tokens as ``thought`` parts with nothing
+            # in ``text`` (observed on gemini-3.1-pro-preview), collapsing
+            # the response to empty string on the client side. The schema
+            # itself is added only when not polymorphic — see the
+            # polymorphic-args comment above for why.
+            gen_config["response_mime_type"] = "application/json"
             polymorphic_args = response_schema.get("_strict_openai") is False
-            if polymorphic_args:
-                # Force JSON output but skip the schema — see the
-                # polymorphic-args comment above. Without mime_type the
-                # thinking-mode model will emit all 2K+ tokens as
-                # ``thought`` parts with nothing in ``text`` (observed on
-                # gemini-3.1-pro-preview), collapsing the response to
-                # empty string on the client side.
-                gen_config["response_mime_type"] = "application/json"
-            else:
-                gen_config["response_mime_type"] = "application/json"
+            if not polymorphic_args:
                 gen_config["response_schema"] = strip_for_gemini(response_schema)
 
         resp = client.models.generate_content(
@@ -138,9 +164,7 @@ class GeminiClient:
             contents=user,
             config=types.GenerateContentConfig(**gen_config),
         )
-        parts = (resp.candidates[0].content.parts if resp.candidates else []) or []
-        text_parts = [p.text for p in parts if getattr(p, "text", None) and not getattr(p, "thought", False)]
-        text = "\n".join(text_parts) if text_parts else (getattr(resp, "text", "") or "")
+        text = _extract_text_from_parts(resp)
 
         usage = extract_gemini_usage(getattr(resp, "usage_metadata", None))
         if usage.is_meaningful:
@@ -149,4 +173,7 @@ class GeminiClient:
                 reasoning_tokens=usage.reasoning,
                 model=self._model,
             )
-        return LLMResponse(text=text, logprob_tokens=[])
+        # ``reasoning_content=""`` is the default but spelled out here to
+        # signal the deliberate gap: ``_extract_text_from_parts`` drops the
+        # thought parts rather than re-attaching them.
+        return LLMResponse(text=text, logprob_tokens=[], reasoning_content="")
