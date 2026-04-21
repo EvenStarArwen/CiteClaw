@@ -1,4 +1,24 @@
-"""ExpandForward step — for each paper in signal, fetch citers and screen them."""
+"""``ExpandForward`` step — expand the signal forward through citers.
+
+For each source paper in ``signal``: fetch its citers from S2, take
+the top ``max_citations`` by citation count, hydrate them, and screen
+through the configured filter block. Survivors get
+``depth = source.depth + 1`` / ``source = "forward"`` /
+``supporting_papers = [source.paper_id]`` and are added to
+``ctx.collection``.
+
+Idempotency lives on ``ctx.expanded_forward`` (a set of source paper
+ids) so re-running the step on the same source skips rather than
+re-fetching. This is the bottom-half twin of
+:class:`~citeclaw.steps.expand_backward.ExpandBackward` (references
+instead of citers).
+
+The audit's "no silent failure" rule: per-source citer-fetch failures
+log at WARNING + skip the source; the source-references fetch
+(which only feeds the SimilarityFilter ``RefSim`` measure) is allowed
+to silently fall back to an empty set so a screener without ref-based
+similarity still works — DEBUG-logged.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +34,8 @@ log = logging.getLogger("citeclaw.steps.expand_forward")
 
 
 class ExpandForward:
+    """Per-source forward citation expansion + screening."""
+
     name = "ExpandForward"
 
     def __init__(self, *, max_citations: int = 100, screener=None) -> None:
@@ -21,6 +43,7 @@ class ExpandForward:
         self.screener = screener
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
+        """Expand each source paper through up to ``max_citations`` citers."""
         if self.screener is None:
             return StepResult(signal=[], in_count=len(signal), stats={"reason": "no screener"})
 
@@ -56,7 +79,15 @@ class ExpandForward:
             dash.begin_phase("fetch source refs", total=1)
             try:
                 source_refs = set(ctx.s2.fetch_reference_ids(source.paper_id))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                # Source-refs feed only the SimilarityFilter RefSim path —
+                # a screener without ref-based similarity works without
+                # them. DEBUG-log so the failure leaves a diagnostic trail
+                # without spamming WARNING on a known-tolerable path.
+                log.debug(
+                    "forward: source-refs fetch for %s failed: %s — using empty set",
+                    source.paper_id[:20], exc,
+                )
                 source_refs = set()
             dash.tick_inner(1)
 
