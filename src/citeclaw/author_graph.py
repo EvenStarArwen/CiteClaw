@@ -1,9 +1,38 @@
 """Build and export an author collaboration graph from a CiteClaw collection.
 
-The graph is undirected. Each node is an S2 author (keyed by ``authorId``,
-falling back to author name when the ID is missing). Each edge represents a
-co-authorship between two authors and accumulates contribution-weighted
-strength, time-window stats, and the raw collaboration count.
+The graph is **undirected**. Each node is an S2 author (keyed by
+``authorId``, falling back to ``name:<author-name>`` when the ID is
+missing). Each edge represents a co-authorship between two authors
+in some paper of the collection.
+
+Node attributes (set on every vertex):
+
+* ``name`` — display name (from S2 author dict, falling back to the
+  ``author_details`` lookup)
+* ``author_id`` — the keying string (``"<S2 authorId>"`` or
+  ``"name:<name>"``)
+* ``year_entered`` — earliest paper year for this author in the
+  collection (``0`` when no paper has a year)
+* ``total_citation`` — S2 citationCount from author_details (0 when
+  unknown)
+* ``h_index`` — S2 hIndex from author_details (0 when unknown)
+* ``paper_count_s2`` — S2 paperCount from author_details (0 when unknown)
+* ``paper_count_in_community`` — number of this author's papers
+  inside the input collection
+* ``intra_network_citation`` — sum of citationCount across this
+  author's collection papers
+* ``affiliation`` — ``" / "``-joined affiliation strings from
+  author_details
+
+Edge attributes:
+
+* ``strength`` — sum of ``1/N`` per shared paper, where ``N`` is the
+  paper's author count (so co-authoring a 2-author paper contributes
+  more than co-authoring a 50-author paper)
+* ``first_year`` / ``last_year`` — earliest / latest paper year
+  shared by the pair (``0`` when no shared paper has a year)
+* ``duration`` — ``last_year - first_year`` (0 when years unknown)
+* ``n_collaborations`` — raw count of papers shared by the pair
 """
 
 from __future__ import annotations
@@ -38,6 +67,67 @@ def _author_key(a: dict) -> str | None:
             _FALLBACK_KEY_WARNED = True
         return f"name:{name}"
     return None
+
+
+def _set_vertex_attributes(
+    g,
+    node_keys: list[str],
+    author_papers: dict[str, list[PaperRecord]],
+    author_name: dict[str, str],
+    author_details: dict[str, dict[str, Any]],
+) -> None:
+    """Populate the 9 per-author vertex attributes on ``g``.
+
+    Walks ``node_keys`` once accumulating parallel lists, then assigns
+    each as a `g.vs[...]` column. Defaults (``0`` for numeric, empty
+    string for textual) are intentional — igraph's GraphML writer
+    needs every column to be the same length, so we can't just skip
+    authors with missing data.
+    """
+    names: list[str] = []
+    years_entered: list[int] = []
+    total_citation: list[int] = []
+    h_index: list[int] = []
+    paper_count_s2: list[int] = []
+    paper_count_in_community: list[int] = []
+    intra_network_citation: list[int] = []
+    affiliation: list[str] = []
+
+    for key in node_keys:
+        papers_for_a = author_papers[key]
+        # name
+        name = author_name.get(key) or ""
+        if not name:
+            details = author_details.get(key) or {}
+            name = details.get("name") or ""
+        names.append(name)
+        # year_entered
+        years = [p.year for p in papers_for_a if p.year is not None]
+        years_entered.append(min(years) if years else 0)
+        # author details
+        details = author_details.get(key) or {}
+        total_citation.append(int(details.get("citationCount") or 0))
+        h_index.append(int(details.get("hIndex") or 0))
+        paper_count_s2.append(int(details.get("paperCount") or 0))
+        paper_count_in_community.append(len(papers_for_a))
+        intra_network_citation.append(
+            sum((p.citation_count or 0) for p in papers_for_a)
+        )
+        affs = details.get("affiliations") or []
+        if isinstance(affs, list) and affs:
+            affiliation.append(" / ".join(str(a) for a in affs if a))
+        else:
+            affiliation.append("")
+
+    g.vs["name"] = names
+    g.vs["author_id"] = node_keys
+    g.vs["year_entered"] = years_entered
+    g.vs["total_citation"] = total_citation
+    g.vs["h_index"] = h_index
+    g.vs["paper_count_s2"] = paper_count_s2
+    g.vs["paper_count_in_community"] = paper_count_in_community
+    g.vs["intra_network_citation"] = intra_network_citation
+    g.vs["affiliation"] = affiliation
 
 
 def build_author_graph(
@@ -114,50 +204,7 @@ def build_author_graph(
         log.info("Author collaboration graph: 0 authors, 0 edges (collection has no author data)")
         return g
 
-    names: list[str] = []
-    years_entered: list[int] = []
-    total_citation: list[int] = []
-    h_index: list[int] = []
-    paper_count_s2: list[int] = []
-    paper_count_in_community: list[int] = []
-    intra_network_citation: list[int] = []
-    affiliation: list[str] = []
-
-    for key in node_keys:
-        papers_for_a = author_papers[key]
-        # name
-        name = author_name.get(key) or ""
-        if not name:
-            details = author_details.get(key) or {}
-            name = details.get("name") or ""
-        names.append(name)
-        # year_entered
-        years = [p.year for p in papers_for_a if p.year is not None]
-        years_entered.append(min(years) if years else 0)
-        # author details
-        details = author_details.get(key) or {}
-        total_citation.append(int(details.get("citationCount") or 0))
-        h_index.append(int(details.get("hIndex") or 0))
-        paper_count_s2.append(int(details.get("paperCount") or 0))
-        paper_count_in_community.append(len(papers_for_a))
-        intra_network_citation.append(
-            sum((p.citation_count or 0) for p in papers_for_a)
-        )
-        affs = details.get("affiliations") or []
-        if isinstance(affs, list) and affs:
-            affiliation.append(" / ".join(str(a) for a in affs if a))
-        else:
-            affiliation.append("")
-
-    g.vs["name"] = names
-    g.vs["author_id"] = node_keys
-    g.vs["year_entered"] = years_entered
-    g.vs["total_citation"] = total_citation
-    g.vs["h_index"] = h_index
-    g.vs["paper_count_s2"] = paper_count_s2
-    g.vs["paper_count_in_community"] = paper_count_in_community
-    g.vs["intra_network_citation"] = intra_network_citation
-    g.vs["affiliation"] = affiliation
+    _set_vertex_attributes(g, node_keys, author_papers, author_name, author_details)
 
     if edge_stats:
         edge_pairs: list[tuple[int, int]] = []
