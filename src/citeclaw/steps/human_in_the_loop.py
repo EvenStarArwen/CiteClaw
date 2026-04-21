@@ -488,8 +488,11 @@ class HumanInTheLoop:
                 ctx.dashboard.warn(
                     f"HumanInTheLoop sleeping {int(wait_for)}s before sampling"
                 )
-            except Exception:  # noqa: BLE001 — dashboard is best-effort
-                pass
+            except Exception as exc:  # noqa: BLE001 — dashboard is best-effort
+                # Audit "no silent failure" rule — dashboard write
+                # failure isn't fatal but the trail belongs in DEBUG so
+                # postmortem can see why the user banner didn't appear.
+                log.debug("HITL: dashboard.warn failed: %s", exc)
             time.sleep(wait_for)
 
         # 2. Sample paper ids first (A5: no hydration before sampling).
