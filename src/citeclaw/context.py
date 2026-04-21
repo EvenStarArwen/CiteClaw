@@ -1,4 +1,22 @@
-"""Pipeline context — mutable state shared across steps."""
+"""Pipeline context — mutable state shared across steps.
+
+A single :class:`Context` instance is constructed by the CLI / web
+backend and threaded through every pipeline step's ``run(signal, ctx)``
+call. It owns:
+
+* References to external resources (config, S2 client, sqlite cache,
+  budget tracker, dashboard, event sink, HITL gate).
+* The cumulative paper state (``collection`` / ``rejected`` / ``seen`` /
+  ``seed_ids`` / ``expanded_*``).
+* Per-paper / per-filter trace data the dashboard and HITL step read.
+* Pipeline-level metadata (``iteration`` / ``prior_dir`` / clusters /
+  alias map / per-edge metadata / search idempotency set).
+
+Steps mutate this state in place; the only invariant is that
+``Rerank`` is non-destructive (filters the signal but never touches
+``collection``), so a Parallel-branch sees the original collection
+unchanged.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +24,11 @@ import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from citeclaw.budget import BudgetTracker
-
 from citeclaw.config import Settings
 from citeclaw.models import PaperRecord
-
 from citeclaw.progress import DashboardLike, NullDashboard
 
 if TYPE_CHECKING:
@@ -20,6 +36,9 @@ if TYPE_CHECKING:
     from citeclaw.cluster.base import ClusterResult
     from citeclaw.clients.s2 import SemanticScholarClient
     from citeclaw.event_sink import EventSink
+
+
+_HITL_DEFAULT_TIMEOUT_SEC = 600.0
 
 
 @dataclass
@@ -36,16 +55,20 @@ class HitlGate:
     event: threading.Event = field(default_factory=threading.Event)
     labels: dict[str, bool] = field(default_factory=dict)
     stop_requested: bool = False
-    timeout_sec: float = 600.0
+    timeout_sec: float = _HITL_DEFAULT_TIMEOUT_SEC
 
 
 @dataclass
 class Context:
+    """Per-run mutable state — see the module docstring for the field map."""
+
+    # --- External resources (constructor-injected) ---------------------
     config: Settings
     s2: "SemanticScholarClient"
     cache: "Cache"
     budget: BudgetTracker
 
+    # --- Cumulative paper state ---------------------------------------
     collection: dict[str, PaperRecord] = field(default_factory=dict)
     rejected: set[str] = field(default_factory=set)
     seen: set[str] = field(default_factory=set)
@@ -62,6 +85,7 @@ class Context:
     # ``cfg.seed_papers`` with siblings appended after their primary.
     resolved_seed_ids: list[str] = field(default_factory=list)
 
+    # --- Per-paper / per-filter trace data ---------------------------
     # Per-paper rejection categories — keyed by paper id so
     # ``HumanInTheLoop`` can sample papers rejected by a specific
     # filter. Populated by ``record_rejections``; may contain duplicate
@@ -80,6 +104,7 @@ class Context:
     papers_screened_by_filter: dict[str, set[str]] = field(default_factory=dict)
     papers_accepted_by_filter: dict[str, set[str]] = field(default_factory=dict)
 
+    # --- Pipeline run metadata ---------------------------------------
     # Wallclock anchor (``time.monotonic()``) at the moment
     # ``run_pipeline`` started. Steps that gate on "wait N minutes since
     # pipeline start" — currently only ``HumanInTheLoop`` — read this to
@@ -115,6 +140,7 @@ class Context:
     prior_dir: Path | None = None
     new_seed_ids: list[str] = field(default_factory=list)
 
+    # --- UI / web bridges --------------------------------------------
     # Live terminal dashboard. ``NullDashboard`` is the default no-op so
     # steps can call ``ctx.dashboard.<anything>`` unconditionally; the
     # pipeline runner swaps in a real :class:`citeclaw.progress.Dashboard`
@@ -128,6 +154,7 @@ class Context:
     hitl_gate: HitlGate | None = None
 
     # Event sink for streaming pipeline events to the web UI. Steps can
-    # call ``ctx.event_sink.<method>`` to emit events; defaults to None
-    # (steps should check before calling, or the pipeline runner sets it).
-    event_sink: Any = None
+    # call ``ctx.event_sink.<method>`` to emit events; defaults to ``None``
+    # (call sites that need it must None-check or rely on the pipeline
+    # runner having set it).
+    event_sink: "EventSink | None" = None
