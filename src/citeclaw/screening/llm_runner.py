@@ -41,11 +41,18 @@ def _parse_matches(raw: str, n: int) -> list[bool] | None:
     "match": bool}, ...]}`` (emitted when the provider honors
     ``response_format``/``response_schema``) *and* the legacy flat-array
     shape ``[{"index": N, "match": bool}, ...]`` so mock responses and
-    legacy providers keep working. Returns ``None`` on parse failure.
+    legacy providers keep working. Returns ``None`` on parse failure;
+    callers (:func:`_run_one_batch`) emit a higher-level WARNING when
+    they receive ``None`` so the failure is observable at WARNING level
+    even though this helper itself logs at DEBUG.
     """
     try:
         data = _parse(raw)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # Caller already logs WARNING when matches is None. Add the
+        # specific exception detail at DEBUG so postmortem can see
+        # *which* parse error fired (audit "no silent failure" rule).
+        log.debug("LLM JSON parse failed: %s — head=%r", exc, raw[:120])
         return None
     # Accept both shapes.
     if isinstance(data, dict) and "results" in data:
