@@ -52,7 +52,7 @@ import io
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 from urllib.parse import urljoin
 
 import httpx
@@ -294,6 +294,33 @@ def _try_grobid(body: bytes) -> str | None:
         return None
 
 
+def _iter_pages_safely(
+    pages: Iterable[Any],
+    extract_fn: Callable[[Any], str | None],
+    *,
+    parser_name: str,
+) -> str:
+    """Run ``extract_fn(page)`` for each page; join the results with ``\\n``.
+
+    A single malformed page must not drop the entire document — the
+    parsers we use both raise opaque exceptions on individual pages
+    occasionally, especially on PDFs with embedded images or unusual
+    fonts. Per-page failures are logged at DEBUG (so the audit's
+    "no silent failure" rule has a diagnostic trail) and the page is
+    skipped; the rest of the document still flows to the caller.
+    """
+    chunks: list[str] = []
+    for page in pages:
+        try:
+            chunks.append(extract_fn(page) or "")
+        except Exception as exc:  # noqa: BLE001
+            log.debug(
+                "parse_pdf_bytes: %s per-page extract failed: %s",
+                parser_name, exc,
+            )
+    return "\n".join(chunks)
+
+
 def _try_pymupdf(body: bytes) -> str | None:
     """PyMuPDF extraction. Returns None on import failure or parse error."""
     try:
@@ -306,24 +333,22 @@ def _try_pymupdf(body: bytes) -> str | None:
         log.info("parse_pdf_bytes: pymupdf open failed: %s", exc)
         return None
     try:
-        chunks: list[str] = []
-        for page in doc:
-            try:
-                # ``sort=True`` reorders text blocks by reading order,
-                # which is the entire reason we prefer pymupdf over
-                # pypdf for two-column scientific PDFs.
-                chunks.append(page.get_text("text", sort=True) or "")
-            except Exception:
-                continue
-        return "\n".join(chunks)
+        # ``sort=True`` reorders text blocks by reading order, which is
+        # the entire reason we prefer pymupdf over pypdf for two-column
+        # scientific PDFs.
+        return _iter_pages_safely(
+            doc,
+            lambda p: p.get_text("text", sort=True),
+            parser_name="pymupdf",
+        )
     except Exception as exc:
         log.info("parse_pdf_bytes: pymupdf parse failed: %s", exc)
         return None
     finally:
         try:
             doc.close()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            log.debug("parse_pdf_bytes: pymupdf doc.close() failed: %s", exc)
 
 
 def _try_pypdf(body: bytes) -> str | None:
@@ -334,13 +359,11 @@ def _try_pypdf(body: bytes) -> str | None:
         return None
     try:
         reader = pypdf.PdfReader(io.BytesIO(body))
-        chunks: list[str] = []
-        for page in reader.pages:
-            try:
-                chunks.append(page.extract_text() or "")
-            except Exception:
-                continue
-        return "\n".join(chunks)
+        return _iter_pages_safely(
+            reader.pages,
+            lambda p: p.extract_text(),
+            parser_name="pypdf",
+        )
     except Exception as exc:
         log.info("parse_pdf_bytes: pypdf fallback failed: %s", exc)
         return None
