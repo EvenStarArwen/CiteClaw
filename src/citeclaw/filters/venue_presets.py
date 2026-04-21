@@ -154,19 +154,20 @@ VENUE_PRESETS: dict[str, list[str]] = {
 def resolve_presets(names: list[str]) -> list[str]:
     """Expand preset names to a deduplicated list of venue strings.
 
-    Raises ``ValueError`` on an unknown preset name.
+    Preset names are normalised (whitespace-stripped + lowercased) and
+    looked up in :data:`VENUE_PRESETS`. The output preserves insertion
+    order across both the input list and each preset's contents, with
+    duplicates removed.
+
+    Raises :class:`ValueError` on an unknown preset name.
     """
-    resolved: list[str] = []
-    seen: set[str] = set()
+    resolved: dict[str, None] = {}
     for name in names:
         key = name.strip().lower()
         if key not in VENUE_PRESETS:
-            known = sorted(VENUE_PRESETS)
             raise ValueError(
-                f"Unknown venue preset {name!r}. Known presets: {known}"
+                f"Unknown venue preset {name!r}. "
+                f"Known presets: {sorted(VENUE_PRESETS)}"
             )
-        for v in VENUE_PRESETS[key]:
-            if v not in seen:
-                seen.add(v)
-                resolved.append(v)
-    return resolved
+        resolved.update(dict.fromkeys(VENUE_PRESETS[key]))
+    return list(resolved)
