@@ -22,7 +22,7 @@ empty ``s2_api_key`` is always a missing key.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from citeclaw.config import Settings
 
@@ -101,17 +101,15 @@ def _walk_blocks(block) -> Iterable[str]:
 
 
 def _walk_pipeline(pipeline) -> Iterable[str]:
-    """Yield every step-level model override (ExpandBySearch.agent.model,
-    ExpandByPDF.model, ...).
+    """Yield every step-level ``model`` override, recursing into Parallel branches.
 
-    Recurses through ``Parallel`` branches.
+    Covers both ``ExpandBySearch``-shape agents (``step.agent.model``,
+    where ``agent`` may be a dataclass or a plain YAML dict) and
+    steps with a direct ``step.model`` attribute.
     """
     for step in pipeline or []:
         agent = getattr(step, "agent", None)
         if agent is not None:
-            # ``agent`` may be a dataclass (legacy / future agent
-            # backend) or a plain dict (current ExpandBySearch shell
-            # passes the YAML mapping straight through).
             m = (
                 agent.get("model") if isinstance(agent, dict)
                 else getattr(agent, "model", None)
@@ -151,10 +149,9 @@ def find_missing_api_keys(config: Settings) -> list[str]:
         models.append(config.screening_model)
     if config.search_model:
         models.append(config.search_model)
-    for m in _walk_blocks_in_built(config):
-        models.append(m)
-    for m in _walk_pipeline(config.pipeline_built):
-        models.append(m)
+    for block in (config.blocks_built or {}).values():
+        models.extend(_walk_blocks(block))
+    models.extend(_walk_pipeline(config.pipeline_built))
 
     for model in models:
         result = required_keys_for_model(model, config)
@@ -187,9 +184,3 @@ def find_optional_unset_keys(config: Settings) -> list[str]:
             "polite pool (~10 rps). Set the env var for higher limits."
         )
     return out
-
-
-def _walk_blocks_in_built(config: Settings) -> Iterable[str]:
-    """Iterate every model override across all built blocks."""
-    for block in (config.blocks_built or {}).values():
-        yield from _walk_blocks(block)
