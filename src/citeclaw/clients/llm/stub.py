@@ -42,6 +42,13 @@ _RE_TITLE_LINE = re.compile(r"Title:\s*(.+)")
 
 
 def _extract_n(user: str) -> int:
+    """Infer the number of items the prompt expects in the response.
+
+    First looks for an explicit ``"exactly N objects"`` declaration in
+    the prompt template; falls back to counting numbered list items
+    (``^N. ``). Defaults to 1 so a malformed prompt still yields a
+    valid (single-item) stub response.
+    """
     m = _RE_EXACTLY_N.search(user)
     if m:
         return int(m.group(1))
@@ -87,8 +94,14 @@ def stub_respond(system: str, user: str) -> str:
             })
         return json.dumps({"topic_label": "stub-topic", "summary": "stub summary"})
     if "SUPERVISOR" in system and "set_strategy" in system:
-        # v2 ExpandBySearch supervisor. Three-state lifecycle driven by
-        # what the most recent user message says:
+        # DEAD CODE pending agent rewrite — the v2 supervisor that
+        # previously matched these markers was deleted on 2026-04-20
+        # (see CLEANUP.md). Branch retained because the new agent in
+        # ExpandBySearch may reuse the same set_strategy / dispatch
+        # markers; safe to delete once the rewrite ships and exercises
+        # this stub via tests.
+        # Three-state lifecycle driven by what the most recent user
+        # message says:
         #   1. No prior strategy set   → set_strategy (1 sub-topic)
         #   2. Strategy set, nothing dispatched → dispatch worker
         #   3. Worker dispatched → done()
@@ -125,7 +138,8 @@ def stub_respond(system: str, user: str) -> str:
             },
         })
     if "WORKER" in system and "check_query_size" in system and "fetch_results" in system:
-        # v2 ExpandBySearch sub-topic worker. Drive the checklist to
+        # DEAD CODE pending agent rewrite — same status as the SUPERVISOR
+        # branch above. v2 sub-topic worker. Drive the checklist to
         # completion by inspecting the previous tool's result in the user
         # message and picking the next step.
         #
@@ -267,14 +281,19 @@ class StubClient:
         category: str = "other",
         response_schema: dict[str, Any] | None = None,
     ) -> LLMResponse:
+        """Run the deterministic responder, billing tokens via the budget.
+
+        Honours :class:`Settings`-driven budget exhaustion so the stub
+        path mirrors a real client's failure mode (the pipeline must
+        still observe budget caps even on offline runs).
+        ``with_logprobs`` and ``response_schema`` are accepted for
+        signature compatibility but ignored — the stub's output is
+        already well-formed JSON / text.
+        """
         from citeclaw.models import BudgetExhaustedError
 
         if self._budget.is_exhausted(self._config):
             raise BudgetExhaustedError(f"Budget exhausted: {self._budget.summary()}")
-        # The stub ignores ``response_schema`` — its deterministic output is
-        # already well-formed. ``stub_respond`` returns the wrapped shape
-        # for match-queries so it parses identically to a real structured
-        # response.
         text = stub_respond(system, user)
         usage = estimate_stub_usage(user, text)
         self._budget.record_llm(
