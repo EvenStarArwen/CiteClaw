@@ -1,13 +1,27 @@
-"""Not_ — invert a child filter block."""
+"""Not_ — invert the verdict of a single child filter block."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from citeclaw.filters.base import PASS, FilterContext, FilterOutcome
 from citeclaw.models import PaperRecord
 
+if TYPE_CHECKING:
+    from citeclaw.filters.base import Filter
+
 
 class Not_:
-    def __init__(self, name: str = "not", *, layer) -> None:
+    """Negate ``layer``: pass iff the wrapped filter would have rejected.
+
+    Carries a single child (``layer:`` singular in YAML, contrast
+    Sequential / Any which take ``layers:``). The rejection category
+    is ``"not_<child name>"`` so the dashboard can distinguish a
+    "rejected by the inverse" reason from a vanilla rejection by the
+    same child filter elsewhere.
+    """
+
+    def __init__(self, name: str = "not", *, layer: "Filter") -> None:
         self.name = name
         self.layer = layer
 
