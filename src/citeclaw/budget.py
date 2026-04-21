@@ -1,4 +1,21 @@
-"""LLM + S2 budget tracker and per-model pricing table."""
+"""Per-run budget accounting for LLM tokens, USD, and S2 requests.
+
+Two parallel views of LLM usage are kept:
+
+* **Per-category** — every ``record_llm`` call lands in a category bucket
+  (``"screening"``, ``"annotate"``, ``"other"``, ...). The dashboard
+  renders the category breakdown so users see where their tokens went.
+* **Per-model** — when a caller passes ``model=`` (the resolved YAML
+  alias), counts also accumulate into a per-model bucket. This is the
+  only way :meth:`BudgetTracker.cost_by_model` can price a multi-model
+  run accurately, since a single ``MODEL_PRICING`` lookup can't cover
+  e.g. a cheap screening model plus a more capable search agent.
+
+S2 requests have their own pair of buckets — ``_s2_api`` (live calls
+that count against the rate limit) and ``_s2_cache`` (read-through
+hits that don't). Cache hits are tracked separately so the
+dashboard can report cache effectiveness.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +24,9 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from citeclaw.config import Settings
+
+
+_TOKENS_PER_MILLION = 1_000_000
 
 
 # Per-million-token prices in USD: (input, output, reasoning).
@@ -90,7 +110,32 @@ def lookup_pricing(model_name: str | None) -> tuple[float, float, float]:
     return MODEL_PRICING["GENERIC"]
 
 
+def _cost_usd(
+    input_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int,
+    pricing: tuple[float, float, float],
+) -> float:
+    """Apply ``(in_per_M, out_per_M, reason_per_M)`` to a token triple."""
+    in_per_m, out_per_m, reason_per_m = pricing
+    return (
+        input_tokens * in_per_m
+        + output_tokens * out_per_m
+        + reasoning_tokens * reason_per_m
+    ) / _TOKENS_PER_MILLION
+
+
 class BudgetTracker:
+    """Thread-safe per-run accumulator for LLM and S2 usage.
+
+    Public surface is the ``record_*`` mutators plus the read-only
+    ``llm_*`` / ``s2_*`` properties and the formatting / cost methods.
+    All bucket dicts are private; callers should never reach into them.
+    The lock guarantees increments are atomic across worker threads
+    (the LLM screener parallelises calls, the S2 client batches across
+    a worker pool).
+    """
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._llm_tokens: dict[str, int] = {}
@@ -109,6 +154,8 @@ class BudgetTracker:
         self._llm_by_model: dict[str, dict[str, int]] = {}
         self._s2_api: dict[str, int] = {}
         self._s2_cache: dict[str, int] = {}
+
+    # --- aggregate read-only views ---------------------------------------
 
     @property
     def llm_total_tokens(self) -> int:
@@ -142,6 +189,8 @@ class BudgetTracker:
     def llm_cache_hits(self) -> int:
         return sum(self._llm_cache_hits.values())
 
+    # --- mutators --------------------------------------------------------
+
     def record_llm_cache_hit(self, category: str = "other") -> None:
         with self._lock:
             self._llm_cache_hits[category] = (
@@ -165,14 +214,16 @@ class BudgetTracker:
         prices each model independently — required for accurate USD
         tracking in multi-model runs.
         """
+        total = input_tokens + output_tokens
         with self._lock:
-            total = input_tokens + output_tokens
             self._llm_tokens[category] = self._llm_tokens.get(category, 0) + total
             self._llm_input_tokens[category] = self._llm_input_tokens.get(category, 0) + input_tokens
             self._llm_output_tokens[category] = self._llm_output_tokens.get(category, 0) + output_tokens
             self._llm_calls[category] = self._llm_calls.get(category, 0) + 1
             if reasoning_tokens:
-                self._llm_reasoning_tokens[category] = self._llm_reasoning_tokens.get(category, 0) + reasoning_tokens
+                self._llm_reasoning_tokens[category] = (
+                    self._llm_reasoning_tokens.get(category, 0) + reasoning_tokens
+                )
             if model:
                 bucket = self._llm_by_model.setdefault(
                     model,
@@ -184,13 +235,15 @@ class BudgetTracker:
                 bucket["calls"] += 1
 
     def record_s2(self, req_type: str = "other", *, cached: bool = False) -> None:
+        """Bump the api or cache-hit counter for ``req_type``."""
         with self._lock:
-            if cached:
-                self._s2_cache[req_type] = self._s2_cache.get(req_type, 0) + 1
-            else:
-                self._s2_api[req_type] = self._s2_api.get(req_type, 0) + 1
+            target = self._s2_cache if cached else self._s2_api
+            target[req_type] = target.get(req_type, 0) + 1
+
+    # --- exhaustion checks -----------------------------------------------
 
     def is_exhausted(self, config: "Settings") -> bool:
+        """True iff either token or S2-request budget has been consumed."""
         if self.llm_total_tokens >= config.max_llm_tokens:
             return True
         if self.s2_requests >= config.max_s2_requests:
@@ -198,11 +251,18 @@ class BudgetTracker:
         return False
 
     def exhausted(self) -> bool:
+        """Legacy no-op kept for backwards compatibility — always returns False.
+
+        Real budget gating goes through :meth:`is_exhausted`, which
+        consults the run's :class:`Settings` for the actual ceilings.
+        """
         return False
+
+    # --- formatted summaries / breakdowns --------------------------------
 
     def summary(self) -> str:
         return (
-            f"LLM: {self.llm_total_tokens / 1_000_000:.3f}M tokens "
+            f"LLM: {self.llm_total_tokens / _TOKENS_PER_MILLION:.3f}M tokens "
             f"({self.llm_calls} calls) | "
             f"S2: {self.s2_requests:,} api + {sum(self._s2_cache.values()):,} cached"
         )
@@ -213,11 +273,11 @@ class BudgetTracker:
         Single-model approximation; for multi-model runs prefer
         :meth:`cost_by_model` which prices each alias separately.
         """
-        in_per_m, out_per_m, reason_per_m = lookup_pricing(model_name)
-        return (
-            self.llm_input_tokens     * in_per_m     / 1_000_000
-            + self.llm_output_tokens    * out_per_m    / 1_000_000
-            + self.llm_reasoning_tokens * reason_per_m / 1_000_000
+        return _cost_usd(
+            self.llm_input_tokens,
+            self.llm_output_tokens,
+            self.llm_reasoning_tokens,
+            lookup_pricing(model_name),
         )
 
     def cost_by_model(self) -> dict[str, dict[str, float | int]]:
@@ -229,45 +289,36 @@ class BudgetTracker:
         """
         out: dict[str, dict[str, float | int]] = {}
         for model, counts in self._llm_by_model.items():
-            in_per_m, out_per_m, reason_per_m = lookup_pricing(model)
-            cost = (
-                counts["input"]     * in_per_m     / 1_000_000
-                + counts["output"]    * out_per_m    / 1_000_000
-                + counts["reasoning"] * reason_per_m / 1_000_000
+            cost = _cost_usd(
+                counts["input"], counts["output"], counts["reasoning"],
+                lookup_pricing(model),
             )
-            out[model] = {
-                **counts,
-                "cost_usd": cost,
-            }
+            out[model] = {**counts, "cost_usd": cost}
         return dict(sorted(out.items(), key=lambda kv: -kv[1]["cost_usd"]))
 
     def total_cost_usd(self) -> float:
         return sum(bucket["cost_usd"] for bucket in self.cost_by_model().values())
 
-    def cost_breakdown(self, model_name: str | None) -> dict[str, dict[str, float | int]]:
+    def cost_breakdown(
+        self, model_name: str | None,
+    ) -> dict[str, dict[str, float | int]]:
         """Per-category cost breakdown for the run-end summary.
 
         Uses one model's pricing for all categories — accurate when
         every filter shares a model, approximate otherwise.
         """
-        in_per_m, out_per_m, reason_per_m = lookup_pricing(model_name)
+        pricing = lookup_pricing(model_name)
         out: dict[str, dict[str, float | int]] = {}
         for cat in self._llm_tokens:
             in_t = self._llm_input_tokens.get(cat, 0)
             out_t = self._llm_output_tokens.get(cat, 0)
             reason_t = self._llm_reasoning_tokens.get(cat, 0)
-            calls = self._llm_calls.get(cat, 0)
-            cost = (
-                in_t     * in_per_m     / 1_000_000
-                + out_t    * out_per_m    / 1_000_000
-                + reason_t * reason_per_m / 1_000_000
-            )
             out[cat] = {
                 "input": in_t,
                 "output": out_t,
                 "reason": reason_t,
-                "calls": calls,
-                "cost_usd": cost,
+                "calls": self._llm_calls.get(cat, 0),
+                "cost_usd": _cost_usd(in_t, out_t, reason_t, pricing),
             }
         return dict(sorted(out.items(), key=lambda kv: -kv[1]["cost_usd"]))
 
@@ -277,8 +328,14 @@ class BudgetTracker:
         for cat in sorted(self._llm_tokens.keys()):
             tokens = self._llm_tokens[cat]
             calls = self._llm_calls.get(cat, 0)
-            lines.append(f"    {cat:<30s}  {tokens / 1_000_000:.3f}M tokens  ({calls} calls)")
-        lines.append(f"    {'TOTAL':<30s}  {self.llm_total_tokens / 1_000_000:.3f}M tokens  ({self.llm_calls} calls)")
+            lines.append(
+                f"    {cat:<30s}  {tokens / _TOKENS_PER_MILLION:.3f}M tokens  ({calls} calls)"
+            )
+        lines.append(
+            f"    {'TOTAL':<30s}  "
+            f"{self.llm_total_tokens / _TOKENS_PER_MILLION:.3f}M tokens  "
+            f"({self.llm_calls} calls)"
+        )
         by_model = self.cost_by_model()
         if by_model:
             lines.append("  LLM usage by model (USD estimates):")
@@ -288,7 +345,7 @@ class BudgetTracker:
                 cost = b["cost_usd"]
                 total_usd += cost
                 lines.append(
-                    f"    {model:<30s}  {tokens / 1_000_000:.3f}M tokens  "
+                    f"    {model:<30s}  {tokens / _TOKENS_PER_MILLION:.3f}M tokens  "
                     f"({b['calls']} calls)  ${cost:.4f}"
                 )
             lines.append(f"    {'TOTAL USD (est.)':<30s}  ${total_usd:.4f}")
@@ -305,7 +362,9 @@ class BudgetTracker:
         return {
             "llm": {
                 "total_tokens": self.llm_total_tokens,
-                "total_tokens_millions": round(self.llm_total_tokens / 1_000_000, 3),
+                "total_tokens_millions": round(
+                    self.llm_total_tokens / _TOKENS_PER_MILLION, 3,
+                ),
                 "total_reasoning_tokens": self.llm_reasoning_tokens,
                 "total_calls": self.llm_calls,
                 "total_cost_usd_est": round(self.total_cost_usd(), 6),
