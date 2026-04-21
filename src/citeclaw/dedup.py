@@ -152,6 +152,12 @@ _PREPRINT_VENUES = {"arxiv", "biorxiv", "medrxiv", "chemrxiv", "ssrn"}
 
 
 def _is_preprint_venue(venue: str | None) -> bool:
+    """True when ``venue`` contains any of the known preprint-server names.
+
+    Substring match is intentional — S2 venue strings can include
+    extra decoration (``"arXiv 2301.00001"``, ``"bioRxiv preprint"``)
+    so exact-match would miss legitimate preprint records.
+    """
     if not venue:
         return False
     v = venue.lower()
@@ -185,6 +191,14 @@ def pick_canonical(cluster: list[PaperRecord]) -> PaperRecord:
 
 
 def _first_author_id(rec: PaperRecord) -> str | None:
+    """Return the first author's S2 ``authorId``, or ``None`` if unknown.
+
+    Skips name-only author entries (S2 occasionally returns
+    ``{"name": "J. Smith"}`` without an authorId when the author
+    hasn't been disambiguated). The returned id is the blocking key
+    used by :func:`detect_duplicate_clusters` to narrow pairwise
+    comparisons.
+    """
     for a in rec.authors or []:
         if isinstance(a, dict):
             aid = a.get("authorId")
