@@ -109,9 +109,24 @@ def check_already_searched(
 class ExpandScreenResult:
     """Per-stage counts returned by :func:`screen_expand_candidates`.
 
-    Steps can fold ``base_stats`` into their own stats dict alongside
-    retriever-specific keys (anchor_count, raw_hits, agent_iterations
-    etc.) before returning a :class:`StepResult`.
+    Field semantics:
+
+    * ``hydrated`` — every PaperRecord materialised by the S2
+      ``enrich_batch`` step (before dedup against ``ctx.seen``).
+    * ``novel`` — papers that survived the ``ctx.seen`` dedup AND had
+      ``rec.source = source_label`` stamped. These are the papers the
+      screener actually saw.
+    * ``passed`` — survivors of the screener cascade (subset of
+      ``novel``); each has ``llm_verdict = "accept"`` and was added
+      to ``ctx.collection``.
+    * ``rejected`` — list of ``(PaperRecord, FilterOutcome)`` tuples
+      from ``apply_block``; ``record_rejections`` already wrote them
+      to the rejection counter / ledger.
+    * ``base_stats`` — ready-to-merge dict of the standard
+      ``{raw_hits, hydrated, novel, accepted, rejected}`` counts.
+      Steps can fold this into their own stats dict alongside
+      retriever-specific keys (anchor_count, agent_iterations, …)
+      before returning a :class:`StepResult`.
     """
 
     hydrated: list[PaperRecord]
