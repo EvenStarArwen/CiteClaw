@@ -145,7 +145,9 @@ class FakeS2Client:
     # References
     # ------------------------------------------------------------------
 
-    def fetch_references(self, paper_id: str) -> list[PaperRecord]:
+    def fetch_references(
+        self, paper_id: str, *, progress_cb: Any = None,
+    ) -> list[PaperRecord]:
         self._record_call("fetch_references")
         data = self._get_or_stub(paper_id)
         refs = data.get("_ref_ids") or []
@@ -157,7 +159,9 @@ class FakeS2Client:
                 out.append(rec)
         return out
 
-    def fetch_reference_ids(self, paper_id: str) -> list[str]:
+    def fetch_reference_ids(
+        self, paper_id: str, *, progress_cb: Any = None,
+    ) -> list[str]:
         self._record_call("fetch_reference_ids")
         return list(self._get_or_stub(paper_id).get("_ref_ids") or [])
 

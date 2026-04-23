@@ -35,8 +35,10 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
+    ProgressColumn,
     SpinnerColumn,
     TaskID,
+    Task,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -49,6 +51,28 @@ if TYPE_CHECKING:
     from citeclaw.budget import BudgetTracker
     from citeclaw.context import Context
     from citeclaw.models import PaperRecord
+
+
+# ── custom progress columns (tolerate total=None for indeterminate phases) ─
+
+
+class _CountsColumn(ProgressColumn):
+    def render(self, task: "Task"):
+        completed = int(task.completed or 0)
+        if task.total is None:
+            return Text.from_markup(f"[bold]{completed:>4}[/][dim]/ ?  [/]")
+        return Text.from_markup(
+            f"[bold]{completed:>4}[/][dim]/{int(task.total):<4}[/]"
+        )
+
+
+class _PercentColumn(ProgressColumn):
+    def render(self, task: "Task"):
+        if task.total is None:
+            return Text.from_markup("[dim]·     [/]")
+        return Text.from_markup(
+            f"[dim]·[/] [bold]{int(task.percentage):>3.0f}%[/]"
+        )
 
 
 # ── theme + shared console (preserved for backward compatibility) ──────────
@@ -494,26 +518,29 @@ class Dashboard(NullDashboard):
 
     # ── inner / outer bar driving ────────────────────────────────────────
 
-    def begin_phase(self, description: str, total: int) -> None:
-        """Reset the inner bar to a new phase (description + total)."""
+    def begin_phase(self, description: str, total: int | None) -> None:
+        """Reset the inner bar to a new phase.
+
+        ``total=None`` renders an indeterminate (pulsing) bar — use it
+        when the caller knows work is happening but can't predict the
+        unit count (e.g. paginating refs with no known page count).
+        Any callable that ticks the inner bar thereafter bumps the
+        displayed "completed" counter.
+        """
         if self._progress is None or self._inner_task is None:
             return
-        self._inner_total = max(1, total)
+        self._inner_total = None if total is None else max(1, total)
         self._progress.reset(
             self._inner_task,
             total=self._inner_total,
             description=f"now: {description}",
         )
 
-    def retotal_phase(self, total: int) -> None:
-        """Adjust the inner bar's total without resetting completed.
-
-        Used by the LLM dispatcher when voting multiplies the number of
-        per-paper calls.
-        """
+    def retotal_phase(self, total: int | None) -> None:
+        """Adjust the inner bar's total without resetting completed."""
         if self._progress is None or self._inner_task is None:
             return
-        self._inner_total = max(1, total)
+        self._inner_total = None if total is None else max(1, total)
         self._progress.update(self._inner_task, total=self._inner_total)
 
     def tick_inner(self, n: int = 1) -> None:
@@ -524,9 +551,22 @@ class Dashboard(NullDashboard):
     def complete_phase(self) -> None:
         # Clamp inner bar to its total — prevents A>B overshoot when a
         # nested dispatcher has already driven the bar independently.
+        # For indeterminate phases (total=None), snap total to the
+        # current completed count so the bar shows "N/N" at the end.
         if self._progress is None or self._inner_task is None:
             return
-        self._progress.update(self._inner_task, completed=self._inner_total)
+        if self._inner_total is None:
+            task = next(
+                (t for t in self._progress.tasks if t.id == self._inner_task),
+                None,
+            )
+            completed = int(task.completed) if task else 0
+            self._inner_total = max(1, completed)
+            self._progress.update(
+                self._inner_task, total=self._inner_total, completed=self._inner_total,
+            )
+        else:
+            self._progress.update(self._inner_task, completed=self._inner_total)
 
     def advance_outer(self, n: int = 1) -> None:
         if self._progress is None or self._outer_task is None:
@@ -607,8 +647,8 @@ class Dashboard(NullDashboard):
                 complete_style="bright_cyan",
                 finished_style="bright_green",
             ),
-            TextColumn("[bold]{task.completed:>4}[/][dim]/{task.total:<4}[/]"),
-            TextColumn("[dim]·[/] [bold]{task.percentage:>3.0f}%[/]"),
+            _CountsColumn(),
+            _PercentColumn(),
             TextColumn("[dim]· ETA[/]"),
             TimeRemainingColumn(),
             console=self._console,

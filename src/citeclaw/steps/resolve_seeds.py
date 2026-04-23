@@ -184,11 +184,17 @@ class ResolveSeeds:
         seed ``ctx.collection``.
         """
         cfg = ctx.config
+        dash = getattr(ctx, "dashboard", None)
         resolved: list[str] = []
         seen: set[str] = set()
         primaries_resolved = 0
         siblings_added = 0
         unresolved_titles = 0
+
+        if dash is not None:
+            dash.begin_phase(
+                "resolve seed titles", total=max(1, len(cfg.seed_papers)),
+            )
 
         for sp in cfg.seed_papers:
             # Step 1: pick the primary paper_id (direct or via title match).
@@ -252,6 +258,8 @@ class ResolveSeeds:
             resolved.extend(new_via_extids)
             resolved.extend(new_via_title)
             siblings_added += len(new_via_extids) + len(new_via_title)
+            if dash is not None:
+                dash.tick_inner(1)
 
         ctx.resolved_seed_ids = resolved
         return StepResult(

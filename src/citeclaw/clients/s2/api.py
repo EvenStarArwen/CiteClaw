@@ -267,7 +267,9 @@ class SemanticScholarClient:
     # References
     # ------------------------------------------------------------------
 
-    def fetch_references(self, paper_id: str) -> list[PaperRecord]:
+    def fetch_references(
+        self, paper_id: str, *, progress_cb: Any = None,
+    ) -> list[PaperRecord]:
         cached = self._cache.get_references(paper_id)
         if cached is not None:
             recs = [r for r in (edge_to_record(e, "citedPaper") for e in cached) if r]
@@ -277,18 +279,22 @@ class SemanticScholarClient:
         raw = self._http.paginate(
             paper_id, "references",
             fields=f"citedPaper.{EDGE_LIGHT},{EDGE_META_FIELDS}",
+            progress_cb=progress_cb,
         )
         self._cache.put_references(paper_id, raw)
         recs = [r for r in (edge_to_record(e, "citedPaper") for e in raw) if r]
         log.debug("fetch_references(%s): %d refs (api, %d raw edges)", paper_id[:20], len(recs), len(raw))
         return recs
 
-    def fetch_reference_ids(self, paper_id: str) -> list[str]:
+    def fetch_reference_ids(
+        self, paper_id: str, *, progress_cb: Any = None,
+    ) -> list[str]:
         cached = self._cache.get_references(paper_id)
         if cached is None:
             cached = self._http.paginate(
                 paper_id, "references",
                 fields=f"citedPaper.{EDGE_LIGHT},{EDGE_META_FIELDS}",
+                progress_cb=progress_cb,
             )
             self._cache.put_references(paper_id, cached)
         return [

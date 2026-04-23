@@ -87,7 +87,12 @@ def _retry_message(rs, kind: str) -> None:
         + (f" · {exc}" if exc else "")
         + (f" · backoff {sleep:.1f}s" if sleep else "")
     )
-    log.warning(msg)
+    # Retry chatter goes to the file log at DEBUG only — the dashboard
+    # surfaces a transient banner, and a final failure raises upstream
+    # where callers already log at ERROR / WARNING. Printing each
+    # intermediate retry at WARNING used to double-render above the
+    # live region, so we downgrade.
+    log.debug(msg)
     try:
         from citeclaw.progress import get_active_dashboard
         dash = get_active_dashboard()

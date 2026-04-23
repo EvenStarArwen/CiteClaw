@@ -148,21 +148,27 @@ class ExpandBackward:
                 continue
             ctx.expanded_backward.add(source.paper_id)
 
-            dash.begin_phase("fetch refs", total=1)
+            # Indeterminate bar — ref counts aren't known upfront and
+            # S2 pagination runs at ~1 rps, so any paper with >100 refs
+            # would stall a 1/1 bar for seconds. Callback bumps the
+            # displayed count after every page.
+            dash.begin_phase("fetch refs", total=None)
             try:
-                ref_records = ctx.s2.fetch_references(source.paper_id)
+                ref_records = ctx.s2.fetch_references(
+                    source.paper_id, progress_cb=dash.tick_inner,
+                )
             except Exception as exc:
                 log.warning("backward: failed for %s: %s", source.paper_id[:20], exc)
                 dash.advance_outer(1)
                 continue
-            dash.tick_inner(1)
+            dash.complete_phase()
 
             # OpenAlex fallback: when S2 returns no references and the
             # paper has a DOI, consult OpenAlex's referenced_works. Tried
             # before the PDF fallback because it's O(refs) network calls
             # (cheap) vs O(PDF fetch + LLM parse) for the PDF path.
             if not ref_records and self.openalex_references:
-                oa_refs = self._openalex_fallback(source, ctx)
+                oa_refs = self._openalex_fallback(source, ctx, dash=dash)
                 if oa_refs:
                     ref_records = oa_refs
                     openalex_fallback_count += 1
@@ -221,6 +227,8 @@ class ExpandBackward:
         self,
         source: PaperRecord,
         ctx: Any,
+        *,
+        dash: Any = None,
     ) -> list[PaperRecord]:
         """Fetch references via OpenAlex for a paper S2 has no refs for.
 
@@ -261,6 +269,11 @@ class ExpandBackward:
         if not ref_dois:
             return []
 
+        # Per-DOI resolve via S2 at ~1 rps — large OpenAlex responses
+        # otherwise leave the inner bar idle for minutes.
+        if dash is not None:
+            dash.begin_phase("openalex: resolve DOIs", total=len(ref_dois))
+
         records: list[PaperRecord] = []
         for ref_doi in ref_dois:
             try:
@@ -271,9 +284,13 @@ class ExpandBackward:
                 # exists without spamming WARNING on a known-tolerable path.
                 log.debug("openalex fallback: S2 fetch_metadata(DOI:%s) failed: %s",
                           ref_doi, exc)
+                if dash is not None:
+                    dash.tick_inner(1)
                 continue
             if rec is not None:
                 records.append(rec)
+            if dash is not None:
+                dash.tick_inner(1)
 
         log.info(
             "openalex fallback: %d DOIs → %d resolved refs for %s",
