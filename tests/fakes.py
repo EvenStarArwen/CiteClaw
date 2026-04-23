@@ -183,6 +183,7 @@ class FakeS2Client:
 
     def fetch_citation_ids_and_counts(
         self, paper_id: str, *, max_items: int | None = None,
+        progress_cb: Any = None,
     ) -> list[dict[str, Any]]:
         self._record_call("fetch_citation_ids_and_counts")
         citers = self._citers_of(paper_id)

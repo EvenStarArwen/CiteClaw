@@ -179,6 +179,7 @@ class NullDashboard:
     def begin_phase(self, description: str, total: int) -> None: ...
     def retotal_phase(self, total: int) -> None: ...
     def tick_inner(self, n: int = 1) -> None: ...
+    def complete_phase(self) -> None: ...
     def advance_outer(self, n: int = 1) -> None: ...
     def note_candidates_seen(self, n: int = 1) -> None: ...
     def paper_accepted(self, paper: "PaperRecord", *, saturation: float | None = None) -> None: ...
@@ -245,6 +246,7 @@ class Dashboard(NullDashboard):
         self._progress: Progress | None = None
         self._outer_task: TaskID | None = None
         self._inner_task: TaskID | None = None
+        self._inner_total: int = 1
         self._live: Live | None = None
         self._live_token: Any = None  # contextvar token
 
@@ -375,12 +377,13 @@ class Dashboard(NullDashboard):
 
         elapsed = time.time() - self._step_started
         mins, secs = int(elapsed // 60), int(elapsed % 60)
+        self._console.print()
         self._console.print(
-            f"  [ok]✓[/] [bold]{self._step_name}[/]  "
-            f"[bold bright_white]{accepted}[/] accepted "
-            f"[dim]from[/] [bold bright_white]{seen}[/] candidates  "
-            f"[dim]·[/]  [dim]{llm_calls} LLM calls[/]  "
-            f"[dim]·[/]  [dim]{mins:02d}:{secs:02d}[/]"
+            f"  [ok]✓[/]  [step.name]{self._step_name}[/]  "
+            f"[dim]─[/]  "
+            f"[bold bright_green]{accepted:>4}[/] [ok]accepted[/] "
+            f"[dim]/ {seen} screened[/]"
+            f"   [dim]·  {llm_calls} LLM  ·  {mins:02d}:{secs:02d}[/]"
         )
 
     def note_candidates_seen(self, n: int = 1) -> None:
@@ -396,6 +399,11 @@ class Dashboard(NullDashboard):
         self._console.print()
         self._console.print(f"[phase]{'═' * 81}[/]")
         self._console.print(f"  [ok]✓[/]  [bold bright_white]pipeline complete[/]   [dim]· {mins:02d}:{secs:02d}[/]")
+        n_collection = len(self._collection) if self._collection else 0
+        self._console.print(
+            f"     [ok]★[/]  [bold bright_green]{n_collection}[/] [bold]papers accepted[/] "
+            f"[dim]/ {self._n_seen} screened  ·  {self._steps_completed} steps[/]"
+        )
 
         if self._budget is not None:
             tot_in = self._budget.llm_input_tokens
@@ -490,9 +498,10 @@ class Dashboard(NullDashboard):
         """Reset the inner bar to a new phase (description + total)."""
         if self._progress is None or self._inner_task is None:
             return
+        self._inner_total = max(1, total)
         self._progress.reset(
             self._inner_task,
-            total=max(1, total),
+            total=self._inner_total,
             description=f"now: {description}",
         )
 
@@ -504,12 +513,20 @@ class Dashboard(NullDashboard):
         """
         if self._progress is None or self._inner_task is None:
             return
-        self._progress.update(self._inner_task, total=max(1, total))
+        self._inner_total = max(1, total)
+        self._progress.update(self._inner_task, total=self._inner_total)
 
     def tick_inner(self, n: int = 1) -> None:
         if self._progress is None or self._inner_task is None:
             return
         self._progress.update(self._inner_task, advance=n)
+
+    def complete_phase(self) -> None:
+        # Clamp inner bar to its total — prevents A>B overshoot when a
+        # nested dispatcher has already driven the bar independently.
+        if self._progress is None or self._inner_task is None:
+            return
+        self._progress.update(self._inner_task, completed=self._inner_total)
 
     def advance_outer(self, n: int = 1) -> None:
         if self._progress is None or self._outer_task is None:

@@ -70,8 +70,11 @@ def _apply_sequential(
         p, r = apply_block(passed, layer, fctx)
         passed = p
         rejected.extend(r)
-        if dash is not None and not _is_llm_layer(layer):
-            dash.tick_inner(in_count)
+        # Clamp the inner bar to its total regardless of who drove it.
+        # Prevents A>B overshoot when a nested dispatcher (LLM / nested
+        # Sequential / Any) has already ticked beyond the layer total.
+        if dash is not None:
+            dash.complete_phase()
     return passed, rejected
 
 

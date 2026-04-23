@@ -335,6 +335,7 @@ class SemanticScholarClient:
 
     def fetch_citation_ids_and_counts(
         self, paper_id: str, *, max_items: int | None = None,
+        progress_cb: Any = None,
     ) -> list[dict[str, Any]]:
         cached = self._cache.get_citations(paper_id)
         if cached is None:
@@ -342,6 +343,7 @@ class SemanticScholarClient:
                 paper_id, "citations",
                 fields=f"citingPaper.{EDGE_IDS_AND_COUNTS},{EDGE_META_FIELDS}",
                 max_items=max_items,
+                progress_cb=progress_cb,
             )
             self._cache.put_citations(paper_id, cached)
             log.debug("fetch_citations(%s): %d citers (api)", paper_id[:20], len(cached))

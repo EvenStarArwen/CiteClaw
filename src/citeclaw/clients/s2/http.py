@@ -261,8 +261,14 @@ class S2Http:
         *,
         fields: str,
         max_items: int | None = None,
+        progress_cb: Any = None,
     ) -> list[dict[str, Any]]:
-        """Paginate through ``/paper/{id}/references|citations``."""
+        """Paginate through ``/paper/{id}/references|citations``.
+
+        ``progress_cb(n)`` is invoked after each successful page fetch
+        with the number of items in that page, so a caller's dashboard
+        can drive an inner progress bar without knowing pagination.
+        """
         req_type = "references" if edge == "references" else "citations"
         results: list[dict[str, Any]] = []
         offset = 0
@@ -277,6 +283,11 @@ class S2Http:
                 break
             results.extend(batch)
             offset += len(batch)
+            if progress_cb is not None:
+                try:
+                    progress_cb(len(batch))
+                except Exception:
+                    pass
             if max_items is not None and len(results) >= max_items:
                 return results[:max_items]
             if len(batch) < PAGE_SIZE:

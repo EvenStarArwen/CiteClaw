@@ -57,14 +57,21 @@ class ExpandForward:
                 continue
             ctx.expanded_forward.add(source.paper_id)
 
-            dash.begin_phase("fetch citers", total=1)
+            # Use the source's known citation_count as the inner-bar
+            # total so the user sees e.g. "300 / 5348" while paginating
+            # citers. Falls back to 1 when S2 hasn't reported a count.
+            cit_total = source.citation_count or 0
+            dash.begin_phase("fetch citers", total=cit_total or 1)
             try:
-                citers = ctx.s2.fetch_citation_ids_and_counts(source.paper_id)
+                citers = ctx.s2.fetch_citation_ids_and_counts(
+                    source.paper_id,
+                    progress_cb=(dash.tick_inner if cit_total else None),
+                )
             except Exception as exc:
                 log.warning("forward: failed to fetch citers for %s: %s", source.paper_id[:20], exc)
                 dash.advance_outer(1)
                 continue
-            dash.tick_inner(1)
+            dash.complete_phase()
 
             citers.sort(key=lambda x: x.get("citation_count") or 0, reverse=True)
             citers = citers[: self.max_citations]
