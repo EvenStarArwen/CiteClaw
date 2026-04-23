@@ -31,6 +31,7 @@ plans/
 data*/
 test_data/
 scratch/
+DOT_NOT_GIT/
 *.db
 *.log
 
