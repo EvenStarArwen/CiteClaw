@@ -198,11 +198,25 @@ class S2Http:
         return resp.json()
 
     def _wrap_call(self, inner_fn: Callable[..., Any], *args: Any) -> Any:
-        """Outer wrapper that bridges retry exhaustion to the outage tracker."""
+        """Outer wrapper that bridges retry exhaustion to the outage tracker.
+
+        Only retry-exhausted calls (``RetryError``) and genuinely
+        transient errors that somehow escaped the retry guard count
+        toward the consecutive-failures outage counter. A non-retryable
+        4xx (404 / 400 / 403) is a business error — the resource
+        doesn't exist or the request was malformed — not an S2 outage,
+        so it is allowed to propagate without tripping the circuit.
+        Without this guard, a burst of OpenAlex-discovered DOIs that
+        aren't in S2 could fire 10 consecutive 404s and kill the run.
+        """
         try:
             result = inner_fn(*args)
-        except (RetryError, httpx.HTTPError) as exc:
+        except RetryError as exc:
             self._record_failure(exc)
+            raise
+        except httpx.HTTPError as exc:
+            if _is_retryable(exc):
+                self._record_failure(exc)
             raise
         self._record_success()
         return result
