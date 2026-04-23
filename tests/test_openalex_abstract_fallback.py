@@ -46,7 +46,7 @@ def test_openalex_called_when_s2_returns_no_abstract(s2_client, monkeypatch):
     # Stub the S2 batch fetch to return no abstract.
     monkeypatch.setattr(
         s2_client, "_batch_fetch",
-        lambda ids, fields: [{"paperId": "p1", "title": "x"}],
+        lambda ids, fields, progress_cb=None: [{"paperId": "p1", "title": "x"}],
     )
 
     with patch(
@@ -70,7 +70,7 @@ def test_openalex_not_called_when_no_doi(s2_client, monkeypatch):
 
     monkeypatch.setattr(
         s2_client, "_batch_fetch",
-        lambda ids, fields: [{"paperId": "p1", "title": "x"}],
+        lambda ids, fields, progress_cb=None: [{"paperId": "p1", "title": "x"}],
     )
 
     with patch(
@@ -91,7 +91,7 @@ def test_openalex_write_through_to_cache(s2_client, monkeypatch):
     )
     monkeypatch.setattr(
         s2_client, "_batch_fetch",
-        lambda ids, fields: [{"paperId": "p1", "title": "x"}],
+        lambda ids, fields, progress_cb=None: [{"paperId": "p1", "title": "x"}],
     )
 
     with patch(
@@ -114,7 +114,7 @@ def test_openalex_failure_swallowed(s2_client, monkeypatch):
     )
     monkeypatch.setattr(
         s2_client, "_batch_fetch",
-        lambda ids, fields: [{"paperId": "p1", "title": "x"}],
+        lambda ids, fields, progress_cb=None: [{"paperId": "p1", "title": "x"}],
     )
 
     with patch(
@@ -134,7 +134,7 @@ def test_openalex_not_called_when_s2_returned_abstract(s2_client, monkeypatch):
     )
     monkeypatch.setattr(
         s2_client, "_batch_fetch",
-        lambda ids, fields: [{"paperId": "p1", "title": "x", "abstract": "S2 gave one"}],
+        lambda ids, fields, progress_cb=None: [{"paperId": "p1", "title": "x", "abstract": "S2 gave one"}],
     )
 
     with patch(

@@ -530,11 +530,17 @@ class Dashboard(NullDashboard):
         if self._progress is None or self._inner_task is None:
             return
         self._inner_total = None if total is None else max(1, total)
+        # Rich's Progress.reset() treats total=None as "keep the current
+        # total", so we can't use it to switch INTO indeterminate mode.
+        # Reset completed/description via reset(), then set the real
+        # total via update() so None actually propagates.
         self._progress.reset(
             self._inner_task,
-            total=self._inner_total,
+            total=self._inner_total if self._inner_total is not None else 1,
             description=f"now: {description}",
         )
+        if self._inner_total is None:
+            self._progress.update(self._inner_task, total=None)
 
     def retotal_phase(self, total: int | None) -> None:
         """Adjust the inner bar's total without resetting completed."""

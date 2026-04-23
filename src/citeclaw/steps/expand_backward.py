@@ -198,9 +198,14 @@ class ExpandBackward:
                 continue
             dash.note_candidates_seen(len(cands))
 
-            dash.begin_phase("enrich · abstracts", total=1)
-            ctx.s2.enrich_with_abstracts(cands)
-            dash.tick_inner(1)
+            # Size the bar to the cands that actually need a live
+            # fetch (local cache hits complete instantly). The callback
+            # ticks once per S2 batch (or per singleton when the batch
+            # path fails and fallback to per-paper GETs kicks in).
+            n_miss = sum(1 for r in cands if not r.abstract)
+            dash.begin_phase("enrich · abstracts", total=max(1, n_miss))
+            ctx.s2.enrich_with_abstracts(cands, progress_cb=dash.tick_inner)
+            dash.complete_phase()
 
             fctx = FilterContext(ctx=ctx, source=source)
             passed, rejected = apply_block(cands, self.screener, fctx)
@@ -270,9 +275,14 @@ class ExpandBackward:
             return []
 
         # Per-DOI resolve via S2 at ~1 rps — large OpenAlex responses
-        # otherwise leave the inner bar idle for minutes.
+        # otherwise leave the inner bar idle for minutes. (The OpenAlex
+        # call itself happened above in one shot; this phase is S2
+        # resolving the DOIs OpenAlex returned.)
         if dash is not None:
-            dash.begin_phase("openalex: resolve DOIs", total=len(ref_dois))
+            dash.begin_phase(
+                f"s2: resolve {len(ref_dois)} openalex DOIs",
+                total=len(ref_dois),
+            )
 
         records: list[PaperRecord] = []
         for ref_doi in ref_dois:

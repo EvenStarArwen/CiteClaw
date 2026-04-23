@@ -420,7 +420,9 @@ class SemanticScholarClient:
     # Batch / enrichment
     # ------------------------------------------------------------------
 
-    def enrich_with_abstracts(self, records: list[PaperRecord]) -> list[PaperRecord]:
+    def enrich_with_abstracts(
+        self, records: list[PaperRecord], *, progress_cb: Any = None,
+    ) -> list[PaperRecord]:
         needs = [r for r in records if not r.abstract]
         if not needs:
             return records
@@ -439,7 +441,9 @@ class SemanticScholarClient:
 
         # 2) batch-fetch from S2 and persist whatever the API returns
         ids = [r.paper_id for r in still_missing]
-        fetched = self._batch_fetch(ids, fields=PAPER_FIELDS)
+        fetched = self._batch_fetch(
+            ids, fields=PAPER_FIELDS, progress_cb=progress_cb,
+        )
         id_to_data = {d["paperId"]: d for d in fetched if d and d.get("paperId")}
         for rec in still_missing:
             data = id_to_data.get(rec.paper_id)
@@ -737,7 +741,9 @@ class SemanticScholarClient:
         self._cache.put_author_papers(author_id, results)
         return results
 
-    def _batch_fetch(self, paper_ids: list[str], *, fields: str) -> list[dict[str, Any]]:
+    def _batch_fetch(
+        self, paper_ids: list[str], *, fields: str, progress_cb: Any = None,
+    ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for i in range(0, len(paper_ids), _MAX_BATCH):
             chunk = paper_ids[i: i + _MAX_BATCH]
@@ -749,7 +755,16 @@ class SemanticScholarClient:
                     results.extend(batch_result)
                 else:
                     log.warning("S2 batch returned non-list: %s", type(batch_result))
+                if progress_cb is not None:
+                    try:
+                        progress_cb(len(chunk))
+                    except Exception:
+                        pass
             except Exception as exc:
+                # Batch failed — fall back to per-paper GETs. Each one is
+                # throttled at ~1 rps, so this path can take a long time
+                # (chunk_size / rps seconds). Tick per-paper so the user
+                # sees the cost instead of a silent stall.
                 log.warning("S2 batch fetch failed for %d papers: %s", len(chunk), exc)
                 for pid in chunk:
                     try:
@@ -758,6 +773,11 @@ class SemanticScholarClient:
                         )
                     except Exception as inner_exc:
                         log.debug("S2 individual fetch failed for %s: %s", pid, inner_exc)
+                    if progress_cb is not None:
+                        try:
+                            progress_cb(1)
+                        except Exception:
+                            pass
         return results
 
     def close(self) -> None:

@@ -219,7 +219,9 @@ class FakeS2Client:
     # Enrichment
     # ------------------------------------------------------------------
 
-    def enrich_with_abstracts(self, records: list[PaperRecord]) -> list[PaperRecord]:
+    def enrich_with_abstracts(
+        self, records: list[PaperRecord], *, progress_cb: Any = None,
+    ) -> list[PaperRecord]:
         self._record_call("enrich_with_abstracts")
         for rec in records:
             data = self._papers.get(rec.paper_id)

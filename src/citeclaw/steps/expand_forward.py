@@ -110,10 +110,14 @@ class ExpandForward:
                     rec.references.append(source.paper_id)
             dash.tick_inner(1)
 
-            dash.begin_phase("enrich · abstracts", total=1)
-            # Need abstracts for title_abstract LLMFilters
-            ctx.s2.enrich_with_abstracts(records)
-            dash.tick_inner(1)
+            # Need abstracts for title_abstract LLMFilters. Size the
+            # bar to the records that still need a live fetch so the
+            # user sees real progress if S2 falls back to per-paper
+            # singletons (slow path at ~1 rps per miss).
+            n_miss = sum(1 for r in records if not r.abstract)
+            dash.begin_phase("enrich · abstracts", total=max(1, n_miss))
+            ctx.s2.enrich_with_abstracts(records, progress_cb=dash.tick_inner)
+            dash.complete_phase()
 
             fctx = FilterContext(
                 ctx=ctx, source=source, source_refs=source_refs, source_citers=source_citers,
