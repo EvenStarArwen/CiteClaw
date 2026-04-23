@@ -1,6 +1,6 @@
 """CLI entry point — ``python -m citeclaw [subcommand] ...``.
 
-Five subcommands, dispatched in :func:`main` by the first positional arg:
+Six subcommands, dispatched in :func:`main` by the first positional arg:
 
 * (no arg or anything not below) → :func:`_run_snowball` — the default
   pipeline run that reads ``-c config.yaml`` + flags, validates the
@@ -12,6 +12,8 @@ Five subcommands, dispatched in :func:`main` by the first positional arg:
   existing run's literature_collection.json + cache.db (no S2 calls).
 * ``fetch-pdfs <data_dir>`` → :func:`_run_fetch_pdfs` — the bulk PDF
   download CLI (see :mod:`citeclaw.fetch_pdfs`).
+* ``mainpath <graph>`` → :func:`_run_mainpath` — extract the main path
+  subnetwork from a citation GraphML (see :mod:`citeclaw.mainpath`).
 * ``web`` → :func:`_run_web` — launch the FastAPI + React web UI
   (see :mod:`citeclaw.web_server`).
 
@@ -76,6 +78,62 @@ def _build_rebuild_graph_parser() -> argparse.ArgumentParser:
         help="Overwrite the original citation_network.graphml / "
              "collaboration_network.graphml instead of writing .regen variants.",
     )
+    return p
+
+
+def _build_mainpath_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="citeclaw mainpath")
+    p.add_argument(
+        "graph", type=Path,
+        help="Input GraphML — a CiteClaw citation network "
+             "(e.g. <data_dir>/citation_network.graphml).",
+    )
+    p.add_argument(
+        "-o", "--output", type=Path, default=None,
+        help="Output GraphML path (default: "
+             "<stem>_mainpath_<search>_<weight>.graphml next to input). "
+             "A sibling .json summary is always written too.",
+    )
+    p.add_argument(
+        "-w", "--weight", default="spc",
+        choices=["spc", "splc", "spnp"],
+        help="Traversal weight (default: spc). "
+             "spc follows Kirchhoff's conservation; splc treats every "
+             "paper as a knowledge source; spnp treats every paper as "
+             "both source and destination.",
+    )
+    p.add_argument(
+        "-s", "--search", default="key-route",
+        choices=["local-forward", "local-backward", "global",
+                 "key-route", "multi-local"],
+        help="Main-path extraction variant (default: key-route). "
+             "key-route guarantees the highest-weighted arc is on the "
+             "path; local-forward / local-backward are the classical "
+             "priority-first search from sources / sinks; global is "
+             "the critical (max-sum-weight) path; multi-local is "
+             "local-forward with per-vertex tolerance relaxation.",
+    )
+    p.add_argument(
+        "--cycle", default="shrink",
+        choices=["shrink", "preprint"],
+        help="How to handle strongly connected components "
+             "(default: shrink). shrink collapses each cycle into its "
+             "oldest representative paper (Liu, Lu & Ho 2019); "
+             "preprint is Batagelj's preprint transform which "
+             "preserves SCC members as individual vertices.",
+    )
+    p.add_argument(
+        "--key-routes", type=int, default=1, dest="key_routes",
+        help="Number of top-weighted arcs to seed as key routes "
+             "when --search=key-route (default: 1).",
+    )
+    p.add_argument(
+        "--tolerance", type=float, default=0.2,
+        help="Per-vertex tolerance when --search=multi-local: arcs "
+             "with weight >= (1-tolerance) * per_vertex_max are "
+             "included (default: 0.2, per Liu & Lu 2012's example).",
+    )
+    p.add_argument("-v", "--verbose", action="store_true")
     return p
 
 
@@ -263,6 +321,45 @@ def _run_rebuild_graph(argv: list[str]) -> None:
         cache.close()
 
 
+def _run_mainpath(argv: list[str]) -> None:
+    """Run main path analysis on a CiteClaw citation GraphML.
+
+    Thin CLI adapter around :func:`citeclaw.mainpath.run_mpa`.
+    See :mod:`citeclaw.mainpath` for the algorithmic layer.
+    """
+    from citeclaw.mainpath import run_mpa
+
+    parser = _build_mainpath_parser()
+    args = parser.parse_args(argv)
+
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    setup_logging(log_dir=None, level=log_level)
+
+    if not args.graph.exists():
+        log.error("Graph file not found: %s", args.graph)
+        sys.exit(1)
+
+    output = args.output or args.graph.with_name(
+        f"{args.graph.stem}_mainpath_{args.search}_{args.weight}.graphml",
+    )
+    try:
+        run_mpa(
+            graph_path=args.graph,
+            output_path=output,
+            weight=args.weight,
+            search=args.search,
+            cycle=args.cycle,
+            key_routes=args.key_routes,
+            tolerance=args.tolerance,
+        )
+    except ValueError as exc:
+        log.error("mainpath failed: %s", exc)
+        sys.exit(1)
+    except RuntimeError as exc:
+        log.error("mainpath failed: %s", exc)
+        sys.exit(1)
+
+
 def _run_fetch_pdfs(argv: list[str]) -> None:
     """Bulk-download open-access PDFs for a finished CiteClaw run.
 
@@ -331,6 +428,7 @@ _SUBCOMMANDS: dict[str, "Callable[[list[str]], None]"] = {
     "annotate": lambda argv: _run_annotate(argv),
     "rebuild-graph": lambda argv: _run_rebuild_graph(argv),
     "fetch-pdfs": lambda argv: _run_fetch_pdfs(argv),
+    "mainpath": lambda argv: _run_mainpath(argv),
     "web": lambda argv: _run_web(argv),
 }
 
