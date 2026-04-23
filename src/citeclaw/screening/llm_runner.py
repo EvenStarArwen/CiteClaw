@@ -231,6 +231,15 @@ def _dispatch_formula(
     names = sorted(formula.query_names())
     _warn_once_on_formula(ctx, llm_filter, len(names))
 
+    # Size the inner progress bar to the full (sub-query × vote × paper)
+    # workload before any sub-query dispatches. Without this, each
+    # _dispatch_simple call would tick N times against a bar sized for
+    # one sub-query's worth of papers, overshooting past 100%.
+    votes = max(1, llm_filter.votes)
+    dash = getattr(ctx, "dashboard", None)
+    if dash is not None:
+        dash.retotal_phase(len(names) * votes * len(papers))
+
     sub_verdicts: dict[str, dict[str, bool]] = {}
     for qname in names:
         sub_prompt = llm_filter.queries[qname]
@@ -243,7 +252,9 @@ def _dispatch_formula(
             votes=llm_filter.votes,
             min_accepts=llm_filter.min_accepts,
         )
-        sub_verdicts[qname] = _dispatch_simple(papers, sub_filter, ctx)
+        sub_verdicts[qname] = _dispatch_simple(
+            papers, sub_filter, ctx, _skip_retotal=True,
+        )
 
     out: dict[str, bool] = {}
     for p in papers:
@@ -290,10 +301,16 @@ def _dispatch_simple(
     papers: list["PaperRecord"],
     llm_filter: "LLMFilter",
     ctx: "Context",
+    *,
+    _skip_retotal: bool = False,
 ) -> dict[str, bool]:
     """Single-prompt dispatch path with voting. Used directly by
     :func:`dispatch_batch` in the non-formula case, and also by the formula
     dispatcher for each named sub-query.
+
+    ``_skip_retotal`` is set by ``_dispatch_formula`` so the inner
+    progress bar total (already sized for all sub-queries) isn't
+    reset to one sub-query's worth of papers.
     """
     cfg = ctx.config
     client = _client_for(ctx, llm_filter)
@@ -383,7 +400,7 @@ def _dispatch_simple(
     # will see is votes × len(papers), so retotal accordingly. Tick per
     # future as batches complete so the bar moves smoothly.
     dash = getattr(ctx, "dashboard", None)
-    if dash is not None and votes > 1:
+    if dash is not None and votes > 1 and not _skip_retotal:
         dash.retotal_phase(votes * len(papers))
 
     with ThreadPoolExecutor(max_workers=cfg.llm_concurrency) as pool:
