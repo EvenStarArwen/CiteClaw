@@ -48,8 +48,10 @@ from citeclaw.progress import (
     set_active_dashboard,
 )
 from citeclaw.steps.finalize import Finalize
+from citeclaw.steps.load_seeds import LoadSeeds
 from citeclaw.steps.merge_duplicates import MergeDuplicates
 from citeclaw.steps.parallel import Parallel
+from citeclaw.steps.resolve_seeds import ResolveSeeds
 from citeclaw.steps.shape_log import ShapeLog
 
 log = logging.getLogger("citeclaw.pipeline")
@@ -156,6 +158,43 @@ def _warn_similarity_in_sourceless_steps(pipeline: list) -> None:
                 )
 
     _walk(pipeline)
+
+
+def _ensure_resolve_seeds(pipeline: list, cfg: Settings) -> list:
+    """Inject a :class:`ResolveSeeds` step before the first :class:`LoadSeeds`
+    when ``cfg.seed_papers`` contains any title-only entries.
+
+    Title-only seeds (``{title: "..."}`` without ``paper_id``) need
+    ``ResolveSeeds`` to look them up via ``s2.search_match`` before
+    ``LoadSeeds`` can hydrate them. Without it, ``LoadSeeds`` silently
+    drops them (it skips entries with empty ``paper_id``). If the
+    pipeline already contains a ``ResolveSeeds`` step we leave it
+    alone — the user is presumed to know what they're doing.
+    """
+    has_resolver = any(isinstance(s, ResolveSeeds) for s in pipeline)
+    if has_resolver:
+        return pipeline
+    needs_resolver = any(
+        not sp.paper_id.strip() and sp.title.strip()
+        for sp in cfg.seed_papers
+    )
+    if not needs_resolver:
+        return pipeline
+    out: list = []
+    injected = False
+    for step in pipeline:
+        if not injected and isinstance(step, LoadSeeds):
+            log.debug("auto-injecting ResolveSeeds before LoadSeeds")
+            out.append(ResolveSeeds())
+            injected = True
+        out.append(step)
+    if not injected:
+        # No LoadSeeds in the pipeline — prepend ResolveSeeds so any
+        # downstream step that consumes ``ctx.resolved_seed_ids`` still
+        # sees the resolved entries.
+        log.debug("auto-injecting ResolveSeeds at start of pipeline")
+        out.insert(0, ResolveSeeds())
+    return out
 
 
 def _ensure_merge_duplicates(pipeline: list) -> list:
@@ -312,7 +351,8 @@ def run_pipeline(
     to WebSocket subscribers.
     """
     cfg = ctx.config
-    pipeline = _ensure_merge_duplicates(cfg.pipeline_built or [])
+    pipeline = _ensure_resolve_seeds(cfg.pipeline_built or [], cfg)
+    pipeline = _ensure_merge_duplicates(pipeline)
     _warn_similarity_in_sourceless_steps(pipeline)
     sink: EventSink = event_sink if event_sink is not None else NullEventSink()
 

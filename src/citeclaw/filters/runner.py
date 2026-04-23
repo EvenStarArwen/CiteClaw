@@ -181,18 +181,37 @@ def _apply_llm(
 def _apply_atom(
     papers: list[PaperRecord], block: Any, fctx: FilterContext,
 ) -> tuple[list[PaperRecord], RejectionList]:
-    # Prefer batched dispatch when the atom offers ``check_batch`` (e.g.
-    # SimilarityFilter, whose measures may prefetch). Otherwise loop
-    # the per-paper ``check`` method.
+    dash = getattr(fctx.ctx, "dashboard", None)
+
+    # Bulk prefetch hook — e.g. SimilarityFilter warms embedding /
+    # citation caches for all papers in one S2 call so per-paper
+    # check() is cheap. Errors are non-fatal: per-paper compute falls
+    # back to one-by-one fetches.
+    prefetch = getattr(block, "prefetch", None)
+    if callable(prefetch):
+        try:
+            prefetch(papers, fctx)
+        except Exception as exc:  # noqa: BLE001
+            log.debug(
+                "filter %r prefetch failed: %s",
+                getattr(block, "name", type(block).__name__), exc,
+            )
+
+    # If the atom offers a self-contained ``check_batch`` AND no prefetch
+    # hook (so we can't interleave progress), fall through to batch mode.
     check_batch = getattr(block, "check_batch", None)
-    if callable(check_batch):
+    if callable(check_batch) and not callable(prefetch):
         outcomes = check_batch(papers, fctx)
         passed = [p for p, o in zip(papers, outcomes) if o.passed]
         rejected: RejectionList = [
             (p, o) for p, o in zip(papers, outcomes) if not o.passed
         ]
+        if dash is not None:
+            dash.tick_inner(len(papers))
         return passed, rejected
 
+    # Per-paper check with live inner-bar ticking. Used when the atom
+    # exposes a prefetch hook, or when it only defines ``check``.
     passed: list[PaperRecord] = []
     rejected: RejectionList = []
     for paper in papers:
@@ -201,6 +220,8 @@ def _apply_atom(
             passed.append(paper)
         else:
             rejected.append((paper, outcome))
+        if dash is not None:
+            dash.tick_inner(1)
     return passed, rejected
 
 

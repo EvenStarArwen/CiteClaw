@@ -76,24 +76,36 @@ class SimilarityFilter:
             "similarity",
         )
 
-    def check_batch(
+    def prefetch(
         self, papers: list[PaperRecord], fctx: FilterContext,
-    ) -> list[FilterOutcome]:
-        """Batched dispatch: measures may implement ``prefetch(papers, fctx)``
-        to bulk-warm any caches (e.g. SemanticSim pulls all embeddings in one
-        S2 batch call). Then falls through to per-paper ``check``."""
+    ) -> None:
+        """Warm every measure's bulk cache before per-paper ``check()``.
+
+        Exposed so the filter runner can interleave per-paper
+        progress ticks with each :meth:`check` call — otherwise the
+        inner progress bar would stall at 0/N for the whole filter
+        while CitSim / SemanticSim fetch.
+        """
         for m in self.measures:
             prefetch = getattr(m, "prefetch", None)
             if callable(prefetch):
                 try:
                     prefetch(papers, fctx)
-                except Exception as exc:
-                    # Non-fatal — per-paper compute will fall back to
-                    # cache-miss / one-by-one fetch. Log at debug so the
-                    # failure is recoverable from the file handler when
-                    # diagnosing slow batch dispatches.
+                except Exception as exc:  # noqa: BLE001
                     log.debug(
                         "SimilarityMeasure %r prefetch failed: %s",
                         getattr(m, "name", type(m).__name__), exc,
                     )
+
+    def check_batch(
+        self, papers: list[PaperRecord], fctx: FilterContext,
+    ) -> list[FilterOutcome]:
+        """Convenience wrapper: :meth:`prefetch` then per-paper :meth:`check`.
+
+        The pipeline runner bypasses this and calls prefetch + check
+        itself so it can tick the inner progress bar between papers.
+        Kept so existing callers / tests that invoke the filter
+        directly keep working.
+        """
+        self.prefetch(papers, fctx)
         return [self.check(p, fctx) for p in papers]
