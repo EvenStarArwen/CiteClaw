@@ -7,19 +7,27 @@ Public API
 - :func:`extract_pdf_references` — one LLM call → list of
   :class:`ExtractedReference`.
 
-Both are pure functions (no side-effects, no state); the caller
+This module is the reference-extraction *preset* on top of the
+generic :func:`citeclaw.extraction.extract_from_text` engine. The
+reference-specific bits — the reference-list/body split, the
+reference-aware truncation budget, the topic-driven system prompt,
+and the dict → :class:`ExtractedReference` post-processing — live
+here. The shared LLM call + JSON parse / salvage logic lives in
+:mod:`citeclaw.extraction`.
+
+Both functions are pure (no side-effects, no state); the caller
 (:class:`~citeclaw.steps.expand_by_pdf.ExpandByPDF`) owns the LLM
 client, the cache, and the budget.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from citeclaw.extraction import extract_from_text
 from citeclaw.prompts.pdf_extraction import (
     SYSTEM,
     USER_TEMPLATE,
@@ -51,36 +59,6 @@ _NUMBERED_BIB_RE = re.compile(
     r"(?:^|\n)\s*(?:\d{1,3}[\.\)]\s+[A-Z]|\[\d{1,3}\]\s+[A-Z])",
 )
 _MIN_BIB_ENTRIES = 5  # need at least this many numbered entries to trust the heuristic
-
-
-def _try_salvage_json(text: str) -> dict | None:
-    """Attempt to parse truncated JSON by closing brackets.
-
-    When the LLM hits the token limit mid-output, the JSON is truncated.
-    We try progressively closing brackets to recover as many complete
-    reference entries as possible.
-    """
-    if not text or "{" not in text:
-        return None
-    # Strategy: find the last complete '}' that closes a reference entry,
-    # then close the array and root object.
-    for suffix in ("]}", "]}"):
-        # Find last complete reference entry.
-        last_close = text.rfind("}")
-        while last_close > 0:
-            candidate = text[:last_close + 1] + suffix
-            try:
-                decoded = json.loads(candidate)
-                if isinstance(decoded, dict) and "relevant_references" in decoded:
-                    log.info(
-                        "Salvaged %d references from truncated JSON",
-                        len(decoded["relevant_references"]),
-                    )
-                    return decoded
-            except (json.JSONDecodeError, ValueError):
-                pass
-            last_close = text.rfind("}", 0, last_close)
-    return None
 
 
 def _find_numbered_bib_start(text: str, search_from: float = 0.40) -> int | None:
@@ -328,14 +306,13 @@ def extract_pdf_references(
         Pre-built :class:`LLMClient` instance.
     max_input_chars:
         Total character budget for the body + reference list inside the
-        prompt.  Defaults to 24 000 (~18 K tokens), leaving room for
-        system prompt, schema, reasoning, and output in a 32 K context
-        window.
+        prompt. Defaults to 80 000 (~60 K tokens) — see module docstring
+        for the rationale.
 
     Returns
     -------
     PdfExtractionResult
-        Parsed references and metadata.  On LLM failure the result is
+        Parsed references and metadata. On LLM failure the result is
         empty (never raises).
     """
     body, refs = split_references(full_text)
@@ -346,52 +323,31 @@ def extract_pdf_references(
 
     body, refs = _truncate_for_context(body, refs, max_input_chars)
 
-    user_prompt = USER_TEMPLATE.format(
+    rendered_user_prompt = USER_TEMPLATE.format(
         topic_description=topic_description,
         reference_list=refs,
         paper_title=paper_title or "(untitled)",
         body_text=body,
     )
 
-    try:
-        resp = llm.call(
-            SYSTEM,
-            user_prompt,
-            category="pdf_reference_extraction",
-            response_schema=pdf_extraction_schema(),
+    result = extract_from_text(
+        llm=llm,
+        system_prompt=SYSTEM,
+        user_prompt=rendered_user_prompt,
+        schema=pdf_extraction_schema(),
+        category="pdf_reference_extraction",
+    )
+
+    raw_reasoning = result.raw_reasoning
+
+    if result.extraction_failed or result.output is None:
+        log.warning(
+            "PDF extraction failed: %s (raw len=%d): %.120s",
+            result.error, len(result.raw_text), result.raw_text,
         )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("PDF extraction LLM call failed: %s", exc)
-        return PdfExtractionResult()
+        return PdfExtractionResult(raw_reasoning=raw_reasoning)
 
-    raw_reasoning = getattr(resp, "reasoning_content", "") or ""
-
-    # Clean up response text: strip markdown code fences that the model
-    # may wrap around the JSON when structured output is not enforced.
-    resp_text = (resp.text or "").strip()
-    if resp_text.startswith("```"):
-        # Remove opening fence (```json or ```) and closing fence
-        lines = resp_text.split("\n")
-        if lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        resp_text = "\n".join(lines).strip()
-
-    try:
-        decoded = json.loads(resp_text)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        # Try to salvage truncated JSON — the LLM may have hit the
-        # token limit mid-output.  Look for complete reference entries.
-        decoded = _try_salvage_json(resp_text)
-        if decoded is None:
-            log.warning(
-                "PDF extraction: LLM returned invalid JSON (len=%d): %.120s",
-                len(resp_text),
-                resp_text,
-            )
-            return PdfExtractionResult(raw_reasoning=raw_reasoning)
-
+    decoded = result.output
     if not isinstance(decoded, dict):
         return PdfExtractionResult(raw_reasoning=raw_reasoning)
 
