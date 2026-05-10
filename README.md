@@ -70,40 +70,40 @@ SEMANTIC_SCHOLAR_API_KEY=...   # optional, improves S2 rate limits
 
 ## Quick start
 
-1. Write a `config.yaml` describing reusable filter blocks and a linear list of
-   pipeline steps. The repository ships with a worked biology / ML example at
-   `config.yaml` — copy it and adapt the topic description, seed papers, and
-   screening prompts to your own domain.
+1. Write a `configs/config.yaml` describing reusable filter blocks and a linear
+   list of pipeline steps. The repository ships with a worked biology / ML example
+   at `configs/config.yaml` — copy it and adapt the topic description, seed papers,
+   and screening prompts to your own domain. All runs write outputs under `runs/`.
 
 2. Run CiteClaw:
 
 ```bash
-python -m citeclaw -c config.yaml
+python -m citeclaw -c configs/config.yaml
 ```
 
 3. Continue a prior run (adds another expansion generation on top of the existing
    collection):
 
 ```bash
-python -m citeclaw -c config.yaml --continue-from data/
+python -m citeclaw -c configs/config.yaml --continue-from runs/data/
 ```
 
 4. Annotate the resulting citation graph with LLM-generated node summaries:
 
 ```bash
-python -m citeclaw annotate data/citation_network.graphml -c config.yaml
+python -m citeclaw annotate runs/data/citation_network.graphml -c configs/config.yaml
 ```
 
 5. Bulk-download open-access PDFs for a finished run:
 
 ```bash
-python -m citeclaw fetch-pdfs data/
+python -m citeclaw fetch-pdfs runs/data/
 ```
 
 6. Rebuild the citation/collaboration graphs from an existing collection:
 
 ```bash
-python -m citeclaw rebuild-graph data/
+python -m citeclaw rebuild-graph runs/data/
 ```
 
 CLI flags: `--topic`, `--seed`, `--data-dir`, `--max-papers`, `--model`, `-v`,
@@ -200,7 +200,7 @@ models:
     api_key_env: "CITECLAW_VLLM_API_KEY"
     reasoning_parser: "gemma4"
 
-data_dir: "data_bio"
+data_dir: "runs/data_bio"
 topic_description: "..."
 max_papers_total: 500
 seed_papers:

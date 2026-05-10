@@ -234,7 +234,10 @@ class Settings(BaseSettings):
 
     # --- Topic + IO --------------------------------------------------
     topic_description: str = ""
-    data_dir: Path = Path("data")
+    # All CiteClaw run outputs live under ``runs/`` so the project root
+    # stays clean. Each run gets its own subdir (``runs/data_bio``,
+    # ``runs/data_rna``, …) — gitignored as a group.
+    data_dir: Path = Path("runs/data")
     seed_papers: list[SeedPaper] = Field(default_factory=list)
 
     # --- Annotation hook (annotate.py) -------------------------------

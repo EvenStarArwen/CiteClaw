@@ -17,10 +17,10 @@ Subcommands:
 All paths default to sensible values relative to the checkpoint dir,
 so the typical workflow is:
 
-  python -m pdfclaw login                                # one time
-  python -m pdfclaw list  data_bio_checkpoint            # see what's there
-  python -m pdfclaw fetch data_bio_checkpoint --max 5    # smoke test
-  python -m pdfclaw fetch data_bio_checkpoint            # full run
+  python -m pdfclaw login                            # one time
+  python -m pdfclaw list  runs/data_bio              # see what's there
+  python -m pdfclaw fetch runs/data_bio --max 5      # smoke test
+  python -m pdfclaw fetch runs/data_bio              # full run
 """
 
 from __future__ import annotations

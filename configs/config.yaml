@@ -13,7 +13,7 @@
 screening_model: "gemini-3.1-flash-lite-preview"
 reasoning_effort: "minimal"
 
-data_dir: "data"
+data_dir: "runs/data"
 topic_description: >
   Machine learning, deep learning, language models, and foundation models developed specifically for biology
   (e.g., DNA, RNA/protein sequence/structure data, as well as genomic, transcriptomic, or single-cell omics data),

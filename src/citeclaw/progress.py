@@ -242,7 +242,7 @@ class Dashboard(NullDashboard):
         self,
         *,
         model: str = "stub",
-        data_dir: str = "data",
+        data_dir: str = "runs/data",
         pipeline_length: int = 1,
         budget_cap_usd: float = 0.70,
         max_reject_rows: int = 6,

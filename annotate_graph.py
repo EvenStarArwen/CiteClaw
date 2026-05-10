@@ -6,12 +6,12 @@ Read a CiteClaw GraphML file, use an LLM to generate a concise label for each
 node from paper metadata (title + abstract), and write the annotated graph back.
 
 Usage:
-    python annotate_graph.py data_bio/citation_network.graphml \
-        -c config_bio.yaml \
+    python annotate_graph.py runs/data_bio/citation_network.graphml \
+        -c configs/config_bio.yaml \
         -i "use the 1-word model name for the label (e.g., AlphaFold3, RNAErine, ProGen2, DNABERT)"
 
     # instruction is optional — if omitted, labels default to paper titles
-    python annotate_graph.py data_bio/citation_network.graphml -c config_bio.yaml
+    python annotate_graph.py runs/data_bio/citation_network.graphml -c configs/config_bio.yaml
 """
 
 from __future__ import annotations
