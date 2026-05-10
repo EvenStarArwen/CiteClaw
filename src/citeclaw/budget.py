@@ -95,6 +95,8 @@ MODEL_PRICING: dict[str, tuple[float, float, float]] = {
     # zeroes here let the budget tracker run without inventing numbers.
     "mimo-v2-pro":                           (0.0,   0.0,   0.0),
     "mimo-v2-flash":                         (0.0,   0.0,   0.0),
+    "mimo-v2.5":                             (0.0,   0.0,   0.0),
+    "mimo-v2.5-pro":                         (0.0,   0.0,   0.0),
     # Catch-all so unknown models still produce a non-zero estimate.
     "GENERIC":                               (0.30,  2.50,  2.50),
 }
