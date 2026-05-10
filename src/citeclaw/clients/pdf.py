@@ -1,4 +1,4 @@
-"""Open-access PDF download + parse — used by the ``full_text`` LLMFilter
+"""Open-access PDF download — used by the ``full_text`` LLMFilter
 scope (in-memory, cached) and by the ``fetch-pdfs`` CLI subcommand
 (download bundles to disk for downstream agents).
 
@@ -13,49 +13,43 @@ articles). This rescues most of the failed-but-recoverable cases.
 Cloudflare-protected hosts like ``www.biorxiv.org`` cannot be bypassed
 without a real browser session.
 
-Two collaborators share this module:
+PDF *parsing* lives in :mod:`pdfclaw.parsers`; this module is about
+HTTP I/O only. :class:`PdfFetcher` and the ``fetch-pdfs`` CLI both
+delegate parsing to :func:`pdfclaw.parsers.parse` so the registered
+engine (``pymupdf`` / ``docling`` / ``grobid``) decides the quality
+tier — no fallback chain hidden in this module.
+
+Two collaborators share the download + cache logic here:
 
   1. :class:`PdfFetcher` — cache-aware ``text_for`` / ``prefetch``
-     used by ``llm_runner`` for the ``full_text`` LLMFilter scope. Caches
-     successes AND categorised failures in the ``paper_full_text`` table
-     so a second pass never repeats a known-failing fetch.
+     used by ``llm_runner`` for the ``full_text`` LLMFilter scope.
+     Caches successes AND categorised failures in the
+     ``paper_full_text`` table so a second pass never repeats a
+     known-failing fetch.
   2. The ``fetch-pdfs`` CLI (``citeclaw.fetch_pdfs``) — saves PDF bytes
      and parsed text to ``<data_dir>/PDFs/<paper_id>.{pdf,txt}`` for
      downstream tools, while still warming the same cache.
-
-Both routes share two free helpers in this module: :func:`download_pdf_bytes`
-and :func:`parse_pdf_bytes`. The parser tries PyMuPDF (``fitz``) first
-because it dramatically out-performs pypdf on two-column scientific PDFs
-(correct reading order, faster, fewer mangled characters), and falls
-back to ``pypdf`` if PyMuPDF isn't installed. PyMuPDF is AGPL — that's
-fine for an internal research tool but worth knowing.
-
-Other parser options worth considering for future work:
-  - GROBID (Java server) — gold standard for structured scientific paper
-    extraction (sections, refs, tables). Heavier but produces TEI XML.
-  - Marker / Nougat / Docling — ML-based, output clean Markdown with
-    formula and table preservation. GPU-friendly. Use when you need
-    layout-aware extraction rather than plain reading-order text.
 
 Failure modes are categorised, not raised:
 
   - ``"no_pdf"``         — paper.pdf_url is empty (closed-access)
   - ``"download_failed"`` — httpx error (timeout, 4xx/5xx, transport)
-  - ``"parse_failed"``    — both parsers raised on the downloaded bytes
+  - ``"parse_failed"``    — the configured parser engine raised
   - ``"too_large"``       — body exceeded ``max_size_mb``
   - ``"not_pdf"``         — server returned HTML / non-PDF bytes
 """
 
 from __future__ import annotations
 
-import io
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any, Callable, Iterable
+from typing import TYPE_CHECKING
 from urllib.parse import urljoin
 
 import httpx
+
+from pdfclaw.parsers import ParserError, parse as parse_pdf
 
 if TYPE_CHECKING:
     from citeclaw.cache import Cache
@@ -246,127 +240,37 @@ def download_pdf_bytes(
     return _validate_pdf_body(resp2.content, rescue_url, max_size_bytes)
 
 
-def parse_pdf_bytes(body: bytes, *, max_chars: int | None = None) -> str | None:
-    """Extract reading-order text from a PDF byte string.
+def parse_pdf_bytes(
+    body: bytes,
+    *,
+    max_chars: int | None = None,
+    parser: str = "pymupdf",
+    parser_kwargs: dict | None = None,
+) -> str | None:
+    """Parse a PDF byte string into body text using a registered engine.
 
-    Parser chain:
+    Thin wrapper over :func:`pdfclaw.parsers.parse` that returns just
+    the body text — the legacy shape this module's callers
+    (:class:`PdfFetcher`, :mod:`citeclaw.fetch_pdfs`,
+    :class:`PdfClawBridge`) expect. Engine-specific kwargs (``base_url``
+    for ``"grobid"``, ``do_ocr`` for ``"docling"``, …) are passed via
+    *parser_kwargs*.
 
-      1. **GROBID** — if ``$CITECLAW_GROBID_URL`` is set, POST the PDF
-         to a GROBID server and return body + structured reference list.
-         GROBID gives cleaner body text (no header/footer noise, no
-         column-break artefacts) and delivers a properly-structured
-         reference list instead of relying on the heuristic splitter
-         downstream. See :mod:`citeclaw.clients.grobid`.
-      2. **PyMuPDF** — falls back to ``pymupdf.get_text("text", sort=True)``
-         for reading-order extraction on two-column scientific PDFs.
-      3. **pypdf** — final fallback if neither of the above is available.
-
-    Returns ``None`` only when ALL parsers fail or the extracted text
-    is empty.
-
-    ``max_chars`` truncates the result if non-None — useful for
-    LLM-screening callers that need to fit a context window. The
-    ``fetch-pdfs`` CLI passes ``None`` so the on-disk ``.txt`` sibling
-    contains the full body.
+    Returns ``None`` (rather than raising) when the engine fails — the
+    callers above use ``None`` as a categorisation signal that maps
+    onto ``"parse_failed"`` in the cache.
     """
-    text: str | None = _try_grobid(body)
-    if text is None:
-        text = _try_pymupdf(body)
-    if text is None:
-        text = _try_pypdf(body)
-    if text is None:
+    try:
+        result = parse_pdf(body, parser=parser, **(parser_kwargs or {}))
+    except ParserError as exc:
+        log.info("parse_pdf_bytes: %s engine failed: %s", parser, exc)
         return None
-    text = text.strip() or None
-    if text and max_chars is not None and len(text) > max_chars:
+    text = result.body_text.strip()
+    if not text:
+        return None
+    if max_chars is not None and len(text) > max_chars:
         text = text[:max_chars]
     return text
-
-
-def _try_grobid(body: bytes) -> str | None:
-    """GROBID path — only runs when ``$CITECLAW_GROBID_URL`` is set."""
-    from citeclaw.clients.grobid import grobid_url, parse_pdf_with_grobid
-    if grobid_url() is None:
-        return None
-    try:
-        return parse_pdf_with_grobid(body)
-    except Exception as exc:  # noqa: BLE001
-        log.info("parse_pdf_bytes: grobid path failed: %s", exc)
-        return None
-
-
-def _iter_pages_safely(
-    pages: Iterable[Any],
-    extract_fn: Callable[[Any], str | None],
-    *,
-    parser_name: str,
-) -> str:
-    """Run ``extract_fn(page)`` for each page; join the results with ``\\n``.
-
-    A single malformed page must not drop the entire document — the
-    parsers we use both raise opaque exceptions on individual pages
-    occasionally, especially on PDFs with embedded images or unusual
-    fonts. Per-page failures are logged at DEBUG (so the audit's
-    "no silent failure" rule has a diagnostic trail) and the page is
-    skipped; the rest of the document still flows to the caller.
-    """
-    chunks: list[str] = []
-    for page in pages:
-        try:
-            chunks.append(extract_fn(page) or "")
-        except Exception as exc:  # noqa: BLE001
-            log.debug(
-                "parse_pdf_bytes: %s per-page extract failed: %s",
-                parser_name, exc,
-            )
-    return "\n".join(chunks)
-
-
-def _try_pymupdf(body: bytes) -> str | None:
-    """PyMuPDF extraction. Returns None on import failure or parse error."""
-    try:
-        import pymupdf  # type: ignore[import-not-found]
-    except ImportError:
-        return None
-    try:
-        doc = pymupdf.open(stream=body, filetype="pdf")
-    except Exception as exc:
-        log.info("parse_pdf_bytes: pymupdf open failed: %s", exc)
-        return None
-    try:
-        # ``sort=True`` reorders text blocks by reading order, which is
-        # the entire reason we prefer pymupdf over pypdf for two-column
-        # scientific PDFs.
-        return _iter_pages_safely(
-            doc,
-            lambda p: p.get_text("text", sort=True),
-            parser_name="pymupdf",
-        )
-    except Exception as exc:
-        log.info("parse_pdf_bytes: pymupdf parse failed: %s", exc)
-        return None
-    finally:
-        try:
-            doc.close()
-        except Exception as exc:  # noqa: BLE001
-            log.debug("parse_pdf_bytes: pymupdf doc.close() failed: %s", exc)
-
-
-def _try_pypdf(body: bytes) -> str | None:
-    """pypdf fallback. Returns None on import failure or parse error."""
-    try:
-        import pypdf  # type: ignore[import-not-found]
-    except ImportError:
-        return None
-    try:
-        reader = pypdf.PdfReader(io.BytesIO(body))
-        return _iter_pages_safely(
-            reader.pages,
-            lambda p: p.extract_text(),
-            parser_name="pypdf",
-        )
-    except Exception as exc:
-        log.info("parse_pdf_bytes: pypdf fallback failed: %s", exc)
-        return None
 
 
 class PdfFetcher:
@@ -384,10 +288,19 @@ class PdfFetcher:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         max_size_mb: int = DEFAULT_MAX_SIZE_MB,
         max_text_chars: int = DEFAULT_MAX_TEXT_CHARS,
+        parser: str = "pymupdf",
+        parser_kwargs: dict | None = None,
     ) -> None:
         self._cache = cache
         self._max_size_bytes = max_size_mb * 1024 * 1024
         self._max_text_chars = max_text_chars
+        # The registered :mod:`pdfclaw.parsers` engine name. ``"pymupdf"``
+        # is the default for the screening hot path because it's
+        # in-process and fast; production runs that care about
+        # extraction quality pass ``parser="docling"`` or ``"grobid"``
+        # via the run config.
+        self._parser = parser
+        self._parser_kwargs = parser_kwargs or {}
         # ``follow_redirects`` is essential — most preprint servers
         # serve PDFs from a final-CDN host that's a redirect away from
         # the metadata URL. Built via the shared factory so the
@@ -494,7 +407,12 @@ class PdfFetcher:
             )
             return None, dl_err
 
-        text = parse_pdf_bytes(body, max_chars=self._max_text_chars)
+        text = parse_pdf_bytes(
+            body,
+            max_chars=self._max_text_chars,
+            parser=self._parser,
+            parser_kwargs=self._parser_kwargs,
+        )
         if text is None:
             log.info("PdfFetcher: parse failed for %s (%s)", paper.paper_id, url)
             return None, "parse_failed"

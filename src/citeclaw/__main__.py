@@ -166,6 +166,20 @@ def _build_fetch_pdfs_parser() -> argparse.ArgumentParser:
         help="Skip writing parse outcomes back into cache.db's "
              "paper_full_text table.",
     )
+    p.add_argument(
+        "--parser",
+        type=str,
+        default="pymupdf",
+        choices=("pymupdf", "docling", "grobid"),
+        help="PDF parser engine (default: pymupdf). See pdfclaw.parsers.",
+    )
+    p.add_argument(
+        "--parser-kwarg",
+        action="append",
+        dest="parser_kwargs",
+        metavar="KEY=VALUE",
+        help='Engine kwarg (repeatable). Example: --parser-kwarg base_url=https://...',
+    )
     return p
 
 
@@ -392,6 +406,8 @@ def _run_fetch_pdfs(argv: list[str]) -> None:
             overwrite=args.overwrite,
             refresh_from_cache=not args.no_refresh_cache,
             update_cache=not args.no_update_cache,
+            parser=args.parser,
+            parser_kwargs=_parse_kwarg_pairs(args.parser_kwargs),
         )
     except FileNotFoundError as exc:
         log.error("fetch-pdfs failed: %s", exc)
@@ -435,6 +451,21 @@ def _build_extract_info_parser() -> argparse.ArgumentParser:
         help="Truncation budget for the paper text (default: 80000).",
     )
     p.add_argument(
+        "--parser",
+        type=str,
+        default="pymupdf",
+        choices=("pymupdf", "docling", "grobid"),
+        help="PDF parser engine to use when input is a PDF (default: pymupdf). "
+             "Ignored for plain-text input.",
+    )
+    p.add_argument(
+        "--parser-kwarg",
+        action="append",
+        dest="parser_kwargs",
+        metavar="KEY=VALUE",
+        help='Engine kwarg (repeatable). Example: --parser-kwarg base_url=https://...',
+    )
+    p.add_argument(
         "--model",
         type=str,
         default="grok-4-1-fast-non-reasoning",
@@ -457,13 +488,24 @@ def _build_extract_info_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _load_input_text(path: Path, *, max_chars: int) -> str:
-    """Read the input file as text (parsing if it's a PDF)."""
+def _load_input_text(
+    path: Path,
+    *,
+    max_chars: int,
+    parser: str = "pymupdf",
+    parser_kwargs: dict | None = None,
+) -> str:
+    """Read the input file as text (parsing if it's a PDF).
+
+    PDFs go through the configured engine in :mod:`pdfclaw.parsers`;
+    plain text files are read verbatim and the *parser* / *parser_kwargs*
+    arguments are ignored.
+    """
     suffix = path.suffix.lower()
     if suffix == ".pdf":
-        from pdfclaw.parser import parse_pdf_file
-        parsed = parse_pdf_file(path)
-        return parsed["body_text"]
+        from pdfclaw.parsers import parse as parse_pdf
+        result = parse_pdf(path, parser=parser, **(parser_kwargs or {}))
+        return result.body_text
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
@@ -490,6 +532,22 @@ def _build_extract_settings(model_alias: str):
     # For any other alias, fall back to plain SaaS routing — caller is
     # responsible for setting OPENAI_API_KEY / GEMINI_API_KEY / etc.
     return Settings(screening_model=model_alias)
+
+
+def _parse_kwarg_pairs(raw_pairs: list[str] | None) -> dict[str, str]:
+    """Turn ``--parser-kwarg key=value`` repeats into a dict.
+
+    Values are kept as strings — individual parsers cast as needed,
+    matching the convention used by ``pdfclaw.cli``.
+    """
+    out: dict[str, str] = {}
+    for raw in raw_pairs or []:
+        if "=" not in raw:
+            log.warning("ignoring --parser-kwarg %r (expected key=value)", raw)
+            continue
+        k, v = raw.split("=", 1)
+        out[k.strip()] = v.strip()
+    return out
 
 
 def _check_extract_info_llm_key(config, model_alias: str) -> str | None:
@@ -531,7 +589,13 @@ def _run_extract_info(argv: list[str]) -> None:
         log.error("Input not found: %s", args.input)
         sys.exit(2)
 
-    text = _load_input_text(args.input, max_chars=args.max_input_chars)
+    parser_kwargs = _parse_kwarg_pairs(args.parser_kwargs)
+    text = _load_input_text(
+        args.input,
+        max_chars=args.max_input_chars,
+        parser=args.parser,
+        parser_kwargs=parser_kwargs,
+    )
     if not text.strip():
         log.error("Input file %s contains no extractable text", args.input)
         sys.exit(1)

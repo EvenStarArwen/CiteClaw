@@ -34,6 +34,9 @@ YAML example::
       max_papers: 20                 # cap papers to read (default: all)
       max_input_chars: 80000         # per-paper text budget (128K-ctx default)
       headless: true                 # browser mode for pdfclaw
+      parser: docling                # pdfclaw.parsers engine; default pymupdf
+      parser_kwargs:                 # engine-specific kwargs (optional)
+        do_ocr: false
 """
 
 from __future__ import annotations
@@ -76,6 +79,8 @@ class ExpandByPDF:
         max_papers: int | None = None,
         max_input_chars: int = 80_000,
         headless: bool = True,
+        parser: str = "pymupdf",
+        parser_kwargs: dict | None = None,
     ) -> None:
         self.screener = screener
         self.topic_description = topic_description
@@ -84,6 +89,12 @@ class ExpandByPDF:
         self.max_papers = max_papers
         self.max_input_chars = max_input_chars
         self.headless = headless
+        # Engine name from :mod:`pdfclaw.parsers`.  Default ``"pymupdf"``
+        # keeps fast-path runs unchanged; production runs that care
+        # about extraction quality set ``parser: docling`` (or
+        # ``"grobid"``) in the YAML step config.
+        self.parser = parser
+        self.parser_kwargs = parser_kwargs or {}
 
     def run(self, signal: list[PaperRecord], ctx: Any) -> StepResult:
         # ----- idempotency ------------------------------------------------
@@ -116,6 +127,8 @@ class ExpandByPDF:
             ctx.cache,
             max_text_chars=self._text_chars_for_fetch(),
             headless=self.headless,
+            parser=self.parser,
+            parser_kwargs=self.parser_kwargs,
         )
 
         dash = ctx.dashboard

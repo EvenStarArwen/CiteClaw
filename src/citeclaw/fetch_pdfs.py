@@ -175,6 +175,8 @@ def _process_one(
     *,
     max_size_bytes: int,
     overwrite: bool,
+    parser: str = "pymupdf",
+    parser_kwargs: dict | None = None,
 ) -> _PaperFetchResult:
     """Download + parse one paper. Returns a result struct (no exceptions)."""
     safe = _safe_filename(paper.paper_id)
@@ -225,7 +227,12 @@ def _process_one(
             )
 
     # Parse — no max_chars cap so the on-disk .txt holds the full body.
-    text = parse_pdf_bytes(body, max_chars=None)
+    text = parse_pdf_bytes(
+        body,
+        max_chars=None,
+        parser=parser,
+        parser_kwargs=parser_kwargs,
+    )
     if text is None:
         return _PaperFetchResult(
             paper_id=paper.paper_id, title=paper.title, status="parse_failed",
@@ -257,6 +264,8 @@ def run_fetch_pdfs(
     overwrite: bool = False,
     refresh_from_cache: bool = True,
     update_cache: bool = True,
+    parser: str = "pymupdf",
+    parser_kwargs: dict | None = None,
 ) -> None:
     """Download + parse open-access PDFs for every accepted paper.
 
@@ -321,6 +330,7 @@ def run_fetch_pdfs(
                 pool.submit(
                     _process_one, p, out_dir, http,
                     max_size_bytes=max_size_bytes, overwrite=overwrite,
+                    parser=parser, parser_kwargs=parser_kwargs,
                 ): p
                 for p in targets
             }

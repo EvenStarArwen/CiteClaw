@@ -1,18 +1,24 @@
-"""Bridge between citeclaw's pipeline and pdfclaw's browser-based PDF fetcher.
+"""Cache-aware PDF fetch + parse pipeline used by ExpandByPDF.
 
-The bridge provides a single entry point —
-:meth:`PdfClawBridge.fetch_text` — that tries three layers in order:
+Three fallback layers, tried in order, all driven by a single
+:meth:`PdfClawBridge.fetch_text` call:
 
   1. **Cache** — ``paper_full_text`` in the SQLite cache (instant).
-  2. **HTTP** — citeclaw's built-in :func:`download_pdf_bytes` against
-     S2's ``openAccessPdf.url`` (fast, no browser).
-  3. **PDFClaw recipes** — the full publisher-aware fallback chain from
-     ``pdfclaw.publishers``, including browser-based SSO recipes.
+  2. **HTTP** — :func:`download_pdf_bytes` against S2's
+     ``openAccessPdf.url`` (fast, no browser).
+  3. **pdfclaw recipes** — the full publisher-aware fallback chain
+     from :mod:`pdfclaw.publishers` (HTTP + Elsevier/Wiley TDM,
+     browser SSO, LLM finder, etc.).
 
-Layer 3 is only attempted when ``pdfclaw`` is importable (it's an
-optional dependency).  The browser is opened **lazily** on the first
-paper that needs it and **reused** across all subsequent papers in the
-same bridge lifetime.  Call :meth:`close` (or use the bridge as a
+PDF parsing — the bytes-to-text step shared by Layers 2 and 3 — is
+delegated to :func:`pdfclaw.parsers.parse`.  The engine
+(``"pymupdf"`` / ``"docling"`` / ``"grobid"``) is fixed at bridge
+construction time so the on-disk cache stays consistent for the whole
+run.  See :mod:`pdfclaw.parsers` for the engine matrix.
+
+The browser is opened **lazily** the first time a Layer-3 recipe
+needs it and **reused** across every subsequent paper in the
+bridge's lifetime.  Call :meth:`close` (or use the bridge as a
 context manager) to shut down the browser cleanly.
 """
 
@@ -23,11 +29,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from citeclaw.clients.pdf import (
-    download_pdf_bytes,
-    make_pdf_http_client,
-    parse_pdf_bytes,
-)
+from citeclaw.clients.pdf import download_pdf_bytes, make_pdf_http_client
+from pdfclaw.parsers import ParserError, parse as parse_pdf
 
 if TYPE_CHECKING:
     from citeclaw.cache import Cache
@@ -43,8 +46,9 @@ class PdfClawBridge:
     """Cache-aware PDF fetcher that falls through to pdfclaw browser recipes.
 
     Designed to be instantiated **once per ExpandByPDF run** and reused
-    across all papers in the signal.  The browser is opened lazily (only
-    when a browser recipe is actually needed) and closed by :meth:`close`.
+    across all papers in the signal.  The browser is opened lazily
+    (only when a browser recipe is actually needed) and closed by
+    :meth:`close`.
     """
 
     def __init__(
@@ -55,12 +59,20 @@ class PdfClawBridge:
         profile_path: Path | None = None,
         headless: bool = True,
         sleep_between: float = 3.0,
+        parser: str = "pymupdf",
+        parser_kwargs: dict | None = None,
     ) -> None:
         self._cache = cache
         self._max_text_chars = max_text_chars
         self._profile_path = (profile_path or _DEFAULT_PROFILE_PATH).expanduser()
         self._headless = headless
         self._sleep_between = sleep_between
+        # Engine selection from :mod:`pdfclaw.parsers`. Fixed for the
+        # life of the bridge so cache entries remain comparable across
+        # the run.  Heavy-quality engines (``"docling"``, ``"grobid"``)
+        # are opt-in via the ExpandByPDF YAML config.
+        self._parser = parser
+        self._parser_kwargs = parser_kwargs or {}
 
         # Lazy-init state
         self._http = make_pdf_http_client()
@@ -68,7 +80,9 @@ class PdfClawBridge:
         self._registry: list | None = None
         self._browser_ctx_manager = None
         self._browser_page = None
-        # Per-run recipe suppression (mirrors pdfclaw's Fetcher logic)
+        # Per-run recipe suppression — mirrors :class:`pdfclaw.fetcher.Fetcher`
+        # so a failing publisher doesn't get hammered for every paper
+        # in a batch.
         self._auth_failed: set[str] = set()
         self._consecutive_failures: dict[str, int] = {}
 
@@ -158,8 +172,7 @@ class PdfClawBridge:
         body, err = download_pdf_bytes(self._http, url)
         if err is not None:
             return None
-        text = parse_pdf_bytes(body, max_chars=self._max_text_chars)
-        return text
+        return self._parse_bytes(body)
 
     # ------------------------------------------------------------------
     # Layer 3: PDFClaw browser recipes
@@ -237,16 +250,46 @@ class PdfClawBridge:
         return None
 
     def _extract_text(self, result) -> str | None:
-        """Parse a successful FetchResult into body text."""
+        """Parse a successful FetchResult into body text.
+
+        Some recipes return already-extracted text directly
+        (Elsevier TDM XML, EuropePMC BioC) — those bypass the
+        parser engine because the publisher's API gave us text in
+        the first place.  Recipes that return PDF bytes go through
+        the configured :mod:`pdfclaw.parsers` engine.
+        """
         if result.body_text:
             text = result.body_text
         elif result.pdf_bytes:
-            text = parse_pdf_bytes(result.pdf_bytes, max_chars=self._max_text_chars)
+            text = self._parse_bytes(result.pdf_bytes)
         else:
             return None
         if text and len(text) > self._max_text_chars:
             text = text[: self._max_text_chars]
         return text or None
+
+    def _parse_bytes(self, body: bytes) -> str | None:
+        """Run the configured parser engine; return body text or None.
+
+        Engine failures are caught and surfaced as ``None`` so the
+        fallback chain in :meth:`fetch_text` keeps walking — the
+        caller sees a categorised "parse_failed" cache entry rather
+        than an exception bubbling out of the bridge.
+        """
+        try:
+            result = parse_pdf(
+                body,
+                parser=self._parser,
+                max_chars=self._max_text_chars,
+                **self._parser_kwargs,
+            )
+        except ParserError as exc:
+            log.info(
+                "pdf bridge: parser %s failed: %s",
+                self._parser, exc,
+            )
+            return None
+        return result.body_text or None
 
     def _ensure_pdfclaw(self) -> bool:
         """Check whether pdfclaw is importable; cache the result."""

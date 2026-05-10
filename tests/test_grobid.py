@@ -1,12 +1,12 @@
-"""Tier 1 offline tests for :mod:`citeclaw.clients.grobid`.
+"""Tier 1 offline tests for :mod:`pdfclaw.parsers.grobid`.
 
 GROBID is a network-bound HTTP client; every test in this file
 either:
 
-* exercises pure-Python helpers (`_tei_to_text`, `_extract_body`,
-  `_extract_references`, `_plain`, `grobid_url`) on hand-crafted
-  TEI XML fixtures, or
-* monkey-patches :class:`httpx.Client` so the network path runs
+* exercises pure-Python TEI walkers (``_extract_body``,
+  ``_extract_references``, ``_plain``) on hand-crafted TEI XML
+  fixtures, or
+* stubs :class:`GrobidParser._post` so the network path runs
   against a fake response.
 
 No live GROBID server is required.
@@ -19,15 +19,13 @@ import xml.etree.ElementTree as ET
 import httpx
 import pytest
 
-from citeclaw.clients import grobid as grobid_mod
-from citeclaw.clients.grobid import (
-    ENV_GROBID_URL,
+from pdfclaw.parsers import ParserError
+from pdfclaw.parsers.grobid import (
+    _ENV_PRIMARY,
+    GrobidParser,
     _extract_body,
     _extract_references,
     _plain,
-    _tei_to_text,
-    grobid_url,
-    parse_pdf_with_grobid,
 )
 
 
@@ -52,8 +50,7 @@ _TEI_BODY_ONLY = """<?xml version="1.0" encoding="UTF-8"?>
       </div>
     </body>
   </text>
-</TEI>
-"""
+</TEI>"""
 
 _TEI_RAW_REFERENCES = """<?xml version="1.0" encoding="UTF-8"?>
 <TEI xmlns="http://www.tei-c.org/ns/1.0">
@@ -61,18 +58,13 @@ _TEI_RAW_REFERENCES = """<?xml version="1.0" encoding="UTF-8"?>
     <back>
       <div>
         <listBibl>
-          <biblStruct>
-            <note type="raw_reference">[1] Smith J. Foo. Nature 2020.</note>
-          </biblStruct>
-          <biblStruct>
-            <note type="raw_reference">[2] Doe A. Bar. Cell 2021.</note>
-          </biblStruct>
+          <biblStruct><note type="raw_reference">[1] Smith J. Foo. Nature 2020.</note></biblStruct>
+          <biblStruct><note type="raw_reference">[2] Doe A. Bar. Cell 2021.</note></biblStruct>
         </listBibl>
       </div>
     </back>
   </text>
-</TEI>
-"""
+</TEI>"""
 
 _TEI_STRUCTURED_REFERENCE = """<?xml version="1.0" encoding="UTF-8"?>
 <TEI xmlns="http://www.tei-c.org/ns/1.0">
@@ -88,9 +80,7 @@ _TEI_STRUCTURED_REFERENCE = """<?xml version="1.0" encoding="UTF-8"?>
             </analytic>
             <monogr>
               <title>Journal of Stuff</title>
-              <imprint>
-                <date when="2022-05-01"/>
-              </imprint>
+              <imprint><date when="2022"/></imprint>
             </monogr>
             <idno type="DOI">10.1000/abcd</idno>
           </biblStruct>
@@ -98,176 +88,92 @@ _TEI_STRUCTURED_REFERENCE = """<?xml version="1.0" encoding="UTF-8"?>
       </div>
     </back>
   </text>
-</TEI>
-"""
+</TEI>"""
 
 _TEI_FULL = """<?xml version="1.0" encoding="UTF-8"?>
 <TEI xmlns="http://www.tei-c.org/ns/1.0">
   <text>
     <body>
-      <div><head>H</head><p>Body paragraph.</p></div>
+      <div><head>Intro</head><p>Body paragraph.</p></div>
     </body>
     <back>
       <div>
         <listBibl>
-          <biblStruct>
-            <note type="raw_reference">[1] Ref A.</note>
-          </biblStruct>
+          <biblStruct><note type="raw_reference">[1] Ref A.</note></biblStruct>
         </listBibl>
       </div>
     </back>
   </text>
-</TEI>
-"""
+</TEI>"""
 
 
 # ---------------------------------------------------------------------------
-# grobid_url — env var presence / absence / trailing-slash strip
+# GrobidParser._resolved_base_url — env-var fallback when ``base_url`` is
+# unset
 # ---------------------------------------------------------------------------
 
 
-class TestGrobidUrl:
-    def test_returns_none_when_unset(self, monkeypatch):
-        monkeypatch.delenv(ENV_GROBID_URL, raising=False)
-        assert grobid_url() is None
+class TestResolvedBaseUrl:
+    def test_uses_constructor_value_when_given(self, monkeypatch):
+        monkeypatch.delenv(_ENV_PRIMARY, raising=False)
+        p = GrobidParser(base_url="https://from-arg.example.com/")
+        assert p._resolved_base_url() == "https://from-arg.example.com"
 
-    def test_returns_none_when_blank(self, monkeypatch):
-        monkeypatch.setenv(ENV_GROBID_URL, "   ")
-        assert grobid_url() is None
+    def test_falls_back_to_env_var(self, monkeypatch):
+        monkeypatch.setenv(_ENV_PRIMARY, "https://from-env.example.com/")
+        p = GrobidParser()
+        assert p._resolved_base_url() == "https://from-env.example.com"
 
-    def test_strips_trailing_slash(self, monkeypatch):
-        monkeypatch.setenv(ENV_GROBID_URL, "https://grobid.example.com/")
-        assert grobid_url() == "https://grobid.example.com"
+    def test_returns_blank_when_neither(self, monkeypatch):
+        monkeypatch.delenv(_ENV_PRIMARY, raising=False)
+        monkeypatch.delenv("CITECLAW_GROBID_URL", raising=False)
+        assert GrobidParser()._resolved_base_url() == ""
 
-    def test_returns_value_when_set(self, monkeypatch):
-        monkeypatch.setenv(ENV_GROBID_URL, "https://grobid.example.com")
-        assert grobid_url() == "https://grobid.example.com"
+    def test_legacy_env_var_still_accepted(self, monkeypatch):
+        monkeypatch.delenv(_ENV_PRIMARY, raising=False)
+        monkeypatch.setenv("CITECLAW_GROBID_URL", "https://legacy.example.com")
+        assert GrobidParser()._resolved_base_url() == "https://legacy.example.com"
 
 
 # ---------------------------------------------------------------------------
-# parse_pdf_with_grobid — top-level orchestration + httpx fallback
+# GrobidParser.parse — top-level orchestration + httpx fallback
 # ---------------------------------------------------------------------------
 
 
-class TestParsePdfWithGrobid:
-    def test_returns_none_when_no_url_configured(self, monkeypatch):
-        monkeypatch.delenv(ENV_GROBID_URL, raising=False)
-        assert parse_pdf_with_grobid(b"%PDF-1.4 fake") is None
+class TestGrobidParserParse:
+    def test_raises_when_no_url_configured(self, monkeypatch):
+        monkeypatch.delenv(_ENV_PRIMARY, raising=False)
+        monkeypatch.delenv("CITECLAW_GROBID_URL", raising=False)
+        with pytest.raises(ParserError):
+            GrobidParser().parse(b"%PDF-1.4 fake")
 
-    def test_returns_none_on_http_error(self, monkeypatch):
-        """Network failures fall through to the PyMuPDF path — return None."""
-
-        class _FakeClient:
-            def __init__(self, *a, **kw):
-                pass
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                pass
-
-            def post(self, *a, **kw):
-                raise httpx.ConnectError("simulated outage")
-
-        monkeypatch.setattr(grobid_mod.httpx, "Client", _FakeClient)
-        result = parse_pdf_with_grobid(b"%PDF-1.4 fake", base_url="https://grobid.example.com")
-        assert result is None
-
-    def test_returns_none_on_malformed_xml(self, monkeypatch):
-        """Malformed TEI XML falls through to None."""
-
-        class _FakeResponse:
-            text = "<not-xml<<"
-
-            def raise_for_status(self):
-                pass
-
-        class _FakeClient:
-            def __init__(self, *a, **kw):
-                pass
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                pass
-
-            def post(self, *a, **kw):
-                return _FakeResponse()
-
-        monkeypatch.setattr(grobid_mod.httpx, "Client", _FakeClient)
-        result = parse_pdf_with_grobid(b"%PDF-1.4 fake", base_url="https://grobid.example.com")
-        assert result is None
-
-    def test_happy_path_returns_body_plus_references(self, monkeypatch):
-        """A clean TEI response yields body \\n\\n References \\n\\n list."""
-
-        class _FakeResponse:
-            text = _TEI_FULL
-
-            def raise_for_status(self):
-                pass
-
-        class _FakeClient:
-            def __init__(self, *a, **kw):
-                self.posted = None
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                pass
-
-            def post(self, endpoint, *, files, data, **kw):
-                self.posted = (endpoint, files, data)
-                return _FakeResponse()
-
-        monkeypatch.setattr(grobid_mod.httpx, "Client", _FakeClient)
-        result = parse_pdf_with_grobid(
-            b"%PDF-1.4 fake",
-            base_url="https://grobid.example.com",
-            include_raw_citations=True,
+    def test_raises_on_http_error(self, monkeypatch):
+        """Network failures bubble up as ParserError."""
+        p = GrobidParser(base_url="https://grobid.example.com")
+        monkeypatch.setattr(
+            p, "_post",
+            lambda *a, **kw: (_ for _ in ()).throw(httpx.ConnectError("simulated outage")),
         )
-        assert result is not None
-        # Body text is present
-        assert "Body paragraph." in result
-        # References section is present + raw entry preserved
-        assert "References" in result
-        assert "[1] Ref A." in result
+        with pytest.raises(ParserError):
+            p.parse(b"%PDF-1.4 fake")
 
+    def test_raises_on_malformed_xml(self, monkeypatch):
+        """Malformed TEI raises ParserError rather than returning empty."""
+        p = GrobidParser(base_url="https://grobid.example.com")
+        monkeypatch.setattr(p, "_post", lambda *a, **kw: "<not-xml<<")
+        with pytest.raises(ParserError):
+            p.parse(b"%PDF-1.4 fake")
 
-# ---------------------------------------------------------------------------
-# _tei_to_text — body+refs concatenation
-# ---------------------------------------------------------------------------
-
-
-class TestTeiToText:
-    def test_body_only_no_references_section(self):
-        out = _tei_to_text(_TEI_BODY_ONLY)
-        assert out is not None
-        assert "Introduction" in out
-        assert "The first paragraph." in out
-        assert "Methods" in out
-        # No refs in fixture → no "References" heading
-        assert "References" not in out
-
-    def test_returns_none_on_empty(self):
-        empty_tei = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<TEI xmlns="http://www.tei-c.org/ns/1.0">'
-            '<text><body></body></text></TEI>'
-        )
-        assert _tei_to_text(empty_tei) is None
-
-    def test_body_then_references_separator(self):
-        out = _tei_to_text(_TEI_FULL)
-        assert out is not None
-        # Body comes first, then "References" heading, then refs
-        body_pos = out.index("Body paragraph.")
-        refs_pos = out.index("References")
-        ref_entry_pos = out.index("[1] Ref A.")
-        assert body_pos < refs_pos < ref_entry_pos
+    def test_happy_path_returns_body_and_references(self, monkeypatch):
+        """A clean TEI response yields populated body_text and references."""
+        p = GrobidParser(base_url="https://grobid.example.com")
+        monkeypatch.setattr(p, "_post", lambda *a, **kw: _TEI_FULL)
+        result = p.parse(b"%PDF-1.4 fake")
+        assert result.parser_used == "grobid"
+        assert "Body paragraph." in result.body_text
+        # References list is structured (not concatenated into body_text).
+        assert result.references == ["[1] Ref A."]
+        assert "References" not in result.body_text
 
 
 # ---------------------------------------------------------------------------

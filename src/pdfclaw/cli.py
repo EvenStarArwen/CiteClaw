@@ -11,7 +11,8 @@ Subcommands:
                    :func:`pdfclaw.fetch_pdfs`)
   parse          — parse a single PDF on disk and print its text +
                    metadata (thin wrapper over
-                   :func:`pdfclaw.parse_pdf_file`)
+                   :func:`pdfclaw.parse`).  Pick the engine with
+                   ``--parser pymupdf|docling|grobid``.
 
 All paths default to sensible values relative to the checkpoint dir,
 so the typical workflow is:
@@ -144,14 +145,18 @@ def cmd_fetch_doi(args: argparse.Namespace) -> int:
         f"[pdfclaw] out_dir:     {args.out_dir}\n"
         f"[pdfclaw] profile:     {args.profile}\n"
         f"[pdfclaw] headless:    {args.headless}\n"
+        f"[pdfclaw] parser:      {args.parser}\n"
     )
 
+    parser_kwargs = _parse_parser_kwargs(args.parser_kwargs)
     results, stats = fetch_pdfs(
         doi_list,
         out_dir=args.out_dir,
         profile_path=args.profile,
         headless=args.headless,
         sleep_range=(args.sleep_min, args.sleep_max),
+        parser=args.parser,
+        parser_kwargs=parser_kwargs,
     )
 
     print()
@@ -181,30 +186,38 @@ def cmd_fetch_doi(args: argparse.Namespace) -> int:
 
 def cmd_parse(args: argparse.Namespace) -> int:
     """Parse a single PDF on disk and print its text + metadata."""
-    from pdfclaw.parser import parse_pdf_file
+    from pdfclaw.parsers import ParserError, parse
 
     pdf_path = Path(args.pdf).expanduser()
     if not pdf_path.is_file():
         print(f"error: not a file: {pdf_path}", file=sys.stderr)
         return 2
 
-    parsed = parse_pdf_file(pdf_path)
-    n_pages = parsed["n_pages"]
-    n_chars = parsed["n_chars"]
-    body = parsed["body_text"]
-    meta = parsed["meta"]
+    parser_kwargs = _parse_parser_kwargs(args.parser_kwargs)
+    try:
+        result = parse(pdf_path, parser=args.parser, **parser_kwargs)
+    except ParserError as exc:
+        print(f"error: {args.parser} failed to parse {pdf_path}: {exc}", file=sys.stderr)
+        return 1
 
-    print(f"[pdfclaw] {pdf_path}: {n_pages} pages, {n_chars:,} chars")
-    if meta:
+    print(
+        f"[pdfclaw] {pdf_path}: parser={result.parser_used} "
+        f"pages={result.n_pages} chars={result.n_chars:,} "
+        f"refs={len(result.references)} tables={len(result.tables)}"
+    )
+    if result.metadata:
         print("[pdfclaw] metadata:")
-        for k, v in meta.items():
-            v_short = v if len(v) < 200 else v[:200] + "…"
+        for k, v in result.metadata.items():
+            sval = str(v)
+            v_short = sval if len(sval) < 200 else sval[:200] + "…"
             print(f"  {k}: {v_short}")
+
     if args.out:
-        Path(args.out).expanduser().write_text(body, encoding="utf-8")
+        Path(args.out).expanduser().write_text(result.body_text, encoding="utf-8")
         print(f"[pdfclaw] wrote body text to {args.out}")
     else:
         snippet = args.snippet
+        body = result.body_text
         head = body[:snippet]
         tail = body[-snippet:] if len(body) > snippet * 2 else ""
         print()
@@ -214,7 +227,35 @@ def cmd_parse(args: argparse.Namespace) -> int:
             print()
             print(f"--- tail ({snippet} chars) ---")
             print(tail)
+        if result.references:
+            print()
+            print(f"--- references (first 5 of {len(result.references)}) ---")
+            for r in result.references[:5]:
+                print(f"  • {r[:160]}")
+        if result.tables:
+            print()
+            print(f"--- tables ({len(result.tables)}, first one shown) ---")
+            print(result.tables[0][:600])
     return 0
+
+
+def _parse_parser_kwargs(raw_pairs: list[str] | None) -> dict[str, str]:
+    """Turn ``--parser-kwarg key=value`` repeats into a dict.
+
+    Used by ``fetch-doi`` and ``parse`` to thread engine-specific
+    options (``base_url`` for GROBID, ``do_ocr`` for Docling, …)
+    through without per-engine flags.  Values are kept as strings —
+    individual parsers cast as needed, mirroring how
+    ``citeclaw.config`` handles per-model registry entries.
+    """
+    out: dict[str, str] = {}
+    for raw in raw_pairs or []:
+        if "=" not in raw:
+            print(f"warning: ignoring --parser-kwarg {raw!r} (expected key=value)", file=sys.stderr)
+            continue
+        k, v = raw.split("=", 1)
+        out[k.strip()] = v.strip()
+    return out
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
@@ -381,6 +422,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_fetch_doi.add_argument("--sleep-min", type=float, default=0.0)
     p_fetch_doi.add_argument("--sleep-max", type=float, default=0.0)
+    p_fetch_doi.add_argument(
+        "--parser",
+        type=str,
+        default="pymupdf",
+        choices=("pymupdf", "docling", "grobid"),
+        help="Parser engine for the parsed/<id>.json artefact (default: pymupdf)",
+    )
+    p_fetch_doi.add_argument(
+        "--parser-kwarg",
+        action="append",
+        dest="parser_kwargs",
+        metavar="KEY=VALUE",
+        help='Engine kwarg (repeatable). Example: --parser-kwarg base_url=https://...',
+    )
     p_fetch_doi.set_defaults(func=cmd_fetch_doi)
 
     p_parse = sub.add_parser(
@@ -400,6 +455,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=800,
         help="When printing, show this many chars from head + tail (default: 800)",
+    )
+    p_parse.add_argument(
+        "--parser",
+        type=str,
+        default="pymupdf",
+        choices=("pymupdf", "docling", "grobid"),
+        help="Parser engine to use (default: pymupdf)",
+    )
+    p_parse.add_argument(
+        "--parser-kwarg",
+        action="append",
+        dest="parser_kwargs",
+        metavar="KEY=VALUE",
+        help='Engine kwarg (repeatable). Example: --parser-kwarg base_url=https://...',
     )
     p_parse.set_defaults(func=cmd_parse)
 

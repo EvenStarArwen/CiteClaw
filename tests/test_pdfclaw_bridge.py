@@ -94,9 +94,10 @@ class TestFetchTextHttpPath:
         cache = _FakeCache()
         monkeypatch.setattr(bridge_mod, "download_pdf_bytes",
                             lambda http, url: (b"%PDF-fake", None))
-        monkeypatch.setattr(bridge_mod, "parse_pdf_bytes",
-                            lambda body, max_chars=None: "extracted body")
         b = PdfClawBridge(cache)
+        # Stub the bridge's parse helper instead of the parser registry —
+        # isolates this test from whichever engine is configured.
+        b._parse_bytes = lambda body: "extracted body"
         try:
             paper = _make_paper("p1", pdf_url="https://example.com/x.pdf")
             result = b.fetch_text(paper)
@@ -163,14 +164,13 @@ class TestExtractDoi:
 
 
 class TestExtractText:
-    def test_prefers_body_text(self, monkeypatch):
-        # parse_pdf_bytes shouldn't be called when body_text is present
+    def test_prefers_body_text(self):
+        # The parser engine shouldn't be called when body_text is present.
         called = {"n": 0}
-        def _pp(body, max_chars=None):
-            called["n"] += 1
-            return "should not be used"
-        monkeypatch.setattr(bridge_mod, "parse_pdf_bytes", _pp)
         b = PdfClawBridge(_FakeCache())
+        b._parse_bytes = lambda body: (
+            called.update({"n": called["n"] + 1}) or "should not be used"
+        )
         try:
             result = SimpleNamespace(body_text="from body_text", pdf_bytes=b"%PDF")
             assert b._extract_text(result) == "from body_text"
@@ -178,10 +178,9 @@ class TestExtractText:
         finally:
             b.close()
 
-    def test_falls_back_to_parsed_pdf_bytes(self, monkeypatch):
-        monkeypatch.setattr(bridge_mod, "parse_pdf_bytes",
-                            lambda body, max_chars=None: "parsed text")
+    def test_falls_back_to_parsed_pdf_bytes(self):
         b = PdfClawBridge(_FakeCache())
+        b._parse_bytes = lambda body: "parsed text"
         try:
             result = SimpleNamespace(body_text=None, pdf_bytes=b"%PDF-fake")
             assert b._extract_text(result) == "parsed text"

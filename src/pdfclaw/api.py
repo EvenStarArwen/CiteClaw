@@ -85,6 +85,8 @@ def fetch_pdfs(
     profile_path: str | Path | None = None,
     headless: bool = False,
     sleep_range: tuple[float, float] = (0.0, 0.0),
+    parser: str = "pymupdf",
+    parser_kwargs: dict | None = None,
 ) -> tuple[list[tuple[Paper, FetchResult]], FetchStats]:
     """Fetch PDFs for an arbitrary DOI list.
 
@@ -141,6 +143,8 @@ def fetch_pdfs(
         profile_path=profile,
         sleep_range=sleep_range,
         headless=headless,
+        parser=parser,
+        parser_kwargs=parser_kwargs,
     )
     stats = fetcher.run(papers, on_paper_done=_on_done)
 
@@ -175,6 +179,8 @@ def fetch_pdf(
     pmcid: str | None = None,
     profile_path: str | Path | None = None,
     headless: bool = False,
+    parser: str = "pymupdf",
+    parser_kwargs: dict | None = None,
 ) -> tuple[Paper, FetchResult]:
     """One-shot DOI → ``(Paper, FetchResult)``.
 
@@ -200,5 +206,7 @@ def fetch_pdf(
         out_dir=out_dir,
         profile_path=profile_path,
         headless=headless,
+        parser=parser,
+        parser_kwargs=parser_kwargs,
     )
     return results[0]

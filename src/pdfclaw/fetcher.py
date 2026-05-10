@@ -39,7 +39,7 @@ from pathlib import Path
 import httpx
 
 from pdfclaw.collection import Paper
-from pdfclaw.parser import parse_pdf_bytes
+from pdfclaw.parsers import ParseResult, ParserError, parse as parse_pdf
 from pdfclaw.publishers import Recipe, build_default_registry, find_recipes
 from pdfclaw.publishers.base import (
     STATUS_AUTH,
@@ -76,6 +76,8 @@ class Fetcher:
         recipes: list[Recipe] | None = None,
         sleep_range: tuple[float, float] = (15.0, 45.0),
         headless: bool = False,
+        parser: str = "pymupdf",
+        parser_kwargs: dict | None = None,
         http_user_agent: str = (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
@@ -87,6 +89,13 @@ class Fetcher:
         self.recipes = recipes or build_default_registry()
         self.sleep_range = sleep_range
         self.headless = headless
+        # The parser registry name (``"pymupdf"`` / ``"docling"`` /
+        # ``"grobid"``) used for every fetched PDF in this run.  We
+        # store both the name and the per-engine kwargs so the
+        # ``parser_used`` / ``parsed/<id>.json`` shape stays consistent
+        # for the whole batch.
+        self.parser = parser
+        self.parser_kwargs = parser_kwargs or {}
         self.http_user_agent = http_user_agent
 
         self.parsed_dir.mkdir(parents=True, exist_ok=True)
@@ -385,18 +394,34 @@ class Fetcher:
 
     def _save_parsed(self, paper: Paper, result: FetchResult) -> None:
         if result.pdf_bytes:
-            parsed = parse_pdf_bytes(result.pdf_bytes)
+            try:
+                parse_result = parse_pdf(
+                    result.pdf_bytes,
+                    parser=self.parser,
+                    **self.parser_kwargs,
+                )
+            except ParserError as exc:
+                # Parsing failure on a successfully-fetched PDF is
+                # logged and the parsed/ artefact records the failure
+                # rather than leaving the on-disk shape inconsistent.
+                log.warning(
+                    "PARSE-FAIL %s [%s]: %s",
+                    paper.paper_id, self.parser, exc,
+                )
+                parse_result = ParseResult(parser_used=self.parser)
+            parsed = parse_result.to_dict()
             pdf_size = len(result.pdf_bytes)
             pdf_path_str = str(self.pdf_path(paper.paper_id))
         else:
-            # Already-extracted text (BioC PMC, Elsevier TDM XML, etc.)
+            # Already-extracted text (BioC PMC, Elsevier TDM XML, …)
+            # bypasses the parser registry — the body text came from
+            # the recipe directly so we record it under the same
+            # on-disk shape with parser_used="(recipe)".
             text = result.body_text or ""
-            parsed = {
-                "n_pages": 0,
-                "n_chars": len(text),
-                "body_text": text,
-                "meta": {},
-            }
+            parsed = ParseResult(
+                body_text=text,
+                parser_used="(recipe)",
+            ).to_dict()
             pdf_size = 0
             pdf_path_str = ""
         record = {
