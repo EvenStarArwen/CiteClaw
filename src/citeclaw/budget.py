@@ -86,6 +86,15 @@ MODEL_PRICING: dict[str, tuple[float, float, float]] = {
     # Self-hosted via Modal/vLLM — billed by GPU-hours, not tokens.
     "gemma-4-31b":                           (0.0,   0.0,   0.0),
     "gemma-4":                               (0.0,   0.0,   0.0),
+    # Xiaomi MiMo — OpenAI-compatible at api.xiaomimimo.com.
+    # mimo-v2-pro is a vLLM-style reasoning model (chat_template_kwargs.
+    # enable_thinking) that surfaces ``message.reasoning_content``;
+    # mimo-v2-flash is a smaller non-reasoning sibling.
+    # Pricing placeholders — Xiaomi's public token plans bundle a flat
+    # token allowance, so per-token rates aren't directly comparable;
+    # zeroes here let the budget tracker run without inventing numbers.
+    "mimo-v2-pro":                           (0.0,   0.0,   0.0),
+    "mimo-v2-flash":                         (0.0,   0.0,   0.0),
     # Catch-all so unknown models still produce a non-zero estimate.
     "GENERIC":                               (0.30,  2.50,  2.50),
 }

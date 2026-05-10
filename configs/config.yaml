@@ -100,6 +100,30 @@ graph_label_instruction: >
 #     served_model_name: "magistral-medium-latest"
 #     api_key_env: "MISTRAL_API_KEY"
 #     reasoning_parser: "magistral"
+#
+#   # Xiaomi MiMo — OpenAI-compatible at api.xiaomimimo.com.
+#   # mimo-v2-pro is a vLLM-style reasoning model: it surfaces
+#   # ``message.reasoning_content`` and accepts
+#   # ``chat_template_kwargs.enable_thinking`` + ``thinking_budget``,
+#   # exactly the same wire shape as Qwen3 / DeepSeek-R1, so the
+#   # ``qwen3`` parser bucket fits without code changes.
+#   # The API key is registered with an ``sk-`` prefix that the user
+#   # must include when exporting ``XIAOMI_MIMO_API_KEY``.
+#   mimo-v2-pro:
+#     base_url: "https://api.xiaomimimo.com/v1"
+#     served_model_name: "mimo-v2-pro"
+#     api_key_env: "XIAOMI_MIMO_API_KEY"
+#     reasoning_parser: "qwen3"
+#     thinking_budget: 8192
+#
+#   # mimo-v2-flash is the non-reasoning sibling — smaller, faster,
+#   # ``reasoning_content`` always empty.  Use ``reasoning_parser:
+#   # "none"`` so the client never sends thinking kwargs.
+#   mimo-v2-flash:
+#     base_url: "https://api.xiaomimimo.com/v1"
+#     served_model_name: "mimo-v2-flash"
+#     api_key_env: "XIAOMI_MIMO_API_KEY"
+#     reasoning_parser: "none"
 
 # =================================================================
 # BLOCKS
