@@ -1,6 +1,6 @@
 """CLI entry point — ``python -m citeclaw [subcommand] ...``.
 
-Six subcommands, dispatched in :func:`main` by the first positional arg:
+Subcommands, dispatched in :func:`main` by the first positional arg:
 
 * (no arg or anything not below) → :func:`_run_snowball` — the default
   pipeline run that reads ``-c config.yaml`` + flags, validates the
@@ -14,6 +14,10 @@ Six subcommands, dispatched in :func:`main` by the first positional arg:
   download CLI (see :mod:`citeclaw.fetch_pdfs`).
 * ``mainpath <graph>`` → :func:`_run_mainpath` — extract the main path
   subnetwork from a citation GraphML (see :mod:`citeclaw.mainpath`).
+* ``extract-info <pdf-or-text>`` → :func:`_run_extract_info` —
+  generic LLM extraction: paper text + free-form instruction +
+  optional JSON schema → structured JSON
+  (see :mod:`citeclaw.extraction`).
 * ``web`` → :func:`_run_web` — launch the FastAPI + React web UI
   (see :mod:`citeclaw.web_server`).
 
@@ -397,6 +401,191 @@ def _run_fetch_pdfs(argv: list[str]) -> None:
         sys.exit(130)
 
 
+def _build_extract_info_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="citeclaw extract-info")
+    p.add_argument(
+        "input",
+        type=Path,
+        help="Path to a PDF or text file to extract from",
+    )
+    p.add_argument(
+        "--instruction",
+        "-i",
+        type=str,
+        required=True,
+        help='Instruction telling the LLM what to extract '
+             '(e.g. "list all dataset names mentioned").',
+    )
+    p.add_argument(
+        "--schema-file",
+        type=Path,
+        default=None,
+        help="Optional JSON Schema file constraining the output shape.",
+    )
+    p.add_argument(
+        "--paper-title",
+        type=str,
+        default="",
+        help="Optional paper title (included in the prompt for context).",
+    )
+    p.add_argument(
+        "--max-input-chars",
+        type=int,
+        default=80_000,
+        help="Truncation budget for the paper text (default: 80000).",
+    )
+    p.add_argument(
+        "--model",
+        type=str,
+        default="grok-4-1-fast-non-reasoning",
+        help="Model alias (default: grok-4-1-fast-non-reasoning, reads XAI_API_KEY).",
+    )
+    p.add_argument(
+        "--config",
+        "-c",
+        type=Path,
+        default=None,
+        help="Optional YAML config providing the models registry. "
+             "When omitted, an inline registry is built for grok-4-1-fast-non-reasoning.",
+    )
+    p.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Write the extracted JSON to this path instead of stdout.",
+    )
+    return p
+
+
+def _load_input_text(path: Path, *, max_chars: int) -> str:
+    """Read the input file as text (parsing if it's a PDF)."""
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        from pdfclaw.parser import parse_pdf_file
+        parsed = parse_pdf_file(path)
+        return parsed["body_text"]
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def _build_extract_settings(model_alias: str):
+    """Inline-build a Settings object for the extract-info CLI when no YAML.
+
+    The default points at xAI's OpenAI-compatible endpoint with
+    ``reasoning_parser="none"`` so no thinking kwargs are sent (the
+    grok-4-1-fast-non-reasoning model rejects them).
+    """
+    from citeclaw.config import ModelEndpoint, Settings
+
+    if model_alias == "grok-4-1-fast-non-reasoning":
+        endpoint = ModelEndpoint(
+            base_url="https://api.x.ai/v1",
+            served_model_name="grok-4-1-fast-non-reasoning",
+            api_key_env="XAI_API_KEY",
+            reasoning_parser="none",
+        )
+        return Settings(
+            screening_model=model_alias,
+            models={model_alias: endpoint},
+        )
+    # For any other alias, fall back to plain SaaS routing — caller is
+    # responsible for setting OPENAI_API_KEY / GEMINI_API_KEY / etc.
+    return Settings(screening_model=model_alias)
+
+
+def _check_extract_info_llm_key(config, model_alias: str) -> str | None:
+    """Verify only the LLM key for the chosen model is set.
+
+    The pipeline-level ``find_missing_api_keys`` is too strict for the
+    ``extract-info`` CLI because it also requires ``S2_API_KEY`` (S2 is
+    used everywhere else in CiteClaw). Extraction only needs the LLM,
+    so we walk the registry directly.
+    """
+    import os
+
+    entry = config.models.get(model_alias)
+    if entry is not None and entry.api_key_env:
+        if not os.environ.get(entry.api_key_env):
+            return entry.api_key_env
+        return None
+    # Fallback: rely on env-var probing — Gemini, OpenAI SaaS, etc.
+    if model_alias.lower().startswith("gemini") and not os.environ.get("GEMINI_API_KEY"):
+        return "GEMINI_API_KEY"
+    if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("CITECLAW_OPENAI_API_KEY")):
+        return "OPENAI_API_KEY"
+    return None
+
+
+def _run_extract_info(argv: list[str]) -> None:
+    """Extract structured information from a paper text or PDF."""
+    import json as _json
+
+    from citeclaw.budget import BudgetTracker
+    from citeclaw.clients.llm.factory import build_llm_client
+    from citeclaw.extraction import extract_from_text
+
+    parser = _build_extract_info_parser()
+    args = parser.parse_args(argv)
+    setup_logging(log_dir=None, level=logging.INFO)
+
+    if not args.input.is_file():
+        log.error("Input not found: %s", args.input)
+        sys.exit(2)
+
+    text = _load_input_text(args.input, max_chars=args.max_input_chars)
+    if not text.strip():
+        log.error("Input file %s contains no extractable text", args.input)
+        sys.exit(1)
+
+    schema = None
+    if args.schema_file is not None:
+        schema = _json.loads(Path(args.schema_file).read_text(encoding="utf-8"))
+
+    if args.config is not None:
+        config = load_settings(args.config, {})
+        if not config.screening_model:
+            config.screening_model = args.model
+    else:
+        config = _build_extract_settings(args.model)
+
+    missing_env = _check_extract_info_llm_key(config, args.model)
+    if missing_env:
+        log.error(
+            "Missing env var '%s' for model %r. "
+            "Export it in your shell before running extract-info.",
+            missing_env, args.model,
+        )
+        sys.exit(1)
+
+    llm = build_llm_client(config, BudgetTracker(), model=args.model)
+
+    log.info(
+        "Extracting from %s (%d chars) with model=%s, schema=%s",
+        args.input, len(text), args.model,
+        "yes" if schema else "no",
+    )
+
+    result = extract_from_text(
+        text,
+        args.instruction,
+        llm=llm,
+        schema=schema,
+        paper_title=args.paper_title,
+        max_input_chars=args.max_input_chars,
+    )
+
+    if result.extraction_failed:
+        log.error("Extraction failed: %s", result.error)
+        log.info("Raw LLM output (first 500 chars): %s", result.raw_text[:500])
+        sys.exit(1)
+
+    out_json = _json.dumps(result.output, ensure_ascii=False, indent=2)
+    if args.out:
+        Path(args.out).write_text(out_json, encoding="utf-8")
+        log.info("Wrote extraction to %s", args.out)
+    else:
+        print(out_json)
+
+
 def _build_web_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="citeclaw web")
     p.add_argument(
@@ -429,6 +618,7 @@ _SUBCOMMANDS: dict[str, "Callable[[list[str]], None]"] = {
     "rebuild-graph": lambda argv: _run_rebuild_graph(argv),
     "fetch-pdfs": lambda argv: _run_fetch_pdfs(argv),
     "mainpath": lambda argv: _run_mainpath(argv),
+    "extract-info": lambda argv: _run_extract_info(argv),
     "web": lambda argv: _run_web(argv),
 }
 
