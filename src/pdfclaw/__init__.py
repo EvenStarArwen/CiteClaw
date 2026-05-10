@@ -13,3 +13,16 @@ lives.
 """
 
 __version__ = "0.1.0"
+
+from pdfclaw.api import fetch_pdf, fetch_pdfs
+from pdfclaw.parser import parse_pdf_bytes, parse_pdf_file
+from pdfclaw.publishers.base import FetchResult
+
+__all__ = [
+    "FetchResult",
+    "__version__",
+    "fetch_pdf",
+    "fetch_pdfs",
+    "parse_pdf_bytes",
+    "parse_pdf_file",
+]

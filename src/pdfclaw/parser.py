@@ -11,6 +11,7 @@ for downstream LLM ingestion.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("pdfclaw.parser")
@@ -70,6 +71,11 @@ def parse_pdf_bytes(pdf_bytes: bytes) -> dict[str, Any]:
             key = k.lstrip("/") if isinstance(k, str) else str(k)
             meta_raw[key] = str(v) if v is not None else ""
     return _finalise(body, meta_raw, len(reader.pages))
+
+
+def parse_pdf_file(path: str | Path) -> dict[str, Any]:
+    """Convenience wrapper: read a PDF from disk and parse it."""
+    return parse_pdf_bytes(Path(path).expanduser().read_bytes())
 
 
 def _finalise(body: str, meta_raw: dict, n_pages: int) -> dict[str, Any]:

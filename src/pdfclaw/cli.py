@@ -6,6 +6,12 @@ Subcommands:
   login          — open Chromium with the dedicated profile so you can
                    sign in to your institution once
   fetch          — actually download + parse PDFs into <ckpt>/parsed/
+  fetch-doi      — fetch + parse PDFs for an ad-hoc list of DOIs
+                   (no checkpoint required; thin wrapper over
+                   :func:`pdfclaw.fetch_pdfs`)
+  parse          — parse a single PDF on disk and print its text +
+                   metadata (thin wrapper over
+                   :func:`pdfclaw.parse_pdf_file`)
 
 All paths default to sensible values relative to the checkpoint dir,
 so the typical workflow is:
@@ -116,6 +122,98 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_login(args: argparse.Namespace) -> int:
     from pdfclaw.browser import launch_for_login
     launch_for_login(args.profile)
+    return 0
+
+
+def cmd_fetch_doi(args: argparse.Namespace) -> int:
+    """Fetch + parse PDFs for an ad-hoc DOI list (no checkpoint needed)."""
+    from pdfclaw.api import fetch_pdfs
+
+    doi_list: list[str] = list(args.dois or [])
+    if args.dois_file:
+        for raw in Path(args.dois_file).read_text(encoding="utf-8").splitlines():
+            doi = raw.split("#", 1)[0].strip()
+            if doi:
+                doi_list.append(doi)
+    if not doi_list:
+        print("error: no DOIs given. Pass them as positional args or via --dois-file.", file=sys.stderr)
+        return 2
+
+    print(
+        f"[pdfclaw] dois:        {len(doi_list)} ({doi_list[0]} ...)\n"
+        f"[pdfclaw] out_dir:     {args.out_dir}\n"
+        f"[pdfclaw] profile:     {args.profile}\n"
+        f"[pdfclaw] headless:    {args.headless}\n"
+    )
+
+    results, stats = fetch_pdfs(
+        doi_list,
+        out_dir=args.out_dir,
+        profile_path=args.profile,
+        headless=args.headless,
+        sleep_range=(args.sleep_min, args.sleep_max),
+    )
+
+    print()
+    print("=== per-DOI results ===")
+    for paper, result in results:
+        if result.ok:
+            n = len(result.pdf_bytes or b"") or len(result.body_text or "")
+            tag = "PDF" if result.pdf_bytes else "TEXT"
+            print(
+                f"  OK    {paper.doi:50s}  via {result.fetched_via:20s}  "
+                f"{tag} {n:>9,} bytes  → {paper.paper_id}"
+            )
+        else:
+            err = (result.error or "")[:80]
+            print(
+                f"  FAIL  {paper.doi:50s}  status={result.status:18s}  "
+                f"via {result.fetched_via or '(none)':20s}  {err}"
+            )
+
+    print()
+    print("=== aggregate stats ===")
+    from pdfclaw.fetcher import _stats_to_dict
+    for k, v in _stats_to_dict(stats).items():
+        print(f"  {k:20s}  {v}")
+    return 0
+
+
+def cmd_parse(args: argparse.Namespace) -> int:
+    """Parse a single PDF on disk and print its text + metadata."""
+    from pdfclaw.parser import parse_pdf_file
+
+    pdf_path = Path(args.pdf).expanduser()
+    if not pdf_path.is_file():
+        print(f"error: not a file: {pdf_path}", file=sys.stderr)
+        return 2
+
+    parsed = parse_pdf_file(pdf_path)
+    n_pages = parsed["n_pages"]
+    n_chars = parsed["n_chars"]
+    body = parsed["body_text"]
+    meta = parsed["meta"]
+
+    print(f"[pdfclaw] {pdf_path}: {n_pages} pages, {n_chars:,} chars")
+    if meta:
+        print("[pdfclaw] metadata:")
+        for k, v in meta.items():
+            v_short = v if len(v) < 200 else v[:200] + "…"
+            print(f"  {k}: {v_short}")
+    if args.out:
+        Path(args.out).expanduser().write_text(body, encoding="utf-8")
+        print(f"[pdfclaw] wrote body text to {args.out}")
+    else:
+        snippet = args.snippet
+        head = body[:snippet]
+        tail = body[-snippet:] if len(body) > snippet * 2 else ""
+        print()
+        print(f"--- head ({snippet} chars) ---")
+        print(head)
+        if tail:
+            print()
+            print(f"--- tail ({snippet} chars) ---")
+            print(tail)
     return 0
 
 
@@ -257,6 +355,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only run papers whose DOI starts with this prefix (e.g. 10.1038/)",
     )
     p_fetch.set_defaults(func=cmd_fetch)
+
+    p_fetch_doi = sub.add_parser(
+        "fetch-doi",
+        help="Fetch + parse PDFs for an ad-hoc list of DOIs (no checkpoint required)",
+        parents=[parent],
+    )
+    p_fetch_doi.add_argument("dois", nargs="*", help="DOI(s) to fetch (e.g. 10.1038/s41586-...)")
+    p_fetch_doi.add_argument(
+        "--dois-file",
+        type=Path,
+        default=None,
+        help="Read DOIs from this file, one per line (lines starting with # are skipped).",
+    )
+    p_fetch_doi.add_argument(
+        "--out-dir",
+        type=Path,
+        default=Path("/tmp/pdfclaw_demo"),
+        help="Where to write pdfs/ + parsed/ (default: /tmp/pdfclaw_demo)",
+    )
+    p_fetch_doi.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run Chromium headless (NOT recommended for paywalled publishers)",
+    )
+    p_fetch_doi.add_argument("--sleep-min", type=float, default=0.0)
+    p_fetch_doi.add_argument("--sleep-max", type=float, default=0.0)
+    p_fetch_doi.set_defaults(func=cmd_fetch_doi)
+
+    p_parse = sub.add_parser(
+        "parse",
+        help="Parse a single PDF on disk and print its text + metadata",
+        parents=[parent],
+    )
+    p_parse.add_argument("pdf", type=Path, help="Path to a PDF file")
+    p_parse.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Write the full body text to this path instead of printing a snippet",
+    )
+    p_parse.add_argument(
+        "--snippet",
+        type=int,
+        default=800,
+        help="When printing, show this many chars from head + tail (default: 800)",
+    )
+    p_parse.set_defaults(func=cmd_parse)
 
     return p
 

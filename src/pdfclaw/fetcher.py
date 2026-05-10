@@ -31,6 +31,7 @@ import json
 import logging
 import random
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +46,8 @@ from pdfclaw.publishers.base import (
     STATUS_OK,
     FetchResult,
 )
+
+OnPaperDone = Callable[[Paper, FetchResult], None]
 
 log = logging.getLogger("pdfclaw.fetcher")
 
@@ -139,6 +142,7 @@ class Fetcher:
         max_papers: int | None = None,
         filter_recipe: str | None = None,
         filter_doi_prefix: str | None = None,
+        on_paper_done: OnPaperDone | None = None,
     ) -> FetchStats:
         plan, stats = self._plan(
             papers, filter_recipe=filter_recipe, filter_doi_prefix=filter_doi_prefix,
@@ -230,6 +234,14 @@ class Fetcher:
                                 if arxiv_result.ok:
                                     result = arxiv_result
                     self._handle_result(paper, result, stats)
+                    if on_paper_done is not None:
+                        try:
+                            on_paper_done(paper, result)
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning(
+                                "on_paper_done callback raised for %s: %s",
+                                paper.paper_id, exc,
+                            )
                     remaining = total_plan - i
                     log.info(
                         "[%d/%d] ok=%d fail=%d remaining=%d",
