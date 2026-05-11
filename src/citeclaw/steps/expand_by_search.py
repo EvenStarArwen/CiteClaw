@@ -1,9 +1,20 @@
-"""ExpandBySearch step shell — no agent backend wired in.
+"""ExpandBySearch — agent-driven S2 bulk-search expansion (1-shot mode).
 
-The pipeline-side wiring (idempotency fingerprint, screener, anchor
-slicing, post-agent screen-and-finalize) is intact and ready for the
-next agent backend to plug into ``run``. Until then the step raises
-:class:`NotImplementedError` when invoked.
+The full multi-iteration / supervisor agent is parked; this revival
+wires a minimal 1-turn worker so the step is functional end-to-end:
+
+  1. Resolve the topic description (step override -> top-level config).
+  2. Build the LLM client (``self.agent.model`` -> ``config.search_model``
+     -> ``config.screening_model``).
+  3. Call :func:`citeclaw.agents.iterative_search.run_iterative_search`
+     with ``max_iterations`` clamped per ``self.agent`` (default 1).
+  4. Feed the deduped paperIds through the shared ExpandBy* screening
+     pipeline (``screen_expand_candidates``).
+
+The verbatim multi-iteration prompts live in
+:mod:`citeclaw.prompts.search_refine` so flipping the iteration cap up
+in the agent backend turns the longer flow back on without prompt
+changes.
 """
 
 from __future__ import annotations
@@ -11,6 +22,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from citeclaw.agents.iterative_search import (
+    AgentConfig,
+    AgentTurn,
+    run_iterative_search,
+)
+from citeclaw.clients.llm.factory import build_llm_client
 from citeclaw.models import PaperRecord
 from citeclaw.search.query_engine import apply_local_query
 from citeclaw.steps._expand_helpers import (
@@ -23,8 +40,16 @@ from citeclaw.steps.base import StepResult
 log = logging.getLogger("citeclaw.steps.expand_by_search")
 
 
+# Cap the agent at one turn for the shipped V3 revival. The multi-turn
+# loop and the supervisor stay in prompts/search_refine.py for the next
+# iteration of this step but are deliberately not exercised today —
+# tuning the refinement chain regressed retrieval quality in practice,
+# so 1-shot ships first.
+_DEFAULT_MAX_ITERATIONS = 1
+
+
 class ExpandBySearch:
-    """Meta-LLM search expansion step (no agent backend wired in)."""
+    """Meta-LLM search expansion (1-shot worker)."""
 
     name = "ExpandBySearch"
 
@@ -55,21 +80,94 @@ class ExpandBySearch:
         if (skip := check_already_searched(self.name, fp, ctx, len(signal))):
             return skip
 
-        anchor_papers = signal[: self.max_anchor_papers]
         topic = self._resolve_topic(ctx)
+        if not topic.strip():
+            log.warning(
+                "ExpandBySearch: topic_description is empty (step override + "
+                "config.topic_description both blank) — skipping",
+            )
+            ctx.searched_signals.add(fp)
+            return StepResult(
+                signal=[],
+                in_count=len(signal),
+                stats={"reason": "no_topic_description"},
+            )
 
-        # No agent backend yet. A future backend should consume
-        # (topic, anchor_papers, ctx, **self.agent), produce a list of
-        # S2 paper_ids, and call ``self._screen_and_finalize(...)`` to
-        # return a StepResult.
-        raise NotImplementedError(
-            "ExpandBySearch has no agent backend. Wire one in here: feed "
-            "(topic, anchor_papers, ctx) to the agent, then return "
-            "self._screen_and_finalize(aggregate_ids=..., signal=signal, "
-            "ctx=ctx, fp=fp)."
+        agent_cfg = self._build_agent_config(ctx)
+        llm = build_llm_client(
+            ctx.config,
+            ctx.budget,
+            model=agent_cfg.model,
+            reasoning_effort=agent_cfg.reasoning_effort,
+            cache=getattr(ctx, "cache", None),
         )
 
-    # ---- Scaffolding helpers for a future agent ---------------------
+        aggregate_ids, turns = run_iterative_search(
+            topic=topic,
+            ctx=ctx,
+            llm=llm,
+            config=agent_cfg,
+        )
+
+        extra_stats: dict[str, Any] = {
+            "agent_iterations": len(turns),
+            "anchor_count": min(len(signal), self.max_anchor_papers),
+            "agent_paperids": len(aggregate_ids),
+        }
+        if turns:
+            extra_stats["last_query"] = turns[-1].query_s2[:200]
+
+        if not aggregate_ids:
+            ctx.searched_signals.add(fp)
+            return StepResult(
+                signal=[],
+                in_count=len(signal),
+                stats={"reason": "no_results", **extra_stats},
+            )
+
+        return self._screen_and_finalize(
+            aggregate_ids=aggregate_ids,
+            signal=signal,
+            ctx=ctx,
+            fp=fp,
+            extra_stats=extra_stats,
+        )
+
+    # ---- Config helpers ---------------------------------------------
+
+    def _build_agent_config(self, ctx) -> AgentConfig:
+        """Translate the YAML ``agent:`` dict into an :class:`AgentConfig`.
+
+        Resolution cascade for the model alias:
+        ``self.agent['model']`` -> ``ctx.config.search_model`` ->
+        ``ctx.config.screening_model``.
+
+        Unknown keys in ``self.agent`` are silently ignored.
+        """
+        model = (
+            self.agent.get("model")
+            or getattr(ctx.config, "search_model", "")
+            or getattr(ctx.config, "screening_model", "")
+            or None
+        )
+        reasoning_effort = (
+            self.agent.get("reasoning_effort")
+            or getattr(ctx.config, "reasoning_effort", "")
+            or None
+        )
+        max_iter = int(self.agent.get("max_iterations", _DEFAULT_MAX_ITERATIONS))
+        # Hard-cap iterations regardless of YAML so a stale config doesn't
+        # accidentally turn the still-experimental multi-turn loop back on.
+        max_iter = max(1, min(max_iter, _DEFAULT_MAX_ITERATIONS))
+        return AgentConfig(
+            max_iterations=max_iter,
+            max_papers_per_iteration=int(
+                self.agent.get("max_papers_per_iteration", 1000),
+            ),
+            max_llm_tokens=int(self.agent.get("max_llm_tokens", 50_000)),
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
 
     def _fingerprint(self, signal: list[PaperRecord]) -> str:
         return fingerprint_signal(
