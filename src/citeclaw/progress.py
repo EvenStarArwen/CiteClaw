@@ -367,12 +367,18 @@ class Dashboard(NullDashboard):
 
         Called by ExpandForward / ExpandBackward inside their ``run()``;
         no-op for steps that don't have a per-source outer loop.
+
+        Resets ``completed`` to 0 so multiple sub-steps within a single
+        pipeline step (e.g. two Expand* steps in different ``Parallel``
+        branches) don't carry over the previous sub-step's count and
+        produce ``N/M`` displays where N > M.
         """
         if self._progress is None or self._outer_task is None:
             return
         self._progress.update(
             self._outer_task,
             total=max(1, total),
+            completed=0,
             description=description,
             visible=True,
         )
