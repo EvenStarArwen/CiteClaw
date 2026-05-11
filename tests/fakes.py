@@ -87,6 +87,7 @@ class FakeS2Client:
         self._search_bulk_results: dict[str, list[dict[str, Any]]] = {}
         self._search_match_results: dict[str, dict[str, Any]] = {}
         self._recommendation_results: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+        self._recommendations_for_paper: dict[str, list[dict[str, Any]]] = {}
         self._author_papers_results: dict[str, list[dict[str, Any]]] = {}
         # Bookkeeping so tests can assert call counts
         self.calls: dict[str, int] = {}
@@ -374,6 +375,25 @@ class FakeS2Client:
         self._record_call("fetch_recommendations")
         key = tuple(sorted(positive_ids))
         papers = self._recommendation_results.get(key, [])
+        return [copy.deepcopy(p) for p in papers[:limit]]
+
+    def register_recommendations_for_paper(
+        self, paper_id: str, papers: list[dict[str, Any]],
+    ) -> None:
+        """Register canned per-paper kNN recommendations for ``paper_id``."""
+        self._recommendations_for_paper[paper_id] = list(papers)
+
+    def fetch_recommendations_for_paper(
+        self,
+        paper_id: str,
+        *,
+        limit: int = 10,
+        fields: str = "paperId,title",
+    ) -> list[dict[str, Any]]:
+        """Canned single-anchor SPECTER2 kNN response. Returns ``[]`` for
+        unregistered paper IDs. ``fields`` is accepted but ignored."""
+        self._record_call("fetch_recommendations_for_paper")
+        papers = self._recommendations_for_paper.get(paper_id, [])
         return [copy.deepcopy(p) for p in papers[:limit]]
 
     def register_author_papers(

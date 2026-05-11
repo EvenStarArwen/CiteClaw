@@ -133,12 +133,22 @@ def _build_expand_by_pdf(d: dict, blocks: dict) -> BaseStep:
 
 
 def _build_expand_by_semantics(d: dict, blocks: dict) -> BaseStep:
-    """Build an ``ExpandBySemantics`` step from its YAML dict."""
+    """Build an ``ExpandBySemantics`` step from its YAML dict.
+
+    ``mode`` selects between the legacy single-call multi-anchor path
+    (``"multi_anchor"``, default) and the per-paper fan-out
+    (``"per_paper"``). Per-paper-only knobs (``recs_per_paper``,
+    ``max_workers``) are forwarded unconditionally; the step ignores
+    them in multi-anchor mode.
+    """
     return ExpandBySemantics(
         screener=_optional_screener(d, blocks),
+        mode=str(d.get("mode", "multi_anchor")),
         max_anchor_papers=int(d.get("max_anchor_papers", 10)),
         limit=int(d.get("limit", 100)),
         use_rejected_as_negatives=bool(d.get("use_rejected_as_negatives", False)),
+        recs_per_paper=int(d.get("recs_per_paper", 10)),
+        max_workers=int(d.get("max_workers", 4)),
     )
 
 

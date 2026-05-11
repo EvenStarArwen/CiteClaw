@@ -1,42 +1,34 @@
 """ExpandBySemantics — semantic kNN expansion via S2 Recommendations API.
 
-The semantics step skips both the LLM and the iterative agent: instead
-of designing queries, it asks Semantic Scholar's
-``POST /recommendations/v1/papers`` endpoint to do a SPECTER2 nearest-
-neighbour search over its full corpus, anchored on the input signal.
-That keeps the step pure-S2 (zero LLM tokens, zero local embedding
-infrastructure) and lets users compose semantic expansion alongside
-the LLM-driven ``ExpandBySearch`` and the citation-graph
-``ExpandForward`` / ``ExpandBackward`` in one pipeline.
+Two modes, chosen via the YAML ``mode:`` knob:
 
-Run loop (matches the roadmap spec):
+* ``multi_anchor`` (default, legacy) — ONE
+  ``POST /recommendations/v1/papers`` call posts every anchor as
+  ``positivePaperIds`` and returns a single shared top-``limit`` list.
+  Cheap (one S2 call regardless of signal size) but the response is
+  biased toward the anchors that happen to dominate the SPECTER2
+  centroid of the batch — papers far from the centroid contribute
+  little to the returned neighbours.
 
-  1. Compute a fingerprint over (step name, sorted signal IDs, anchor
-     cap, recommendation limit, use_rejected_as_negatives flag). If
-     already in ``ctx.searched_signals``, no-op.
-  2. ``anchor_ids = [p.paper_id for p in signal[:max_anchor_papers]]``.
-  3. ``negative_ids = list(ctx.rejected)[:50]`` if
-     ``use_rejected_as_negatives``, else ``None``. The 50-cap matches
-     the spec; if a real run accumulates more rejections than that,
-     the trim picks an arbitrary set deterministically per Python's
-     set ordering — good enough as a hint signal.
-  4. ``raw = ctx.s2.fetch_recommendations(anchor_ids,
-     negative_ids=..., limit=self.limit)``.
-  5. Hydrate ``raw`` via ``ctx.s2.enrich_batch``.
-  6. Fill abstracts via ``ctx.s2.enrich_with_abstracts``.
-  7. Dedup against ``ctx.seen``, stamp ``source="semantic"`` on the
-     novel ones, add them to ``ctx.seen``.
-  8. Build a source-less ``FilterContext``.
-  9. ``apply_block`` the screener, then ``record_rejections``.
-  10. Add survivors to ``ctx.collection`` with ``llm_verdict="accept"``.
-  11. Mark the fingerprint in ``ctx.searched_signals``.
-  12. Return a ``StepResult`` whose stats carry the per-run totals so
-     the shape-summary table can show the semantics step's footprint.
+* ``per_paper`` — ONE
+  ``GET /recommendations/v1/papers/forpaper/{paperId}`` call per anchor
+  paper, in parallel (``max_workers``), each returning up to
+  ``recs_per_paper`` neighbours. Every accepted paper in the signal
+  gets its own neighbourhood, then the union is screened. Costs
+  ``len(signal)`` S2 calls so re-runs are pricey, but every paper
+  surfaces its own local cluster instead of being averaged out.
+
+The pipeline contract is unchanged: source-less ``FilterContext`` (no
+edge anchor), single shared ``screen_expand_candidates`` cascade,
+``ctx.searched_signals`` fingerprint for idempotency. Mode is folded
+into the fingerprint so switching modes between runs invalidates the
+prior signature and forces a fresh expansion.
 """
 
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from citeclaw.models import PaperRecord
@@ -48,6 +40,9 @@ from citeclaw.steps._expand_helpers import (
 from citeclaw.steps.base import StepResult
 
 log = logging.getLogger("citeclaw.steps.expand_by_semantics")
+
+
+_VALID_MODES = ("multi_anchor", "per_paper")
 
 
 class ExpandBySemantics:
@@ -65,9 +60,12 @@ class ExpandBySemantics:
         self,
         *,
         screener: Any = None,
+        mode: str = "multi_anchor",
         max_anchor_papers: int = 10,
         limit: int = 100,
         use_rejected_as_negatives: bool = False,
+        recs_per_paper: int = 10,
+        max_workers: int = 4,
     ) -> None:
         """Configure the semantic kNN expansion.
 
@@ -77,36 +75,48 @@ class ExpandBySemantics:
             Filter block applied to recommendations before they reach
             ``ctx.collection``. ``None`` is a no-op (the step returns
             empty + ``reason="no screener"``).
+        mode:
+            ``"multi_anchor"`` (default, legacy) or ``"per_paper"`` (new).
+            See module docstring for the trade-off.
         max_anchor_papers:
-            Cap on the number of anchor papers passed to
-            ``fetch_recommendations`` — taken from the start of the
-            signal so callers can pre-rank to control which papers
-            drive the kNN.
+            ``multi_anchor`` only: cap on the number of anchor papers
+            packed into the single API call. Ignored in ``per_paper``
+            mode (per-paper expansion runs over the entire signal).
         limit:
-            Recommendations API result cap (S2-side).
+            ``multi_anchor`` only: API-side cap on the single shared
+            recommendation list (S2 default 100). Ignored in
+            ``per_paper`` mode.
         use_rejected_as_negatives:
-            When True, sends the first 50 papers in ``ctx.rejected`` as
-            negative anchors so the kNN steers away from already-rejected
-            material.
+            ``multi_anchor`` only: when True, sends the first 50 papers
+            in ``ctx.rejected`` as negative anchors so the kNN steers
+            away from already-rejected material. The single-paper
+            endpoint does not accept negatives, so this flag is a no-op
+            in ``per_paper`` mode.
+        recs_per_paper:
+            ``per_paper`` only: how many neighbours to request per
+            anchor (default 10).
+        max_workers:
+            ``per_paper`` only: concurrent in-flight S2 calls. The S2
+            HTTP layer is globally rate-limited so this only controls
+            how aggressively requests overlap on the I/O side; the
+            actual rps cap is unaffected.
         """
         self.screener = screener
+        self.mode = mode if mode in _VALID_MODES else "multi_anchor"
+        if self.mode != mode:
+            log.warning(
+                "ExpandBySemantics: unknown mode=%r, falling back to "
+                "multi_anchor. Valid modes: %s",
+                mode, _VALID_MODES,
+            )
         self.max_anchor_papers = max_anchor_papers
         self.limit = limit
         self.use_rejected_as_negatives = use_rejected_as_negatives
+        self.recs_per_paper = max(1, int(recs_per_paper))
+        self.max_workers = max(1, int(max_workers))
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
-        """Fingerprint → fetch_recommendations → shared screen pipeline.
-
-        Six-step flow (see module docstring for the full numbered list):
-        idempotency check → pick anchors from the head of the signal →
-        optional negatives from ``ctx.rejected`` → one S2
-        Recommendations call → shared
-        :func:`~citeclaw.steps._expand_helpers.screen_expand_candidates`
-        pipeline → mark fingerprint. Failures of the
-        ``fetch_recommendations`` call are logged at WARNING and the
-        step returns an empty signal with ``reason="fetch_failed"`` —
-        the pipeline keeps running.
-        """
+        """Dispatch to the per-mode runner after the shared early-exit guards."""
         if self.screener is None:
             return StepResult(
                 signal=[],
@@ -114,17 +124,30 @@ class ExpandBySemantics:
                 stats={"reason": "no screener"},
             )
 
-        # 1. Idempotency.
         fp = fingerprint_signal(
             self.name, signal,
+            mode=self.mode,
             max_anchor_papers=self.max_anchor_papers,
             limit=self.limit,
             use_rejected_as_negatives=self.use_rejected_as_negatives,
+            recs_per_paper=self.recs_per_paper,
         )
         if (skip := check_already_searched(self.name, fp, ctx, len(signal))):
             return skip
 
-        # 2. Anchors — first N from the (caller-reranked) signal.
+        if self.mode == "per_paper":
+            return self._run_per_paper(signal, ctx, fp)
+        return self._run_multi_anchor(signal, ctx, fp)
+
+    # ------------------------------------------------------------------
+    # Mode: multi_anchor — legacy single batched call.
+    # ------------------------------------------------------------------
+
+    def _run_multi_anchor(
+        self, signal: list[PaperRecord], ctx, fp: str,
+    ) -> StepResult:
+        """One ``POST /recommendations/v1/papers`` over up to
+        ``max_anchor_papers`` anchors → shared screening cascade."""
         anchor_ids = [
             p.paper_id for p in signal[: self.max_anchor_papers] if p.paper_id
         ]
@@ -135,12 +158,10 @@ class ExpandBySemantics:
                 stats={"reason": "no_anchors"},
             )
 
-        # 3. Optional negative anchors from prior rejections.
         negative_ids: list[str] | None = None
         if self.use_rejected_as_negatives and ctx.rejected:
             negative_ids = list(ctx.rejected)[:50]
 
-        # 4. Retriever — single S2 call to the Recommendations API.
         try:
             raw = ctx.s2.fetch_recommendations(
                 anchor_ids,
@@ -155,24 +176,128 @@ class ExpandBySemantics:
                 stats={"reason": "fetch_failed", "error": str(exc)[:120]},
             )
 
-        # 5. Shared screening pipeline (hydrate → enrich → dedup →
-        # screen → commit). See _expand_helpers.screen_expand_candidates.
         screened = screen_expand_candidates(
             raw_hits=raw,
             source_label="semantic",
             screener=self.screener,
             ctx=ctx,
         )
-
-        # 6. Mark fingerprint so re-runs are no-ops.
         ctx.searched_signals.add(fp)
-
         return StepResult(
             signal=screened.passed,
             in_count=len(screened.hydrated),
             stats={
                 **screened.base_stats,
+                "mode": "multi_anchor",
                 "anchor_count": len(anchor_ids),
                 "negative_count": len(negative_ids) if negative_ids else 0,
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Mode: per_paper — one S2 call per signal paper, parallel.
+    # ------------------------------------------------------------------
+
+    def _run_per_paper(
+        self, signal: list[PaperRecord], ctx, fp: str,
+    ) -> StepResult:
+        """One ``GET .../forpaper/{id}`` per signal paper (parallel) →
+        union of neighbours → shared screening cascade."""
+        anchor_ids = [p.paper_id for p in signal if p.paper_id]
+        if not anchor_ids:
+            return StepResult(
+                signal=[],
+                in_count=len(signal),
+                stats={"reason": "no_anchors"},
+            )
+
+        dash = getattr(ctx, "dashboard", None)
+        if dash is not None:
+            try:
+                dash.enable_outer_bar(
+                    total=len(anchor_ids), description="per-paper kNN",
+                )
+            except Exception:
+                pass
+
+        # Per-anchor S2 fan-out. Failures of individual calls are logged
+        # at DEBUG and treated as an empty neighbourhood — one missing
+        # paper must not abort the rest of the iteration.
+        per_anchor_counts: dict[str, int] = {}
+        aggregate: list[dict[str, Any]] = []
+        seen_in_step: set[str] = set()
+        n_failed = 0
+
+        def _fetch_one(anchor: str) -> tuple[str, list[dict[str, Any]], BaseException | None]:
+            try:
+                recs = ctx.s2.fetch_recommendations_for_paper(
+                    anchor, limit=self.recs_per_paper,
+                )
+                return anchor, recs, None
+            except Exception as exc:  # noqa: BLE001
+                return anchor, [], exc
+
+        with ThreadPoolExecutor(
+            max_workers=self.max_workers,
+            thread_name_prefix="semantic-knn",
+        ) as pool:
+            futures = {pool.submit(_fetch_one, a): a for a in anchor_ids}
+            for fut in as_completed(futures):
+                anchor, recs, exc = fut.result()
+                if exc is not None:
+                    n_failed += 1
+                    log.debug(
+                        "ExpandBySemantics per-paper kNN failed for %s: %s",
+                        anchor[:20], exc,
+                    )
+                else:
+                    per_anchor_counts[anchor] = len(recs)
+                    for rec in recs:
+                        if not isinstance(rec, dict):
+                            continue
+                        pid = rec.get("paperId")
+                        if isinstance(pid, str) and pid and pid not in seen_in_step:
+                            seen_in_step.add(pid)
+                            aggregate.append(rec)
+                if dash is not None:
+                    try:
+                        dash.advance_outer(1)
+                    except Exception:
+                        pass
+
+        if not aggregate:
+            ctx.searched_signals.add(fp)
+            return StepResult(
+                signal=[],
+                in_count=len(signal),
+                stats={
+                    "mode": "per_paper",
+                    "anchor_count": len(anchor_ids),
+                    "recs_per_paper": self.recs_per_paper,
+                    "calls_failed": n_failed,
+                    "raw_hits": 0,
+                    "hydrated": 0,
+                    "novel": 0,
+                    "accepted": 0,
+                    "rejected": 0,
+                },
+            )
+
+        screened = screen_expand_candidates(
+            raw_hits=aggregate,
+            source_label="semantic",
+            screener=self.screener,
+            ctx=ctx,
+        )
+        ctx.searched_signals.add(fp)
+        return StepResult(
+            signal=screened.passed,
+            in_count=len(screened.hydrated),
+            stats={
+                **screened.base_stats,
+                "mode": "per_paper",
+                "anchor_count": len(anchor_ids),
+                "recs_per_paper": self.recs_per_paper,
+                "calls_failed": n_failed,
             },
         )

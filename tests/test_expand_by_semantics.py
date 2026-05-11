@@ -143,3 +143,71 @@ class TestErrorPaths:
         result = ExpandBySemantics(screener=_basic_screener()).run(signal, ctx)
         assert result.stats["reason"] == "fetch_failed"
         assert "S2 down" in result.stats["error"]
+
+
+# ---------------------------------------------------------------------------
+# Per-paper mode
+# ---------------------------------------------------------------------------
+
+
+class TestPerPaperMode:
+    def test_one_call_per_anchor_aggregates_neighbours(
+        self, ctx: Context, fake_s2: FakeS2Client,
+    ):
+        a1 = make_paper("a1", year=2024)
+        a2 = make_paper("a2", year=2024)
+        n_a1 = make_paper("n_a1", year=2024)
+        n_a2 = make_paper("n_a2", year=2024)
+        n_shared = make_paper("n_shared", year=2024)
+        for p in (a1, a2, n_a1, n_a2, n_shared):
+            fake_s2.add(p)
+        fake_s2.register_recommendations_for_paper(
+            "a1", [{"paperId": "n_a1"}, {"paperId": "n_shared"}],
+        )
+        fake_s2.register_recommendations_for_paper(
+            "a2", [{"paperId": "n_a2"}, {"paperId": "n_shared"}],
+        )
+
+        signal = [PaperRecord(paper_id="a1"), PaperRecord(paper_id="a2")]
+        step = ExpandBySemantics(
+            screener=_basic_screener(),
+            mode="per_paper",
+            recs_per_paper=10,
+            max_workers=2,
+        )
+        result = step.run(signal, ctx)
+
+        passed_ids = {p.paper_id for p in result.signal}
+        assert passed_ids == {"n_a1", "n_a2", "n_shared"}
+        assert result.stats["mode"] == "per_paper"
+        assert result.stats["anchor_count"] == 2
+        # Two registered anchors -> two fan-out calls.
+        assert fake_s2.calls.get("fetch_recommendations_for_paper") == 2
+
+    def test_per_paper_uses_entire_signal_no_anchor_cap(
+        self, ctx: Context, fake_s2: FakeS2Client,
+    ):
+        """max_anchor_papers is multi_anchor-only — per_paper ignores it."""
+        for pid in ("p1", "p2", "p3", "p4", "p5"):
+            fake_s2.add(make_paper(pid, year=2024))
+            fake_s2.register_recommendations_for_paper(pid, [])
+        signal = [PaperRecord(paper_id=p) for p in ("p1", "p2", "p3", "p4", "p5")]
+        step = ExpandBySemantics(
+            screener=_basic_screener(),
+            mode="per_paper",
+            max_anchor_papers=2,  # would cap in multi_anchor mode, ignored here
+        )
+        result = step.run(signal, ctx)
+        assert result.stats["anchor_count"] == 5
+        assert fake_s2.calls.get("fetch_recommendations_for_paper") == 5
+
+    def test_unknown_mode_falls_back_to_multi_anchor(
+        self, ctx: Context, fake_s2: FakeS2Client,
+    ):
+        anchor = make_paper("anchor", year=2024)
+        fake_s2.add(anchor)
+        fake_s2.register_recommendations(["anchor"], [])
+        signal = [PaperRecord(paper_id="anchor")]
+        step = ExpandBySemantics(screener=_basic_screener(), mode="bogus")
+        result = step.run(signal, ctx)
+        assert result.stats["mode"] == "multi_anchor"

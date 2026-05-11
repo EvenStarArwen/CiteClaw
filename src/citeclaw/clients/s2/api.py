@@ -75,6 +75,9 @@ _MAX_AUTHOR_BATCH = 1000
 # Recommendations API lives outside ``/graph/v1`` so it must be addressed
 # by full URL rather than the BASE_URL-relative path used by ``S2Http.get``.
 RECOMMENDATIONS_BATCH_URL = "https://api.semanticscholar.org/recommendations/v1/papers"
+RECOMMENDATIONS_FORPAPER_URL = (
+    "https://api.semanticscholar.org/recommendations/v1/papers/forpaper"
+)
 
 
 class SemanticScholarClient:
@@ -262,6 +265,43 @@ class SemanticScholarClient:
             json_body=body,
             req_type="recommendations",
         )
+        if isinstance(result, dict):
+            recs = result.get("recommendedPapers")
+            if isinstance(recs, list):
+                return recs
+        return []
+
+    def fetch_recommendations_for_paper(
+        self,
+        paper_id: str,
+        *,
+        limit: int = 10,
+        fields: str = "paperId,title",
+    ) -> list[dict[str, Any]]:
+        """Single-anchor SPECTER2 kNN via
+        ``GET /recommendations/v1/papers/forpaper/{paperId}``.
+
+        Returns up to ``limit`` recommended papers for the one ``paper_id``.
+        Used by ``ExpandBySemantics`` in ``mode: per_paper`` where each
+        accepted paper needs its own kNN call (the multi-anchor endpoint
+        merges anchors and returns a single shared top-K). Does NOT cache,
+        matching the multi-anchor sibling: recommendations are
+        non-deterministic and cheap relative to caching overhead.
+        """
+        try:
+            result = self._http.get_url(
+                f"{RECOMMENDATIONS_FORPAPER_URL}/{paper_id}",
+                {"fields": fields, "limit": limit},
+                req_type="recommendations",
+            )
+        except httpx.HTTPStatusError as exc:
+            # 404 here means S2 has no record of the paper or no neighbours
+            # to recommend — surface as an empty list rather than failing
+            # the whole iteration (per-paper expansion fans out N calls
+            # and one missing paper shouldn't abort the rest).
+            if exc.response is not None and exc.response.status_code == 404:
+                return []
+            raise
         if isinstance(result, dict):
             recs = result.get("recommendedPapers")
             if isinstance(recs, list):
