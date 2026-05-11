@@ -58,6 +58,11 @@ def _paper_to_dict(p: PaperRecord) -> dict[str, Any]:
         "abstract": p.abstract,
         "year": p.year,
         "publication_date": p.publication_date,
+        # ``year * 12 + month``, monotonically increasing with time —
+        # consumed by Gephi colour ranking and any other tool that needs
+        # a single integer label for time-of-publication. See
+        # PaperRecord.publication_month_ordinal for the derivation.
+        "publication_month_ordinal": p.publication_month_ordinal,
         "venue": p.venue,
         "citation_count": p.citation_count,
         "influential_citation_count": p.influential_citation_count,

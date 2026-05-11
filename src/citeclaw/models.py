@@ -128,6 +128,48 @@ class PaperRecord(BaseModel):
 
     model_config = {"use_enum_values": True}
 
+    @property
+    def publication_month_ordinal(self) -> int | None:
+        """Linear-with-time integer for ranking / colour-mapping.
+
+        Gephi (and many other graph viewers) can't colour-rank by an
+        ISO date string like ``"2025-04"`` — it treats the value as a
+        category, not a continuum.  This property flattens the date to
+        ``year * 12 + month`` so consumers get a single integer that
+        increases monotonically with time:
+
+        - ``"2024-04-29"`` → ``24292``  (2024*12 + 4)
+        - ``"2024-04"``    → ``24292``  (day ignored)
+        - ``"2024"``       → ``24289``  (month=1 fallback)
+        - no date, only ``year=2024`` → ``24289``
+        - no date and no year → ``None``
+
+        Differences between values preserve the original month-interval
+        gap (e.g. 24306 − 24301 = 5 = the months between 2025-01 and
+        2025-06), so Gephi's colour gradient lines up with elapsed time
+        regardless of the absolute baseline.
+        """
+        raw = (self.publication_date or "").strip()
+        if raw:
+            parts = raw.split("-")
+            try:
+                year = int(parts[0])
+            except (ValueError, IndexError):
+                year = None
+            month = 1
+            if len(parts) >= 2:
+                try:
+                    month = int(parts[1])
+                except ValueError:
+                    month = 1
+            if year is not None:
+                return year * 12 + month
+        # Fall back to ``year`` when no publication_date — better than
+        # ``None`` for the common partial-info case S2 returns.
+        if self.year is not None:
+            return self.year * 12 + 1
+        return None
+
 
 # ---------------------------------------------------------------------------
 # LLM screening result

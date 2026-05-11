@@ -136,6 +136,14 @@ def _set_vertex_attributes(g, papers: list[PaperRecord]) -> None:
     # GraphML can't carry ``None``, so empty-string is the fallback —
     # Gephi displays "" cleanly, igraph round-trips it without warnings.
     g.vs["publication_date"] = [p.publication_date or "" for p in papers]
+    # ``publication_month_ordinal`` is ``year*12 + month`` — the linear
+    # integer Gephi needs for colour-ranking by date.  ISO strings like
+    # ``"2025-04"`` are categorical in Gephi's eyes; this integer is the
+    # column to map a colour gradient onto.  Falls back to 0 when no
+    # date or year is known (sits at the start of any colour range).
+    g.vs["publication_month_ordinal"] = [
+        p.publication_month_ordinal or 0 for p in papers
+    ]
     g.vs["venue"] = [p.venue or "" for p in papers]
     g.vs["abstract"] = [p.abstract or "" for p in papers]
     g.vs["citation_count"] = [p.citation_count or 0 for p in papers]
