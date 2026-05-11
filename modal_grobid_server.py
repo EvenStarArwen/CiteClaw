@@ -99,9 +99,19 @@ app = modal.App(APP_NAME)
 # launches the server on port 8070, so we don't need to re-implement
 # the startup command — just launch the binary ourselves so we can patch
 # the config first.
+#
+# ``grobid/grobid:0.8.2`` already ships a ``/usr/local/bin/python``
+# symlink (from its embedded Python helpers), which collides with
+# Modal's ``add_python`` step.  ``setup_dockerfile_commands`` runs
+# before add_python, so we wipe the conflicting symlink first.  The
+# CRF/CPU image (``lfoppiano/grobid:0.8.2-crf``) doesn't have this
+# file, so the ``rm -f`` is a no-op there.
 image = modal.Image.from_registry(
     GROBID_IMAGE_REF,
     add_python="3.12",
+    setup_dockerfile_commands=[
+        "RUN rm -f /usr/local/bin/python /usr/local/bin/python3",
+    ],
 )
 
 
