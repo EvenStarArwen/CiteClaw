@@ -18,6 +18,11 @@ Subcommands, dispatched in :func:`main` by the first positional arg:
   generic LLM extraction: paper text + free-form instruction +
   optional JSON schema → structured JSON
   (see :mod:`citeclaw.extraction`).
+* ``meta-review <run_dir>`` → :func:`_run_meta_review` — post-pipeline
+  corpus analysis: per-paper LLM extraction with a user-supplied
+  instruction, then a meta LLM that synthesises every extraction into
+  a single markdown report with numeric in-line citations
+  (see :mod:`citeclaw.meta_review`).
 * ``web`` → :func:`_run_web` — launch the FastAPI + React web UI
   (see :mod:`citeclaw.web_server`).
 
@@ -650,6 +655,161 @@ def _run_extract_info(argv: list[str]) -> None:
         print(out_json)
 
 
+def _build_meta_review_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="citeclaw meta-review")
+    p.add_argument(
+        "run_dir",
+        type=Path,
+        help="Finished CiteClaw run directory (contains literature_collection.json + cache.db).",
+    )
+    p.add_argument(
+        "-c", "--config",
+        type=Path,
+        required=True,
+        help="YAML config providing the models registry + base settings "
+             "(reused so extractor/meta-model aliases route through the "
+             "same factory as the pipeline did).",
+    )
+    p.add_argument(
+        "--instruction", "-i",
+        type=str,
+        required=True,
+        help='What to extract from each paper (free-form, e.g. '
+             '"Extract model architecture, n parameters, training objective, datasets").',
+    )
+    p.add_argument(
+        "--extractor-model",
+        type=str,
+        required=True,
+        help="Model alias for the per-paper extractor (must exist in the config's models registry).",
+    )
+    p.add_argument(
+        "--extractor-reasoning",
+        type=str,
+        default="medium",
+        help="Reasoning effort for the per-paper extractor (default: medium).",
+    )
+    p.add_argument(
+        "--meta-model",
+        type=str,
+        required=True,
+        help="Model alias for the meta-synthesis LLM.",
+    )
+    p.add_argument(
+        "--meta-reasoning",
+        type=str,
+        default="high",
+        help="Reasoning effort for the meta-synthesis LLM (default: high).",
+    )
+    p.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Concurrent papers in flight during per-paper extraction (default: 4).",
+    )
+    p.add_argument(
+        "--max-papers",
+        type=int,
+        default=None,
+        help="Cap how many papers to process (default: every paper in the collection).",
+    )
+    p.add_argument(
+        "--per-paper-max-chars",
+        type=int,
+        default=2000,
+        help="Per-paper extraction character budget (default: 2000). Keeps the meta prompt sized.",
+    )
+    p.add_argument(
+        "--pdf-input-max-chars",
+        type=int,
+        default=60000,
+        help="Per-paper PDF text fed to the extractor LLM (default: 60000).",
+    )
+    p.add_argument(
+        "--parser",
+        type=str,
+        default="pymupdf",
+        choices=("pymupdf", "docling", "grobid"),
+        help="PDF parser engine for any papers that need fetching (default: pymupdf).",
+    )
+    p.add_argument(
+        "--parser-kwarg",
+        action="append",
+        dest="parser_kwargs",
+        metavar="KEY=VALUE",
+        help="Parser-engine kwarg (repeatable).",
+    )
+    p.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Path for the markdown report (default: <run_dir>/meta_review.md).",
+    )
+    return p
+
+
+def _run_meta_review(argv: list[str]) -> None:
+    """Post-pipeline meta-review.  See :mod:`citeclaw.meta_review`."""
+    from citeclaw.meta_review import run_meta_review
+
+    parser = _build_meta_review_parser()
+    args = parser.parse_args(argv)
+    setup_logging(log_dir=None, level=logging.INFO)
+
+    if not args.run_dir.exists():
+        log.error("Run directory not found: %s", args.run_dir)
+        sys.exit(1)
+    if not (args.run_dir / "literature_collection.json").exists():
+        log.error(
+            "Run directory %s has no literature_collection.json — "
+            "did the pipeline finish?", args.run_dir,
+        )
+        sys.exit(1)
+
+    config = load_settings(args.config, {})
+
+    # Pre-flight: check api_key_env for both aliases so we fail fast
+    # rather than mid-way through a long corpus.
+    for alias in (args.extractor_model, args.meta_model):
+        missing = _check_extract_info_llm_key(config, alias)
+        if missing:
+            log.error(
+                "Missing env var '%s' required by model %r. "
+                "Export it in your shell before running meta-review.",
+                missing, alias,
+            )
+            sys.exit(1)
+
+    try:
+        result = run_meta_review(
+            args.run_dir,
+            config,
+            instruction=args.instruction,
+            extractor_model=args.extractor_model,
+            extractor_reasoning=args.extractor_reasoning,
+            meta_model=args.meta_model,
+            meta_reasoning=args.meta_reasoning,
+            max_workers=args.max_workers,
+            max_papers=args.max_papers,
+            per_paper_max_chars=args.per_paper_max_chars,
+            pdf_input_max_chars=args.pdf_input_max_chars,
+            parser=args.parser,
+            parser_kwargs=_parse_kwarg_pairs(args.parser_kwargs),
+        )
+    except FileNotFoundError as exc:
+        log.error("meta-review failed: %s", exc)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        log.warning("Interrupted by user")
+        sys.exit(130)
+
+    log.info(
+        "meta-review complete: %d/%d papers extracted, report at %s",
+        result.n_papers_extracted, result.n_papers_total,
+        args.output or (args.run_dir / "meta_review.md"),
+    )
+
+
 def _build_web_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="citeclaw web")
     p.add_argument(
@@ -683,6 +843,7 @@ _SUBCOMMANDS: dict[str, "Callable[[list[str]], None]"] = {
     "fetch-pdfs": lambda argv: _run_fetch_pdfs(argv),
     "mainpath": lambda argv: _run_mainpath(argv),
     "extract-info": lambda argv: _run_extract_info(argv),
+    "meta-review": lambda argv: _run_meta_review(argv),
     "web": lambda argv: _run_web(argv),
 }
 
