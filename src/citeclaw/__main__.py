@@ -830,6 +830,7 @@ def _run_meta_review(argv: list[str]) -> None:
             parser=args.parser,
             parser_kwargs=_parse_kwarg_pairs(args.parser_kwargs),
             from_extractions=args.from_extractions,
+            output_path=args.output,
         )
     except FileNotFoundError as exc:
         log.error("meta-review failed: %s", exc)
