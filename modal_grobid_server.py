@@ -1,21 +1,21 @@
 """Standalone Modal deployment: GROBID REST server for CiteClaw.
 
 Sister to ``modal_vllm_server.py`` — an isolated, single-file Modal app
-that runs a GROBID server (``lfoppiano/grobid:0.8.2-crf``) as a
-web-tunneled REST service. Only depends on ``modal``; nothing in the
-main CiteClaw package imports from this file.
+that runs a GROBID server as a web-tunneled REST service. Only depends
+on ``modal``; nothing in the main CiteClaw package imports from this
+file.
 
 GROBID is a Java/ML tool purpose-built for extracting structured data
 from scientific PDFs: body text, sections, and — most importantly —
 structured reference lists with cleanly parsed titles / authors / DOIs.
-The **CRF-only** image is ~500 MB, runs on CPU, and delivers ~10 PDF/s
-on a modern CPU with a bibliography-resolution F1 around 0.87.
 
-Why the CRF image and not the ``0.8.2-full`` DL image?
-- Our use case is ``/api/processFulltextDocument`` for body + refs.
-- CRF is within a few F1 points of the DL model for reference parsing.
-- No GPU needed → order-of-magnitude cheaper on Modal.
-- ~500 MB vs. ~8 GB image — cold starts finish in seconds, not minutes.
+This file defaults to the **deep-learning** flavour of GROBID running
+on an **L40S** GPU.  GROBID's DL pipeline (DeLFT/TensorFlow) is a few
+F1 points better than CRF on reference parsing (~0.90 vs ~0.87) at the
+cost of an order-of-magnitude higher hourly Modal bill (L40S ~ $1.95/h
+vs an 8-CPU box at ~ $0.17/h).  Flip ``CITECLAW_GROBID_GPU=none`` plus
+``CITECLAW_GROBID_IMAGE=lfoppiano/grobid:0.8.2-crf`` to fall back to the
+CRF/CPU build when the cost is more pressing than the marginal recall.
 
 ============================================================================
 Quickstart
@@ -26,18 +26,23 @@ One-time setup::
     pip install modal
     modal setup
 
-Deploy::
+Deploy (defaults: DL image, L40S, 1×GPU)::
 
-    CITECLAW_GROBID_APP_NAME=citeclaw-grobid \
+    modal deploy modal_grobid_server.py
+
+Or run the CPU-only CRF variant::
+
+    CITECLAW_GROBID_IMAGE=lfoppiano/grobid:0.8.2-crf \
+    CITECLAW_GROBID_GPU=none \
     modal deploy modal_grobid_server.py
 
 Modal prints the public URL, e.g.::
 
     https://<you>--citeclaw-grobid-serve.modal.run
 
-Point CiteClaw at it via the environment::
+Point CiteClaw at it::
 
-    export CITECLAW_GROBID_URL="https://<you>--citeclaw-grobid-serve.modal.run"
+    export PDFCLAW_GROBID_URL="https://<you>--citeclaw-grobid-serve.modal.run"
 
 Stop::
 
@@ -54,19 +59,34 @@ import modal
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Image tag — ``lfoppiano/grobid:<version>-crf`` is a maintained, CPU-only,
-# ~500 MB image. The full image (no ``-crf`` suffix) is ~8 GB and needs
-# a GPU to be fast; unnecessary for our body-text + reference-extraction use.
+# Default image: the official ``grobid/grobid:0.8.2`` is the full ~8 GB
+# image with DeLFT models bundled — needed for the GPU-accelerated DL
+# path.  Override with ``lfoppiano/grobid:0.8.2-crf`` for the lighter
+# CRF/CPU variant.
 GROBID_IMAGE_REF: str = os.environ.get(
     "CITECLAW_GROBID_IMAGE",
-    "lfoppiano/grobid:0.8.2-crf",
+    "grobid/grobid:0.8.2",
 )
 APP_NAME: str = os.environ.get("CITECLAW_GROBID_APP_NAME", "citeclaw-grobid")
 CPU_COUNT: float = float(os.environ.get("CITECLAW_GROBID_CPU", "8"))
-MEMORY_MB: int = int(os.environ.get("CITECLAW_GROBID_MEMORY_MB", "8192"))
+MEMORY_MB: int = int(os.environ.get("CITECLAW_GROBID_MEMORY_MB", "16384"))
 SCALEDOWN: int = int(os.environ.get("CITECLAW_GROBID_SCALEDOWN", "300"))
 MAX_CONCURRENCY: int = int(os.environ.get("CITECLAW_GROBID_MAX_CONCURRENCY", "32"))
 PORT = 8070
+
+# ``L40S`` is a good default: 48 GB VRAM, well-priced on Modal, and
+# DeLFT's models fit comfortably with room for batching.  Set
+# ``CITECLAW_GROBID_GPU=none`` (or empty) to disable GPU entirely —
+# combine with the CRF image for the cheap path.
+GPU_TYPE: str = os.environ.get("CITECLAW_GROBID_GPU", "L40S")
+GPU_COUNT: int = int(os.environ.get("CITECLAW_GROBID_GPU_COUNT", "1"))
+
+# When the DL engine is enabled, GROBID needs a hint to bypass the
+# default CRF wiring.  We do this by patching ``grobid.yaml`` at
+# container start (see :func:`_patch_grobid_config_for_dl`).
+ENGINE_OVERRIDE: str = os.environ.get(
+    "CITECLAW_GROBID_ENGINE", "delft" if GPU_TYPE.lower() not in ("", "none") else "wapiti"
+)
 
 # ---------------------------------------------------------------------------
 # App
@@ -77,20 +97,29 @@ app = modal.App(APP_NAME)
 # Pull the pre-built GROBID image directly from Docker Hub. The image
 # already has Java + GROBID installed and ships with an ENTRYPOINT that
 # launches the server on port 8070, so we don't need to re-implement
-# the startup command — just keep the container alive long enough for
-# the web tunnel to pick up the port.
+# the startup command — just launch the binary ourselves so we can patch
+# the config first.
 image = modal.Image.from_registry(
     GROBID_IMAGE_REF,
-    # The GROBID image sets ``ENTRYPOINT=["./grobid-service/bin/grobid-service"]``.
-    # Modal's web_server mechanism ignores ENTRYPOINT and runs the Python
-    # function directly — we launch the server ourselves from Python below,
-    # so the entrypoint doesn't need to be neutered.
     add_python="3.12",
 )
 
 
+def _gpu_spec() -> str | None:
+    """Translate the env-var pair into Modal's ``gpu=...`` argument.
+
+    Returns ``None`` when the user has asked for CPU-only — Modal
+    expects the kwarg absent in that case, not a string like ``"none"``.
+    """
+    g = (GPU_TYPE or "").strip()
+    if not g or g.lower() == "none":
+        return None
+    return f"{g}:{GPU_COUNT}" if GPU_COUNT > 1 else g
+
+
 @app.function(
     image=image,
+    gpu=_gpu_spec(),
     cpu=CPU_COUNT,
     memory=MEMORY_MB,
     scaledown_window=SCALEDOWN,
@@ -102,15 +131,15 @@ image = modal.Image.from_registry(
 def serve() -> None:
     """Launch the GROBID Java server.
 
-    The lfoppiano/grobid image installs to ``/opt/grobid``. The upstream
-    CMD is::
+    The image installs to ``/opt/grobid``. The upstream CMD is::
 
         ./grobid-service/bin/grobid-service server grobid-service/config/config.yaml
 
     run with ``WORKDIR=/opt/grobid`` and relative paths. We replicate
     that here, with a filesystem probe to locate the config under
-    alternate names (recent GROBID versions have renamed ``config.yaml``
-    to ``grobid.yaml`` in some distributions).
+    alternate names (recent GROBID versions have renamed
+    ``config.yaml`` to ``grobid.yaml`` in some distributions), then
+    patch the engine setting to ``delft`` for GPU/DL deployments.
     """
     import glob
     import subprocess
@@ -154,7 +183,6 @@ def serve() -> None:
             config_path = c
             break
     if config_path is None:
-        # Fall back to whatever we can find under grobid-home or /opt.
         for probe_root in (grobid_home, "/opt"):
             found = glob.glob(
                 f"{probe_root}/**/grobid-service*/config/*.yaml",
@@ -180,14 +208,50 @@ def serve() -> None:
                 + grobid_home
             )
 
+    # Patch the engine setting when the user has asked for DL inference.
+    # GROBID ships with ``engine: "wapiti"`` (CRF) for every model;
+    # flipping it to ``"delft"`` routes through the deep-learning
+    # pipeline, which auto-detects an available GPU via TensorFlow.
+    if ENGINE_OVERRIDE.lower() == "delft":
+        _patch_grobid_config_for_dl(config_path)
+
     print(
         f"[citeclaw-grobid] Launching {entry} "
-        f"(cwd={grobid_home}, config={config_path}, port={PORT})"
+        f"(cwd={grobid_home}, config={config_path}, port={PORT}, "
+        f"gpu={_gpu_spec()}, engine={ENGINE_OVERRIDE})"
     )
     subprocess.Popen(
         [entry, "server", config_path],
         cwd=grobid_home,
     )
+
+
+def _patch_grobid_config_for_dl(config_path: str) -> None:
+    """Swap ``engine: "wapiti"`` → ``engine: "delft"`` in GROBID config.
+
+    This is the minimal change that lights up the DL inference path —
+    DeLFT loads the bundled TensorFlow checkpoints for citation /
+    header / fulltext models and auto-detects the GPU.  Done with
+    ``sed`` so we avoid pulling PyYAML into the image just for this.
+    """
+    import subprocess
+
+    print(f"[citeclaw-grobid] Patching {config_path}: wapiti → delft")
+    # Match both quoted (``"wapiti"``) and bare (``wapiti``) forms, and
+    # tolerate any indentation.  ``-E`` enables extended regex.
+    result = subprocess.run(
+        [
+            "sed", "-i", "-E",
+            r's/engine:\s*"?wapiti"?/engine: "delft"/g',
+            config_path,
+        ],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        print(
+            f"[citeclaw-grobid] WARNING: config patch failed: {result.stderr!r}"
+        )
 
 
 @app.local_entrypoint()
@@ -196,11 +260,13 @@ def main() -> None:
     print("=" * 72)
     print(f"CiteClaw GROBID server — Modal app: {APP_NAME}")
     print("=" * 72)
-    print(f"  Image: {GROBID_IMAGE_REF}")
-    print(f"  CPU:   {CPU_COUNT}")
-    print(f"  Mem:   {MEMORY_MB} MB")
-    print(f"  URL:   {url}")
+    print(f"  Image:  {GROBID_IMAGE_REF}")
+    print(f"  GPU:    {_gpu_spec() or 'CPU-only'}")
+    print(f"  Engine: {ENGINE_OVERRIDE}")
+    print(f"  CPU:    {CPU_COUNT}")
+    print(f"  Mem:    {MEMORY_MB} MB")
+    print(f"  URL:    {url}")
     print()
     print("Export in your shell so CiteClaw picks it up:")
-    print(f'  export CITECLAW_GROBID_URL="{url}"')
+    print(f'  export PDFCLAW_GROBID_URL="{url}"')
     print()
