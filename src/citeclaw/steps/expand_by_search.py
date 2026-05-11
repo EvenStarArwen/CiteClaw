@@ -31,7 +31,6 @@ from citeclaw.clients.llm.factory import build_llm_client
 from citeclaw.models import PaperRecord
 from citeclaw.search.query_engine import apply_local_query
 from citeclaw.steps._expand_helpers import (
-    check_already_searched,
     fingerprint_signal,
     screen_expand_candidates,
 )
@@ -69,16 +68,32 @@ class ExpandBySearch:
         self.apply_local_query_args = apply_local_query_args or None
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
+        # ExpandBySearch is an *augmentation* step, not a *traversal* one
+        # (unlike ExpandForward / ExpandBackward, which consume their
+        # input as the set of papers to expand from). Search uses
+        # topic_description, NOT signal, to look up new candidates — so
+        # every early-exit path must pass ``signal`` through unchanged.
+        # Otherwise a 0-hit search (or a rejected agent reply / cached
+        # fingerprint) erases the seeds and kills the downstream
+        # snowball with an empty input.
         if self.screener is None:
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={"reason": "no screener"},
             )
 
         fp = self._fingerprint(signal)
-        if (skip := check_already_searched(self.name, fp, ctx, len(signal))):
-            return skip
+        if fp in ctx.searched_signals:
+            log.info(
+                "%s: signal fingerprint already searched, passing input through",
+                self.name,
+            )
+            return StepResult(
+                signal=list(signal),
+                in_count=len(signal),
+                stats={"reason": "already_searched", "fingerprint": fp[:12]},
+            )
 
         topic = self._resolve_topic(ctx)
         if not topic.strip():
@@ -88,7 +103,7 @@ class ExpandBySearch:
             )
             ctx.searched_signals.add(fp)
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={"reason": "no_topic_description"},
             )
@@ -120,7 +135,7 @@ class ExpandBySearch:
         if not aggregate_ids:
             ctx.searched_signals.add(fp)
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={"reason": "no_results", **extra_stats},
             )
@@ -207,8 +222,11 @@ class ExpandBySearch:
             post_hydrate_fn=post_trim,
         )
         ctx.searched_signals.add(fp)
+        # Pass input signal through unchanged and APPEND the newly-screened
+        # search hits — see the comment in run() for why augmentation steps
+        # must not consume their input.
         return StepResult(
-            signal=screened.passed,
+            signal=list(signal) + screened.passed,
             in_count=len(screened.hydrated),
             stats={**screened.base_stats, **(extra_stats or {})},
         )
