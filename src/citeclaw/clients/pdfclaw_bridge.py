@@ -25,6 +25,7 @@ context manager) to shut down the browser cleanly.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -85,6 +86,13 @@ class PdfClawBridge:
         # in a batch.
         self._auth_failed: set[str] = set()
         self._consecutive_failures: dict[str, int] = {}
+        # Serialises every entry into ``_try_pdfclaw`` (browser, recipe
+        # registry init, auth-failed bookkeeping).  Playwright's Chrome
+        # context is single-threaded and the recipe registry is built
+        # lazily on first use, so concurrent ExpandByPDF workers would
+        # race without this.  The fast paths (cache hit, HTTP fetch via
+        # the shared thread-safe httpx Client) stay lock-free.
+        self._pdfclaw_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Public API
@@ -179,6 +187,17 @@ class PdfClawBridge:
     # ------------------------------------------------------------------
 
     def _try_pdfclaw(self, paper: "PaperRecord") -> str | None:
+        # Serialise the whole pdfclaw path. The browser is the only
+        # genuinely non-reentrant resource, but the recipe-registry
+        # lazy-init and the per-run suppression dicts are also written
+        # here; a single coarse lock keeps the implementation honest at
+        # the cost of running publisher recipes one paper at a time.
+        # The expensive concurrent step (LLM extraction) runs outside
+        # this method, so this serialization barely affects throughput.
+        with self._pdfclaw_lock:
+            return self._try_pdfclaw_locked(paper)
+
+    def _try_pdfclaw_locked(self, paper: "PaperRecord") -> str | None:
         if not self._ensure_pdfclaw():
             return None
 

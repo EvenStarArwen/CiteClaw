@@ -25,6 +25,21 @@ The ``screener`` is **optional**: when omitted, all resolved references
 are accepted directly.  Users can add any combination of filter blocks
 (or none) in their YAML config.
 
+When chained **after** ``ExpandBackward`` in a pipeline, every paper
+this step accepts is — by construction — a *new* candidate that the
+citation-graph traversal missed, because ``ctx.seen`` dedups across
+all expand steps.  The step's ``accepted`` count therefore directly
+measures the marginal recall uplift contributed by PDF reading;
+``run_pipeline`` surfaces this in the structured log as
+``additional_via_pdf_augmentation``.
+
+Per-paper work (fetch → LLM extract → S2 resolve) runs concurrently
+through a :class:`ThreadPoolExecutor` sized by ``max_workers`` so the
+slow blocking I/O (PDF download, GROBID parse, LLM completion) overlaps
+across papers.  Browser access inside :class:`PdfClawBridge` is
+serialised via an internal lock — only the publisher-recipe path that
+needs Chrome runs one paper at a time.
+
 YAML example::
 
     - step: ExpandByPDF
@@ -34,15 +49,18 @@ YAML example::
       max_papers: 20                 # cap papers to read (default: all)
       max_input_chars: 80000         # per-paper text budget (128K-ctx default)
       headless: true                 # browser mode for pdfclaw
-      parser: docling                # pdfclaw.parsers engine; default pymupdf
+      parser: grobid                 # pdfclaw.parsers engine; default pymupdf
       parser_kwargs:                 # engine-specific kwargs (optional)
         do_ocr: false
+      max_workers: 4                 # concurrent papers in flight (default: 4)
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from typing import Any
 
 from citeclaw.steps._pdf_reference_extractor import (
@@ -64,6 +82,23 @@ from citeclaw.steps.base import StepResult
 log = logging.getLogger("citeclaw.steps.expand_by_pdf")
 
 
+@dataclass
+class _PaperOutcome:
+    """Per-paper return value from one worker.
+
+    Kept thread-local — accumulation into the step's shared state
+    happens single-threaded on the main thread as futures complete.
+    """
+
+    source_id: str
+    papers_read: int = 0       # 1 when the PDF parsed AND LLM ran
+    papers_skipped: int = 0    # 1 when fetch_text returned None
+    # ``(paper_id, provenance_dict)`` tuples — one entry per resolved ref.
+    hits: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    raw_reasoning: str = ""
+    n_refs_extracted: int = 0  # before S2 resolution (raw LLM output count)
+
+
 class ExpandByPDF:
     """Expand the collection by reading full-text PDFs with an LLM."""
 
@@ -81,6 +116,7 @@ class ExpandByPDF:
         headless: bool = True,
         parser: str = "pymupdf",
         parser_kwargs: dict | None = None,
+        max_workers: int = 4,
     ) -> None:
         self.screener = screener
         self.topic_description = topic_description
@@ -95,6 +131,14 @@ class ExpandByPDF:
         # ``"grobid"``) in the YAML step config.
         self.parser = parser
         self.parser_kwargs = parser_kwargs or {}
+        # ``max_workers`` sizes the per-paper ThreadPoolExecutor.  Each
+        # worker does its own fetch → LLM → S2-resolve.  HTTP fetch +
+        # GROBID/LLM calls are I/O-bound so threads (not processes) are
+        # the right tool.  Browser access inside the shared
+        # :class:`PdfClawBridge` is locked, so the "one Chrome window"
+        # constraint is preserved.  ``max_workers=1`` keeps the legacy
+        # sequential code path for debugging.
+        self.max_workers = max(1, int(max_workers))
 
     def run(self, signal: list[PaperRecord], ctx: Any) -> StepResult:
         # ----- idempotency ------------------------------------------------
@@ -136,78 +180,71 @@ class ExpandByPDF:
         dash.enable_outer_bar(total=len(papers_to_read), description="reading PDFs")
 
         # ----- per-paper extraction ----------------------------------------
-        # raw_hits for screen_expand_candidates: [{paperId: str}, ...]
+        # ``raw_hits`` is the list fed to ``screen_expand_candidates``:
+        # ``[{paperId: str}, ...]``.  ``provenance`` is keyed by target
+        # paperId → list of mention dicts (used to build edge_meta after
+        # screening).  Both are accumulated on the main thread as worker
+        # futures complete — no locks needed because each future returns
+        # a self-contained :class:`_PaperOutcome`.
         raw_hits: list[dict[str, Any]] = []
-        # provenance keyed by target paperId → list of mention dicts
         provenance: dict[str, list[dict[str, Any]]] = {}
         papers_read = 0
         papers_skipped = 0
         total_refs_extracted = 0
 
         try:
-            for source in papers_to_read:
-                dash.begin_phase("fetch PDF", total=1)
-                text = bridge.fetch_text(source)
-                dash.tick_inner(1)
-                if not text:
-                    papers_skipped += 1
-                    dash.advance_outer(1)
-                    continue
-
-                dash.begin_phase("LLM extraction", total=1)
-                result = extract_pdf_references(
-                    text,
-                    source.title,
-                    topic,
-                    llm,
-                    max_input_chars=self.max_input_chars,
-                )
-                dash.tick_inner(1)
-                papers_read += 1
-
-                if not result.references:
-                    dash.advance_outer(1)
-                    continue
-
-                # Resolve each extracted reference to an S2 paperId.
-                dash.begin_phase(
-                    "resolve refs",
-                    total=len(result.references),
-                )
-                for ref in result.references:
-                    resolved = self._resolve_reference(ref, ctx)
-                    dash.tick_inner(1)
-                    if resolved is None:
+            with ThreadPoolExecutor(
+                max_workers=self.max_workers,
+                thread_name_prefix="pdf-worker",
+            ) as pool:
+                futures = {
+                    pool.submit(
+                        self._process_one, source, bridge, llm, ctx, topic,
+                    ): source
+                    for source in papers_to_read
+                }
+                for fut in as_completed(futures):
+                    source = futures[fut]
+                    try:
+                        outcome = fut.result()
+                    except Exception as exc:  # noqa: BLE001 — never let one paper kill the run
+                        log.warning(
+                            "ExpandByPDF: worker for %s raised: %s",
+                            source.paper_id[:20], exc,
+                        )
+                        papers_skipped += 1
+                        dash.advance_outer(1)
                         continue
 
-                    pid = resolved
-                    raw_hits.append({"paperId": pid})
-                    total_refs_extracted += 1
+                    papers_read += outcome.papers_read
+                    papers_skipped += outcome.papers_skipped
+                    for pid, prov in outcome.hits:
+                        raw_hits.append({"paperId": pid})
+                        provenance.setdefault(pid, []).append(prov)
+                        total_refs_extracted += 1
 
-                    # Build provenance record for this edge.
-                    mentions = [
-                        {"quote": m.quote, "relevance": m.relevance}
-                        for m in ref.mentions
-                    ]
-                    prov = {
-                        "source_paper_id": source.paper_id,
-                        "citation_marker": ref.citation_marker,
-                        "reference_text": ref.reference_text,
-                        "relevance_explanation": ref.relevance_explanation,
-                        "mentions": mentions,
-                    }
-                    provenance.setdefault(pid, []).append(prov)
+                    if outcome.raw_reasoning:
+                        # Log the LLM reasoning trace at DEBUG so when the
+                        # downstream verdict looks wrong, the operator can
+                        # grep the run log and see *what* the model
+                        # actually thought, not just the final JSON.
+                        log.debug(
+                            "ExpandByPDF reasoning for %s: %.500s",
+                            outcome.source_id[:20], outcome.raw_reasoning,
+                        )
 
-                dash.advance_outer(1)
-
-                # Polite delay between papers (browser-based fetches).
-                bridge.sleep()
+                    dash.advance_outer(1)
 
         finally:
             bridge.close()
 
         if not raw_hits:
             ctx.searched_signals.add(fp)
+            log.info(
+                "ExpandByPDF: read=%d skipped=%d refs_extracted=0 "
+                "additional_via_pdf_augmentation=0",
+                papers_read, papers_skipped,
+            )
             return StepResult(
                 signal=[],
                 in_count=len(signal),
@@ -216,6 +253,7 @@ class ExpandByPDF:
                     "papers_skipped": papers_skipped,
                     "refs_extracted": 0,
                     "accepted": 0,
+                    "additional_via_pdf_augmentation": 0,
                 },
             )
 
@@ -258,10 +296,24 @@ class ExpandByPDF:
         # ----- done -------------------------------------------------------
         ctx.searched_signals.add(fp)
 
+        # ``len(accepted)`` IS the marginal uplift the PDF reader gave
+        # us: ``screen_expand_candidates`` only returns papers that are
+        # new to ``ctx.seen`` (and pass the screener), so each accepted
+        # paper is one that the prior citation-graph traversal missed.
+        # Surfacing this under an explicit name makes the benefit easy
+        # to read off the log without doing math against other stats.
+        n_additional = len(accepted)
+        log.info(
+            "ExpandByPDF: read=%d skipped=%d refs_extracted=%d "
+            "additional_via_pdf_augmentation=%d",
+            papers_read, papers_skipped, total_refs_extracted, n_additional,
+        )
+
         stats: dict[str, Any] = {
             "papers_read": papers_read,
             "papers_skipped": papers_skipped,
             "refs_extracted": total_refs_extracted,
+            "additional_via_pdf_augmentation": n_additional,
             **base_stats,
         }
         return StepResult(
@@ -269,6 +321,70 @@ class ExpandByPDF:
             in_count=len(signal),
             stats=stats,
         )
+
+    # ------------------------------------------------------------------
+    # Worker body
+    # ------------------------------------------------------------------
+
+    def _process_one(
+        self,
+        source: PaperRecord,
+        bridge: PdfClawBridge,
+        llm: Any,
+        ctx: Any,
+        topic: str,
+    ) -> _PaperOutcome:
+        """End-to-end work for a single source paper.
+
+        Runs entirely on a worker thread:
+
+          1. ``bridge.fetch_text`` (HTTP + lazy browser, browser-locked)
+          2. ``extract_pdf_references`` (one LLM call, thread-safe client)
+          3. ``_resolve_reference`` for each LLM-emitted reference
+             (S2 search_match — internally rate-limited).
+
+        Returns a self-contained :class:`_PaperOutcome` — no shared state
+        is mutated here.  The main thread merges outcomes as futures
+        complete.
+        """
+        text = bridge.fetch_text(source)
+        if not text:
+            return _PaperOutcome(source_id=source.paper_id, papers_skipped=1)
+
+        result = extract_pdf_references(
+            text,
+            source.title,
+            topic,
+            llm,
+            max_input_chars=self.max_input_chars,
+        )
+
+        outcome = _PaperOutcome(
+            source_id=source.paper_id,
+            papers_read=1,
+            raw_reasoning=result.raw_reasoning,
+            n_refs_extracted=len(result.references),
+        )
+        if not result.references:
+            return outcome
+
+        for ref in result.references:
+            resolved = self._resolve_reference(ref, ctx)
+            if resolved is None:
+                continue
+            mentions = [
+                {"quote": m.quote, "relevance": m.relevance}
+                for m in ref.mentions
+            ]
+            prov = {
+                "source_paper_id": source.paper_id,
+                "citation_marker": ref.citation_marker,
+                "reference_text": ref.reference_text,
+                "relevance_explanation": ref.relevance_explanation,
+                "mentions": mentions,
+            }
+            outcome.hits.append((resolved, prov))
+        return outcome
 
     # ------------------------------------------------------------------
     # Helpers
