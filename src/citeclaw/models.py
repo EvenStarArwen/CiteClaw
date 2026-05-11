@@ -81,6 +81,14 @@ class PaperRecord(BaseModel):
     title: str = ""
     abstract: str | None = None
     year: int | None = None
+    # ISO-8601 date string (``YYYY-MM-DD``, ``YYYY-MM``, or ``YYYY``) from
+    # S2's ``publicationDate`` field.  ``None`` when S2 only knows the
+    # year — many records have ``year`` populated but ``publicationDate``
+    # missing, so consumers should fall back to ``year`` when needed.
+    # Kept as a string rather than ``datetime.date`` so partial dates
+    # (year-only, year-month) survive round-trips through JSON and the
+    # SQLite cache without precision loss.
+    publication_date: str | None = None
     venue: str | None = None
     citation_count: int | None = None
     influential_citation_count: int | None = None

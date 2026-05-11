@@ -48,7 +48,8 @@ log = logging.getLogger("citeclaw.s2")
 _MAX_BATCH = 500
 
 PAPER_FIELDS = ",".join([
-    "paperId", "title", "abstract", "venue", "year", "citationCount", "referenceCount",
+    "paperId", "title", "abstract", "venue", "year", "publicationDate",
+    "citationCount", "referenceCount",
     "influentialCitationCount", "openAccessPdf", "externalIds",
     "authors.authorId", "authors.name",
     # Subject-area + publication-type signals for the local query
@@ -57,8 +58,12 @@ PAPER_FIELDS = ",".join([
     # merges both into PaperRecord.fields_of_study.
     "fieldsOfStudy", "s2FieldsOfStudy", "publicationTypes",
 ])
-EDGE_LIGHT = ",".join(["paperId", "title", "year", "venue", "citationCount"])
-EDGE_IDS_AND_COUNTS = ",".join(["paperId", "year", "citationCount"])
+# ``publicationDate`` is requested in the lightweight edge field set too
+# so backward / forward expansion records carry the same date precision
+# as the primary metadata. The wire cost is one extra string per edge
+# paper (typically 10 bytes) — negligible.
+EDGE_LIGHT = ",".join(["paperId", "title", "year", "publicationDate", "venue", "citationCount"])
+EDGE_IDS_AND_COUNTS = ",".join(["paperId", "year", "publicationDate", "citationCount"])
 # Edge metadata is requested at the wrapper level (e.g. ``contexts,intents,isInfluential``)
 # rather than the inner-paper level — these belong to the citation edge itself.
 EDGE_META_FIELDS = "contexts,intents,isInfluential"
@@ -485,6 +490,11 @@ class SemanticScholarClient:
             rec.citation_count = source["citationCount"]
         if rec.year is None and source.get("year") is not None:
             rec.year = source["year"]
+        # publication_date is partially-known in S2 — only fill when we
+        # have a stronger value than what's already on the record. Any
+        # non-empty publicationDate is more informative than ``None``.
+        if rec.publication_date is None and source.get("publicationDate"):
+            rec.publication_date = source["publicationDate"]
 
     def _openalex_abstract_fallback(self, records: list[PaperRecord]) -> None:
         """Best-effort fallback: query OpenAlex for abstracts we couldn't

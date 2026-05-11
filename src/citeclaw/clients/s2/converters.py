@@ -37,6 +37,10 @@ def paper_to_record(data: dict[str, Any]) -> PaperRecord | None:
         title=data.get("title") or "",
         abstract=data.get("abstract"),
         year=data.get("year"),
+        # ``publicationDate`` is ``None`` for many records — S2 universally
+        # knows the year but not always the day.  Stored as-is (string or
+        # ``None``); consumers fall back to ``year`` for the year-only case.
+        publication_date=data.get("publicationDate"),
         venue=data.get("venue") or None,
         citation_count=data.get("citationCount"),
         influential_citation_count=data.get("influentialCitationCount"),
@@ -68,6 +72,7 @@ def edge_to_record(edge: dict[str, Any], key: str) -> PaperRecord | None:
         title=inner.get("title") or "",
         abstract=inner.get("abstract"),
         year=inner.get("year"),
+        publication_date=inner.get("publicationDate"),
         venue=inner.get("venue") or None,
         citation_count=inner.get("citationCount"),
     )

@@ -132,6 +132,10 @@ def _set_vertex_attributes(g, papers: list[PaperRecord]) -> None:
     g.vs["label"] = [p.title or "" for p in papers]
     g.vs["title"] = [p.title or "" for p in papers]
     g.vs["year"] = [p.year or 0 for p in papers]
+    # ``publication_date`` is the ISO ``YYYY-MM-DD`` string from S2.
+    # GraphML can't carry ``None``, so empty-string is the fallback —
+    # Gephi displays "" cleanly, igraph round-trips it without warnings.
+    g.vs["publication_date"] = [p.publication_date or "" for p in papers]
     g.vs["venue"] = [p.venue or "" for p in papers]
     g.vs["abstract"] = [p.abstract or "" for p in papers]
     g.vs["citation_count"] = [p.citation_count or 0 for p in papers]

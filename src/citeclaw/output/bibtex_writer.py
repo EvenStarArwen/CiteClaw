@@ -54,10 +54,25 @@ def write_bibtex(papers: list[PaperRecord], path: Path) -> None:
         key = _sanitize_key(p.paper_id)
         title = _escape_braces(p.title or "")
         venue = _escape_braces(p.venue or "")
+        # Extract a month from ``publication_date`` (ISO YYYY-MM-DD or
+        # YYYY-MM); emit a BibTeX ``month = {N}`` line when we have one,
+        # plus a ``date = {YYYY-MM-DD}`` line for downstream tools that
+        # respect the biblatex ``date`` field. Both are skipped silently
+        # when ``publication_date`` is missing.
+        month_line = ""
+        date_line = ""
+        pd = p.publication_date or ""
+        if pd:
+            date_line = f"  date      = {{{pd}}},\n"
+            parts = pd.split("-")
+            if len(parts) >= 2 and parts[1].isdigit():
+                month_line = f"  month     = {{{int(parts[1])}}},\n"
         entries.append(
             f"@article{{{key},\n"
             f"  title     = {{{title}}},\n"
             f"  year      = {{{p.year or ''}}},\n"
+            f"{month_line}"
+            f"{date_line}"
             f"  journal   = {{{venue}}},\n"
             f"  note      = {{S2: {p.paper_id}, citations: {p.citation_count or 0}}},\n"
             f"}}"

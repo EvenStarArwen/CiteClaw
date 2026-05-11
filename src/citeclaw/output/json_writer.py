@@ -45,16 +45,19 @@ def _count_by_field(papers: list[PaperRecord], field: str) -> dict[str, int]:
 def _paper_to_dict(p: PaperRecord) -> dict[str, Any]:
     """Project a :class:`PaperRecord` to its JSON-friendly dict shape.
 
-    The 16 fields surfaced here form the public contract of
+    The fields surfaced here form the public contract of
     ``literature_collection.json`` — downstream tools (web UI,
     annotation step, third-party consumers) read by these field names,
     so adding / removing a key is a breaking change for them.
+    ``publication_date`` is additive (defaults to ``None`` when S2
+    doesn't carry it) and so does not break existing readers.
     """
     return {
         "paper_id": p.paper_id,
         "title": p.title,
         "abstract": p.abstract,
         "year": p.year,
+        "publication_date": p.publication_date,
         "venue": p.venue,
         "citation_count": p.citation_count,
         "influential_citation_count": p.influential_citation_count,
