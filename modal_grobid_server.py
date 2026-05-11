@@ -59,13 +59,19 @@ import modal
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Default image: the official ``grobid/grobid:0.8.2`` is the full ~8 GB
-# image with DeLFT models bundled — needed for the GPU-accelerated DL
-# path.  Override with ``lfoppiano/grobid:0.8.2-crf`` for the lighter
-# CRF/CPU variant.
+# Default image: ``lfoppiano/grobid:0.8.2-crf`` is the lightweight CRF
+# build (~500 MB).  It's *also* what the GPU deployment ends up using
+# in practice — the official ``grobid/grobid:0.8.2`` DL image bundles
+# Python 3.8, but Modal's runtime needs Python 3.10+, and ``add_python``
+# collides with the image's own ``/usr/local/bin/python`` symlink so
+# it can't override it.  Until that's resolved with a hand-rolled
+# Dockerfile, the CRF image is the working default; setting
+# ``CITECLAW_GROBID_GPU=L40S`` still gets you the requested GPU class
+# (wasted by CRF but matching the spec).  Override with the official
+# image once the Python pinning is worked through.
 GROBID_IMAGE_REF: str = os.environ.get(
     "CITECLAW_GROBID_IMAGE",
-    "grobid/grobid:0.8.2",
+    "lfoppiano/grobid:0.8.2-crf",
 )
 APP_NAME: str = os.environ.get("CITECLAW_GROBID_APP_NAME", "citeclaw-grobid")
 CPU_COUNT: float = float(os.environ.get("CITECLAW_GROBID_CPU", "8"))
@@ -100,13 +106,10 @@ app = modal.App(APP_NAME)
 # the startup command — just launch the binary ourselves so we can patch
 # the config first.
 #
-# Both grobid/grobid:0.8.2 and lfoppiano/grobid:0.8.2-crf ship Python
-# 3.11 with the DeLFT / scikit-learn deps GROBID needs, so we leave
-# ``add_python`` off and let Modal use the image's bundled interpreter.
-# (When ``add_python`` is set, Modal tries to symlink ``python3 →
-# python`` which collides with the symlink the GROBID image already
-# created.)
-image = modal.Image.from_registry(GROBID_IMAGE_REF)
+# ``add_python="3.12"`` is needed because Modal's runtime requires
+# Python 3.10+; the lfoppiano CRF image has no bundled Python at all,
+# and the official DL image has Python 3.8 with a colliding symlink.
+image = modal.Image.from_registry(GROBID_IMAGE_REF, add_python="3.12")
 
 
 def _gpu_spec() -> str | None:
