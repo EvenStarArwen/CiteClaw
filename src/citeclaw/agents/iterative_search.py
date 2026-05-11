@@ -28,7 +28,6 @@ from citeclaw.clients.llm.base import LLMClient
 from citeclaw.prompts.search_refine import (
     WORKER_PROPOSE_FIRST,
     WORKER_SYSTEM,
-    query_schema,
 )
 
 log = logging.getLogger("citeclaw.agents.iterative_search")
@@ -194,18 +193,24 @@ def run_iterative_search(
         )
         return aggregate, turns
 
-    schema = query_schema()
     system_msg = WORKER_SYSTEM.format(description=topic)
 
     for i in range(max(1, config.max_iterations)):
         user_msg = WORKER_PROPOSE_FIRST.format(description=topic)
 
+        # response_schema is intentionally NOT passed: xAI's grok-4.20
+        # reasoning model truncates to 7 visible tokens (~``{"query": "((``)
+        # when ``response_format=json_schema`` is combined with a long
+        # system prompt, regardless of ``max_tokens``. The verbatim
+        # prompt already asks for ``{"query": "..."}`` and parse_query_reply
+        # is robust to fenced / prose / extra-text replies, so the schema
+        # buys us nothing on the providers that work and breaks the one
+        # provider that doesn't.
         try:
             response = llm.call(
                 system_msg,
                 user_msg,
                 category="search_agent",
-                response_schema=schema,
             )
         except Exception as exc:  # noqa: BLE001 — keep the pipeline alive
             log.warning(
