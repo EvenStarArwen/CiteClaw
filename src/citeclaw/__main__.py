@@ -60,6 +60,11 @@ def _build_run_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", type=str, default=None)
     p.add_argument("--continue-from", type=Path, default=None, dest="continue_from")
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument(
+        "--no-preview", action="store_true",
+        help="Skip the pipeline-preview ASCII diagram and the "
+             "interactive 'proceed?' prompt that runs before the pipeline.",
+    )
     # Deprecated, accepted but ignored
     p.add_argument("--max-depth", type=int, default=None, help="(deprecated)")
     p.add_argument("--citation-beta", type=float, default=None, help="(deprecated)")
@@ -241,6 +246,22 @@ def _run_snowball(argv: list[str]) -> None:
     _validate_config(config)
 
     ctx, s2, cache = build_context(config)
+
+    # Pipeline preview + confirmation. Runs after build_context (so any
+    # config-build errors surface first) but before the pipeline kicks
+    # off. ``--no-preview`` skips both the diagram and the prompt.
+    if not args.no_preview:
+        from citeclaw.preview import confirm_proceed, render_pipeline
+
+        diagram = render_pipeline(config.pipeline_built)
+        print()
+        print(diagram)
+        print()
+        if not confirm_proceed():
+            log.warning("User declined to proceed — exiting.")
+            s2.close()
+            cache.close()
+            sys.exit(0)
 
     if args.continue_from is not None:
         try:
