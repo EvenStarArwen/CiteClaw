@@ -1,5 +1,7 @@
-"""Tests for citeclaw.preview — the pipeline ASCII diagram."""
+"""Tests for citeclaw.preview — the pipeline ASCII diagram + prompt."""
 from __future__ import annotations
+
+import io
 
 import pytest
 
@@ -7,6 +9,7 @@ from citeclaw.config import Settings
 from citeclaw.preview import extract, render_pipeline
 from citeclaw.preview.flow_box import render
 from citeclaw.preview.model import StepNode
+from citeclaw.preview.prompt import _read_key, confirm, select
 
 
 def _settings(**pipeline) -> Settings:
@@ -148,3 +151,59 @@ class TestRenderRawNodes:
         assert "LoadSeeds" in out
         assert "ExpandForward" in out
         assert "n=50" in out
+
+
+# ---------------------------------------------------------------------------
+# Arrow-key prompt
+# ---------------------------------------------------------------------------
+
+
+class TestReadKey:
+    @pytest.mark.parametrize("raw, expected", [
+        ("\x1b[A", "UP"),
+        ("\x1b[B", "DOWN"),
+        ("\x1b[C", "RIGHT"),
+        ("\x1b[D", "LEFT"),
+        ("\r", "ENTER"),
+        ("\n", "ENTER"),
+        ("\x03", "INT"),
+        ("y", "Y"),
+        ("Y", "Y"),
+        ("n", "N"),
+        ("k", "K"),
+        ("j", "J"),
+    ])
+    def test_key_mapping(self, raw, expected):
+        assert _read_key(io.StringIO(raw)) == expected
+
+    def test_unknown_char_passes_through(self):
+        assert _read_key(io.StringIO("q")) == "q"
+
+    def test_lone_escape_returns_esc(self):
+        # ESC without a following [X gets caught when read(2) returns empty.
+        assert _read_key(io.StringIO("\x1b")) == "ESC"
+
+
+class TestSelectFallback:
+    def test_non_tty_returns_default(self, monkeypatch):
+        # When stdin isn't a tty, select() must return the default index
+        # immediately rather than blocking on input.
+        class _FakeStdin:
+            def isatty(self):
+                return False
+        monkeypatch.setattr("citeclaw.preview.prompt.sys.stdin", _FakeStdin())
+        assert select(["A", "B", "C"], default_idx=2) == 2
+
+    def test_empty_options_returns_none(self):
+        assert select([], default_idx=0) is None
+
+
+class TestConfirmFallback:
+    def test_non_tty_returns_true(self, monkeypatch):
+        # Non-interactive runs should auto-proceed (matches the old behaviour
+        # so piping into the CLI doesn't hang).
+        class _FakeStdin:
+            def isatty(self):
+                return False
+        monkeypatch.setattr("citeclaw.preview.prompt.sys.stdin", _FakeStdin())
+        assert confirm("Go?") is True
