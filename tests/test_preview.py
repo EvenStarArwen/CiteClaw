@@ -80,8 +80,9 @@ class TestRenderFlowBox:
         ])
         out = render_pipeline(cfg.pipeline_built, width=100)
         assert "Parallel" in out
-        # Divergence arrows + merge connector + union annotation
-        assert "╱" in out and "╲" in out
+        # Circuit-style divergence: ┌──┴──┐ + merge connector + union annotation
+        assert "┴" in out  # ┴ at the centre of the split bar
+        assert "┌" in out and "┐" in out  # corners of split bar AND of step boxes
         assert "∪" in out
         assert "union by paper_id" in out
         assert "Branch 1" in out

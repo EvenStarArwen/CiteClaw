@@ -214,11 +214,25 @@ def _render_parallel(
     left_center = max(8, page_center - half)
     right_center = min(page_width - 8, page_center + half)
 
-    # ╱ … ╲ divergence + branch labels + initial arrows.
-    div = [" "] * (page_width + 1)
-    div[left_center + 1] = "╱"
-    div[right_center - 1] = "╲"
-    out.append("".join(div))
+    # Circuit-style divergence:
+    #   │              (1) pipe from Parallel box to the split bar
+    #   ┌──┴──┐        (2) split bar — left/right corners at the branch
+    #                      column centres, ``┴`` at the page centre
+    #   │     │        (3) pipes down from corners
+    #  Branch1 Branch2 (4) branch labels (no pipes overlap)
+    #   │     │        (5) pipes continue
+    #   ▼     ▼        (6) arrows into the branches' first steps
+    out.append(_pipe(page_center))
+
+    bar = [" "] * (page_width + 1)
+    bar[left_center] = "┌"
+    bar[right_center] = "┐"
+    for c in range(left_center + 1, right_center):
+        bar[c] = "─"
+    bar[page_center] = "┴"
+    out.append("".join(bar))
+
+    out.append(_two_col_line(left_center, right_center, "│", "│", page_width))
 
     labels = [" "] * (page_width + 1)
     for i, ch in enumerate("Branch 1"):
