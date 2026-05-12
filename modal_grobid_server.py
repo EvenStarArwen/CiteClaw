@@ -109,7 +109,16 @@ app = modal.App(APP_NAME)
 # ``add_python="3.12"`` is needed because Modal's runtime requires
 # Python 3.10+; the lfoppiano CRF image has no bundled Python at all,
 # and the official DL image has Python 3.8 with a colliding symlink.
-image = modal.Image.from_registry(GROBID_IMAGE_REF, add_python="3.12")
+image = (
+    modal.Image.from_registry(GROBID_IMAGE_REF, add_python="3.12")
+    .env({
+        "CITECLAW_GROBID_GPU": GPU_TYPE,
+        "CITECLAW_GROBID_ENGINE": ENGINE_OVERRIDE,
+    })
+    .run_commands(
+        "chmod -R +x /opt/grobid/grobid-home/pdfalto/ || true",
+    )
+)
 
 
 def _gpu_spec() -> str | None:
