@@ -33,7 +33,6 @@ from typing import Any
 
 from citeclaw.models import PaperRecord
 from citeclaw.steps._expand_helpers import (
-    check_already_searched,
     fingerprint_signal,
     screen_expand_candidates,
 )
@@ -116,10 +115,20 @@ class ExpandBySemantics:
         self.max_workers = max(1, int(max_workers))
 
     def run(self, signal: list[PaperRecord], ctx) -> StepResult:
-        """Dispatch to the per-mode runner after the shared early-exit guards."""
+        """Dispatch to the per-mode runner after the shared early-exit guards.
+
+        Like ``ExpandBySearch``, this step is an *augmentation* (it adds
+        kNN neighbours to the candidate pool) rather than a *traversal*
+        (which consumes the signal as the set of papers to expand from
+        — e.g. ExpandForward / ExpandBackward). So every exit path returns
+        ``list(signal) + new_passed`` — losing the input would silently
+        kill the downstream snowball when no neighbours pass the screener,
+        even though all the iter-N citation-graph survivors are still in
+        ``ctx.collection``.
+        """
         if self.screener is None:
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={"reason": "no screener"},
             )
@@ -132,8 +141,16 @@ class ExpandBySemantics:
             use_rejected_as_negatives=self.use_rejected_as_negatives,
             recs_per_paper=self.recs_per_paper,
         )
-        if (skip := check_already_searched(self.name, fp, ctx, len(signal))):
-            return skip
+        if fp in ctx.searched_signals:
+            log.info(
+                "%s: signal fingerprint already searched, passing input through",
+                self.name,
+            )
+            return StepResult(
+                signal=list(signal),
+                in_count=len(signal),
+                stats={"reason": "already_searched", "fingerprint": fp[:12]},
+            )
 
         if self.mode == "per_paper":
             return self._run_per_paper(signal, ctx, fp)
@@ -153,7 +170,7 @@ class ExpandBySemantics:
         ]
         if not anchor_ids:
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={"reason": "no_anchors"},
             )
@@ -171,7 +188,7 @@ class ExpandBySemantics:
         except Exception as exc:  # noqa: BLE001 — keep the pipeline alive
             log.warning("ExpandBySemantics: fetch_recommendations failed: %s", exc)
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={"reason": "fetch_failed", "error": str(exc)[:120]},
             )
@@ -184,7 +201,7 @@ class ExpandBySemantics:
         )
         ctx.searched_signals.add(fp)
         return StepResult(
-            signal=screened.passed,
+            signal=list(signal) + screened.passed,
             in_count=len(screened.hydrated),
             stats={
                 **screened.base_stats,
@@ -206,7 +223,7 @@ class ExpandBySemantics:
         anchor_ids = [p.paper_id for p in signal if p.paper_id]
         if not anchor_ids:
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={"reason": "no_anchors"},
             )
@@ -268,7 +285,7 @@ class ExpandBySemantics:
         if not aggregate:
             ctx.searched_signals.add(fp)
             return StepResult(
-                signal=[],
+                signal=list(signal),
                 in_count=len(signal),
                 stats={
                     "mode": "per_paper",
@@ -291,7 +308,7 @@ class ExpandBySemantics:
         )
         ctx.searched_signals.add(fp)
         return StepResult(
-            signal=screened.passed,
+            signal=list(signal) + screened.passed,
             in_count=len(screened.hydrated),
             stats={
                 **screened.base_stats,

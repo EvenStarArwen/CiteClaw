@@ -212,14 +212,31 @@ def screen_expand_candidates(
         ctx=ctx, source=None, source_refs=None, source_citers=None,
     )
 
+    # 5a. Notify the dashboard about the candidate batch BEFORE screening so
+    # the "X accepted / Y screened" counter reflects actual ExpandBy* work.
+    # ExpandForward / ExpandBackward fire these hooks themselves (different
+    # code path); doing it here means the same numbers show up for
+    # ExpandBySearch / ExpandBySemantics / ExpandByAuthor / ExpandByPDF.
+    dash = getattr(ctx, "dashboard", None)
+    if dash is not None and new_records:
+        try:
+            dash.note_candidates_seen(len(new_records))
+        except Exception:  # noqa: BLE001 — dashboard is best-effort
+            pass
+
     # 6-7. Apply screener cascade and record rejections.
     passed, rejected = apply_block(new_records, screener, fctx)
     record_rejections(rejected, fctx)
 
-    # 8. Survivors → collection.
+    # 8. Survivors → collection + dashboard "accepted" hook.
     for p in passed:
         p.llm_verdict = "accept"
         ctx.collection[p.paper_id] = p
+        if dash is not None:
+            try:
+                dash.paper_accepted(p)
+            except Exception:  # noqa: BLE001
+                pass
 
     return ExpandScreenResult(
         hydrated=hydrated,

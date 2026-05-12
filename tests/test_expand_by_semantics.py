@@ -25,17 +25,24 @@ def _basic_screener():
 
 
 class TestEarlyExits:
-    def test_no_screener_returns_empty(self, ctx: Context):
-        signal = [PaperRecord(paper_id="p1")]
+    def test_no_screener_passes_signal_through(self, ctx: Context):
+        # Augmentation steps must pass the input signal through unchanged
+        # when they have nothing to add — otherwise the downstream
+        # snowball dies on an empty signal even though ctx.collection
+        # still has every accepted paper.
+        signal = [PaperRecord(paper_id="p1"), PaperRecord(paper_id="p2")]
         result = ExpandBySemantics().run(signal, ctx)
-        assert result.signal == []
+        assert [p.paper_id for p in result.signal] == ["p1", "p2"]
         assert result.stats == {"reason": "no screener"}
 
-    def test_no_anchors_returns_empty(self, ctx: Context):
+    def test_no_anchors_passes_signal_through(self, ctx: Context):
         # Signal of records without paper_ids leaves no usable anchor.
         signal = [PaperRecord(paper_id="")]
         result = ExpandBySemantics(screener=_basic_screener()).run(signal, ctx)
         assert result.stats["reason"] == "no_anchors"
+        # Pass-through still preserves the (useless) input rather than
+        # nuking the signal — kept here so the contract is explicit.
+        assert len(result.signal) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +73,10 @@ class TestHappyPath:
         )
         result = step.run(signal, ctx)
 
-        passed_ids = {p.paper_id for p in result.signal}
-        assert passed_ids == {"rec_new"}
+        # Output signal is the input anchor PLUS any newly-screened
+        # neighbours (augmentation, not consumption).
+        passed_ids = [p.paper_id for p in result.signal]
+        assert passed_ids == ["anchor", "rec_new"]
         assert result.stats["anchor_count"] == 1
         assert result.stats["accepted"] == 1
         assert result.stats["rejected"] == 1
@@ -177,8 +186,9 @@ class TestPerPaperMode:
         )
         result = step.run(signal, ctx)
 
+        # Anchors flow through; new screened neighbours append.
         passed_ids = {p.paper_id for p in result.signal}
-        assert passed_ids == {"n_a1", "n_a2", "n_shared"}
+        assert passed_ids == {"a1", "a2", "n_a1", "n_a2", "n_shared"}
         assert result.stats["mode"] == "per_paper"
         assert result.stats["anchor_count"] == 2
         # Two registered anchors -> two fan-out calls.
