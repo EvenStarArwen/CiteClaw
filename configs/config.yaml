@@ -58,7 +58,35 @@ graph_label_instruction: >
 #   none/off → no reasoning kwargs (for providers/models without reasoning)
 #
 # models:
-#   # Self-hosted vLLM (Modal Gemma). Default ``screening_model`` target.
+#   # Self-hosted vLLM (Modal Gemma 4 31B, BF16). Deployed via
+#   # ``modal_vllm_server.py``. Use for production runs where the 0.5pp
+#   # benchmark delta vs FP4 matters.
+#   gemma-4-31b-bf16:
+#     base_url: "https://cola-lab--citeclaw-vllm-gemma-v2-serve.modal.run/v1"
+#     served_model_name: "google/gemma-4-31B-it"
+#     api_key_env: "CITECLAW_VLLM_API_KEY"
+#     reasoning_parser: "gemma4"
+#     thinking_budget: 4096
+#
+#   # Self-hosted vLLM (Modal Gemma 4 31B, NVFP4). Deployed via
+#   # ``modal_vllm_server_fp4.py``. Use for cost/throughput-sensitive
+#   # workloads. ~3× faster decode on B200, ~30-50% slower than BF16 on
+#   # H200 (Marlin dequant), but the smaller weights still cold-start
+#   # quicker. Sub-0.5pp accuracy delta on the model card benchmarks.
+#   #
+#   # ``reasoning_parser: ""`` (left OFF): vLLM #38855 leaves the Gemma 4
+#   # reasoning parser half-broken — message.reasoning_content stays
+#   # empty even when the parser is enabled. The OpenAIClient handles
+#   # the channel-tag strip client-side. Re-enable to "gemma4" once the
+#   # upstream fix lands.
+#   gemma-4-31b-fp4:
+#     base_url: "https://cola-lab--citeclaw-vllm-gemma-fp4-serve.modal.run/v1"
+#     served_model_name: "nvidia/Gemma-4-31B-IT-NVFP4"
+#     api_key_env: "CITECLAW_VLLM_API_KEY"
+#     reasoning_parser: ""
+#     thinking_budget: 4096
+#
+#   # Legacy alias preserved for older configs that pinned the v1 endpoint.
 #   gemma-4-31b:
 #     base_url: "https://you--citeclaw-vllm-gemma-serve.modal.run/v1"
 #     served_model_name: "google/gemma-4-31B-it"
