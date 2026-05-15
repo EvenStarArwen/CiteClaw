@@ -31,11 +31,39 @@ from citeclaw.models import BudgetExhaustedError
 log = logging.getLogger("citeclaw.llm.openai")
 
 _OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4")
-_THINK_TAG_RE = re.compile(r"<think\b[^>]*>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+# Three patterns alternated in one regex:
+#   1. ``<think>...</think>`` — legacy Qwen3 / DeepSeek-R1 leak shape.
+#   2. ``<thought>...</thought>`` — variant used by some chat templates.
+#   3. ``<|channel>thought ... <channel|>`` — Gemma 4 chat template emits
+#      the thinking trace between these special tokens when
+#      ``skip_special_tokens=False`` is in effect. vLLM #38855 means the
+#      Gemma 4 reasoning parser does NOT consume them, so we strip
+#      client-side. The trailing ``|`` is optional on both tags
+#      (variations seen in the wild: ``<|channel>``, ``<|channel|>``,
+#      ``<channel>``, ``<channel|>``).
+_THINK_TAG_RE = re.compile(
+    r"<\|channel\|?>\s*thought.*?<\|?channel\|?>"
+    r"|<thought>.*?</thought>"
+    r"|<think\b[^>]*>.*?</think>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+# Bare-leak form: when ``skip_special_tokens=True`` is forced server-side
+# the ``<|channel>`` / ``<channel|>`` tokens are stripped and the message
+# starts with literal ``thought\n...`` followed by the answer with no
+# clean boundary. We can only detect, not surgically remove, this case;
+# it is left as a no-op so an actually-clean response that happens to
+# start with the word "thought" passes through untouched.
+_BARE_THINKING_PREFIX_RE = re.compile(r"^\s*thought\b", re.IGNORECASE)
 
 
 def _strip_think_tags(text: str) -> str:
-    """Remove leftover ``<think>...</think>`` blocks from a response."""
+    """Remove leftover thinking-channel blocks from an LLM response.
+
+    Handles the three tag styles in :data:`_THINK_TAG_RE`. Idempotent —
+    re-running on a clean response is a no-op.
+    """
     cleaned = _THINK_TAG_RE.sub("", text)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
