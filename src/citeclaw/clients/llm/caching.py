@@ -62,12 +62,16 @@ def make_cache_key(
     user: str,
     response_schema: dict[str, Any] | None,
     with_logprobs: bool,
+    thinking_budget: int = 0,
 ) -> str:
     """Compute the sha256 cache key for a single LLM call.
 
     Stable across runs: identical inputs always hash to the same key.
+    ``thinking_budget`` is included only when explicitly set (> 0) so
+    that existing cached entries (computed before the parameter
+    existed, or for the "use endpoint default" path) keep matching.
     """
-    payload = {
+    payload: dict[str, Any] = {
         "model": model or "",
         "reasoning_effort": reasoning_effort or "",
         "system": system or "",
@@ -75,6 +79,8 @@ def make_cache_key(
         "response_schema": response_schema if response_schema else None,
         "with_logprobs": bool(with_logprobs),
     }
+    if thinking_budget > 0:
+        payload["thinking_budget"] = int(thinking_budget)
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
@@ -97,6 +103,7 @@ class CachingLLMClient:
         *,
         model: str,
         reasoning_effort: str | None = None,
+        thinking_budget: int = 0,
     ) -> None:
         self._inner = inner
         self._cache = cache
@@ -106,6 +113,7 @@ class CachingLLMClient:
         # will send to (not the unresolved YAML alias).
         self._model = model
         self._reasoning_effort = reasoning_effort
+        self._thinking_budget = thinking_budget
         self.cache_hits: int = 0
         self.cache_misses: int = 0
 
@@ -132,6 +140,7 @@ class CachingLLMClient:
             user=user,
             response_schema=response_schema,
             with_logprobs=with_logprobs,
+            thinking_budget=self._thinking_budget,
         )
 
         try:

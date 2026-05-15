@@ -191,6 +191,51 @@ def _read_parsed_text_from_disk(run_dir: Path, paper_id: str) -> str | None:
     return text or None
 
 
+def _write_per_paper_file(
+    per_paper_dir: Path,
+    extraction: PaperExtraction,
+    *,
+    instruction: str,
+    extractor_model: str,
+    extractor_reasoning: str | None,
+    extractor_thinking_budget: int,
+) -> None:
+    """Write one ``<per_paper_dir>/<paper_id>.json`` file.
+
+    Includes the instruction + extractor metadata so each file is
+    self-describing — useful when downstream tools work with one paper
+    at a time and never see the aggregated sidecar.
+    """
+    paper_id = (extraction.paper_id or "").strip()
+    if not paper_id:
+        return
+    payload = {
+        "paper_id": paper_id,
+        "title": extraction.title,
+        "year": extraction.year,
+        "venue": extraction.venue,
+        "authors": extraction.authors,
+        "instruction": instruction,
+        "extractor_model": extractor_model,
+        "extractor_reasoning": extractor_reasoning or "",
+        "extractor_thinking_budget": extractor_thinking_budget,
+        "extraction": extraction.extraction,
+        "reasoning": extraction.reasoning or "",
+        "error": extraction.error or "",
+    }
+    out_path = per_paper_dir / f"{paper_id}.json"
+    try:
+        out_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        log.warning(
+            "meta-review: failed to write per-paper file %s: %s",
+            out_path, exc,
+        )
+
+
 def _extract_one_paper(
     paper: dict[str, Any],
     bridge,
@@ -410,6 +455,10 @@ def run_meta_review(
     meta_model: str,
     extractor_reasoning: str | None = "medium",
     meta_reasoning: str | None = "high",
+    extractor_thinking_budget: int = 0,
+    meta_thinking_budget: int = 0,
+    skip_meta: bool = False,
+    per_paper_dir: Path | None = None,
     max_workers: int = 4,
     max_papers: int | None = None,
     per_paper_max_chars: int = _DEFAULT_PER_PAPER_MAX_CHARS,
@@ -425,6 +474,15 @@ def run_meta_review(
     See the module docstring for an overview.  This function is the
     library entry point; the CLI subcommand (``_run_meta_review`` in
     :mod:`citeclaw.__main__`) is a thin wrapper around it.
+
+    ``extractor_thinking_budget`` / ``meta_thinking_budget`` (when > 0)
+    override the per-call thinking-token cap on the vLLM endpoint for
+    the extractor / meta LLM respectively, without editing YAML.
+    ``skip_meta`` short-circuits the meta-synthesis call entirely —
+    useful when callers only want the raw per-paper extractions.
+    ``per_paper_dir``, when set, writes one ``<paper_id>.json`` per
+    successful extraction to that directory in addition to the
+    aggregated sidecar.
     """
     from citeclaw.budget import BudgetTracker
     from citeclaw.cache import Cache
@@ -470,6 +528,7 @@ def run_meta_review(
             config, budget,
             model=meta_model,
             reasoning_effort=meta_reasoning,
+            thinking_budget=meta_thinking_budget,
             cache=cache,
         )
         log.info(
@@ -528,14 +587,23 @@ def run_meta_review(
         config, budget,
         model=extractor_model,
         reasoning_effort=extractor_reasoning,
+        thinking_budget=extractor_thinking_budget,
         cache=cache,
     )
     meta_llm = build_llm_client(
         config, budget,
         model=meta_model,
         reasoning_effort=meta_reasoning,
+        thinking_budget=meta_thinking_budget,
         cache=cache,
     )
+
+    # Set up per-paper output directory if requested. We don't pre-write
+    # placeholder files — only successfully-extracted papers get a
+    # ``<paper_id>.json`` so the directory stays a clean "what's done"
+    # signal.
+    if per_paper_dir is not None:
+        per_paper_dir.mkdir(parents=True, exist_ok=True)
 
     bridge = PdfClawBridge(
         cache,
@@ -583,6 +651,17 @@ def run_meta_review(
                     "meta-review: [%s] %s %s",
                     tag, ex.paper_id[:12], (ex.title or "")[:60],
                 )
+                # Write the per-paper file eagerly so a long run that's
+                # interrupted partway still leaves usable artifacts on
+                # disk for every paper that finished.
+                if per_paper_dir is not None and ex.extraction:
+                    _write_per_paper_file(
+                        per_paper_dir, ex,
+                        instruction=instruction,
+                        extractor_model=extractor_model,
+                        extractor_reasoning=extractor_reasoning,
+                        extractor_thinking_budget=extractor_thinking_budget,
+                    )
     finally:
         bridge.close()
 
@@ -594,8 +673,20 @@ def run_meta_review(
     )
 
     # ---- meta synthesis --------------------------------------------------
-    log.info("meta-review: calling meta LLM (%s) for synthesis", meta_model)
-    report_md = _run_meta_synthesis(extractions, meta_llm, instruction)
+    if skip_meta:
+        log.info(
+            "meta-review: --skip-meta set — skipping meta-synthesis LLM call",
+        )
+        report_md = (
+            "# Meta-Review\n\n"
+            "_Meta synthesis was skipped (`--skip-meta`). The per-paper "
+            "extractions are in the JSON sidecar; re-run without "
+            "`--skip-meta` (or use `--from-extractions <sidecar>`) to "
+            "produce the synthesised report._\n"
+        )
+    else:
+        log.info("meta-review: calling meta LLM (%s) for synthesis", meta_model)
+        report_md = _run_meta_synthesis(extractions, meta_llm, instruction)
 
     # ---- write outputs --------------------------------------------------
     output_path = output_path or (run_dir / "meta_review.md")

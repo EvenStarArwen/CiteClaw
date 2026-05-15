@@ -123,6 +123,21 @@ def _build_timeout(total: float) -> httpx.Timeout:
     )
 
 
+def _build_http_client(total: float) -> httpx.Client:
+    """Build the httpx.Client backing the openai SDK.
+
+    ``follow_redirects=True`` is the load-bearing setting: Modal
+    async-dispatches under load via HTTP 303 redirects, and httpx
+    defaults to NOT following redirects on POST. Without this flag,
+    every Modal call gets stuck with a 303 response that the SDK
+    then surfaces as a confusing 4xx error.
+    """
+    return httpx.Client(
+        timeout=_build_timeout(total),
+        follow_redirects=True,
+    )
+
+
 def _build_openai_sdk(
     config: Settings,
     *,
@@ -147,6 +162,7 @@ def _build_openai_sdk(
             api_key=api_key,
             base_url=endpoint_base_url.rstrip("/"),
             timeout=_build_timeout(total),
+            http_client=_build_http_client(total),
         )
     if config.llm_base_url:
         api_key = config.llm_api_key or config.openai_api_key or "none"
@@ -154,6 +170,7 @@ def _build_openai_sdk(
             api_key=api_key,
             base_url=config.llm_base_url.rstrip("/"),
             timeout=_build_timeout(config.llm_request_timeout),
+            http_client=_build_http_client(config.llm_request_timeout),
         )
     api_key = config.openai_api_key
     if not api_key:
@@ -162,7 +179,11 @@ def _build_openai_sdk(
             f"(or set llm_base_url for a custom OpenAI-compatible endpoint). "
             f"Set it in config.yaml or OPENAI_API_KEY / CITECLAW_OPENAI_API_KEY env."
         )
-    return openai.OpenAI(api_key=api_key, timeout=_build_timeout(60.0))
+    return openai.OpenAI(
+        api_key=api_key,
+        timeout=_build_timeout(60.0),
+        http_client=_build_http_client(60.0),
+    )
 
 
 class OpenAIClient:

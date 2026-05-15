@@ -31,6 +31,7 @@ def _build_registry_client(
     alias: str,
     entry: ModelEndpoint,
     reasoning_effort: str | None,
+    thinking_budget: int = 0,
 ) -> LLMClient:
     """Construct an OpenAIClient pointed at a registry endpoint.
 
@@ -40,8 +41,13 @@ def _build_registry_client(
     field. The registry's ``api_key_env`` resolves to a real bearer
     token at construction time — the key never sits in YAML or memory
     for longer than the SDK call.
+
+    ``thinking_budget`` (when > 0) overrides the registry entry's
+    ``thinking_budget``. Useful for per-call control from callers like
+    the ``meta-review`` CLI without editing YAML.
     """
     api_key = entry.resolved_api_key
+    effective_thinking_budget = thinking_budget if thinking_budget > 0 else entry.thinking_budget
     return OpenAIClient(
         config,
         budget,
@@ -51,7 +57,7 @@ def _build_registry_client(
         endpoint_api_key=api_key or None,
         endpoint_timeout=entry.request_timeout,
         served_model_name=entry.served_model_name or alias,
-        thinking_budget=entry.thinking_budget,
+        thinking_budget=effective_thinking_budget,
         reasoning_parser=entry.reasoning_parser,
         max_model_len=entry.max_model_len,
     )
@@ -63,6 +69,7 @@ def build_llm_client(
     *,
     model: str | None = None,
     reasoning_effort: str | None = None,
+    thinking_budget: int = 0,
     cache: "Cache | None" = None,
 ) -> LLMClient:
     """Build the LLMClient that matches the configured ``screening_model``.
@@ -80,10 +87,16 @@ def build_llm_client(
     ``model=gemini-2.5-flash`` correctly lands on :class:`GeminiClient`,
     and ``model=gemma-4-31b`` lands on the registry entry).
 
+    When ``thinking_budget`` is > 0 and the resolved client supports it
+    (registry-routed vLLM endpoints today), the supplied value overrides
+    the ``ModelEndpoint.thinking_budget`` baked into YAML.
+
     When ``cache`` is provided AND the resolved client is not the stub,
     the result is wrapped in a :class:`CachingLLMClient` that hashes
     every prompt against the ``llm_response_cache`` table in cache.db
-    so repeat calls skip the model entirely and pay zero tokens.
+    so repeat calls skip the model entirely and pay zero tokens. The
+    thinking budget is included in the cache key so calls with
+    different budgets stay distinct.
     """
     effective_model = (model or config.screening_model or "").strip()
     if effective_model.lower() == _STUB_MODEL:
@@ -97,6 +110,7 @@ def build_llm_client(
             alias=effective_model,
             entry=config.models[effective_model],
             reasoning_effort=reasoning_effort,
+            thinking_budget=thinking_budget,
         )
     elif not config.llm_base_url and GeminiClient.matches(effective_model):
         inner = GeminiClient(
@@ -108,6 +122,7 @@ def build_llm_client(
         # OpenAI / a custom endpoint.
         inner = OpenAIClient(
             config, budget, model=model, reasoning_effort=reasoning_effort,
+            thinking_budget=thinking_budget,
         )
 
     if cache is None:
@@ -116,6 +131,7 @@ def build_llm_client(
         inner, cache, budget,
         model=effective_model,
         reasoning_effort=reasoning_effort,
+        thinking_budget=thinking_budget,
     )
 
 

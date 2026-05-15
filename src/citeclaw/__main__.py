@@ -722,6 +722,14 @@ def _build_meta_review_parser() -> argparse.ArgumentParser:
         help="Reasoning effort for the per-paper extractor (default: medium).",
     )
     p.add_argument(
+        "--extractor-thinking-budget",
+        type=int,
+        default=0,
+        help="Hard cap on thinking tokens per extractor call (vLLM endpoints only, "
+             "wired via chat_template_kwargs.thinking_budget). 0 = use the model's "
+             "registry default. Set this to control cost/quality without editing YAML.",
+    )
+    p.add_argument(
         "--meta-model",
         type=str,
         required=True,
@@ -732,6 +740,28 @@ def _build_meta_review_parser() -> argparse.ArgumentParser:
         type=str,
         default="high",
         help="Reasoning effort for the meta-synthesis LLM (default: high).",
+    )
+    p.add_argument(
+        "--meta-thinking-budget",
+        type=int,
+        default=0,
+        help="Hard cap on thinking tokens for the meta-synthesis call (vLLM only). "
+             "0 = registry default.",
+    )
+    p.add_argument(
+        "--skip-meta",
+        action="store_true",
+        help="Skip the meta-synthesis call after the per-paper pass. Useful when "
+             "you only care about raw per-paper extractions (combine with "
+             "--export-per-paper-dir).",
+    )
+    p.add_argument(
+        "--export-per-paper-dir",
+        type=Path,
+        default=None,
+        help="If set, write each per-paper extraction to <dir>/<paper_id>.json "
+             "alongside the existing sidecar JSON. Useful when downstream tooling "
+             "wants one file per paper rather than the aggregated sidecar.",
     )
     p.add_argument(
         "--max-workers",
@@ -842,8 +872,12 @@ def _run_meta_review(argv: list[str]) -> None:
             instruction=args.instruction or "",
             extractor_model=args.extractor_model or "",
             extractor_reasoning=args.extractor_reasoning,
+            extractor_thinking_budget=args.extractor_thinking_budget,
             meta_model=args.meta_model,
             meta_reasoning=args.meta_reasoning,
+            meta_thinking_budget=args.meta_thinking_budget,
+            skip_meta=args.skip_meta,
+            per_paper_dir=args.export_per_paper_dir,
             max_workers=args.max_workers,
             max_papers=args.max_papers,
             per_paper_max_chars=args.per_paper_max_chars,
