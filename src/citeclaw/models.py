@@ -1,4 +1,4 @@
-"""Core data shapes, ID normalizers, and the domain exception hierarchy.
+"""Core data shapes and the domain exception hierarchy.
 
 This module is the bottom of the dependency graph for the rest of the
 package — every other module imports types from here, so it MUST stay
@@ -10,9 +10,6 @@ Sections, in order:
     enum-style fields on :class:`PaperRecord`.
   * :class:`PaperRecord` / :class:`ScreeningResult` — the two pydantic
     models the pipeline threads through every step.
-  * :func:`normalize_openalex_id` — strict parser that rejects malformed
-    IDs at the boundary instead of letting them sail through to the
-    downstream API.
   * Domain exceptions — :class:`CiteClawError` plus subclasses.
     :class:`S2OutageError` deliberately subclasses :class:`BaseException`,
     not :class:`Exception`, so generic ``except Exception`` clauses don't
@@ -22,8 +19,6 @@ Sections, in order:
 from __future__ import annotations
 
 import enum
-import re
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -191,25 +186,6 @@ class ScreeningResult(BaseModel):
     verdict: str
     reasoning: str = ""
     confidence: float | None = None
-
-
-# ---------------------------------------------------------------------------
-# ID helpers
-# ---------------------------------------------------------------------------
-
-_OPENALEX_ID_RE = re.compile(r"^W\d+$")
-
-
-def normalize_openalex_id(raw: Any) -> str | None:
-    """Extract the short ``W\\d+`` form from a URL or bare ID.  Returns None if invalid."""
-    if not raw or not isinstance(raw, str):
-        return None
-    if "/" in raw:
-        raw = raw.rsplit("/", 1)[-1]
-    raw = raw.strip()
-    if _OPENALEX_ID_RE.match(raw):
-        return raw
-    return None
 
 
 # ---------------------------------------------------------------------------

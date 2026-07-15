@@ -1,4 +1,4 @@
-"""Tests for :mod:`citeclaw.models` — PaperRecord, ID normalizers, exceptions."""
+"""Tests for :mod:`citeclaw.models` — PaperRecord, exceptions."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from citeclaw.models import (
     PaperSource,
     ScreeningResult,
     SemanticScholarAPIError,
-    normalize_openalex_id,
 )
 
 
@@ -91,23 +90,6 @@ class TestPaperRecord:
         dumped = p.model_dump()
         assert dumped["source"] == "forward"
         assert dumped["llm_verdict"] == "accept"
-
-
-class TestNormalizeOpenAlexId:
-    @pytest.mark.parametrize(
-        "raw, expected",
-        [
-            ("W123456", "W123456"),
-            ("https://openalex.org/W999", "W999"),
-            (" W42 ", "W42"),
-        ],
-    )
-    def test_valid(self, raw, expected):
-        assert normalize_openalex_id(raw) == expected
-
-    @pytest.mark.parametrize("raw", [None, "", "W", "Wabc", 123, "X123"])
-    def test_invalid(self, raw):
-        assert normalize_openalex_id(raw) is None
 
 
 class TestScreeningResult:
