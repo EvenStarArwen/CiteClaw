@@ -10,9 +10,9 @@ Sections, in order:
     enum-style fields on :class:`PaperRecord`.
   * :class:`PaperRecord` / :class:`ScreeningResult` — the two pydantic
     models the pipeline threads through every step.
-  * :func:`normalize_openalex_id` / :func:`normalize_s2_id` — strict
-    parsers that reject malformed IDs at the boundary instead of letting
-    them sail through to the downstream API.
+  * :func:`normalize_openalex_id` — strict parser that rejects malformed
+    IDs at the boundary instead of letting them sail through to the
+    downstream API.
   * Domain exceptions — :class:`CiteClawError` plus subclasses.
     :class:`S2OutageError` deliberately subclasses :class:`BaseException`,
     not :class:`Exception`, so generic ``except Exception`` clauses don't
@@ -209,45 +209,6 @@ def normalize_openalex_id(raw: Any) -> str | None:
     raw = raw.strip()
     if _OPENALEX_ID_RE.match(raw):
         return raw
-    return None
-
-
-_S2_HEX_RE = re.compile(r"^[0-9a-f]{40}$")
-
-# Strict DOI pattern — the ``10.X/Y`` form where X is the numeric registrant
-# code (4–9 digits in practice; the spec is looser but registrants don't
-# actually issue 1-3 digit codes) and Y is the suffix. Rejecting malformed
-# DOIs at parse time surfaces a clear error instead of letting them sail
-# through to S2 and come back as "returned no paperId" much later.
-_DOI_BODY_RE = re.compile(r"^10\.\d{4,9}/\S+$")
-
-
-def normalize_s2_id(raw: Any) -> str | None:
-    """Normalize a Semantic Scholar paper ID.
-
-    Accepts the SHA-40 hex form, the existing ``<namespace>:<id>`` prefixed
-    forms, and bare DOIs (``10.xxxx/yyy``). Bare and ``DOI:``-prefixed
-    strings are validated against :data:`_DOI_BODY_RE`; malformed DOIs
-    return ``None`` rather than sneaking through to S2 unchecked.
-    """
-    if not raw or not isinstance(raw, str):
-        return None
-    raw = raw.strip()
-    if not raw:
-        return None
-    if _S2_HEX_RE.match(raw):
-        return raw
-    # DOI-prefixed: validate the body.
-    if raw.startswith("DOI:"):
-        body = raw[4:]
-        return f"DOI:{body}" if _DOI_BODY_RE.match(body) else None
-    # Other namespaces pass through unchanged (their validation lives in
-    # their own source systems — we don't regex-gate them here).
-    if any(raw.startswith(prefix) for prefix in ("CorpusId:", "ArXiv:", "PMID:", "MAG:", "ACL:")):
-        return raw
-    # Bare DOI → prepend namespace, still validate body.
-    if raw.startswith("10."):
-        return f"DOI:{raw}" if _DOI_BODY_RE.match(raw) else None
     return None
 
 
