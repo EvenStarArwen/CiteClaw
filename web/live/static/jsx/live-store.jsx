@@ -96,6 +96,17 @@ async function searchSeeds(q) {
   return _api("/api/seeds/search?q=" + encodeURIComponent(q) + "&limit=25");
 }
 
+// Lazy abstract fallback (OpenAlex) for a seed paper whose S2 abstract is empty.
+async function fetchSeedAbstract(paper) {
+  return _api("/api/seeds/abstract", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      paper_id: paper.id, externalIds: paper.externalIds || {},
+      title: paper.title, year: paper.year,
+    }),
+  });
+}
+
 function _pushLog(tag, msg) {
   const now = new Date();
   const t = now.toTimeString().slice(0, 8);
@@ -189,5 +200,5 @@ async function stopRun() {
 
 Object.assign(window, {
   LIVE, useLive, fmtK, fmtNum, fmtDur,
-  refreshSettings, saveSettings, searchSeeds, startRun, stopRun,
+  refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun,
 });

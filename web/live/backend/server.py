@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import keys_store, models_catalog
+from .abstracts import fetch_abstract
 from .config_translate import TranslationError, build_config
 from .run_manager import manager
 from .s2_seeds import S2SearchError, search_seeds
@@ -166,6 +167,22 @@ async def seeds_search(q: str = "", limit: int = 20) -> JSONResponse:
         raise HTTPException(status_code=502, detail=str(e))
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Semantic Scholar search failed: {e}")
+
+
+@app.post("/api/seeds/abstract")
+async def seeds_abstract(req: Request) -> JSONResponse:
+    body = await req.json()
+    try:
+        result = await asyncio.to_thread(
+            fetch_abstract,
+            str(body.get("paper_id") or ""),
+            body.get("externalIds") or {},
+            str(body.get("title") or ""),
+            body.get("year"),
+        )
+        return JSONResponse(result)
+    except Exception:  # noqa: BLE001 - fallback is best-effort; never 500 the UI
+        return JSONResponse({"abstract": "", "source": None})
 
 
 @app.post("/api/run")

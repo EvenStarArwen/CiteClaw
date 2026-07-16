@@ -13,9 +13,28 @@ function BuildSeeds() {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const [detailId, setDetailId] = React.useState(null);
+  const [absLoading, setAbsLoading] = React.useState(false);
 
   const selected = seeds.filter(p => p.starred).length;
   const detailPaper = detailId ? seeds.find(p => p.id === detailId) : null;
+
+  // When a paper with no S2 abstract is opened, try the OpenAlex fallback once.
+  React.useEffect(() => {
+    const p = detailId ? seeds.find(s => s.id === detailId) : null;
+    if (!p || p.abstract || p._absTried) return;
+    let cancelled = false;
+    setAbsLoading(true);
+    fetchSeedAbstract(p)
+      .then(res => {
+        if (cancelled) return;
+        LIVE.set({ seeds: LIVE.get("seeds").map(s => s.id === p.id
+          ? { ...s, abstract: (res && res.abstract) || "", _absTried: true, _absSource: res && res.source }
+          : s) });
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setAbsLoading(false); });
+    return () => { cancelled = true; };
+  }, [detailId]);
 
   const runSearch = async (q) => {
     q = (q || "").trim();
@@ -86,9 +105,18 @@ function BuildSeeds() {
               </div>
             </div>
             <div>
-              <div className="seed-abstract-k">Abstract</div>
+              <div className="seed-abstract-k">
+                Abstract
+                {detailPaper.abstract && detailPaper._absSource && (
+                  <span className="seed-abstract-src"> · via {detailPaper._absSource}</span>
+                )}
+              </div>
               <div className={"seed-abstract" + (detailPaper.abstract ? "" : " is-empty")}>
-                {detailPaper.abstract || "No abstract available from Semantic Scholar for this paper."}
+                {detailPaper.abstract
+                  ? detailPaper.abstract
+                  : absLoading
+                    ? "Looking for an abstract…"
+                    : "No abstract available from Semantic Scholar or OpenAlex for this paper."}
               </div>
             </div>
           </div>
