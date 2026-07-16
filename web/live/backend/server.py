@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from . import keys_store, models_catalog
 from .config_translate import TranslationError, build_config
 from .run_manager import manager
-from .s2_seeds import search_seeds
+from .s2_seeds import S2SearchError, search_seeds
 from .snapshots import build_graph, build_metrics
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -162,6 +162,8 @@ async def seeds_search(q: str = "", limit: int = 20) -> JSONResponse:
     try:
         results = await asyncio.to_thread(search_seeds, q, limit)
         return JSONResponse(results)
+    except S2SearchError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Semantic Scholar search failed: {e}")
 
