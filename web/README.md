@@ -1,8 +1,10 @@
 # CiteClaw local Web UI
 
-This is the first live, laptop-only version of the CiteClaw interface. It uses
-the visual language of the original static `CiteClaw_WebUI` demo, but its
-buttons now call the real CiteClaw pipeline.
+This is the first live, laptop-only version of the CiteClaw interface. The
+frontend is a direct production port of the supplied static `CiteClaw_WebUI`:
+its six-panel structure, component class names, CSS, typography, spacing, and
+graph treatment are preserved. Static sample arrays, fake timers, and simulated
+growth were replaced with the real CiteClaw config and run APIs.
 
 In plain language, the **frontend** is the page you see in the browser. The
 **backend** is the local Python process that validates configs, holds API keys
@@ -108,6 +110,7 @@ The main implementation is split between:
 
 - `web/backend/runtime.py` — run lifecycle and real pipeline bridge
 - `web/backend/api/` — config, model catalog, run, and WebSocket endpoints
-- `web/frontend/src/components/BuildView.tsx` — configuration workspace
-- `web/frontend/src/components/RunView.tsx` — live monitoring workspace
-- `web/frontend/src/components/GraphView.tsx` — sigma.js citation graph
+- `web/frontend/src/components/ClaudeUI.tsx` — live wiring for the supplied
+  Claude Design build, run, dashboard, accepted-paper, and SVG graph components
+- `web/frontend/src/styles.css` — supplied Claude Design CSS plus a small set of
+  live-state styles for credentials, YAML editing, HITL, and error messages
