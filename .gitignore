@@ -10,8 +10,13 @@ build/
 
 # Env
 .env
+.env.local
+.env.*
 .venv/
 venv/
+
+# Live WebUI: private local keys + vendored browser libs (if downloaded)
+web/live/static/vendor/
 
 # OS
 .DS_Store
