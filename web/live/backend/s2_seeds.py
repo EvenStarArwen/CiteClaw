@@ -14,7 +14,7 @@ import time
 import httpx
 
 _S2_SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-_FIELDS = "title,year,venue,authors,citationCount,externalIds"
+_FIELDS = "title,abstract,year,venue,authors,citationCount,externalIds"
 
 
 class S2SearchError(RuntimeError):
@@ -74,6 +74,7 @@ def search_seeds(query: str, limit: int = 20) -> list[dict]:
         out.append({
             "id": p.get("paperId", ""),
             "title": p.get("title") or "",
+            "abstract": p.get("abstract") or "",
             "authors": _authors_str(p.get("authors")),
             "year": p.get("year") or 0,
             "venue": p.get("venue") or "",

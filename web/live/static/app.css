@@ -4599,3 +4599,62 @@ select.gp-v { cursor: pointer; }
 .acc-item.is-fresh {
   animation: accFresh 1800ms ease-out;
 }
+
+/* ==========================================================================
+   SEED CARD — star-to-accept button + full-panel abstract detail
+   The star toggles accept; clicking the card body opens the abstract. Both
+   reuse existing seed / acc-detail tokens so the mono skin carries over.
+   ========================================================================== */
+
+/* Star is now an actual button. Keep the same 16px footprint as the old
+   .seed-star span so the title + meta stay aligned; extend the hit area with
+   a padded ::before that doesn't affect layout. */
+.seed-star-btn {
+  flex: 0 0 auto;
+  width: 16px; height: 16px; padding: 0; margin: 0;
+  border: none; background: transparent; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative;
+  border-radius: 4px;
+}
+.seed-star-btn::before { content: ""; position: absolute; inset: -5px; border-radius: 6px; }
+.seed-star-btn .seed-star { width: 100%; height: 100%; }
+.seed-star-btn:hover .seed-star { color: var(--cc-warning); transform: scale(1.08); }
+.seed-star-btn:active .seed-star { transform: scale(0.9); }
+/* Filled glyph once starred (colour is set by the existing is-selected rules) */
+.seed-card.is-selected .seed-star svg { fill: currentColor; }
+
+/* --- Full-panel abstract detail (replaces the list while reading) --- */
+.seed-detail { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.seed-detail-back {
+  flex: 0 0 auto; align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 8px 12px 2px; padding: 6px 8px;
+  border: none; background: transparent; cursor: pointer;
+  font-family: var(--cc-font-mono); font-size: 11px;
+  color: var(--cc-ink-3); border-radius: 4px;
+  transition: color 120ms, background 120ms;
+}
+.seed-detail-back:hover { color: var(--cc-ink-1); background: var(--cc-hover-soft); }
+.seed-detail-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 8px 14px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.seed-abstract-k {
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--cc-ink-3); margin-bottom: 6px;
+}
+.seed-abstract {
+  font-size: 12.5px; line-height: 1.6; color: var(--cc-ink-1);
+  white-space: pre-wrap; text-wrap: pretty;
+}
+.seed-abstract.is-empty { color: var(--cc-ink-3); font-style: italic; }
+.seed-detail-foot {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--cc-rule);
+  background: var(--cc-panel);
+  padding: 10px 14px;
+  display: flex; gap: 8px;
+}
+.seed-detail-foot .btn:first-child { flex: 1 1 auto; justify-content: center; }
