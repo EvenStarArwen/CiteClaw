@@ -106,17 +106,43 @@ function App() {
     setRunSelectedPaperId(id);
     setDetailOpen(!!id);
   };
-  const selectedNode = pipeline.find(n => n.id === selectedId) || null;
+  const selectedNode = findStep(pipeline, selectedId);
 
   const patchSelectedConfig = (patch) => {
-    setPipeline(ps => ps.map(n =>
-      n.id === selectedId ? { ...n, config: { ...n.config, ...patch } } : n
-    ));
+    setPipeline(ps => mapStep(ps, selectedId, n => ({ ...n, config: { ...n.config, ...patch } })));
   };
   const updateScreener = (newScreener) => {
-    setPipeline(ps => ps.map(n =>
-      n.id === selectedId ? { ...n, screener: newScreener } : n
-    ));
+    setPipeline(ps => mapStep(ps, selectedId, n => ({ ...n, screener: newScreener })));
+  };
+
+  // Pipeline construction (serial extend / parallel branch / remove).
+  const addSerial = (kind) => {
+    const step = newStep(kind);
+    setPipeline(ps => [...ps, step]);
+    setSelectedId(step.id);
+  };
+  const wrapParallel = (kind) => {
+    setPipeline(ps => {
+      if (ps.length === 0) return ps;
+      const last = ps[ps.length - 1];
+      const fresh = newStep(kind);
+      if (last.kind === "parallel") {
+        return [...ps.slice(0, -1), { ...last, branches: [...last.branches, fresh] }];
+      }
+      if (last.kind === "seed") return [...ps, fresh];  // can't parallel the seed
+      setSelectedId(fresh.id);
+      return [...ps.slice(0, -1), newParallel([last, fresh])];
+    });
+  };
+  const addBranch = (rowId, kind) => {
+    const fresh = newStep(kind);
+    setPipeline(ps => mapStep(ps, rowId, row =>
+      row.kind === "parallel" ? { ...row, branches: [...row.branches, fresh] } : row));
+    setSelectedId(fresh.id);
+  };
+  const removeSelected = () => {
+    setPipeline(ps => removeStep(ps, selectedId));
+    setSelectedId(null);
   };
 
   // Top-bar actions — launch / stop a real run through the backend
@@ -170,25 +196,23 @@ function App() {
       {mode === "build" ? (
         <>
           <BuildSeeds />
-          <div className="main build" style={{ gridTemplateRows: `${(tweaks.buildSplit ?? 0.42) * 100}% 6px 1fr` }}>
+          <div className="main main-solo">
             <BuildPipeline
               pipeline={pipeline}
               selectedId={selectedId}
               setSelectedId={setSelectedId}
               blockStyle={blockStyle}
-              setBlockStyle={setBlockStyle}
-            />
-            <PaneSplitter
-              value={tweaks.buildSplit ?? 0.42}
-              onChange={(v) => setTweak("buildSplit", v)}
-            />
-            <BuildConfig
-              node={selectedNode}
-              onPatchConfig={patchSelectedConfig}
-              onUpdateScreener={updateScreener}
+              onAddSerial={addSerial}
+              onWrapParallel={wrapParallel}
+              onAddBranch={addBranch}
             />
           </div>
-          <BuildBlocks />
+          <BuildStepConfig
+            node={selectedNode}
+            onPatchConfig={patchSelectedConfig}
+            onUpdateScreener={updateScreener}
+            onRemove={removeSelected}
+          />
         </>
       ) : (
         <>

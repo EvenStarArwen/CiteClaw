@@ -11,13 +11,17 @@ function SettingsModal({ open, onClose }) {
   const [kS2, setKS2] = React.useState("");
   const [model, setModel] = React.useState(settings.model);
   const [effort, setEffort] = React.useState(settings.effort);
+  const [maxPapers, setMaxPapers] = React.useState(settings.maxPapers || 200);
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState(null);
 
   React.useEffect(() => {
     if (open) { refreshSettings(); setMsg(null); setKGemini(""); setKOpenai(""); setKS2(""); }
   }, [open]);
-  React.useEffect(() => { setModel(settings.model); setEffort(settings.effort); }, [settings.model, settings.effort]);
+  React.useEffect(() => {
+    setModel(settings.model); setEffort(settings.effort);
+    setMaxPapers(settings.maxPapers || 200);
+  }, [settings.model, settings.effort, settings.maxPapers]);
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape" && open) onClose(); };
     window.addEventListener("keydown", onKey);
@@ -36,7 +40,7 @@ function SettingsModal({ open, onClose }) {
 
   const save = async () => {
     setBusy(true); setMsg(null);
-    const patch = { model, reasoning_effort: effort };
+    const patch = { model, reasoning_effort: effort, max_papers: maxPapers };
     if (kGemini.trim()) patch.gemini_api_key = kGemini.trim();
     if (kOpenai.trim()) patch.openai_api_key = kOpenai.trim();
     if (kS2.trim()) patch.s2_api_key = kS2.trim();
@@ -121,6 +125,14 @@ function SettingsModal({ open, onClose }) {
                 : " ⚠ Not supported yet — this first release only runs Gemini 3.1 Flash-Lite. Selecting this will report an error on Run."}
             </div>
           )}
+
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--cc-ink-2)", marginTop: 20 }}>Run parameters</div>
+          <label style={T.label}>Max papers</label>
+          <input type="number" min="1" max="5000" step="10" style={T.input}
+            value={maxPapers} onChange={e => setMaxPapers(Math.max(1, +e.target.value || 1))} />
+          <div style={T.note}>
+            Upper bound on how many papers a run may collect before it stops.
+          </div>
 
           {msg && (
             <div style={{ marginTop: 14, fontSize: 12, color: msg.ok ? "var(--cc-positive)" : "var(--cc-danger)" }}>

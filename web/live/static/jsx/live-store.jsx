@@ -30,7 +30,7 @@ const LIVE = (function () {
     error: null,
     logs: [],
     lastAddedId: null,
-    settings: { model: "gemini-3.1-flash-lite", effort: "minimal", keys: {}, models: [], loaded: false },
+    settings: { model: "gemini-3.1-flash-lite", effort: "minimal", maxPapers: 200, keys: {}, models: [], loaded: false },
   };
   return {
     getState: () => state,
@@ -79,7 +79,7 @@ async function refreshSettings() {
     let models = [];
     try { models = await _api("/api/models"); } catch (_) {}
     LIVE.set({ settings: Object.assign({}, LIVE.get("settings"),
-      { model: s.model, effort: s.reasoning_effort, keys: s.keys, models, loaded: true }) });
+      { model: s.model, effort: s.reasoning_effort, maxPapers: s.max_papers, keys: s.keys, models, loaded: true }) });
   } catch (_) { /* backend not up yet */ }
 }
 
@@ -88,7 +88,7 @@ async function saveSettings(patch) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
   });
   LIVE.set({ settings: Object.assign({}, LIVE.get("settings"),
-    { model: s.model, effort: s.reasoning_effort, keys: s.keys }) });
+    { model: s.model, effort: s.reasoning_effort, maxPapers: s.max_papers, keys: s.keys }) });
   return s;
 }
 
@@ -163,7 +163,7 @@ async function startRun(pipeline, seeds) {
     pipeline: pipeline,
     seeds: starred.map(s => ({ paper_id: s.id, title: s.title })),
     model: st.model, reasoning_effort: st.effort,
-    limits: { max_papers: 200 }, topic: "",
+    limits: { max_papers: st.maxPapers || 200 }, topic: "",
   };
   const netVer = (LIVE.get("network").version || 0) + 1;
   LIVE.set({

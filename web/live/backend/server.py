@@ -41,7 +41,7 @@ ASSEMBLY_ORDER = [
     "build-seeds.jsx",
     "build-pipeline.jsx",
     "build-config.jsx",
-    "build-blocks.jsx",
+    "build-step-config.jsx",
     "run-progress.jsx",
     "run-network.jsx",
     "run-dashboard.jsx",
@@ -104,7 +104,8 @@ def assemble_index() -> str:
 
 # in-memory default model/effort (the Settings modal's picker); the run POST
 # always carries its own, so this is just what the picker preloads.
-_defaults = {"model": models_catalog.SUPPORTED_MODEL, "reasoning_effort": models_catalog.DEFAULT_EFFORT}
+_defaults = {"model": models_catalog.SUPPORTED_MODEL, "reasoning_effort": models_catalog.DEFAULT_EFFORT,
+             "max_papers": 200}
 
 
 @asynccontextmanager
@@ -134,6 +135,7 @@ async def get_settings() -> dict:
         "keys": keys_store.key_presence(),
         "model": _defaults["model"],
         "reasoning_effort": _defaults["reasoning_effort"],
+        "max_papers": _defaults["max_papers"],
         "supported_model": models_catalog.SUPPORTED_MODEL,
     }
 
@@ -146,10 +148,16 @@ async def post_settings(req: Request) -> dict:
         _defaults["model"] = str(body["model"]).strip()
     if body.get("reasoning_effort"):
         _defaults["reasoning_effort"] = str(body["reasoning_effort"]).strip()
+    if body.get("max_papers") is not None:
+        try:
+            _defaults["max_papers"] = max(1, min(5000, int(body["max_papers"])))
+        except (TypeError, ValueError):
+            pass
     return {
         "keys": keys_store.key_presence(),
         "model": _defaults["model"],
         "reasoning_effort": _defaults["reasoning_effort"],
+        "max_papers": _defaults["max_papers"],
     }
 
 

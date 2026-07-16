@@ -124,49 +124,73 @@ def _translate_screener(screener: Any) -> Any:
     return _translate_filter(screener)
 
 
+def _translate_step(node: dict[str, Any]) -> dict[str, Any]:
+    """Translate one regular pipeline node into a single CiteClaw step dict."""
+    kind = node.get("kind")
+    cfg = node.get("config") or {}
+    screener = _translate_screener(node.get("screener"))
+    if kind == "seed":
+        return {"step": "LoadSeeds"}
+    if kind == "fwd":
+        step: dict[str, Any] = {"step": "ExpandForward"}
+        if cfg.get("maxChildren") is not None:
+            step["max_citations"] = int(cfg["maxChildren"])
+        if screener:
+            step["screener"] = screener
+        return step
+    if kind == "bwd":
+        step = {"step": "ExpandBackward"}
+        if screener:
+            step["screener"] = screener
+        return step
+    if kind == "rerank":
+        step = {"step": "Rerank", "metric": cfg.get("metric", "citation")}
+        if cfg.get("targetN") is not None:
+            step["k"] = int(cfg["targetN"])
+        # MMR lambda in the design ~ "want diversity"; map any positive
+        # lambda to cluster-diverse reranking via walktrap.
+        lam = cfg.get("lambda")
+        if lam is not None and float(lam) > 0:
+            step["diversity"] = {"type": "walktrap", "n_communities": 3}
+        return step
+    if kind == "rsc":
+        step = {"step": "ReScreen"}
+        if screener:
+            step["screener"] = screener
+        return step
+    if kind == "sink":
+        return {"step": "Finalize"}
+    raise TranslationError(f"Unknown pipeline node kind: {kind!r}")
+
+
 def translate_pipeline(model: dict[str, Any]) -> list[dict[str, Any]]:
-    """Turn the design's ``pipeline`` node list into CiteClaw ``pipeline:``."""
+    """Turn the design's ``pipeline`` node list into CiteClaw ``pipeline:``.
+
+    A node with ``kind == "parallel"`` carries ``branches`` (each branch is a
+    single regular node in this version) and maps to CiteClaw's ``Parallel``
+    step — the incoming signal is broadcast to every branch and the outputs
+    are unioned. A degenerate single-branch parallel collapses to a plain
+    serial step.
+    """
     nodes = model.get("pipeline") or []
     steps: list[dict[str, Any]] = []
     has_finalize = False
     for node in nodes:
-        kind = node.get("kind")
-        cfg = node.get("config") or {}
-        screener = _translate_screener(node.get("screener"))
-        if kind == "seed":
-            steps.append({"step": "LoadSeeds"})
-        elif kind == "fwd":
-            step: dict[str, Any] = {"step": "ExpandForward"}
-            if cfg.get("maxChildren") is not None:
-                step["max_citations"] = int(cfg["maxChildren"])
-            if screener:
-                step["screener"] = screener
-            steps.append(step)
-        elif kind == "bwd":
-            step = {"step": "ExpandBackward"}
-            if screener:
-                step["screener"] = screener
-            steps.append(step)
-        elif kind == "rerank":
-            step = {"step": "Rerank", "metric": cfg.get("metric", "citation")}
-            if cfg.get("targetN") is not None:
-                step["k"] = int(cfg["targetN"])
-            # MMR lambda in the design ~ "want diversity"; map any positive
-            # lambda to cluster-diverse reranking via walktrap.
-            lam = cfg.get("lambda")
-            if lam is not None and float(lam) > 0:
-                step["diversity"] = {"type": "walktrap", "n_communities": 3}
-            steps.append(step)
-        elif kind == "rsc":
-            step = {"step": "ReScreen"}
-            if screener:
-                step["screener"] = screener
-            steps.append(step)
-        elif kind == "sink":
-            steps.append({"step": "Finalize"})
+        if node.get("kind") == "parallel":
+            branches: list[list[dict[str, Any]]] = []
+            for b in node.get("branches") or []:
+                branches.append([_translate_step(b)])
+            if not branches:
+                continue
+            if len(branches) == 1:
+                steps.append(branches[0][0])
+            else:
+                steps.append({"step": "Parallel", "branches": branches})
+            continue
+        step = _translate_step(node)
+        steps.append(step)
+        if step.get("step") == "Finalize":
             has_finalize = True
-        else:
-            raise TranslationError(f"Unknown pipeline node kind: {kind!r}")
     if not has_finalize:
         steps.append({"step": "Finalize"})
     return steps

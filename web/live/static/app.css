@@ -4659,3 +4659,106 @@ select.gp-v { cursor: pointer; }
   display: flex; gap: 8px;
 }
 .seed-detail-foot .btn:first-child { flex: 1 1 auto; justify-content: center; }
+
+/* ==========================================================================
+   BUILD MODE v2 — vertical pipeline, add-buttons, parallel branches, and the
+   right-sidebar step configurator (replaces the lower BuildConfig panel).
+   ========================================================================== */
+
+/* Build main = a single pane (the pipeline); no bottom split. */
+.main.main-solo { display: flex; flex-direction: column; min-height: 0; }
+.main.main-solo > .pane { flex: 1; min-height: 0; border-bottom: none !important; }
+
+/* ---- Vertical pipeline ---- */
+.pipe-header-vert {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid var(--cc-rule);
+}
+.pipe-vtitle { font-size: 13px; font-weight: 600; color: var(--cc-ink-1); letter-spacing: -0.01em; }
+.pipe-vhint { font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-3); }
+.pipe-inner-vert {
+  min-width: 0;
+  align-items: center; justify-content: flex-start;
+  padding: 28px 24px 48px;
+}
+.pipe-col { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.pipe-vedge { flex: 0 0 auto; height: 30px; width: 14px; }
+.pipe-vedge svg { width: 14px; height: 30px; overflow: visible; }
+.pipe-node-line { display: flex; align-items: center; gap: 10px; }
+.pipe-col .pblock { width: 300px; box-sizing: border-box; }
+
+/* ---- Add buttons (serial / parallel / branch) ---- */
+.pipe-add {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--cc-font-mono); font-size: 11px;
+  color: var(--cc-ink-2);
+  padding: 7px 13px;
+  background: var(--cc-panel);
+  border: 1px dashed var(--cc-rule-strong);
+  border-radius: 999px; cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.pipe-add:hover { color: var(--cc-ink-1); border-color: var(--cc-ink-2); background: var(--cc-hover-soft); }
+.pipe-add-side { border-style: solid; border-color: var(--cc-rule); padding: 6px 11px; }
+.pipe-add-serial { margin-top: 2px; }
+.pipe-add-branch { padding: 6px 11px; }
+
+/* ---- Parallel group ---- */
+.pipe-parallel {
+  position: relative;
+  border: 1px dashed var(--cc-rule-strong);
+  border-radius: 12px;
+  padding: 22px 16px 16px;
+  background: color-mix(in srgb, var(--cc-accent) 3%, transparent);
+}
+.pipe-parallel-tag {
+  position: absolute; top: -9px; left: 14px;
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--cc-ink-3);
+  background: var(--cc-bg); padding: 1px 8px;
+  border: 1px solid var(--cc-rule); border-radius: 999px;
+}
+.pipe-parallel-branches { display: flex; gap: 16px; align-items: flex-start; }
+.pipe-branch { display: flex; flex-direction: column; align-items: center; }
+.pipe-branch .pblock { width: 210px; box-sizing: border-box; }
+.pipe-branch-add {
+  align-self: center; min-height: 60px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---- Right-sidebar step configurator ---- */
+.cfg-right-empty {
+  flex: 1; display: flex; flex-direction: column; gap: 10px;
+  align-items: center; justify-content: center;
+  padding: 32px 24px; text-align: center;
+  color: var(--cc-ink-3); font-size: 12px;
+}
+.cfg-right-body { padding: 4px 0 24px; }
+.cfg-step-head {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 12px 14px 10px; border-bottom: 1px solid var(--cc-rule);
+}
+.cfg-step-headmain { flex: 1; min-width: 0; }
+.cfg-step-title { font-size: 13px; font-weight: 600; color: var(--cc-ink-1); letter-spacing: -0.01em; }
+.cfg-step-sub { font-family: var(--cc-font-mono); font-size: 10.5px; color: var(--cc-ink-3); margin-top: 2px; }
+.cfg-step-remove { flex: 0 0 auto; color: var(--cc-ink-3); }
+.cfg-step-remove:hover { color: var(--cc-danger); }
+.cfg-section { padding: 12px 14px; border-bottom: 1px solid var(--cc-rule-soft); }
+.cfg-section:last-child { border-bottom: none; }
+.cfg-section-head {
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--cc-font-mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--cc-ink-3);
+  margin-bottom: 10px;
+}
+.cfg-section-hint { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--cc-ink-faint); }
+.cfg-step-params, .cfg-detail-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+.cfg-tree-wrap { }
+
+/* Filter config detail (reuses .seed-detail shell) */
+.cfg-detail-kind { font-size: 13px; font-weight: 600; color: var(--cc-ink-1); }
+.cfg-detail-summary {
+  font-family: var(--cc-font-mono); font-size: 11px; color: var(--cc-ink-3);
+  padding-bottom: 12px; border-bottom: 1px solid var(--cc-rule-soft);
+}
