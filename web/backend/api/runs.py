@@ -1,108 +1,108 @@
-"""Run management endpoints — read state, trigger new runs.
-
-PE-09 adds ``POST /api/runs/{run_id}/hitl`` which accepts user labels
-for the ``HumanInTheLoop`` step's web-mode gate. The gate registry
-maps run_id → ``HitlGate`` and is populated by the pipeline runner
-when it starts a web-mode run.
-"""
+"""Live run lifecycle and WebSocket endpoints."""
 
 from __future__ import annotations
 
-import json
+import asyncio
 import os
-import uuid
-from pathlib import Path
-from typing import Any
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
+
+from runtime import (
+    RunConflictError,
+    UnsupportedRunConfiguration,
+    run_manager,
+)
+
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
-# In-memory registry of active HITL gates, keyed by run_id.
-# The pipeline runner registers a gate here when starting a web-mode
-# run; the POST /hitl endpoint looks it up to deliver user labels.
-_hitl_gates: dict[str, Any] = {}
-
-
-def register_hitl_gate(run_id: str, gate: Any) -> None:
-    """Register a ``HitlGate`` for a run so the HITL endpoint can find it."""
-    _hitl_gates[run_id] = gate
-
-
-def unregister_hitl_gate(run_id: str) -> None:
-    """Remove a gate when the run finishes."""
-    _hitl_gates.pop(run_id, None)
-
-
-def _data_dir() -> Path:
-    return Path(os.environ.get("CITECLAW_DATA_DIR", str(PROJECT_ROOT / "data_bio")))
+class Credentials(BaseModel):
+    s2_api_key: str = ""
+    gemini_api_key: str = ""
+    openai_api_key: str = ""
 
 
 class RunRequest(BaseModel):
-    config_name: str
+    config_yaml: str = Field(min_length=1)
+    config_name: str = "config.yaml"
+    credentials: Credentials = Field(default_factory=Credentials)
 
 
 class HitlResponse(BaseModel):
-    """User labels submitted from the frontend HitlModal."""
     labels: dict[str, bool]
     stop_requested: bool = False
 
 
-@router.get("/{run_id}")
-async def get_run(run_id: str) -> dict[str, Any]:
-    """Return run state from ``<data_dir>/run_state.json``.
+@router.get("")
+async def list_runs():
+    return run_manager.list()
 
-    For now ``run_id`` is treated as the data directory name. The
-    default data directory is used when ``run_id`` equals ``"latest"``.
-    """
-    if run_id == "latest":
-        state_path = _data_dir() / "run_state.json"
-    else:
-        state_path = PROJECT_ROOT / run_id / "run_state.json"
 
-    if not state_path.exists():
-        raise HTTPException(status_code=404, detail=f"Run state not found: {run_id}")
-    with open(state_path) as f:
-        return json.load(f)
+@router.get("/credentials/status")
+async def credential_status():
+    return {
+        "s2": bool(
+            os.environ.get("CITECLAW_S2_API_KEY")
+            or os.environ.get("S2_API_KEY")
+            or os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
+        ),
+        "gemini": bool(os.environ.get("CITECLAW_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")),
+        "openai": bool(os.environ.get("CITECLAW_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")),
+    }
 
 
 @router.post("")
-async def create_run(req: RunRequest) -> dict[str, str]:
-    """Trigger a new pipeline run (placeholder — returns a run_id).
-
-    Full implementation will spawn a background task with the pipeline
-    runner. For now it validates the config exists and returns an ID.
-    """
-    config_path = PROJECT_ROOT / req.config_name
-    if not config_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Config not found: {req.config_name}",
+async def create_run(req: RunRequest):
+    try:
+        session = run_manager.start(
+            config_yaml=req.config_yaml,
+            config_name=req.config_name,
+            credentials=req.credentials.model_dump(),
         )
-    run_id = str(uuid.uuid4())[:8]
-    return {"run_id": run_id, "config_name": req.config_name, "status": "accepted"}
+    except RunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (UnsupportedRunConfiguration, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return session.snapshot()
+
+
+@router.get("/{run_id}")
+async def get_run(run_id: str):
+    session = run_manager.get(run_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    return session.snapshot(include_graph=True)
 
 
 @router.post("/{run_id}/hitl")
-async def submit_hitl_labels(
-    run_id: str, body: HitlResponse,
-) -> dict[str, str]:
-    """Receive user labels from the frontend HitlModal and unblock the
-    ``HumanInTheLoop`` step's gate.
+async def submit_hitl(run_id: str, body: HitlResponse):
+    session = run_manager.get(run_id)
+    if session is None or session.hitl_gate is None:
+        raise HTTPException(status_code=404, detail=f"No active HITL request for {run_id}")
+    session.hitl_gate.labels.update(body.labels)
+    session.hitl_gate.stop_requested = body.stop_requested
+    session.hitl_gate.event.set()
+    return {"status": "accepted", "labels_count": len(body.labels)}
 
-    The pipeline thread is blocked on ``gate.event.wait()``; this
-    endpoint writes labels into the gate and sets the event.
-    """
-    gate = _hitl_gates.get(run_id)
-    if gate is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No active HITL gate for run {run_id}",
-        )
-    gate.labels.update(body.labels)
-    gate.stop_requested = body.stop_requested
-    gate.event.set()
-    return {"status": "accepted", "labels_count": str(len(body.labels))}
+
+@router.websocket("/{run_id}/stream")
+async def run_stream(websocket: WebSocket, run_id: str):
+    session = run_manager.get(run_id)
+    if session is None:
+        await websocket.close(code=4404, reason="Run not found")
+        return
+    await websocket.accept()
+    index = 0
+    try:
+        while True:
+            events, next_index = session.events_since(index)
+            for event in events:
+                await websocket.send_json(event)
+            index = next_index
+            if session.status in {"completed", "failed"} and index >= len(session.events):
+                break
+            await asyncio.sleep(0.2)
+    except WebSocketDisconnect:
+        return

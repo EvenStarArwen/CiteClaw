@@ -63,7 +63,7 @@ Set your API keys in a `.env` file (or export them directly):
 ```bash
 OPENAI_API_KEY=...
 GEMINI_API_KEY=...
-SEMANTIC_SCHOLAR_API_KEY=...   # optional, improves S2 rate limits
+SEMANTIC_SCHOLAR_API_KEY=...   # required for live Web UI searches
 ```
 
 ---
@@ -472,14 +472,21 @@ Then reference the alias in any filter block with `model: gemma-4-31b`.
 
 ## Web UI
 
-A lightweight FastAPI + React (Vite + TypeScript + Tailwind) dashboard lives in
-`web/`. It provides config browsing, run monitoring, and citation graph
-visualization (sigma.js / graphology).
+A local FastAPI + React dashboard lives in `web/`. It lets you edit or validate
+the complete YAML configuration, provide API keys without saving them into the
+config, launch a real CiteClaw run, follow its logs and metrics live, and explore
+the growing citation graph.
 
 ```bash
-# backend
-cd web/backend && uvicorn main:app --port 9999
+pip install -e '.[web]'
+cd web/frontend
+pnpm install
+pnpm build
+cd ../..
 
-# frontend
-cd web/frontend && pnpm dev
+python -m citeclaw web
 ```
+
+Then open <http://127.0.0.1:9999>. See [`web/README.md`](web/README.md) for a
+beginner-friendly walkthrough, development commands, security notes, and the
+current first-release limits.

@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from typing import Callable
 from pathlib import Path
 
 from citeclaw.config import SeedPaper, load_settings
@@ -904,8 +905,8 @@ def _run_meta_review(argv: list[str]) -> None:
 def _build_web_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="citeclaw web")
     p.add_argument(
-        "--host", type=str, default="0.0.0.0",
-        help="Bind address (default: 0.0.0.0)",
+        "--host", type=str, default="127.0.0.1",
+        help="Bind address (default: 127.0.0.1, local machine only)",
     )
     p.add_argument(
         "--port", type=int, default=9999,

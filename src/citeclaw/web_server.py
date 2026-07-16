@@ -34,42 +34,17 @@ def _build_app():
     if backend_str not in sys.path:
         sys.path.insert(0, backend_str)
 
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
+    from main import create_app  # type: ignore[import-not-found]
 
-    # Import routers from the backend package (now on sys.path).
-    from api.configs import router as configs_router  # type: ignore[import-not-found]
-    from api.papers import router as papers_router  # type: ignore[import-not-found]
-    from api.runs import router as runs_router  # type: ignore[import-not-found]
-
-    app = FastAPI(title="CiteClaw", version="0.1.0")
-
-    app.include_router(configs_router)
-    app.include_router(papers_router)
-    app.include_router(runs_router)
-
-    @app.get("/health")
-    async def health():
-        return {"status": "ok"}
-
-    # Serve the React production bundle.  Must be mounted LAST so the
-    # ``/api/*`` routes take precedence.
-    if _FRONTEND_DIST.is_dir():
-        app.mount(
-            "/",
-            StaticFiles(directory=str(_FRONTEND_DIST), html=True),
-            name="frontend",
-        )
-    else:
+    if not _FRONTEND_DIST.is_dir():
         log.warning(
             "Frontend build not found at %s — run 'pnpm build' in web/frontend/",
             _FRONTEND_DIST,
         )
+    return create_app(frontend_dist=_FRONTEND_DIST)
 
-    return app
 
-
-def serve(*, host: str = "0.0.0.0", port: int = 9999) -> None:
+def serve(*, host: str = "127.0.0.1", port: int = 9999) -> None:
     """Start the uvicorn server."""
     import uvicorn
 

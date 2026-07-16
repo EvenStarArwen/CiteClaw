@@ -41,16 +41,18 @@ _TOKENS_PER_MILLION = 1_000_000
 # to ``output`` until a provider splits them — at which point only
 # this table changes.
 #
-# Verified: 2026-01. Bump the date when re-checking the pricing pages.
+# Verified: 2026-07-16. Bump the date when re-checking the pricing pages.
 # Unknown models fall back to ``GENERIC`` (mid-range Gemini Flash).
 
 MODEL_PRICING: dict[str, tuple[float, float, float]] = {
     # Gemini 3
     "gemini-3-pro":                          (1.25, 10.00, 10.00),
     "gemini-3-flash":                        (0.30,  2.50,  2.50),
-    "gemini-3-flash-lite":                   (0.10,  0.40,  0.40),
-    "gemini-3.1-flash-lite-preview":         (0.10,  0.40,  0.40),
-    "gemini-3.1-pro-preview":                (1.25, 10.00, 10.00),
+    "gemini-3.5-flash":                      (1.50,  9.00,  9.00),
+    "gemini-3-flash-lite":                   (0.25,  1.50,  1.50),
+    "gemini-3.1-flash-lite":                 (0.25,  1.50,  1.50),
+    "gemini-3.1-flash-lite-preview":         (0.25,  1.50,  1.50),
+    "gemini-3.1-pro-preview":                (2.00, 12.00, 12.00),
     # Gemini 2.5
     "gemini-2.5-pro":                        (1.25, 10.00, 10.00),
     "gemini-2.5-flash":                      (0.30,  2.50,  2.50),

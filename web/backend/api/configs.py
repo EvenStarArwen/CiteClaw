@@ -1,52 +1,85 @@
-"""Config YAML endpoints: list, read, write."""
+"""Safe local YAML configuration endpoints."""
 
 from __future__ import annotations
 
-import json
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from citeclaw.config import Settings, _normalize_yaml
+from runtime import PROJECT_ROOT
+
 
 router = APIRouter(prefix="/api/configs", tags=["configs"])
+CONFIG_DIR = PROJECT_ROOT / "configs"
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.ya?ml$")
 
-# Project root is two levels up from web/backend/
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+class YamlBody(BaseModel):
+    yaml: str
 
 
-def _config_dir() -> Path:
-    """Return the directory where YAML configs live (project root)."""
-    return PROJECT_ROOT
+def _path_for(name: str) -> Path:
+    if not _SAFE_NAME.fullmatch(name):
+        raise HTTPException(status_code=400, detail="Config name must be a simple .yaml filename.")
+    return CONFIG_DIR / name
+
+
+def _parse(text: str) -> dict[str, Any]:
+    try:
+        raw = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid YAML: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=422, detail="Config must contain a top-level mapping.")
+    try:
+        return _normalize_yaml(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("")
 async def list_configs() -> list[dict[str, str]]:
-    """List all ``config*.yaml`` files in the project root."""
-    configs = sorted(_config_dir().glob("config*.yaml"))
-    return [{"name": p.name} for p in configs]
+    configs = sorted((*CONFIG_DIR.glob("*.yaml"), *CONFIG_DIR.glob("*.yml")))
+    return [{"name": path.name} for path in configs]
 
 
 @router.get("/{name}")
 async def get_config(name: str) -> dict[str, Any]:
-    """Read a YAML config and return it as JSON."""
-    path = _config_dir() / name
-    if not path.exists() or not path.name.startswith("config"):
+    path = _path_for(name)
+    if not path.exists():
         raise HTTPException(status_code=404, detail=f"Config not found: {name}")
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    return data
+    text = path.read_text(encoding="utf-8")
+    return {"name": name, "yaml": text, "config": _parse(text)}
 
 
-@router.post("/{name}")
-async def save_config(name: str, body: dict[str, Any]) -> dict[str, str]:
-    """Write a config from JSON payload to YAML."""
-    if not name.startswith("config") or not name.endswith(".yaml"):
-        raise HTTPException(
-            status_code=400,
-            detail="Config name must match config*.yaml",
-        )
-    path = _config_dir() / name
-    with open(path, "w") as f:
-        yaml.dump(body, f, default_flow_style=False, sort_keys=False)
+@router.put("/{name}")
+async def save_config(name: str, body: YamlBody) -> dict[str, str]:
+    path = _path_for(name)
+    _parse(body.yaml)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(body.yaml.rstrip() + "\n", encoding="utf-8")
     return {"status": "saved", "name": name}
+
+
+@router.post("/validate/yaml")
+async def validate_config(body: YamlBody) -> dict[str, Any]:
+    raw = _parse(body.yaml)
+    try:
+        settings = Settings(**raw)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "valid": True,
+        "summary": {
+            "model": settings.screening_model,
+            "reasoning_effort": settings.reasoning_effort,
+            "seeds": len(settings.seed_papers),
+            "blocks": len(settings.blocks),
+            "pipeline_steps": len(settings.pipeline),
+        },
+    }

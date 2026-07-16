@@ -1,1 +1,1 @@
-"""CiteClaw web API routers."""
+"""FastAPI routes for the local CiteClaw Web UI."""
