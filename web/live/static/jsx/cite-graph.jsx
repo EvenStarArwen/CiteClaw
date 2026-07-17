@@ -358,6 +358,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     top3: new Set(), labels: false, paperById: {}, posCache: {},
     activeData: { nodes: [], nodeSet: new Set(), edges: [] },
     kind: "paper", legacy: false, vmax: 0, origHover: null,
+    sizeK: 1, origZoomFn: null,
     dataKey: null, stopTimer: null, animRAF: 0, replayTimer: null,
     syncTimer: null,
     fa2: { ...CG_FA2_DEFAULTS }, vis: { ...CG_VIS_DEFAULTS }, gf: { ...CG_GF_DEFAULTS },
@@ -453,7 +454,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
 
   // ---- node / edge insertion (f5 spawn-near-neighbour + grow animation) --
   const nodeAttrs = (p, animate) => {
-    const size = cgNodeSize(p, st.kind, st.vis, st.vmax, st.legacy);
+    const size = cgNodeSize(p, st.kind, st.vis, st.vmax, st.legacy) * (st.sizeK || 1);
     const cv = cgColorValue(p, st.kind, st.cdomain);
     return {
       label: cgTrunc(p.title, 48),
@@ -499,7 +500,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     for (const [a, b, w] of (st.adjPairs[id] || [])) {
       if (a !== b && g.hasNode(a) && g.hasNode(b) && !g.hasEdge(a, b)) {
         // `weight` feeds FA2's edgeWeightInfluence (0-weight links don't pull)
-        g.addEdge(a, b, { size: 0.8, weight: w });
+        g.addEdge(a, b, { size: 0.8 * (st.sizeK || 1), weight: w });
       }
     }
   };
@@ -532,6 +533,9 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       6000 + (st.graph ? st.graph.order * 12 + st.graph.size * 5 : 0));
     st.stopTimer = setTimeout(() => {
       if (st.layout) { try { st.layout.stop(); } catch (_) {} }
+      // overlap-prevention invariant: whenever the layout comes to rest,
+      // residual collisions are swept away
+      if (st.fa2.adjustSizes) separationSweep();
       setLayoutOn(false);
     }, win);
   };
@@ -540,13 +544,21 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   // hundred iterations before the next paint, so a fresh dataset appears
   // with coarse structure instead of the random init. Cheap (~0.3s for 640
   // nodes) and skipped silently if the sync entry failed to load.
+  // graphology-FA2's Barnes-Hut branch computes repulsion on the quad-tree
+  // WITHOUT the size-aware anti-collision term — with BH on, adjustSizes is
+  // silently ignored (measured: ~10k overlapping pairs that never resolve).
+  // Exact O(n²) repulsion honours it and is cheap at this scale (~2ms/iter
+  // at 640 nodes), so overlap-prevention forces BH off.
+  const layoutSettings = (settings) =>
+    settings.adjustSizes ? { ...settings, barnesHutOptimize: false } : { ...settings };
+
   const prewarmLayout = () => {
     const sync = window.GraphLibs && window.GraphLibs.fa2Sync;
     if (!st.graph || !sync || st.graph.order < 20) return;
     try {
       sync.assign(st.graph, {
         iterations: CG_PREWARM_ITERS,
-        settings: { ...st.fa2, slowDown: Math.max(2, st.fa2.slowDown / 2) },
+        settings: layoutSettings({ ...st.fa2, slowDown: Math.max(2, st.fa2.slowDown / 2) }),
       });
     } catch (_) {}
   };
@@ -559,7 +571,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const makeLayout = (settings) => {
     if (st.layout) { try { st.layout.kill(); } catch (_) {} st.layout = null; }
     if (!st.graph || !window.GraphLibs || !window.GraphLibs.FA2Layout) return;
-    st.layout = new window.GraphLibs.FA2Layout(st.graph, { settings: { ...settings } });
+    st.layout = new window.GraphLibs.FA2Layout(st.graph, { settings: layoutSettings(settings) });
   };
   const fastSettle = (ms) => {
     if (!st.graph) return;
@@ -574,19 +586,91 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     }, ms);
   };
 
+  // Final deterministic separation (Gephi's Noverlap idea): FA2's
+  // anti-collision converges the bulk, but mega-hubs pinned by hundreds of
+  // edges keep a small overlap tail — push residual overlapping pairs apart
+  // along their axis until none remain. ~100ms at 640 nodes.
+  const separationSweep = () => {
+    const g = st.graph;
+    if (!g || g.order < 2) return;
+    const ids = g.nodes();
+    const at = ids.map(id => {
+      const a = g.getNodeAttributes(id);
+      return { x: a.x, y: a.y, size: a.size };
+    });
+    for (let pass = 0; pass < 50; pass++) {
+      let moved = 0;
+      for (let i = 0; i < at.length; i++) {
+        for (let j = i + 1; j < at.length; j++) {
+          let dx = at[j].x - at[i].x, dy = at[j].y - at[i].y;
+          let d = Math.hypot(dx, dy);
+          const need = at[i].size + at[j].size + 0.5;
+          if (d >= need) continue;
+          if (d < 1e-6) { dx = 1; dy = 0; d = 1; }
+          const push = (need - d) / 2, ux = dx / d, uy = dy / d;
+          at[i].x -= ux * push; at[i].y -= uy * push;
+          at[j].x += ux * push; at[j].y += uy * push;
+          moved++;
+        }
+      }
+      if (!moved) break;
+    }
+    ids.forEach((id, i) => g.mergeNodeAttributes(id, { x: at[i].x, y: at[i].y }));
+    if (st.sigma) st.sigma.refresh();
+    drawGrid();
+  };
+
   const toggleLayout = () => {
     if (!st.layout) return;
     if (st.layout.isRunning()) {
       clearTimeout(st.stopTimer);
       st.layout.stop();
+      if (st.fa2.adjustSizes) separationSweep();
       setLayoutOn(false);
     } else heatLayout();
   };
 
-  const rebuildLayout = (settings) => {
+  const rebuildLayout = (settings, ms) => {
     if (!st.graph || !window.GraphLibs || !window.GraphLibs.FA2Layout) return;
     st.fa2 = { ...settings };
-    fastSettle(CG_EDIT_MS);
+    fastSettle(ms != null ? ms : CG_EDIT_MS);
+  };
+
+  // Gephi-true geometry for "Prevent node overlap": FA2's adjustSizes keeps
+  // the discs separated in LAYOUT coordinates, but sigma normally renders
+  // node sizes in a screen-pixel reference decoupled from the graph→viewport
+  // scale — compressing the layout to fit the pane shrinks the gaps but not
+  // the dots, so separated discs still LOOK overlapped. While the toggle is
+  // on, sizes join the position coordinate system (like Gephi's canvas) and
+  // are scaled by the layout's units-per-pixel (sizeK) so they LOOK the same
+  // as before — FA2 then separates exactly the discs you see: zero overlap
+  // in the simulation is zero overlap on screen.
+  const computeSizeK = () => {
+    if (!st.graph || !st.graph.order || !wrapRef.current) return 1;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    st.graph.forEachNode((id, a) => {
+      if (a.x < minX) minX = a.x;
+      if (a.x > maxX) maxX = a.x;
+      if (a.y < minY) minY = a.y;
+      if (a.y > maxY) maxY = a.y;
+    });
+    const vw = Math.max(200, wrapRef.current.clientWidth - 80);
+    const vh = Math.max(200, wrapRef.current.clientHeight - 80);
+    return Math.max(1, Math.max((maxX - minX) / vw, (maxY - minY) / vh));
+  };
+  const applySizeReference = (on) => {
+    if (!st.sigma) return;
+    st.sizeK = on ? computeSizeK() : 1;
+    resizeNodes();
+    if (st.graph) {
+      st.graph.forEachEdge((eid) => st.graph.setEdgeAttribute(eid, "size", 0.8 * st.sizeK));
+    }
+    try {
+      st.sigma.setSetting("itemSizesReference", on ? "positions" : "screen");
+      st.sigma.setSetting("zoomToSizeRatioFunction",
+        on ? ((r) => r) : (st.origZoomFn || ((r) => Math.sqrt(r))));
+      st.sigma.refresh();
+    } catch (_) {}
   };
 
   const stopReplay = () => {
@@ -710,8 +794,9 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         const src = st.graph.source(edge), tgt = st.graph.target(edge);
         const yc = cgRampColor(st.pal, st.cdomain, st.graph.getNodeAttribute(tgt, "_cval"));
         const touches = st.anchor && (src === st.anchor || tgt === st.anchor);
-        if (touches) return { ...data, color: cgFade(yc, 0.85, st.pal.bgRgb), size: 1.6, zIndex: 1 };
-        return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: 0.8 };
+        const k = st.sizeK || 1;
+        if (touches) return { ...data, color: cgFade(yc, 0.85, st.pal.bgRgb), size: 1.6 * k, zIndex: 1 };
+        return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: 0.8 * k };
       },
     };
     if (createNodeBorderProgram) {
@@ -742,6 +827,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     // hover-label box only makes sense when labels are on.
     st.origHover = sigma.getSetting("defaultDrawNodeHover");
     if (!st.labels) sigma.setSetting("defaultDrawNodeHover", () => {});
+    st.origZoomFn = sigma.getSetting("zoomToSizeRatioFunction");
+    if (st.fa2.adjustSizes) applySizeReference(true);
 
     sigma.on("clickNode", ({ node }) => st.onSelect && st.onSelect(node));
     sigma.on("clickStage", () => { if (st.selected) st.onSelect && st.onSelect(null); });
@@ -844,7 +931,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     for (const eid of dropEdges) { g.dropEdge(eid); changed = true; }
     for (const e of act.edges) {
       if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target)) {
-        g.addEdge(e.source, e.target, { size: 0.8, weight: e.weight == null ? 1 : e.weight });
+        g.addEdge(e.source, e.target,
+          { size: 0.8 * (st.sizeK || 1), weight: e.weight == null ? 1 : e.weight });
         changed = true;
       }
     }
@@ -920,7 +1008,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     st.graph.forEachNode((nid) => {
       const p = st.paperById[nid];
       if (!p) return;
-      const size = cgNodeSize(p, st.kind, st.vis, st.vmax, st.legacy);
+      const size = cgNodeSize(p, st.kind, st.vis, st.vmax, st.legacy) * (st.sizeK || 1);
       st.graph.mergeNodeAttributes(nid, { size, _targetSize: size, _animSize: size });
     });
     if (st.sigma) st.sigma.refresh();
@@ -930,8 +1018,12 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     const next = { ...st.fa2, ...patch };
     setFa2(next);
     st.fa2 = next;
+    if (patch.adjustSizes !== undefined) applySizeReference(patch.adjustSizes);
+    // separating a settled dense core needs a real settle window; the sweep
+    // at layout-stop then removes any residual collisions
+    const ms = patch.adjustSizes ? CG_SETTLE_MS : CG_EDIT_MS;
     clearTimeout(st.fa2Timer);
-    st.fa2Timer = setTimeout(() => rebuildLayout(st.fa2), 180);
+    st.fa2Timer = setTimeout(() => rebuildLayout(st.fa2, ms), 180);
   };
   const applyVis = (patch) => {
     const next = { ...st.vis, ...patch };
