@@ -358,6 +358,11 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: 0.8 };
       },
     };
+    if (!st.labels) {
+      // Run view: the .net-tip tooltip is the hover surface — suppress
+      // sigma's own white hover-label box so no text is drawn on the graph.
+      settings.defaultDrawNodeHover = () => {};
+    }
     if (createNodeBorderProgram) {
       try {
         settings.defaultNodeType = "bordered";
