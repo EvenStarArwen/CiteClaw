@@ -20,6 +20,8 @@ FIELD_ENV = {
     "gemini_api_key": "GEMINI_API_KEY",
     "openai_api_key": "OPENAI_API_KEY",
     "s2_api_key": "S2_API_KEY",
+    # Stored for UI completeness — Voyage embeddings aren't enabled yet.
+    "voyage_api_key": "VOYAGE_API_KEY",
 }
 
 

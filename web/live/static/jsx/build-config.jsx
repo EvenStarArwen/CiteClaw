@@ -91,25 +91,52 @@ const NOW_YEAR = new Date().getFullYear();
 
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
-// A small "i-in-a-circle" that toggles a one-line description popover. Used to
-// explain each configurable option without cluttering the form with prose.
+// A small info icon that toggles a description popover. The popover is
+// PORTALED to <body> and fixed-positioned to the LEFT of the icon, so it
+// spills out of the (right) config sidebar into the central panel instead of
+// being clipped by the panel's overflow.
 function InfoDot({ text }) {
   const [open, setOpen] = React.useState(false);
+  const [pos, setPos] = React.useState(null);
   const ref = React.useRef(null);
+  const place = () => {
+    const el = ref.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 240, gap = 10, margin = 8;
+    let left = r.left - gap - W, arrow = "right";          // prefer opening left
+    if (left < margin) { left = Math.min(r.right + gap, window.innerWidth - W - margin); arrow = "left"; }
+    const top = Math.max(margin + 48, Math.min(r.top + r.height / 2, window.innerHeight - margin - 48));
+    setPos({ top, left, arrow });
+  };
   React.useEffect(() => {
     if (!open) return;
+    place();
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const reflow = () => place();
     document.addEventListener("mousedown", onDoc);
     window.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDoc); window.removeEventListener("keydown", onKey); };
+    window.addEventListener("scroll", reflow, true);
+    window.addEventListener("resize", reflow);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", reflow, true);
+      window.removeEventListener("resize", reflow);
+    };
   }, [open]);
   return (
     <span className="info-dot-wrap" ref={ref}>
       <button type="button" className={"info-dot" + (open ? " is-open" : "")}
         onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
-        title="What is this?" aria-label="What is this?">i</button>
-      {open && <span className="info-pop" role="tooltip">{text}</span>}
+        title="What is this?" aria-label="What is this?">
+        <Icon name="info" size={13} />
+      </button>
+      {open && pos && ReactDOM.createPortal(
+        <span className={"info-pop info-pop-" + pos.arrow} role="tooltip"
+          style={{ top: pos.top, left: pos.left }}>{text}</span>,
+        document.body
+      )}
     </span>
   );
 }
@@ -266,6 +293,38 @@ function measureDefaults(kind) {
   if (kind === "CitSim") return { kind: "CitSim", pass_if_cited_at_least: 200 };
   if (kind === "SemanticSim") return { kind: "SemanticSim", embedder: "s2" };
   return { kind: "RefSim" };
+}
+
+// Voyage API-key entry, shown when a SemanticSim measure picks the voyage
+// embedder. The key is stored locally (.env.local via the settings store),
+// NOT in the pipeline JSON. Voyage runs aren't enabled yet — this only makes
+// the UI complete; translate coerces voyage → s2 at run time.
+function VoyageKeyField() {
+  const settings = useLive("settings");
+  const present = !!(settings.keys && settings.keys.voyage_api_key);
+  const [val, setVal] = React.useState("");
+  const [saved, setSaved] = React.useState(false);
+  const commit = () => {
+    const v = val.trim();
+    if (!v) return;
+    saveSettings({ voyage_api_key: v }).then(() => { setVal(""); setSaved(true); }).catch(() => {});
+  };
+  return (
+    <div className="voyage-key">
+      <div className="voyage-key-row">
+        <input type="password" className="voyage-key-input" value={val}
+          placeholder={present ? "•••••••• saved (leave blank to keep)" : "Voyage API key"}
+          onChange={e => { setVal(e.target.value); setSaved(false); }}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }} />
+        {(present || saved) && <span className="voyage-key-ok">✓ set</span>}
+      </div>
+      <div className="voyage-key-note">
+        Voyage embeddings aren’t enabled in this version — runs use s2 (SPECTER2).
+        Your key is stored locally for when they are.
+      </div>
+    </div>
+  );
 }
 
 function AddFilterPopover({ onPick, onClose, allowComposite = true, anchorRef }) {
@@ -428,7 +487,7 @@ function filterSummary(n) {
   };
   switch (n.kind) {
     case "YearFilter":            return `${p.min ?? "…"} – ${p.max ?? "…"}`;
-    case "CitationFilter":        return `at least ${p.beta ?? "…"} citations`;
+    case "CitationFilter":        return `β = ${p.beta ?? "…"} cites/yr of age`;
     case "SimilarityFilter":      return `similarity ≥ ${p.threshold ?? ""} · ${(p.measures || []).length} measures`;
     case "LLMFilter":             return `${scopeLabel[p.scope] || p.scope} · ${queryText(p)}`;
     case "TitleKeywordFilter":    return `Title ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
@@ -498,11 +557,12 @@ function FilterParams({ node, onPatch }) {
     case "CitationFilter":
       return (
         <>
-          <ConfigField label="β" hint="min cites per year of age">
+          <ConfigField label="β" hint="min cites per year of age"
+            info="Minimum citations required per year since publication — NOT an absolute count. A paper passes when its citation count ≥ β × max(1, age in years), so young papers clear a lower bar than old ones.">
             <input type="number" step="5" value={p.beta} onChange={e => set("beta", +e.target.value)} />
           </ConfigField>
           <ConfigField label="Formula" wide hint="cites ≥ β · max(1, age)">
-            <input disabled value="cites >= beta * max(1, 2026 - year)" />
+            <input disabled value={`cites >= ${p.beta ?? "β"} * max(1, ${NOW_YEAR} - year)`} />
           </ConfigField>
         </>
       );
@@ -546,14 +606,16 @@ function FilterParams({ node, onPatch }) {
                     </label>
                   )}
                   {m.kind === "SemanticSim" && (
-                    <label className="cfg-measure2-param">
-                      <span>Embedder</span>
-                      <select value={m.embedder || "s2"} onChange={e => patchMeasure(i, { embedder: e.target.value })}>
-                        <option value="s2">s2 · SPECTER2</option>
-                        <option value="voyage">voyage</option>
-                        <option value="local">local</option>
-                      </select>
-                    </label>
+                    <>
+                      <label className="cfg-measure2-param">
+                        <span>Embedder</span>
+                        <select value={m.embedder || "s2"} onChange={e => patchMeasure(i, { embedder: e.target.value })}>
+                          <option value="s2">s2 · SPECTER2</option>
+                          <option value="voyage">voyage</option>
+                        </select>
+                      </label>
+                      {m.embedder === "voyage" && <VoyageKeyField />}
+                    </>
                   )}
                   {m.kind === "RefSim" && <div className="cfg-measure2-none">No parameters.</div>}
                 </div>
@@ -640,12 +702,24 @@ function BlockParams({ node, onPatchConfig }) {
   if (node.kind === "rerank") {
     return (
       <>
-        <ConfigField label="λ (diversity)" hint="0 = relevance, 1 = diversity">
-          <input type="number" step="0.1" min="0" max="1" value={c.lambda} onChange={e => onPatchConfig({ lambda: +e.target.value })} />
+        <ConfigField label="Metric"
+          info="How each paper is scored before the top-K cut. citation = raw citation count; pagerank = PageRank centrality over the collected citation graph.">
+          <select value={c.metric || "citation"} onChange={e => onPatchConfig({ metric: e.target.value })}>
+            <option value="citation">citation · raw count</option>
+            <option value="pagerank">pagerank · graph centrality</option>
+          </select>
         </ConfigField>
-        <ConfigField label="Target N"><input type="number" value={c.targetN} onChange={e => onPatchConfig({ targetN: +e.target.value })} /></ConfigField>
-        <ConfigField label="Strategy" wide>
-          <select defaultValue="MMR"><option>MMR</option><option>Cluster-based</option><option>Random baseline</option></select>
+        <ConfigField label="Keep top-K" info="How many of the highest-scored papers to keep (the CLI's k).">
+          <input type="number" min="1" step="10" value={c.targetN ?? 100}
+            onChange={e => onPatchConfig({ targetN: Math.max(1, +e.target.value || 1) })} />
+        </ConfigField>
+        <ConfigField label="Diversity" wide
+          info="Off keeps a plain top-K. Cluster-diverse spreads the top-K across communities in the citation graph (floor-then-proportional) so one dense topic can't crowd out the rest — pick the clustering algorithm.">
+          <select value={c.diversity || "off"} onChange={e => onPatchConfig({ diversity: e.target.value })}>
+            <option value="off">off · plain top-K</option>
+            <option value="walktrap">cluster-diverse · walktrap</option>
+            <option value="louvain">cluster-diverse · louvain</option>
+          </select>
         </ConfigField>
       </>
     );

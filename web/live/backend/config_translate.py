@@ -49,7 +49,9 @@ def _translate_measure(m: dict[str, Any]) -> dict[str, Any]:
     if kind == "CitSim" and m.get("pass_if_cited_at_least") is not None:
         out["pass_if_cited_at_least"] = int(m["pass_if_cited_at_least"])
     if kind == "SemanticSim":
-        out["embedder"] = m.get("embedder", "s2")
+        emb = m.get("embedder", "s2")
+        # Voyage embeddings aren't enabled in the WebUI yet — always run on s2.
+        out["embedder"] = "s2" if emb == "voyage" else emb
     return out
 
 
@@ -146,14 +148,18 @@ def _translate_step(node: dict[str, Any]) -> dict[str, Any]:
             step["screener"] = screener
         return step
     if kind == "rerank":
-        step = {"step": "Rerank", "metric": cfg.get("metric", "citation")}
+        step = {"step": "Rerank", "metric": cfg.get("metric") or "citation"}
         if cfg.get("targetN") is not None:
             step["k"] = int(cfg["targetN"])
-        # MMR lambda in the design ~ "want diversity"; map any positive
-        # lambda to cluster-diverse reranking via walktrap.
-        lam = cfg.get("lambda")
-        if lam is not None and float(lam) > 0:
-            step["diversity"] = {"type": "walktrap", "n_communities": 3}
+        div = cfg.get("diversity")
+        # Legacy: a positive lambda used to mean "turn diversity on" (walktrap).
+        if div is None and cfg.get("lambda") is not None and float(cfg["lambda"]) > 0:
+            div = "walktrap"
+        if div and div not in ("off", "none"):
+            if div == "walktrap":
+                step["diversity"] = {"type": "walktrap", "n_communities": 3}
+            else:
+                step["diversity"] = {"type": div}
         return step
     if kind == "rsc":
         step = {"step": "ReScreen"}

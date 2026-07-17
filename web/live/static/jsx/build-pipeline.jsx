@@ -403,7 +403,7 @@ function newStep(kind) {
   const node = { id: "n" + n, kind, name: m.name, localId, config: {}, screener: null };
   if (kind === "fwd")         node.config = { maxCitations: 100 };
   else if (kind === "bwd")    node.config = {};
-  else if (kind === "rerank") node.config = { lambda: 0.4, targetN: 500 };
+  else if (kind === "rerank") node.config = { metric: "citation", targetN: 100, diversity: "walktrap" };
   else if (kind === "seed")   node.config = { query: "", years: "2019-2025", maxSeeds: 42 };
   return node;
 }

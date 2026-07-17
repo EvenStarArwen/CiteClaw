@@ -91,7 +91,7 @@ const INITIAL_PIPELINE = [
       ]
     } },
   { id: "n4", kind: "rerank", name: "Diversified rerank", localId: "RRK-04",
-    config: { lambda: 0.4, targetN: 500 },
+    config: { metric: "citation", targetN: 500, diversity: "walktrap" },
     screener: null },
 ];
 

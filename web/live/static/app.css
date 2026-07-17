@@ -3875,30 +3875,42 @@ select.gp-v { cursor: pointer; }
 .cfg-kv-v { font-size: 11px; }
 .cc-mono-xs { font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-3); }
 
-/* info dot + popover (per-option help) */
+/* info icon + popover (per-option help). Popover is portaled to <body> and
+   fixed-positioned so it spills out of the sidebar instead of being clipped. */
 .info-dot-wrap { position: relative; display: inline-flex; margin-left: 5px; vertical-align: middle; }
 .info-dot {
-  width: 13px; height: 13px; border-radius: 50%; padding: 0;
-  border: 1px solid var(--cc-rule-strong); background: var(--cc-paper);
-  color: var(--cc-ink-3); font-family: var(--cc-font-mono);
-  font-size: 9px; font-style: italic; font-weight: 700; line-height: 1;
-  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  padding: 0; margin: 0; border: none; background: transparent; cursor: pointer;
+  color: var(--cc-ink-faint); line-height: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.info-dot:hover, .info-dot.is-open { color: var(--cc-accent); border-color: var(--cc-accent); }
+.info-dot:hover, .info-dot.is-open { color: var(--cc-accent); }
 .info-pop {
-  position: absolute; z-index: 60; top: 19px; left: 50%; transform: translateX(-50%);
-  width: 218px; max-width: 62vw;
+  position: fixed; z-index: 300; width: 240px; max-width: 62vw;
+  transform: translateY(-50%);
   background: var(--cc-ink-1); color: var(--cc-paper);
-  padding: 8px 10px; border-radius: 6px;
-  font-size: 11px; line-height: 1.45; font-weight: 400;
+  padding: 9px 11px; border-radius: 7px;
+  font-size: 11px; line-height: 1.5; font-weight: 400;
   text-transform: none; letter-spacing: 0;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  box-shadow: 0 8px 26px rgba(0,0,0,0.28);
 }
-.info-pop::before {
-  content: ""; position: absolute; top: -5px; left: 50%; transform: translateX(-50%);
-  border-left: 5px solid transparent; border-right: 5px solid transparent;
-  border-bottom: 5px solid var(--cc-ink-1);
+.info-pop::after {
+  content: ""; position: absolute; top: 50%; margin-top: -5px;
+  border-top: 5px solid transparent; border-bottom: 5px solid transparent;
 }
+.info-pop-right::after { right: -5px; border-left: 5px solid var(--cc-ink-1); }
+.info-pop-left::after  { left: -5px;  border-right: 5px solid var(--cc-ink-1); }
+
+/* Voyage API key entry (shown when a SemanticSim measure picks voyage) */
+.voyage-key { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
+.voyage-key-row { display: flex; align-items: center; gap: 8px; }
+.voyage-key-input {
+  flex: 1 1 auto; padding: 5px 9px; background: var(--cc-paper);
+  border: 1px solid var(--cc-rule-strong); border-radius: 5px;
+  font-size: 12px; color: var(--cc-ink-1); outline: none;
+}
+.voyage-key-input:focus { border-color: var(--cc-accent); }
+.voyage-key-ok { font-size: 10px; color: var(--cc-positive, #2e7d32); white-space: nowrap; }
+.voyage-key-note { font-size: 10px; line-height: 1.4; color: var(--cc-ink-3); }
 
 /* bounded number stepper — buttons gray out at the limits */
 .numstep { display: inline-flex; align-items: stretch; }
