@@ -35,6 +35,9 @@ function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove }) {
     );
   }
 
+  // Seed set → the accepted-papers "cart" (its own panel), not a param form.
+  if (node.kind === "seed") return <SeedSetConfig />;
+
   const isScreener = node.kind === "fwd" || node.kind === "bwd" || node.kind === "rsc";
 
   // --- screener tree ops (mirror the old BuildConfig) ---

@@ -19,6 +19,7 @@ const LIVE = (function () {
   let state = {
     // build mode
     seeds: (window.SEED_PAPERS || []).slice(),   // seed panel: demo template until searched
+    searchQuery: "",                              // last seed-search query → run topic
     // run mode
     accepted: [],
     progress: { steps: [], done: 0, total: 0, current: null, overallPct: 0 },
@@ -92,8 +93,12 @@ async function saveSettings(patch) {
   return s;
 }
 
-async function searchSeeds(q) {
-  return _api("/api/seeds/search?q=" + encodeURIComponent(q) + "&limit=25");
+async function searchSeeds(q, filters) {
+  const f = filters || {};
+  const params = new URLSearchParams({ q: q || "", limit: "25" });
+  if (f.year && f.year !== "Any") params.set("year", f.year);
+  if (f.minCites) params.set("min_cites", String(f.minCites));
+  return _api("/api/seeds/search?" + params.toString());
 }
 
 // Lazy abstract fallback (OpenAlex) for a seed paper whose S2 abstract is empty.
@@ -163,7 +168,8 @@ async function startRun(pipeline, seeds) {
     pipeline: pipeline,
     seeds: starred.map(s => ({ paper_id: s.id, title: s.title })),
     model: st.model, reasoning_effort: st.effort,
-    limits: { max_papers: st.maxPapers || 200 }, topic: "",
+    limits: { max_papers: st.maxPapers || 200 },
+    topic: (LIVE.get("searchQuery") || "").trim(),
   };
   const netVer = (LIVE.get("network").version || 0) + 1;
   LIVE.set({

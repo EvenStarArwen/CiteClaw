@@ -4661,6 +4661,48 @@ select.gp-v { cursor: pointer; }
 }
 .seed-detail-foot .btn:first-child { flex: 1 1 auto; justify-content: center; }
 
+/* ---- Seed search: collapsible filter bar + accepted-seeds cart ---- */
+.seed-filterbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 12px; border-bottom: 1px solid var(--cc-rule-soft);
+}
+.seed-filter-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--cc-font-mono); font-size: 11px; color: var(--cc-ink-2);
+  background: transparent; border: 1px solid var(--cc-rule); border-radius: 6px;
+  padding: 4px 9px; cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.seed-filter-toggle:hover, .seed-filter-toggle.is-open {
+  color: var(--cc-ink-1); border-color: var(--cc-ink-2); background: var(--cc-hover-soft);
+}
+.seed-accepted-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--cc-ink-2);
+  background: transparent; border: none; cursor: pointer; padding: 2px;
+}
+.seed-accepted-badge:hover { color: var(--cc-ink-1); }
+.seed-filters {
+  display: flex; flex-direction: column; gap: 9px;
+  padding: 11px 12px; border-bottom: 1px solid var(--cc-rule-soft);
+  background: var(--cc-chrome);
+}
+.seed-filter-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.seed-filter-k { font-size: 11.5px; color: var(--cc-ink-2); }
+.seed-filter-row select, .seed-filter-row input {
+  width: 128px; box-sizing: border-box; padding: 5px 8px; font-size: 12px;
+  border: 1px solid var(--cc-btn-border); border-radius: 4px;
+  background: var(--cc-paper); color: var(--cc-ink-1);
+}
+.seeds-empty { padding: 22px 16px; font-size: 12px; color: var(--cc-ink-3); text-align: center; line-height: 1.55; }
+.seed-remove-btn {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: none; background: transparent;
+  color: var(--cc-ink-3); cursor: pointer; border-radius: 4px;
+}
+.seed-remove-btn:hover { color: var(--cc-danger); background: var(--cc-hover-soft); }
+.seed-cart { padding-top: 4px; }
+
 /* ==========================================================================
    BUILD MODE v2 — vertical pipeline, add-buttons, parallel branches, and the
    right-sidebar step configurator (replaces the lower BuildConfig panel).

@@ -213,7 +213,7 @@ function App() {
 
       {mode === "build" ? (
         <>
-          <BuildSeeds />
+          <BuildSeeds onSelectSeed={() => { const s = pipeline.find(el => el.kind === "seed"); if (s) setSelectedId(s.id); }} />
           <div className="main main-solo">
             <BuildPipeline
               pipeline={pipeline}

@@ -1,202 +1,298 @@
 /* eslint-disable */
-// Section B (Build mode) — Seeds search.
-// Live: searches Semantic Scholar (press Enter), stars feed the seed block.
-// Starred papers stick across searches so they aren't lost when results change.
+// Section B (Build mode) — Seed search + the accepted-seeds "cart".
 //
-// Interactions:
-//   · click the STAR on a card  -> accept/unaccept it as a seed
-//   · click the card body       -> open the full abstract (fills the panel)
+// LEFT sidebar (BuildSeeds): a search box + a collapsible Filters bar
+//   (year window, min citations) → candidate results. Starring a paper
+//   ACCEPTS it as a seed, moving it out of this list into the seed-set block.
+// RIGHT sidebar (SeedSetConfig, shown when the Seed set block is selected):
+//   the accepted papers as cards; removing one returns it to the search list.
+// Both share SeedAbstractDetail — click a card to read the full abstract.
 
-function BuildSeeds() {
+const YEAR_PRESETS = ["Any", "2015-2025", "2019-2025", "2022-2025"];
+
+// Fetch an OpenAlex abstract fallback into the store for a paper with none.
+function _loadSeedAbstract(p) {
+  return fetchSeedAbstract(p).then(res => {
+    LIVE.set({ seeds: LIVE.get("seeds").map(s => s.id === p.id
+      ? { ...s, abstract: (res && res.abstract) || "", _absTried: true, _absSource: res && res.source }
+      : s) });
+  }).catch(() => {});
+}
+
+function _s2Url(p) {
+  const ext = p.externalIds || {};
+  if (ext.DOI) return "https://doi.org/" + ext.DOI;
+  if (ext.ArXiv) return "https://arxiv.org/abs/" + ext.ArXiv;
+  return "https://www.semanticscholar.org/paper/" + p.id;
+}
+
+// Accept / remove a paper (shared by both panels; mutates the store).
+function acceptSeed(id) { LIVE.set({ seeds: LIVE.get("seeds").map(p => p.id === id ? { ...p, starred: true } : p) }); }
+function removeSeed(id) { LIVE.set({ seeds: LIVE.get("seeds").map(p => p.id === id ? { ...p, starred: false } : p) }); }
+
+// Full-panel abstract view (shared by the search list + the seed cart).
+function SeedAbstractDetail({ paper, onBack, footer }) {
+  const [absLoading, setAbsLoading] = React.useState(false);
+  React.useEffect(() => {
+    if (!paper || paper.abstract || paper._absTried) return;
+    let cancelled = false;
+    setAbsLoading(true);
+    _loadSeedAbstract(paper).finally(() => { if (!cancelled) setAbsLoading(false); });
+    return () => { cancelled = true; };
+  }, [paper ? paper.id : null]);
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onBack(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onBack]);
+  if (!paper) return null;
+  return (
+    <div className="seed-detail">
+      <button className="seed-detail-back" onClick={onBack} title="Back (Esc)">
+        <Icon name="arrow-left" size={13} /> Back
+      </button>
+      <div className="seed-detail-body">
+        <div className="acc-detail-title">{paper.title}</div>
+        <div className="acc-detail-meta">{paper.authors || "Unknown authors"}</div>
+        <div className="acc-detail-grid">
+          <div><div className="acc-detail-k">Year</div><div className="acc-detail-v">{paper.year || "—"}</div></div>
+          <div><div className="acc-detail-k">Citations</div><div className="acc-detail-v">{(paper.cites || 0).toLocaleString()}</div></div>
+          <div style={{ gridColumn: "1 / 3" }}>
+            <div className="acc-detail-k">Venue</div>
+            <div className="acc-detail-v" style={{ whiteSpace: "normal" }}>{paper.venue || "—"}</div>
+          </div>
+        </div>
+        <div>
+          <div className="seed-abstract-k">
+            Abstract
+            {paper.abstract && paper._absSource && <span className="seed-abstract-src"> · via {paper._absSource}</span>}
+          </div>
+          <div className={"seed-abstract" + (paper.abstract ? "" : " is-empty")}>
+            {paper.abstract
+              ? paper.abstract
+              : absLoading
+                ? "Looking for an abstract…"
+                : "No abstract available from Semantic Scholar or OpenAlex for this paper."}
+          </div>
+        </div>
+      </div>
+      <div className="seed-detail-foot">{footer}</div>
+    </div>
+  );
+}
+
+// One paper row. mode "candidate" → star to accept; mode "accepted" → × to remove.
+function SeedCard({ paper, onOpen, onAction, mode }) {
+  const accepted = mode === "accepted";
+  return (
+    <div className="seed-card" onClick={() => onOpen(paper.id)} title="Click to read the abstract">
+      <div className="seed-card-head">
+        <button
+          className={accepted ? "seed-remove-btn" : "seed-star-btn"}
+          onClick={e => { e.stopPropagation(); onAction(paper.id); }}
+          title={accepted ? "Remove from seeds" : "Star as seed"}
+          aria-label={accepted ? "Remove from seeds" : "Star as seed"}
+        >
+          <span className={accepted ? "seed-remove" : "seed-star"}>
+            <Icon name={accepted ? "x" : "star"} size={13} />
+          </span>
+        </button>
+        <span className="seed-title">{paper.title}</span>
+      </div>
+      <div className="seed-meta">
+        <span>{paper.authors}</span>
+        <span className="seed-meta-sep">·</span>
+        <span>{paper.year}</span>
+        <span className="seed-meta-sep">·</span>
+        <span>{paper.venue}</span>
+        <span className="seed-meta-sep">·</span>
+        <span className="seed-cites">{(paper.cites || 0).toLocaleString()} cites</span>
+      </div>
+    </div>
+  );
+}
+
+function BuildSeeds({ onSelectSeed }) {
   const seeds = useLive("seeds");
   const [query, setQuery] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const [detailId, setDetailId] = React.useState(null);
-  const [absLoading, setAbsLoading] = React.useState(false);
+  const [showFilters, setShowFilters] = React.useState(false);
+  const [year, setYear] = React.useState("Any");
+  const [minCites, setMinCites] = React.useState(0);
 
-  const selected = seeds.filter(p => p.starred).length;
+  const candidates = seeds.filter(p => !p.starred);
+  const acceptedCount = seeds.length - candidates.length;
   const detailPaper = detailId ? seeds.find(p => p.id === detailId) : null;
 
-  // When a paper with no S2 abstract is opened, try the OpenAlex fallback once.
-  React.useEffect(() => {
-    const p = detailId ? seeds.find(s => s.id === detailId) : null;
-    if (!p || p.abstract || p._absTried) return;
-    let cancelled = false;
-    setAbsLoading(true);
-    fetchSeedAbstract(p)
-      .then(res => {
-        if (cancelled) return;
-        LIVE.set({ seeds: LIVE.get("seeds").map(s => s.id === p.id
-          ? { ...s, abstract: (res && res.abstract) || "", _absTried: true, _absSource: res && res.source }
-          : s) });
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setAbsLoading(false); });
-    return () => { cancelled = true; };
-  }, [detailId]);
-
-  const runSearch = async (q) => {
+  const runSearch = async (q, f) => {
     q = (q || "").trim();
     if (!q) return;
     setBusy(true); setErr(null);
     try {
-      const results = await searchSeeds(q);
+      const results = await searchSeeds(q, f || { year, minCites });
       const starredMap = {};
       seeds.forEach(p => { if (p.starred) starredMap[p.id] = p; });
       const merged = results.map(r => ({ ...r, starred: !!starredMap[r.id] }));
       const seen = new Set(results.map(r => r.id));
       Object.values(starredMap).forEach(p => { if (!seen.has(p.id)) merged.push(p); });
-      LIVE.set({ seeds: merged });
+      LIVE.set({ seeds: merged, searchQuery: q });
     } catch (e) {
       setErr(e.message || "search failed");
     }
     setBusy(false);
   };
 
-  const toggle = (id) => LIVE.set({
-    seeds: seeds.map(p => p.id === id ? { ...p, starred: !p.starred } : p),
-  });
-
-  // Esc closes the detail view (matches the Settings modal behaviour).
-  React.useEffect(() => {
-    if (!detailPaper) return;
-    const onKey = (e) => { if (e.key === "Escape") setDetailId(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [detailPaper]);
-
-  const s2Url = (p) => {
-    const ext = p.externalIds || {};
-    if (ext.DOI) return "https://doi.org/" + ext.DOI;
-    if (ext.ArXiv) return "https://arxiv.org/abs/" + ext.ArXiv;
-    return "https://www.semanticscholar.org/paper/" + p.id;
+  // Change a filter → re-run the search immediately (only if there's a query).
+  const applyFilter = (patch) => {
+    if (patch.year !== undefined) setYear(patch.year);
+    if (patch.minCites !== undefined) setMinCites(patch.minCites);
+    const next = { year, minCites, ...patch };
+    if (query.trim()) runSearch(query, next);
   };
+
+  if (detailPaper) {
+    return (
+      <aside className="panel panel-left">
+        <div className="ph"><span className="ph-title">Seeds</span><span className="ph-count">abstract</span></div>
+        <SeedAbstractDetail
+          paper={detailPaper}
+          onBack={() => setDetailId(null)}
+          footer={<>
+            <button className="btn btn-primary" onClick={() => { acceptSeed(detailPaper.id); setDetailId(null); }}>
+              <Icon name="star" size={13} /> Star as seed
+            </button>
+            <a className="btn btn-ghost" href={_s2Url(detailPaper)} target="_blank" rel="noreferrer" title="Open source">
+              <Icon name="external-link" size={12} />
+            </a>
+          </>}
+        />
+      </aside>
+    );
+  }
 
   return (
     <aside className="panel panel-left">
       <div className="ph">
         <span className="ph-title">Seeds</span>
-        <span className="ph-count">
-          {detailPaper ? "abstract" : (busy ? "…" : seeds.length + " results")}
-        </span>
+        <span className="ph-count">{busy ? "…" : candidates.length + " results"}</span>
       </div>
 
-      {detailPaper ? (
-        <div className="seed-detail">
-          <button className="seed-detail-back" onClick={() => setDetailId(null)} title="Back (Esc)">
-            <Icon name="arrow-left" size={13} /> Back to results
-          </button>
-          <div className="seed-detail-body">
-            <div className="acc-detail-title">{detailPaper.title}</div>
-            <div className="acc-detail-meta">{detailPaper.authors || "Unknown authors"}</div>
-            <div className="acc-detail-grid">
-              <div>
-                <div className="acc-detail-k">Year</div>
-                <div className="acc-detail-v">{detailPaper.year || "—"}</div>
-              </div>
-              <div>
-                <div className="acc-detail-k">Citations</div>
-                <div className="acc-detail-v">{(detailPaper.cites || 0).toLocaleString()}</div>
-              </div>
-              <div style={{ gridColumn: "1 / 3" }}>
-                <div className="acc-detail-k">Venue</div>
-                <div className="acc-detail-v" style={{ whiteSpace: "normal" }}>{detailPaper.venue || "—"}</div>
-              </div>
-            </div>
-            <div>
-              <div className="seed-abstract-k">
-                Abstract
-                {detailPaper.abstract && detailPaper._absSource && (
-                  <span className="seed-abstract-src"> · via {detailPaper._absSource}</span>
-                )}
-              </div>
-              <div className={"seed-abstract" + (detailPaper.abstract ? "" : " is-empty")}>
-                {detailPaper.abstract
-                  ? detailPaper.abstract
-                  : absLoading
-                    ? "Looking for an abstract…"
-                    : "No abstract available from Semantic Scholar or OpenAlex for this paper."}
-              </div>
-            </div>
+      <div className="searchbox">
+        <Icon name="search" size={12} />
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") runSearch(query); }}
+          placeholder="Search Semantic Scholar — press Enter"
+        />
+        {query && (
+          <button className="ph-btn" onClick={() => setQuery("")} title="Clear"><Icon name="x" size={11} /></button>
+        )}
+      </div>
+
+      <div className="seed-filterbar">
+        <button className={"seed-filter-toggle" + (showFilters ? " is-open" : "")} onClick={() => setShowFilters(v => !v)}>
+          <Icon name="sliders-horizontal" size={12} /> Filters
+          <Icon name={showFilters ? "chevron-up" : "chevron-down"} size={11} />
+        </button>
+        <button className="seed-accepted-badge" onClick={onSelectSeed} title="Show the seed set (right panel)">
+          <span className="seeds-counter-n">{acceptedCount}</span>
+          <Icon name="star" size={11} style={{ color: "var(--cc-warning)" }} /> accepted
+        </button>
+      </div>
+
+      {showFilters && (
+        <div className="seed-filters">
+          <label className="seed-filter-row">
+            <span className="seed-filter-k">Year</span>
+            <select value={year} onChange={e => applyFilter({ year: e.target.value })}>
+              {YEAR_PRESETS.map(y => <option key={y} value={y}>{y === "Any" ? "Any year" : y}</option>)}
+            </select>
+          </label>
+          <label className="seed-filter-row">
+            <span className="seed-filter-k">Min citations</span>
+            <input
+              type="number" min="0" step="10" value={minCites}
+              onChange={e => setMinCites(Math.max(0, +e.target.value || 0))}
+              onBlur={e => applyFilter({ minCites: Math.max(0, +e.target.value || 0) })}
+              onKeyDown={e => { if (e.key === "Enter") applyFilter({ minCites: Math.max(0, +e.target.value || 0) }); }}
+            />
+          </label>
+        </div>
+      )}
+
+      <div className="pb-scroll">
+        {err && <div className="seeds-counter" style={{ color: "var(--cc-danger)" }}>{err}</div>}
+        {candidates.length === 0 && !busy && (
+          <div className="seeds-empty">
+            {query.trim()
+              ? "No results. Try a different query or loosen the filters."
+              : "Search Semantic Scholar to find seed papers."}
           </div>
-          <div className="seed-detail-foot">
-            <button
-              className={"btn " + (detailPaper.starred ? "btn-primary" : "btn-ghost")}
-              onClick={() => toggle(detailPaper.id)}
-            >
-              <Icon name="star" size={13} />
-              {detailPaper.starred ? "Seed ✓ — starred" : "Star as seed"}
+        )}
+        <div className="seeds-list">
+          {candidates.map(p => (
+            <SeedCard key={p.id} paper={p} mode="candidate" onOpen={setDetailId} onAction={acceptSeed} />
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// Right sidebar when the Seed set block is selected: the accepted papers as
+// cards. Removing one returns it to the search list on the left.
+function SeedSetConfig() {
+  const seeds = useLive("seeds");
+  const [detailId, setDetailId] = React.useState(null);
+  const accepted = seeds.filter(p => p.starred);
+  const detailPaper = detailId ? seeds.find(p => p.id === detailId) : null;
+
+  if (detailPaper) {
+    return (
+      <aside className="panel panel-right">
+        <div className="ph"><span className="ph-title">Seed paper</span><span className="ph-count">SED-01</span></div>
+        <SeedAbstractDetail
+          paper={detailPaper}
+          onBack={() => setDetailId(null)}
+          footer={<>
+            <button className="btn btn-ghost" style={{ flex: "1 1 auto", justifyContent: "center" }}
+              onClick={() => { removeSeed(detailPaper.id); setDetailId(null); }}>
+              <Icon name="x" size={13} /> Remove from seeds
             </button>
-            <a className="btn btn-ghost" href={s2Url(detailPaper)} target="_blank" rel="noreferrer" title="Open source">
+            <a className="btn btn-ghost" href={_s2Url(detailPaper)} target="_blank" rel="noreferrer" title="Open source">
               <Icon name="external-link" size={12} />
             </a>
-          </div>
+          </>}
+        />
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="panel panel-right">
+      <div className="ph">
+        <span className="ph-title">Seed set</span>
+        <span className="ph-count">{accepted.length} paper{accepted.length === 1 ? "" : "s"}</span>
+      </div>
+      {accepted.length === 0 ? (
+        <div className="cfg-right-empty">
+          <Icon name="star" size={18} />
+          <span>No seed papers yet. Search on the left and star papers (☆) to add them here.</span>
         </div>
       ) : (
-        <>
-          <div className="searchbox">
-            <Icon name="search" size={12} />
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") runSearch(query); }}
-              placeholder="Search Semantic Scholar — press Enter"
-            />
-            {query && (
-              <button className="ph-btn" onClick={() => setQuery("")} title="Clear">
-                <Icon name="x" size={11} />
-              </button>
-            )}
+        <div className="pb-scroll">
+          <div className="seeds-list seed-cart">
+            {accepted.map(p => (
+              <SeedCard key={p.id} paper={p} mode="accepted" onOpen={setDetailId} onAction={removeSeed} />
+            ))}
           </div>
-
-          <div className="pb-scroll">
-            <div className="seeds-counter">
-              <span>
-                <span className="seeds-counter-n">{selected}</span> starred · feeds seed block
-              </span>
-              <Icon name="star" size={12} style={{ color: "var(--cc-warning)" }} />
-            </div>
-            {err && (
-              <div className="seeds-counter" style={{ color: "var(--cc-danger)" }}>{err}</div>
-            )}
-            <div className="seeds-list">
-              {seeds.map(p => (
-                <div
-                  key={p.id}
-                  className={"seed-card" + (p.starred ? " is-selected" : "")}
-                  onClick={() => setDetailId(p.id)}
-                  title="Click to read the abstract"
-                >
-                  <div className="seed-card-head">
-                    <button
-                      className="seed-star-btn"
-                      onClick={e => { e.stopPropagation(); toggle(p.id); }}
-                      title={p.starred ? "Unstar (remove from seeds)" : "Star as seed"}
-                      aria-label={p.starred ? "Unstar" : "Star as seed"}
-                      aria-pressed={!!p.starred}
-                    >
-                      <span className="seed-star"><Icon name="star" size={13} /></span>
-                    </button>
-                    <span className="seed-title">{p.title}</span>
-                  </div>
-                  <div className="seed-meta">
-                    <span>{p.authors}</span>
-                    <span className="seed-meta-sep">·</span>
-                    <span>{p.year}</span>
-                    <span className="seed-meta-sep">·</span>
-                    <span>{p.venue}</span>
-                    <span className="seed-meta-sep">·</span>
-                    <span className="seed-cites">{(p.cites || 0).toLocaleString()} cites</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
+        </div>
       )}
     </aside>
   );
 }
 
-Object.assign(window, { BuildSeeds });
+Object.assign(window, { BuildSeeds, SeedSetConfig });

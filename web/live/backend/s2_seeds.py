@@ -34,13 +34,23 @@ def _api_key() -> str:
             or os.environ.get("CITECLAW_S2_API_KEY") or "").strip()
 
 
-def search_seeds(query: str, limit: int = 20) -> list[dict]:
+def search_seeds(query: str, limit: int = 20, year: str = "",
+                 min_citations: int = 0) -> list[dict]:
     query = (query or "").strip()
     if not query:
         return []
     key = _api_key()
     headers = {"x-api-key": key} if key else {}
     params = {"query": query, "limit": max(1, min(40, int(limit))), "fields": _FIELDS}
+    # Native S2 search filters: year range ("2019-2025") and a citation floor.
+    year = (year or "").strip()
+    if year and year.lower() != "any":
+        params["year"] = year
+    try:
+        if min_citations and int(min_citations) > 0:
+            params["minCitationCount"] = int(min_citations)
+    except (TypeError, ValueError):
+        pass
 
     with httpx.Client(timeout=20.0) as client:
         r = None
