@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from . import keys_store, models_catalog
 from .abstracts import fetch_abstract
 from .config_translate import TranslationError, build_config
+from .explore_runs import list_explore_runs, load_explore_run
 from .run_manager import manager
 from .s2_seeds import S2SearchError, search_seeds
 from .snapshots import build_graph, build_metrics
@@ -46,6 +47,9 @@ ASSEMBLY_ORDER = [
     "run-network.jsx",
     "run-dashboard.jsx",
     "run-accepted.jsx",
+    "explore-network.jsx",
+    "explore-list.jsx",
+    "explore-detail.jsx",
     "settings-modal.jsx",
     "app.jsx",
 ]
@@ -63,6 +67,25 @@ _HEAD = """<!doctype html>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
 <script src="https://unpkg.com/lucide@0.447.0/dist/umd/lucide.min.js"></script>
+<script type="module">
+// Graph engine for the Exploration page (same stack + pins as the design's
+// module_a_network_f5.html reference: graphology + ForceAtlas2 + sigma).
+// Loaded fire-and-forget so a CDN hiccup never blocks the rest of the app;
+// ExploreNetwork waits on window.GraphLibs / the "graphlibs" event.
+(async () => {
+  try {
+    const [g, s, f] = await Promise.all([
+      import("https://esm.sh/graphology@0.26"),
+      import("https://esm.sh/sigma@3"),
+      import("https://esm.sh/graphology-layout-forceatlas2@0.10/worker"),
+    ]);
+    window.GraphLibs = { Graph: g.default, Sigma: s.default, FA2Layout: f.default };
+  } catch (e) {
+    window.GraphLibs = { error: String((e && e.message) || e) };
+  }
+  window.dispatchEvent(new Event("graphlibs"));
+})();
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -191,6 +214,21 @@ async def seeds_abstract(req: Request) -> JSONResponse:
         return JSONResponse(result)
     except Exception:  # noqa: BLE001 - fallback is best-effort; never 500 the UI
         return JSONResponse({"abstract": "", "source": None})
+
+
+@app.get("/api/explore/runs")
+async def explore_runs() -> list[dict]:
+    return await asyncio.to_thread(list_explore_runs)
+
+
+@app.get("/api/explore/run")
+async def explore_run(path: str) -> dict:
+    try:
+        return await asyncio.to_thread(load_explore_run, path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="run not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/run")
