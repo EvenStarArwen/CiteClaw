@@ -53,9 +53,30 @@ uploaded).
 3. **Run tab** shows it live: pipeline progress + log (left), the citation
    graph growing (center), metrics + rejections + cost (dashboard), and the
    accepted-paper stream (right). Click a node or a paper to inspect it.
+4. **Explore tab** — the citation network as a full page, for digging into a
+   collection after (or during) a run:
+   - **Papers** (left): pick the data source — the current session or any
+     finished run found under `runs/` — then sort, and narrow with the
+     Filters bar (year window / min citations / seeds only). Filters apply
+     to the list *and* the graph.
+   - **Graph** (center): the same engine as the Run view, plus labels, a
+     growth replay (⟲ replays how the collection was accepted), a force-
+     layout options popover (spacing / gravity / LinLog / overlap), zoom
+     controls, and hover tooltips.
+   - **Details** (right): the selected paper — abstract (with an OpenAlex
+     fallback when Semantic Scholar has none), metadata, a Semantic Scholar
+     link, and **Explore subtree**, which trims the graph to the paper's
+     2-hop citation neighbourhood.
 
 Each run's outputs (`literature_collection.json`, `.bib`,
 `citation_network.graphml`, …) are written to `runs/webui/<run-id>/`.
+
+Both graph views share one renderer: a **graphology** graph laid out by
+**ForceAtlas2** (the Gephi algorithm) in a web worker and drawn by
+**sigma.js** on WebGL — so layout never blocks the UI, and new papers are
+inserted incrementally during a live run instead of re-laying-out from
+scratch. The libraries load from esm.sh at page load; the Explore/Run graph
+therefore needs internet access (as do the searches themselves).
 
 ---
 
