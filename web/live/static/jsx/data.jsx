@@ -2,22 +2,22 @@
 // Sample domain data for the CiteClaw WebUI prototype.
 
 const SEED_PAPERS = [
-  { id: "s1", title: "Highly accurate protein structure prediction with AlphaFold",
-    authors: "Jumper et al.", year: 2021, venue: "Nature", cites: 24891, starred: true },
-  { id: "s2", title: "Accurate prediction of protein structures and interactions using a three-track neural network",
-    authors: "Baek et al.", year: 2021, venue: "Science", cites: 3412, starred: true },
-  { id: "s3", title: "Evolutionary-scale prediction of atomic-level protein structure",
-    authors: "Lin et al.", year: 2023, venue: "Science", cites: 1807, starred: true },
-  { id: "s4", title: "ColabFold: making protein folding accessible to all",
-    authors: "Mirdita et al.", year: 2022, venue: "Nat Methods", cites: 2954, starred: false },
-  { id: "s5", title: "Uni-Fold: an open-source platform for developing protein folding models",
-    authors: "Li et al.", year: 2023, venue: "bioRxiv", cites: 87, starred: false },
-  { id: "s6", title: "OpenFold: retraining AlphaFold2 yields new insights into its learning mechanisms",
-    authors: "Ahdritz et al.", year: 2024, venue: "Nat Methods", cites: 312, starred: false },
-  { id: "s7", title: "Improved protein structure refinement guided by deep learning based accuracy estimation",
-    authors: "Hiranuma et al.", year: 2021, venue: "Nat Comms", cites: 418, starred: false },
-  { id: "s8", title: "ProtTrans: toward understanding the language of life through self-supervised learning",
-    authors: "Elnaggar et al.", year: 2022, venue: "IEEE TPAMI", cites: 1144, starred: false },
+  { id: "s1", title: "GraphCast: learning skillful medium-range global weather forecasting",
+    authors: "Lam et al.", year: 2023, venue: "Science", cites: 1893, starred: true },
+  { id: "s2", title: "Accurate medium-range global weather forecasting with 3D neural networks",
+    authors: "Bi et al.", year: 2023, venue: "Nature", cites: 2471, starred: true },
+  { id: "s3", title: "FourCastNet: a global data-driven high-resolution weather model",
+    authors: "Pathak et al.", year: 2022, venue: "arXiv", cites: 1204, starred: true },
+  { id: "s4", title: "ClimaX: a foundation model for weather and climate",
+    authors: "Nguyen et al.", year: 2023, venue: "ICML", cites: 642, starred: false },
+  { id: "s5", title: "Aurora: a foundation model of the atmosphere",
+    authors: "Bodnar et al.", year: 2024, venue: "arXiv", cites: 189, starred: false },
+  { id: "s6", title: "Neural general circulation models for weather and climate",
+    authors: "Kochkov et al.", year: 2024, venue: "Nature", cites: 274, starred: false },
+  { id: "s7", title: "GenCast: diffusion-based ensemble forecasting for medium-range weather",
+    authors: "Price et al.", year: 2024, venue: "Nature", cites: 208, starred: false },
+  { id: "s8", title: "Deep learning for twelve-hour precipitation nowcasting",
+    authors: "Andrychowicz et al.", year: 2023, venue: "arXiv", cites: 331, starred: false },
 ];
 
 const BLOCK_CATALOG = [
@@ -41,7 +41,7 @@ const BLOCK_CATALOG = [
 // (Sequential / Parallel / Any / Not / Route + leaves), not a flat list.
 const INITIAL_PIPELINE = [
   { id: "n1", kind: "seed",   name: "Seed set",         localId: "SED-01",
-    config: { query: "protein structure prediction", years: "2019-2025", maxSeeds: 42 },
+    config: { query: "machine learning weather forecasting", years: "2019-2025", maxSeeds: 42 },
     screener: null },
   { id: "n2", kind: "fwd",    name: "Forward screener", localId: "FWD-02",
     config: { maxCitations: 200 },
@@ -51,8 +51,8 @@ const INITIAL_PIPELINE = [
         { id: "f1a", kind: "YearFilter",     params: { min: 2019, max: 2025 } },
         { id: "f1b", kind: "AbstractKeywordFilter",
           params: { match: "substring",
-                    formula: "(ml | bio) & !erratum",
-                    keywords: { ml: "machine learning", bio: "biology", erratum: "erratum" } } },
+                    formula: "(ml | phys) & !erratum",
+                    keywords: { ml: "machine learning", phys: "physics", erratum: "erratum" } } },
         { id: "f1c", kind: "SimilarityFilter",
           params: { threshold: 0.025,
                     measures: [
@@ -81,8 +81,8 @@ const INITIAL_PIPELINE = [
           children: [
             { id: "g1c1", kind: "VenueKeywordFilter",
               params: { match: "starts_with",
-                        formula: "nat | sci | cell",
-                        keywords: { nat: "Nature", sci: "Science", cell: "Cell" } } },
+                        formula: "nat | sci | pnas",
+                        keywords: { nat: "Nature", sci: "Science", pnas: "PNAS" } } },
             { id: "g1c2", kind: "LLMFilter",
               params: { scope: "title_abstract",
                         formula: "q_method",
@@ -98,26 +98,26 @@ const INITIAL_PIPELINE = [
 // ~60 accepted papers so we can show "50 most recent" virtualization comfortably.
 function mkAccepted() {
   const titles = [
-    "Learning rotamer-invariant representations for protein design",
-    "End-to-end differentiable protein language models for binder discovery",
-    "Cryptic binding pocket detection via graph attention",
-    "Diffusion-based backbone generation for antibody scaffolds",
-    "PairFormer: a cross-chain attention module for multimer folding",
-    "Scaling inverse folding with structural tokens",
-    "Sequence-to-function prediction using protein language models",
-    "Distillation of MSA-free folding models onto mobile accelerators",
-    "Benchmarking protein foundation models on orphan enzymes",
-    "RoseTTAFold All-Atom: unified modeling of protein-ligand complexes",
-    "Active learning with folding uncertainty for mutational screening",
-    "GraphCodon: predicting codon usage from structural context",
-    "Attention rollout reveals evolutionary couplings in AlphaFold",
-    "Hallucination of de novo mini-protein binders",
-    "Zero-shot prediction of protein-protein interactions with ESM-2",
-    "Equivariant diffusion for docking small molecules",
-    "Learning the grammar of disordered regions with language models",
-    "Structure-conditioned language models for targeted design",
-    "Folding with fewer templates: bootstrapped multiple-sequence augmentation",
-    "Ligand-aware protein folding through co-evolutionary signals",
+    "Physics-informed neural networks for atmospheric dynamics",
+    "Graph neural networks for global precipitation nowcasting",
+    "Diffusion models for probabilistic weather ensembles",
+    "Transformer architectures for seasonal climate prediction",
+    "Downscaling climate projections with generative models",
+    "Data assimilation with learned observation operators",
+    "Neural operators for the shallow-water equations",
+    "Self-supervised pretraining on ERA5 reanalysis data",
+    "Benchmarking data-driven forecasts against ECMWF IFS",
+    "Spherical CNNs for global weather fields",
+    "Uncertainty quantification in neural weather models",
+    "Learning subgrid parameterizations for climate models",
+    "Attention maps reveal atmospheric teleconnection patterns",
+    "Extreme-event forecasting with machine-learning emulators",
+    "Zero-shot nowcasting with foundation weather models",
+    "Emulating radiative transfer with neural networks",
+    "Fusing satellite and radar data for nowcasting",
+    "Ensemble calibration via conditional normalizing flows",
+    "Long-range forecasting with deep state-space models",
+    "Hybrid physics-ML general circulation modeling",
   ];
   const authors = [
     "Rao & Watson", "Chowdhury et al.", "Lin, Wang, Liu", "Kovac & Patel",
@@ -125,7 +125,7 @@ function mkAccepted() {
     "Bustamante et al.", "Nilsson, Ohira", "Varga et al.",
     "Kapoor & Stanton", "Yang, Pereira", "Ghosh et al.", "Anand, Mori",
   ];
-  const venues = ["bioRxiv", "Nat Methods", "Science", "Cell", "NeurIPS", "ICML", "PNAS", "Nat Comms"];
+  const venues = ["arXiv", "npj Clim Atmos Sci", "Science", "Geophys Res Lett", "NeurIPS", "ICML", "Mon Weather Rev", "Nat Comms"];
   const out = [];
   for (let i = 0; i < 60; i++) {
     const score = 0.62 + Math.random() * 0.36;
