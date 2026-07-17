@@ -8,7 +8,7 @@
 // force layout re-flows as you filter.
 
 const XP_LIST_CAP = 400;
-const XP_EMPTY_FILTERS = { yearMin: "", yearMax: "", minCites: "", seedsOnly: false, kw: "" };
+const XP_EMPTY_FILTERS = { yearMin: "", yearMax: "", minCites: "", maxCites: "", seedsOnly: false, kw: "" };
 
 // Keyword formula, same DSL as the search pipeline's keyword filters:
 // bare words / "quoted phrases" combined with & | ! and parentheses, e.g.
@@ -65,6 +65,7 @@ function xpFilterPredicate(f, kind) {
   const yMin = Number(f.yearMin) || 0;
   const yMax = Number(f.yearMax) || 0;
   const cMin = Number(f.minCites) || 0;
+  const cMax = Number(f.maxCites) || 0;
   const kw = xpCompileQuery(f.kw);
   const author = kind === "author";
   return (p) => {
@@ -73,8 +74,10 @@ function xpFilterPredicate(f, kind) {
       if (yMin && (p.year || 0) < yMin) return false;
       if (yMax && (p.year || 0) > yMax) return false;
       if (cMin && (p.cites || 0) < cMin) return false;
-    } else if (cMin && (p.nPapers || 0) < cMin) {
-      return false;
+      if (cMax && (p.cites || 0) > cMax) return false;
+    } else {
+      if (cMin && (p.nPapers || 0) < cMin) return false;
+      if (cMax && (p.nPapers || 0) > cMax) return false;
     }
     if (kw) {
       const hay = author
@@ -86,7 +89,7 @@ function xpFilterPredicate(f, kind) {
   };
 }
 function xpFilterCount(f, kind) {
-  const base = (f.minCites ? 1 : 0) + (f.kw && f.kw.trim() ? 1 : 0);
+  const base = (f.minCites ? 1 : 0) + (f.maxCites ? 1 : 0) + (f.kw && f.kw.trim() ? 1 : 0);
   if (kind === "author") return base;
   return base + (f.yearMin ? 1 : 0) + (f.yearMax ? 1 : 0) + (f.seedsOnly ? 1 : 0);
 }
@@ -219,6 +222,11 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
             <span className="seed-filter-k">{author ? "Min papers" : "Min citations"}</span>
             <input type="number" min="0" step={author ? 1 : 10} placeholder="0" value={filters.minCites}
                    onChange={e => patchF({ minCites: e.target.value })} />
+          </label>
+          <label className="seed-filter-row">
+            <span className="seed-filter-k">{author ? "Max papers" : "Max citations"}</span>
+            <input type="number" min="0" step={author ? 1 : 10} placeholder="any" value={filters.maxCites}
+                   onChange={e => patchF({ maxCites: e.target.value })} />
           </label>
           {!author && (
             <label className="seed-filter-row">
