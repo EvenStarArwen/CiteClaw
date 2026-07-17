@@ -163,35 +163,41 @@ def _translate_step(node: dict[str, Any]) -> dict[str, Any]:
     raise TranslationError(f"Unknown pipeline node kind: {kind!r}")
 
 
-def translate_pipeline(model: dict[str, Any]) -> list[dict[str, Any]]:
-    """Turn the design's ``pipeline`` node list into CiteClaw ``pipeline:``.
+def _translate_seq(seq: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Recursively translate one design sequence into a list of CiteClaw steps.
 
-    A node with ``kind == "parallel"`` carries ``branches`` (each branch is a
-    single regular node in this version) and maps to CiteClaw's ``Parallel``
-    step — the incoming signal is broadcast to every branch and the outputs
-    are unioned. A degenerate single-branch parallel collapses to a plain
-    serial step.
+    A ``parallel`` element becomes CiteClaw's ``Parallel`` step whose branches
+    are themselves translated sequences — so nested parallels and any steps that
+    follow a merge all round-trip. Empty branches are dropped; a degenerate
+    single-branch parallel collapses back to a plain serial run.
     """
-    nodes = model.get("pipeline") or []
     steps: list[dict[str, Any]] = []
-    has_finalize = False
-    for node in nodes:
+    for node in seq:
         if node.get("kind") == "parallel":
-            branches: list[list[dict[str, Any]]] = []
-            for b in node.get("branches") or []:
-                branches.append([_translate_step(b)])
+            branches = [_translate_seq(b) for b in (node.get("branches") or [])]
+            branches = [b for b in branches if b]
             if not branches:
                 continue
             if len(branches) == 1:
-                steps.append(branches[0][0])
+                steps.extend(branches[0])
             else:
                 steps.append({"step": "Parallel", "branches": branches})
             continue
-        step = _translate_step(node)
-        steps.append(step)
-        if step.get("step") == "Finalize":
-            has_finalize = True
-    if not has_finalize:
+        steps.append(_translate_step(node))
+    return steps
+
+
+def translate_pipeline(model: dict[str, Any]) -> list[dict[str, Any]]:
+    """Turn the design's ``pipeline`` sequence into CiteClaw ``pipeline:``.
+
+    The design model is a series-parallel *sequence*: an ordered list whose
+    elements are either regular step nodes or ``parallel`` nodes (each carrying
+    its own ``branches`` sub-sequences). Branches are broadcast the incoming
+    signal and their outputs unioned; whatever element follows the parallel in
+    the parent sequence therefore operates on the merged set (the "merge" step).
+    """
+    steps = _translate_seq(model.get("pipeline") or [])
+    if not any(s.get("step") == "Finalize" for s in steps):
         steps.append({"step": "Finalize"})
     return steps
 

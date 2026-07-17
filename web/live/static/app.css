@@ -2047,7 +2047,7 @@ button { cursor: pointer; }
 /* ---------- App frame ---------- */
 .app {
   display: grid;
-  grid-template-columns: var(--cc-col-left, 248px) 4px 1fr 4px var(--cc-col-right, 312px);
+  grid-template-columns: var(--cc-col-left, 248px) 4px minmax(0, 1fr) 4px var(--cc-col-right, 312px);
   grid-template-rows: 44px 1fr 26px;
   grid-template-areas:
     "top    top    top    top    top"
@@ -2222,6 +2222,7 @@ button { cursor: pointer; }
   display: grid;
   grid-template-rows: 1fr 6px auto;   /* C grows, splitter, D auto */
   min-height: 0;
+  min-width: 0;   /* let the pipeline canvas scroll instead of widening the grid */
   background: var(--cc-bg);
 }
 .main.split-60-40 { grid-template-rows: 3fr 6px 2fr; }
@@ -4676,18 +4677,27 @@ select.gp-v { cursor: pointer; }
 }
 .pipe-vtitle { font-size: 13px; font-weight: 600; color: var(--cc-ink-1); letter-spacing: -0.01em; }
 .pipe-vhint { font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-3); }
+/* Centred column that grows to its content and scrolls (never clips) when a
+   wide parallel overflows. justify-content:center + inherited min-width:max-content
+   from .pipe-inner does the "centre when it fits, scroll when it doesn't" dance. */
 .pipe-inner-vert {
-  min-width: 0;
-  align-items: center; justify-content: flex-start;
-  padding: 28px 24px 48px;
+  align-items: flex-start; justify-content: center;
+  padding: 30px 28px 56px;
 }
-.pipe-col { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.pipe-col { --pipe-bw: 280px; width: max-content; }
+.pipe-seq { display: flex; flex-direction: column; align-items: center; }
+.pipe-step-row { display: flex; justify-content: center; }
+/* Fixed, uniform block width everywhere — serial trunk and parallel branches. */
+.pipe-col .pblock { width: var(--pipe-bw); box-sizing: border-box; }
 .pipe-vedge { flex: 0 0 auto; height: 30px; width: 14px; }
-.pipe-vedge svg { width: 14px; height: 30px; overflow: visible; }
-.pipe-node-line { display: flex; align-items: center; gap: 10px; }
-.pipe-col .pblock { width: 300px; box-sizing: border-box; }
+.pipe-vedge svg { width: 14px; height: 30px; overflow: visible; display: block; }
 
-/* ---- Add buttons (serial / parallel / branch) ---- */
+/* ---- Fork / join connector bands (measured SVG → symmetric + centred) ---- */
+.pipe-parallel-unit { display: flex; flex-direction: column; align-items: stretch; position: relative; }
+.pipe-fork, .pipe-join { display: flex; justify-content: center; }
+.pipe-fork svg, .pipe-join svg { overflow: visible; }
+
+/* ---- Add buttons (serial / parallel / branch / merge) ---- */
 .pipe-add {
   display: inline-flex; align-items: center; gap: 5px;
   font-family: var(--cc-font-mono); font-size: 11px;
@@ -4699,16 +4709,21 @@ select.gp-v { cursor: pointer; }
   transition: background 120ms, border-color 120ms, color 120ms;
 }
 .pipe-add:hover { color: var(--cc-ink-1); border-color: var(--cc-ink-2); background: var(--cc-hover-soft); }
-.pipe-add-side { border-style: solid; border-color: var(--cc-rule); padding: 6px 11px; }
-.pipe-add-serial { margin-top: 2px; }
 .pipe-add-branch { padding: 6px 11px; }
+.pipe-add-merge { border-style: solid; border-color: var(--cc-rule); }
+.pipe-add-parallel { border-style: solid; border-color: var(--cc-rule); padding: 6px 11px; }
+.pipe-adder { display: flex; flex-direction: column; align-items: center; }
+.pipe-adder-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
+/* A hidden equal-width ghost keeps "add step" on the centred axis (in flow,
+   so it can never overlap a neighbour — the game-engine "no clipping" rule). */
+.pipe-adder-ghost, .pipe-branch-add-ghost { visibility: hidden; pointer-events: none; }
 
 /* ---- Parallel group ---- */
-.pipe-parallel {
+.pipe-parallel-box {
   position: relative;
   border: 1px dashed var(--cc-rule-strong);
   border-radius: 12px;
-  padding: 22px 16px 16px;
+  padding: 12px 18px 14px;
   background: color-mix(in srgb, var(--cc-accent) 3%, transparent);
 }
 .pipe-parallel-tag {
@@ -4719,13 +4734,12 @@ select.gp-v { cursor: pointer; }
   background: var(--cc-bg); padding: 1px 8px;
   border: 1px solid var(--cc-rule); border-radius: 999px;
 }
-.pipe-parallel-branches { display: flex; gap: 16px; align-items: flex-start; }
+.pipe-parallel-branches { display: flex; gap: 30px; align-items: flex-start; justify-content: center; }
 .pipe-branch { display: flex; flex-direction: column; align-items: center; }
-.pipe-branch .pblock { width: 210px; box-sizing: border-box; }
-.pipe-branch-add {
-  align-self: center; min-height: 60px;
-  display: flex; align-items: center; justify-content: center;
-}
+/* box + "+ branch" laid out in flow with a balancing ghost, so the box stays
+   centred on the axis and nothing overlaps a sibling branch. */
+.pipe-parallel-row { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.pipe-branch-add { display: flex; align-items: center; }
 
 /* ---- Right-sidebar step configurator ---- */
 .cfg-right-empty {

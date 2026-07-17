@@ -371,9 +371,15 @@ function VEdge() {
 }
 
 // ── Pipeline data model + helpers (shared with app.jsx / build-step-config) ──
-// A pipeline is a serial list of "rows". A row is either a regular step node
-// ({id, kind, name, localId, config, screener}) or a parallel node
-// ({id, kind:"parallel", branches:[node,...]}) whose branches run concurrently.
+// A pipeline is a SEQUENCE (array) of "elements". An element is either a step
+// node ({id, kind, name, localId, config, screener}) or a parallel node
+// ({id, kind:"parallel", branches:[Seq, Seq]}). Each branch is its own sub-
+// sequence (max 2 per parallel); the branches run concurrently and merge
+// (union) into whatever element follows the parallel in the parent sequence.
+// Recursive: a branch Seq may itself contain parallels — bounded so no more
+// than 3 blocks ever sit at the same horizontal level.
+const MAX_BRANCHES = 2;   // a parallel may fan out to at most 2 branches
+const MAX_COLS = 3;       // at most 3 blocks at the same horizontal level
 let __sid = 100;
 const STEP_META = {
   seed:   { name: "Seed set",          prefix: "SED" },
@@ -403,36 +409,131 @@ function newStep(kind) {
 }
 function newParallel(branches) { return { id: "par" + (++__sid), kind: "parallel", branches }; }
 
-function findStep(pipeline, id) {
-  for (const row of pipeline) {
-    if (row.id === id) return row;
-    if (row.kind === "parallel")
-      for (const b of (row.branches || [])) if (b.id === id) return b;
+// Find a step node by id anywhere in the sequence tree (recurses into branches).
+function findStep(seq, id) {
+  for (const el of seq) {
+    if (el.id === id) return el;
+    if (el.kind === "parallel")
+      for (const b of (el.branches || [])) { const r = findStep(b, id); if (r) return r; }
   }
   return null;
 }
-function mapStep(pipeline, id, fn) {
-  return pipeline.map(row => {
-    if (row.id === id) return fn(row);
-    if (row.kind === "parallel")
-      return { ...row, branches: (row.branches || []).map(b => b.id === id ? fn(b) : b) };
+// Replace the element with `id` via fn(), anywhere in the tree.
+function mapStep(seq, id, fn) {
+  return seq.map(el => {
+    if (el.id === id) return fn(el);
+    if (el.kind === "parallel")
+      return { ...el, branches: (el.branches || []).map(b => mapStep(b, id, fn)) };
+    return el;
+  });
+}
+// Remove the element with `id`; empties collapse (drop empty branch, and a
+// parallel left with a single branch is inlined back into the parent sequence).
+function removeStep(seq, id) {
+  const out = [];
+  for (const el of seq) {
+    if (el.id === id) continue;
+    if (el.kind === "parallel") {
+      const branches = (el.branches || []).map(b => removeStep(b, id)).filter(b => b.length > 0);
+      if (branches.length === 0) continue;                 // whole parallel gone
+      if (branches.length === 1) { out.push(...branches[0]); continue; }  // collapse to serial
+      out.push({ ...el, branches });
+      continue;
+    }
+    out.push(el);
+  }
+  return out;
+}
+// Insert `el` immediately after the element with `afterId`, wherever it lives.
+// This is the single primitive behind "add step" (append to a sequence),
+// "add parallel" (append a parallel after the last step) and "merge" (append a
+// step after a parallel) — each anchors on the id of the element it sits under.
+function insertAfter(seq, afterId, el) {
+  const out = [];
+  for (const row of seq) {
+    let r = row;
+    if (row.kind === "parallel" && row.id !== afterId)
+      r = { ...row, branches: (row.branches || []).map(b => insertAfter(b, afterId, el)) };
+    out.push(r);
+    if (row.id === afterId) out.push(el);
+  }
+  return out;
+}
+// Add a new branch (a one-element sub-sequence) to the parallel `parId`.
+function addParallelBranch(seq, parId, el) {
+  return seq.map(row => {
+    if (row.kind === "parallel") {
+      if (row.id === parId) return { ...row, branches: [...(row.branches || []), [el]] };
+      return { ...row, branches: (row.branches || []).map(b => addParallelBranch(b, parId, el)) };
+    }
     return row;
   });
 }
-function removeStep(pipeline, id) {
-  const out = [];
-  for (const row of pipeline) {
-    if (row.id === id) continue;
-    if (row.kind === "parallel") {
-      const branches = (row.branches || []).filter(b => b.id !== id);
-      if (branches.length === 0) continue;              // drop empty parallel
-      if (branches.length === 1) { out.push(branches[0]); continue; }  // collapse to serial
-      out.push({ ...row, branches });
-      continue;
-    }
-    out.push(row);
+
+// ── Column budget (keep at most MAX_COLS blocks at one horizontal level) ──
+function seqCols(seq) { let m = 1; for (const el of seq) m = Math.max(m, elCols(el)); return m; }
+function elCols(el) {
+  if (el.kind !== "parallel") return 1;
+  return (el.branches || []).reduce((s, b) => s + seqCols(b), 0);
+}
+// Would the pipeline still fit if we added a 1-col branch to parallel `parId`?
+function _seqColsExtraBranch(seq, parId) { let m = 1; for (const el of seq) m = Math.max(m, _elColsExtraBranch(el, parId)); return m; }
+function _elColsExtraBranch(el, parId) {
+  if (el.kind !== "parallel") return 1;
+  let sum = 0;
+  for (const b of (el.branches || [])) sum += _seqColsExtraBranch(b, parId);
+  if (el.id === parId) sum += 1;
+  return sum;
+}
+function canAddBranch(pipeline, parNode) {
+  if (!parNode || parNode.kind !== "parallel") return false;
+  if ((parNode.branches || []).length >= MAX_BRANCHES) return false;
+  return _seqColsExtraBranch(pipeline, parNode.id) <= MAX_COLS;
+}
+// Would the pipeline still fit if a 2-col parallel were appended after `anchorId`?
+function _seqColsExtraParallel(seq, anchorId) {
+  let m = 1;
+  for (const el of seq) {
+    m = Math.max(m, _elColsExtraParallel(el, anchorId));
+    if (el.id === anchorId) m = Math.max(m, 2);
   }
-  return out;
+  return m;
+}
+function _elColsExtraParallel(el, anchorId) {
+  if (el.kind !== "parallel") return 1;
+  let sum = 0;
+  for (const b of (el.branches || [])) sum += _seqColsExtraParallel(b, anchorId);
+  return sum;
+}
+function canAddParallel(pipeline, anchorId) {
+  return _seqColsExtraParallel(pipeline, anchorId) <= MAX_COLS;
+}
+
+// Total number of step nodes (pre-order), for the header / block count.
+function countSteps(seq) {
+  let n = 0;
+  for (const el of seq) {
+    if (el.kind === "parallel") (el.branches || []).forEach(b => { n += countSteps(b); });
+    else n += 1;
+  }
+  return n;
+}
+// Map every step id → a pre-order display index (for the "№ NN" caption).
+function stepIndexMap(seq) {
+  const map = {};
+  let k = 0;
+  const walk = (s) => { for (const el of s) { if (el.kind === "parallel") (el.branches || []).forEach(walk); else map[el.id] = k++; } };
+  walk(seq);
+  return map;
+}
+
+// Geometry compare — skip re-render when measured fork/join geometry is stable.
+function _sameGeom(a, b) {
+  if (!a || !b) return false;
+  if (Math.abs(a.w - b.w) > 0.5) return false;
+  if (a.centers.length !== b.centers.length) return false;
+  for (let i = 0; i < a.centers.length; i++) if (Math.abs(a.centers[i] - b.centers[i]) > 0.5) return false;
+  return true;
 }
 
 // Popover that lists the addable step kinds, anchored to its trigger button.
@@ -481,84 +582,215 @@ function StepPicker({ onPick, onClose, anchorRef }) {
 }
 
 // A button that opens the StepPicker and calls onPick(kind).
-function StepAddButton({ onPick, label, className }) {
+function StepAddButton({ onPick, label, className, icon }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
   return (
     <>
       <button ref={ref} className={"pipe-add " + (className || "")} onClick={() => setOpen(true)}>
-        <Icon name="plus" size={12} /> {label}
+        <Icon name={icon || "plus"} size={12} /> {label}
       </button>
       {open && <StepPicker anchorRef={ref} onPick={onPick} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function ParallelRow({ row, selectedId, onSelect, style, onAddBranch }) {
+// ── Fork / join connectors (measured, so they stay symmetric + centered for
+//    any branch widths, matching the classic split→merge diamond) ──
+const FORK_H = 34;
+function ForkSvg({ geom }) {
+  if (!geom) return null;
+  const { w, centers } = geom;
+  const apexX = w / 2, busY = FORK_H * 0.55, tip = FORK_H, base = FORK_H - 5;
+  const minX = Math.min(apexX, ...centers), maxX = Math.max(apexX, ...centers);
+  const S = "var(--cc-ink-2)";
   return (
-    <div className="pipe-parallel">
-      <span className="pipe-parallel-tag">parallel</span>
-      <div className="pipe-parallel-branches">
-        {(row.branches || []).map(b => (
-          <div key={b.id} className="pipe-branch">
-            <PipelineBlock
-              node={b} index={0}
-              selected={selectedId === b.id}
-              onClick={() => onSelect(b.id)}
-              style={style}
-            />
+    <svg width={w} height={FORK_H} viewBox={`0 0 ${w} ${FORK_H}`} style={{ display: "block", overflow: "visible" }}>
+      <line x1={apexX} y1={0} x2={apexX} y2={busY} stroke={S} strokeWidth={1.25} strokeLinecap="round" />
+      {centers.length > 1 && <line x1={minX} y1={busY} x2={maxX} y2={busY} stroke={S} strokeWidth={1.25} strokeLinecap="round" />}
+      {centers.map((cx, i) => (
+        <g key={i}>
+          <line x1={cx} y1={busY} x2={cx} y2={base} stroke={S} strokeWidth={1.25} strokeLinecap="round" />
+          <path d={`M ${cx - 4} ${base} L ${cx} ${tip} L ${cx + 4} ${base} Z`} fill={S} />
+        </g>
+      ))}
+    </svg>
+  );
+}
+function JoinSvg({ geom }) {
+  if (!geom) return null;
+  const { w, centers } = geom;
+  const apexX = w / 2, busY = FORK_H * 0.45, tip = FORK_H, base = FORK_H - 5;
+  const minX = Math.min(apexX, ...centers), maxX = Math.max(apexX, ...centers);
+  const S = "var(--cc-ink-2)";
+  return (
+    <svg width={w} height={FORK_H} viewBox={`0 0 ${w} ${FORK_H}`} style={{ display: "block", overflow: "visible" }}>
+      {centers.map((cx, i) => (
+        <line key={i} x1={cx} y1={0} x2={cx} y2={busY} stroke={S} strokeWidth={1.25} strokeLinecap="round" />
+      ))}
+      {centers.length > 1 && <line x1={minX} y1={busY} x2={maxX} y2={busY} stroke={S} strokeWidth={1.25} strokeLinecap="round" />}
+      <line x1={apexX} y1={busY} x2={apexX} y2={base} stroke={S} strokeWidth={1.25} strokeLinecap="round" />
+      <path d={`M ${apexX - 4} ${base} L ${apexX} ${tip} L ${apexX + 4} ${base} Z`} fill={S} />
+    </svg>
+  );
+}
+
+// A parallel element: fork band → dashed branch group → join band. Each branch
+// is its own recursive SeqView (so branches extend + nest independently). The
+// "+ branch" affordance floats to the right (doesn't shift the centered axis).
+function ParallelBlock({ node, ctx, depth }) {
+  const unitRef = React.useRef(null);
+  const branchRefs = React.useRef([]);
+  const [geom, setGeom] = React.useState(null);
+  const nB = (node.branches || []).length;
+
+  const measure = React.useCallback(() => {
+    const unit = unitRef.current;
+    if (!unit) return;
+    const ur = unit.getBoundingClientRect();
+    const centers = [];
+    for (let i = 0; i < nB; i++) {
+      const el = branchRefs.current[i];
+      if (el) { const r = el.getBoundingClientRect(); centers.push(r.left - ur.left + r.width / 2); }
+      else centers.push(ur.width / 2);
+    }
+    const next = { w: ur.width, centers };
+    setGeom(prev => (_sameGeom(prev, next) ? prev : next));
+  }, [nB]);
+
+  React.useLayoutEffect(() => { measure(); });
+  React.useEffect(() => {
+    const unit = unitRef.current;
+    if (!unit || !window.ResizeObserver) return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(unit);
+    return () => ro.disconnect();
+  }, [measure]);
+
+  const showBranchAdd = canAddBranch(ctx.pipeline, node);
+  return (
+    <div className="pipe-parallel-unit" ref={unitRef}>
+      <div className="pipe-fork" style={{ height: FORK_H }}><ForkSvg geom={geom} /></div>
+      {/* A hidden ghost of equal width on the left balances the "+ branch" on the
+          right, so the box stays centred on the axis — in flow, never overlapping. */}
+      <div className="pipe-parallel-row">
+        {showBranchAdd && (
+          <div className="pipe-branch-add pipe-branch-add-ghost" aria-hidden="true">
+            <span className="pipe-add pipe-add-branch"><Icon name="git-branch" size={12} /> branch</span>
           </div>
-        ))}
-        <div className="pipe-branch pipe-branch-add">
-          <StepAddButton label="branch" className="pipe-add-branch" onPick={(k) => onAddBranch(row.id, k)} />
+        )}
+        <div className="pipe-parallel-box">
+          <span className="pipe-parallel-tag">parallel</span>
+          <div className="pipe-parallel-branches">
+            {(node.branches || []).map((b, i) => (
+              <div className="pipe-branch" key={i} ref={el => { branchRefs.current[i] = el; }}>
+                <SeqView seq={b} ctx={ctx} depth={depth + 1} />
+              </div>
+            ))}
+          </div>
         </div>
+        {showBranchAdd && (
+          <div className="pipe-branch-add">
+            <StepAddButton label="branch" className="pipe-add-branch" icon="git-branch"
+              onPick={(k) => ctx.addBranch(node.id, k)} />
+          </div>
+        )}
+      </div>
+      <div className="pipe-join" style={{ height: FORK_H }}><JoinSvg geom={geom} /></div>
+    </div>
+  );
+}
+
+// The bottom-of-sequence add controls. After a step: "add step" (serial) +
+// optional "parallel" (fan out). After a parallel: "merge" (converge branches
+// into a new trunk step).
+function SeqAdder({ last, ctx }) {
+  if (!last) return null;
+  if (last.kind === "parallel") {
+    return (
+      <div className="pipe-adder">
+        <StepAddButton label="merge branches" className="pipe-add-merge" icon="git-merge"
+          onPick={(k) => ctx.appendAfter(last.id, k)} />
+      </div>
+    );
+  }
+  const showParallel = last.kind !== "seed" && canAddParallel(ctx.pipeline, last.id);
+  return (
+    <div className="pipe-adder">
+      <VEdge />
+      <div className="pipe-adder-row">
+        {/* ghost of equal width balances "parallel" so "add step" stays centred */}
+        {showParallel && (
+          <span className="pipe-add pipe-add-parallel pipe-adder-ghost" aria-hidden="true">
+            <Icon name="git-branch" size={12} /> parallel
+          </span>
+        )}
+        <StepAddButton label="add step" className="pipe-add-serial" onPick={(k) => ctx.appendAfter(last.id, k)} />
+        {showParallel && (
+          <StepAddButton label="parallel" className="pipe-add-parallel" icon="git-branch"
+            onPick={(k) => ctx.appendParallel(last.id, k)} />
+        )}
       </div>
     </div>
   );
 }
 
+// A sequence: elements stacked vertically + a trailing adder. Simple down-edges
+// join consecutive steps; parallels carry their own fork/join bands.
+function SeqView({ seq, ctx, depth }) {
+  const last = seq[seq.length - 1];
+  return (
+    <div className="pipe-seq">
+      {seq.map((el, i) => {
+        const prev = seq[i - 1];
+        const needEdge = i > 0 && prev.kind !== "parallel" && el.kind !== "parallel";
+        return (
+          <React.Fragment key={el.id}>
+            {needEdge && <VEdge />}
+            {el.kind === "parallel" ? (
+              <ParallelBlock node={el} ctx={ctx} depth={depth} />
+            ) : (
+              <div className="pipe-step-row">
+                <PipelineBlock
+                  node={el} index={ctx.indexOf[el.id] || 0}
+                  selected={ctx.selectedId === el.id}
+                  onClick={() => ctx.onSelect(el.id)}
+                  style={ctx.style}
+                />
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
+      <SeqAdder last={last} ctx={ctx} />
+    </div>
+  );
+}
+
 function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle,
-                         onAddSerial, onWrapParallel, onAddBranch }) {
-  const last = pipeline[pipeline.length - 1];
-  const canWrap = last && last.kind !== "parallel" && last.kind !== "seed";
+                         onAppendAfter, onAppendParallel, onAddBranch }) {
+  const ctx = {
+    pipeline,
+    selectedId,
+    onSelect: setSelectedId,
+    style: blockStyle,
+    indexOf: stepIndexMap(pipeline),
+    appendAfter: onAppendAfter,
+    appendParallel: onAppendParallel,
+    addBranch: onAddBranch,
+  };
+  const n = countSteps(pipeline);
   return (
     <section className="pane pane-top">
       <div className="pipe pipe-vert">
         <div className="pipe-header pipe-header-vert">
           <span className="pipe-vtitle">Pipeline</span>
-          <span className="pipe-vhint">{pipeline.length} step{pipeline.length === 1 ? "" : "s"} · click a step to configure</span>
+          <span className="pipe-vhint">{n} step{n === 1 ? "" : "s"} · click a step to configure</span>
         </div>
         <div className="pipe-canvas">
           <div className="pipe-inner pipe-inner-vert">
             <div className="pipe-col">
-              {pipeline.map((row, i) => (
-                <React.Fragment key={row.id}>
-                  {i > 0 && <VEdge />}
-                  {row.kind === "parallel" ? (
-                    <ParallelRow
-                      row={row} selectedId={selectedId} onSelect={setSelectedId}
-                      style={blockStyle} onAddBranch={onAddBranch}
-                    />
-                  ) : (
-                    <div className="pipe-node-line">
-                      <PipelineBlock
-                        node={row} index={i}
-                        selected={selectedId === row.id}
-                        onClick={() => setSelectedId(row.id)}
-                        style={blockStyle}
-                      />
-                      {i === pipeline.length - 1 && canWrap && (
-                        <StepAddButton
-                          label="parallel" className="pipe-add-side"
-                          onPick={(k) => onWrapParallel(k)}
-                        />
-                      )}
-                    </div>
-                  )}
-                </React.Fragment>
-              ))}
-              <VEdge />
-              <StepAddButton label="Add step" className="pipe-add-serial" onPick={onAddSerial} />
+              <SeqView seq={pipeline} ctx={ctx} depth={0} />
             </div>
           </div>
         </div>
@@ -570,4 +802,5 @@ function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle,
 Object.assign(window, {
   BuildPipeline, PipelineBlock,
   newStep, newParallel, findStep, mapStep, removeStep,
+  insertAfter, addParallelBranch, countSteps,
 });

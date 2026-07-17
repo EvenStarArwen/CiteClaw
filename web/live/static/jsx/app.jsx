@@ -115,30 +115,23 @@ function App() {
     setPipeline(ps => mapStep(ps, selectedId, n => ({ ...n, screener: newScreener })));
   };
 
-  // Pipeline construction (serial extend / parallel branch / remove).
-  const addSerial = (kind) => {
+  // Pipeline construction — a single insertion primitive (insertAfter) drives
+  // serial extend + parallel fan-out; addParallelBranch adds a branch (max 2);
+  // removeStep prunes and collapses empties.
+  const appendAfter = (anchorId, kind) => {
     const step = newStep(kind);
-    setPipeline(ps => [...ps, step]);
+    setPipeline(ps => insertAfter(ps, anchorId, step));
     setSelectedId(step.id);
   };
-  const wrapParallel = (kind) => {
-    setPipeline(ps => {
-      if (ps.length === 0) return ps;
-      const last = ps[ps.length - 1];
-      const fresh = newStep(kind);
-      if (last.kind === "parallel") {
-        return [...ps.slice(0, -1), { ...last, branches: [...last.branches, fresh] }];
-      }
-      if (last.kind === "seed") return [...ps, fresh];  // can't parallel the seed
-      setSelectedId(fresh.id);
-      return [...ps.slice(0, -1), newParallel([last, fresh])];
-    });
+  const appendParallel = (anchorId, kind) => {
+    const step = newStep(kind);
+    setPipeline(ps => insertAfter(ps, anchorId, newParallel([[step]])));
+    setSelectedId(step.id);
   };
-  const addBranch = (rowId, kind) => {
-    const fresh = newStep(kind);
-    setPipeline(ps => mapStep(ps, rowId, row =>
-      row.kind === "parallel" ? { ...row, branches: [...row.branches, fresh] } : row));
-    setSelectedId(fresh.id);
+  const addBranch = (parId, kind) => {
+    const step = newStep(kind);
+    setPipeline(ps => addParallelBranch(ps, parId, step));
+    setSelectedId(step.id);
   };
   const removeSelected = () => {
     setPipeline(ps => removeStep(ps, selectedId));
@@ -172,7 +165,7 @@ function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
-        blocks={pipeline.length}
+        blocks={countSteps(pipeline)}
         accepted={liveMetrics.accepted}
         elapsed={fmtDur(liveMetrics.elapsedSec)}
         runStatus={runStatus}
@@ -202,8 +195,8 @@ function App() {
               selectedId={selectedId}
               setSelectedId={setSelectedId}
               blockStyle={blockStyle}
-              onAddSerial={addSerial}
-              onWrapParallel={wrapParallel}
+              onAppendAfter={appendAfter}
+              onAppendParallel={appendParallel}
               onAddBranch={addBranch}
             />
           </div>
@@ -245,8 +238,8 @@ function App() {
         <BottomBar
           mode={mode}
           running={running}
-          pipelineLen={pipeline.length}
-          edgesLen={pipeline.length - 1}
+          pipelineLen={countSteps(pipeline)}
+          edgesLen={Math.max(0, countSteps(pipeline) - 1)}
           accepted={liveMetrics.accepted}
           elapsed={fmtDur(liveMetrics.elapsedSec)}
           progressPct={Math.round(progressPct)}
