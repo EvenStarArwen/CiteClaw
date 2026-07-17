@@ -75,17 +75,19 @@ function ExploreNetwork({ papers, edges, dataKey, selectedId, onSelect,
         onStats={setCounts}
       >
         <div className="net-legend">
-          <span className="net-legend-item">
-            <span className="net-dot seed" />
-            <span>Seed</span>
-          </span>
+          {papers.some(p => p.seed) && (
+            <span className="net-legend-item">
+              <span className="net-dot seed" />
+              <span>Seed</span>
+            </span>
+          )}
           <span className="net-legend-item">
             <span className="net-ramp">
               {[2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025].map(y => (
                 <span key={y + theme} className="net-ramp-step" style={{ background: yearColor(y) }} />
               ))}
             </span>
-            <span>2018 → 2025</span>
+            <span>{cgYearDomain(papers).min} → {cgYearDomain(papers).max}</span>
           </span>
           <span className="net-legend-item">
             <span className="net-hint-txt">size ∝ citations</span>

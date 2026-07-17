@@ -73,9 +73,26 @@ function cgReadPalette() {
   };
 }
 
-function cgYearColor(pal, y) {
-  const yy = Math.max(2018, Math.min(2025, Number(y) || 2021));
-  return pal.years[yy] || "#8a8a8a";
+// The design ships 8 ramp stops named --cc-year-p-2018..2025. Data can span
+// any era (a Gephi import may reach back decades), so the stops are mapped
+// linearly over the dataset's actual year range; the default domain
+// reproduces the original fixed 2018→2025 behaviour.
+function cgYearDomain(papers) {
+  let min = Infinity, max = -Infinity;
+  for (const p of papers || []) {
+    const y = Number(p.year) || 0;
+    if (y > 1800) { if (y < min) min = y; if (y > max) max = y; }
+  }
+  if (!isFinite(min)) return { min: 2018, max: 2025 };
+  if (min >= 2018 && max <= 2025) return { min: 2018, max: 2025 };
+  return { min, max: Math.max(max, min + 1) };
+}
+
+function cgYearColor(pal, domain, y) {
+  const yy = Number(y) || 0;
+  if (yy <= 1800) return pal.years[2021] || "#8a8a8a";
+  const t = Math.max(0, Math.min(1, (yy - domain.min) / (domain.max - domain.min)));
+  return pal.years[2018 + Math.round(t * 7)] || "#8a8a8a";
 }
 
 // Run-mode radii (snapshots._radius): seeds fixed, satellites log-cites.
@@ -93,16 +110,23 @@ function cgEaseOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
 const CG_TRANSPARENT = "#00000000";
 
-// f5 FA2 settings — the shared default; Explore can override via the
-// layout-options popover.
+// FA2 defaults — Gephi's citation-network recipe rather than the f5 demo's
+// small-graph aesthetics: LinLog off (Gephi default), "dissuade hubs" on,
+// overlap prevention off (at high density it disc-packs the whole graph),
+// weak gravity so tendrils/satellite components can stretch out, moderate
+// slowDown so the worker actually converges within the auto-settle window.
+// edgeWeightInfluence defaults to 0 (pure topology): similarity-style GEXF
+// weights are often degenerate (CitNet: 60% exactly 0) and turn the layout
+// into a core-knot + repulsion shell; the popover can switch weights on.
 const CG_FA2_DEFAULTS = {
   linLogMode: true,
-  adjustSizes: true,
+  adjustSizes: false,
+  outboundAttractionDistribution: false,
   barnesHutOptimize: true,
   scalingRatio: 10,
   gravity: 1,
-  slowDown: 10,
-  edgeWeightInfluence: 1,
+  slowDown: 5,
+  edgeWeightInfluence: 0,
 };
 
 function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
@@ -114,7 +138,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const tipRef = React.useRef(null);
   const st = React.useRef({
     sigma: null, graph: null, layout: null, rand: cgMulberry32(7),
-    pal: null, adj: {}, adjPairs: {}, edgeList: [],
+    pal: null, domain: { min: 2018, max: 2025 }, adj: {}, adjPairs: {}, edgeList: [],
     selected: null, hovered: null, active: null, connected: new Set(),
     hidden: null, top3: new Set(), labels: false, paperById: {},
     dataKey: null, stopTimer: null, animRAF: 0, replayTimer: null,
@@ -157,7 +181,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       _targetSize: size,
       _animSize: animate ? 0.001 : size,
       _animStart: performance.now(),
-      color: p.seed ? st.pal.seed : cgYearColor(st.pal, p.year),
+      color: p.seed ? st.pal.seed : cgYearColor(st.pal, st.domain, p.year),
       _seed: !!p.seed,
       _year: p.year,
       haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
@@ -167,12 +191,14 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     };
   };
 
-  const addPaperNode = (p, animate) => {
+  const addPaperNode = (p, animate, pos) => {
     const g = st.graph;
     if (!g || g.hasNode(p.id)) return;
     let x, y;
-    const present = (st.adj[p.id] || []).filter(o => g.hasNode(o));
-    if (present.length) {
+    const present = pos ? [] : (st.adj[p.id] || []).filter(o => g.hasNode(o));
+    if (pos) {
+      x = pos.x; y = pos.y;
+    } else if (present.length) {
       const nb = present[Math.floor(st.rand() * present.length)];
       x = g.getNodeAttribute(nb, "x") + (st.rand() - 0.5) * 10;
       y = g.getNodeAttribute(nb, "y") + (st.rand() - 0.5) * 10;
@@ -190,9 +216,10 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
 
   const addEdgesFor = (id) => {
     const g = st.graph;
-    for (const [a, b] of (st.adjPairs[id] || [])) {
+    for (const [a, b, w] of (st.adjPairs[id] || [])) {
       if (a !== b && g.hasNode(a) && g.hasNode(b) && !g.hasEdge(a, b)) {
-        g.addEdge(a, b, { size: 0.8 });
+        // `weight` feeds FA2's edgeWeightInfluence (0-weight links don't pull)
+        g.addEdge(a, b, { size: 0.8, weight: w });
       }
     }
   };
@@ -201,10 +228,11 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     st.adj = {}; st.adjPairs = {}; st.edgeList = edgeArr;
     for (const e of edgeArr) {
       if (!e || e.source === e.target) continue;
+      const w = e.weight == null ? 1 : e.weight;
       (st.adj[e.source] ||= []).push(e.target);
       (st.adj[e.target] ||= []).push(e.source);
-      (st.adjPairs[e.source] ||= []).push([e.source, e.target]);
-      (st.adjPairs[e.target] ||= []).push([e.source, e.target]);
+      (st.adjPairs[e.source] ||= []).push([e.source, e.target, w]);
+      (st.adjPairs[e.target] ||= []).push([e.source, e.target, w]);
     }
   };
 
@@ -219,7 +247,9 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     try { st.layout.start(); } catch (_) {}
     setLayoutOn(true);
     clearTimeout(st.stopTimer);
-    const ms = Math.min(20000, 6000 + (st.graph ? st.graph.order * 12 : 0));
+    // dense graphs need FA2 time roughly ∝ edges, not just nodes
+    const ms = Math.min(45000,
+      6000 + (st.graph ? st.graph.order * 12 + st.graph.size * 5 : 0));
     st.stopTimer = setTimeout(() => {
       if (st.layout) { try { st.layout.stop(); } catch (_) {} }
       setLayoutOn(false);
@@ -301,12 +331,21 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     const { Graph, Sigma, FA2Layout, createNodeBorderProgram } = window.GraphLibs;
     st.rand = cgMulberry32(7);
     st.pal = cgReadPalette();
+    st.domain = cgYearDomain(papers);
     rebuildAdjacency(edges);
     refreshTop3(papers);
 
     const g = new Graph({ multi: false, type: "undirected" });
     st.graph = g;
-    for (const p of papers) addPaperNode(p, false);
+    // Gephi-style init: scatter over a wide disc and let FA2 contract into
+    // structure. Seeding everything near the origin (the f5 spawn rule, kept
+    // for incremental/live additions) jams dense graphs into a uniform ball.
+    const R = 12 * Math.sqrt(Math.max(1, papers.length));
+    for (const p of papers) {
+      const a = st.rand() * Math.PI * 2;
+      const r = R * Math.sqrt(st.rand());
+      addPaperNode(p, false, { x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
     for (const p of papers) addEdgesFor(p.id);
 
     // Node program: ring (selection) + halo (seeds) + stroke + fill.
@@ -352,7 +391,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         if (st.hidden && (st.hidden.has(src) || st.hidden.has(tgt))) {
           return { ...data, hidden: true };
         }
-        const yc = cgYearColor(st.pal, st.graph.getNodeAttribute(tgt, "_year"));
+        const yc = cgYearColor(st.pal, st.domain, st.graph.getNodeAttribute(tgt, "_year"));
         const touches = st.active && (src === st.active || tgt === st.active);
         if (touches) return { ...data, color: cgFade(yc, 0.85, st.pal.bgRgb), size: 1.6, zIndex: 1 };
         return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: 0.8 };
@@ -443,6 +482,17 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   // ---- incremental growth (live run streams into the same dataKey) ------
   React.useEffect(() => {
     if (!st.sigma || st.dataKey !== dataKey || st.replayTimer) return;
+    const dom = cgYearDomain(papers);
+    if (dom.min !== st.domain.min || dom.max !== st.domain.max) {
+      // domain stretched mid-stream — remap the colours already on canvas
+      st.domain = dom;
+      st.graph.forEachNode((nid) => {
+        const p = st.paperById[nid];
+        if (p && !p.seed) {
+          st.graph.setNodeAttribute(nid, "color", cgYearColor(st.pal, dom, p.year));
+        }
+      });
+    }
     rebuildAdjacency(edges);
     const fresh = papers.filter(p => !st.graph.hasNode(p.id));
     for (const p of fresh) addPaperNode(p, true);
@@ -450,7 +500,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     for (const e of st.edgeList) {
       if (e.source !== e.target && st.graph.hasNode(e.source) && st.graph.hasNode(e.target)
           && !st.graph.hasEdge(e.source, e.target)) {
-        st.graph.addEdge(e.source, e.target, { size: 0.8 });
+        st.graph.addEdge(e.source, e.target,
+          { size: 0.8, weight: e.weight == null ? 1 : e.weight });
         newEdges = true;
       }
     }
@@ -492,7 +543,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         const p = st.paperById[nid];
         if (!p) return;
         st.graph.mergeNodeAttributes(nid, {
-          color: p.seed ? st.pal.seed : cgYearColor(st.pal, p.year),
+          color: p.seed ? st.pal.seed : cgYearColor(st.pal, st.domain, p.year),
           haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
           strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
         });
@@ -660,9 +711,19 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
           </label>
           <label className="cg-pop-row">
             <span className="cg-pop-k">Gravity</span>
-            <input type="range" min="0.2" max="5" step="0.2" value={fa2.gravity}
+            <input type="range" min="0.1" max="5" step="0.1" value={fa2.gravity}
                    onChange={e => applyFa2({ gravity: +e.target.value })} />
             <span className="cg-pop-v">{fa2.gravity.toFixed(1)}</span>
+          </label>
+          <label className="cg-pop-row cg-pop-check">
+            <input type="checkbox" checked={fa2.outboundAttractionDistribution}
+                   onChange={e => applyFa2({ outboundAttractionDistribution: e.target.checked })} />
+            <span>Dissuade hubs</span>
+          </label>
+          <label className="cg-pop-row cg-pop-check">
+            <input type="checkbox" checked={fa2.edgeWeightInfluence > 0}
+                   onChange={e => applyFa2({ edgeWeightInfluence: e.target.checked ? 1 : 0 })} />
+            <span>Use edge weights</span>
           </label>
           <label className="cg-pop-row cg-pop-check">
             <input type="checkbox" checked={fa2.linLogMode}
@@ -686,4 +747,4 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   );
 }
 
-Object.assign(window, { CiteGraph });
+Object.assign(window, { CiteGraph, cgYearDomain });

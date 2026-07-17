@@ -58,7 +58,7 @@ function RunNetwork({ selectedPaperId, onSelectPaper, onHoverPaper, theme }) {
                 <span key={y + theme} className="net-ramp-step" style={{ background: yearColor(y) }} />
               ))}
             </span>
-            <span>2018 → 2025</span>
+            <span>{cgYearDomain(data.papers).min} → {cgYearDomain(data.papers).max}</span>
           </span>
           <span className="net-legend-item">
             <span className="net-hint-txt">drag · scroll · click</span>
