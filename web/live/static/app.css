@@ -4684,7 +4684,7 @@ select.gp-v { cursor: pointer; }
   align-items: flex-start; justify-content: center;
   padding: 30px 28px 56px;
 }
-.pipe-col { --pipe-bw: 280px; width: max-content; }
+.pipe-col { --pipe-bw: 200px; width: max-content; }  /* just wider than the longest label (~151px) */
 .pipe-seq { display: flex; flex-direction: column; align-items: center; }
 .pipe-step-row { display: flex; justify-content: center; }
 /* Fixed, uniform block width everywhere — serial trunk and parallel branches. */
