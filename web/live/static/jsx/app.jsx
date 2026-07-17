@@ -117,18 +117,40 @@ function App() {
   const [exploreSelectedId, setExploreSelectedId] = useState(null);
   const [exploreSubtreeId, setExploreSubtreeId] = useState(null);
 
-  const exploreData = React.useMemo(() => (
-    explore.source === "run"
+  // Citation (default) ↔ collaboration network switch. The author view is
+  // loaded lazily per run (Finalize graphml or derived from the collection
+  // JSON); the live session and GEXF drop-ins have no author lists.
+  const [exploreNet, setExploreNet] = useState("cite");
+  const exploreCollab = explore.collab || { papers: [], edges: [] };
+  const collabEnabled = explore.source === "run";
+  const exploreKind = exploreNet === "collab" ? "author" : "paper";
+  useEffect(() => {
+    if (exploreNet === "collab" && explore.source === "run" && explore.runPath) {
+      loadExploreCollab(explore.runPath);
+    }
+    if (exploreNet === "collab" && explore.source !== "run") setExploreNet("cite");
+  }, [exploreNet, explore.source, explore.runPath]);
+
+  const exploreData = React.useMemo(() => {
+    if (exploreNet === "collab") {
+      return { papers: exploreCollab.papers || [], edges: exploreCollab.edges || [] };
+    }
+    return explore.source === "run"
       ? { papers: explore.papers, edges: explore.edges }
-      : exploreFromLive()
-  ), [explore.source, explore.version, liveNetwork.version, liveAccepted.length]);
-  const exploreDataKey = explore.source === "run" ? "run:" + explore.runPath : "live";
+      : exploreFromLive();
+  }, [exploreNet, exploreCollab, explore.source, explore.version,
+      liveNetwork.version, liveAccepted.length]);
+  const exploreDataKey = (explore.source === "run" ? "run:" + explore.runPath : "live")
+    + (exploreNet === "collab" ? ":collab" : "");
+  // Nodes removed by the graph-side filters (degree / edge weight / largest
+  // component) inside CiteGraph — mirrored into the list so both agree.
+  const [exploreGraphHidden, setExploreGraphHidden] = useState(null);
   const exploreFilterHidden = React.useMemo(() => {
-    const pred = xpFilterPredicate(exploreFilters);
+    const pred = xpFilterPredicate(exploreFilters, exploreKind);
     const hidden = new Set();
     for (const p of exploreData.papers) if (!pred(p)) hidden.add(p.id);
     return hidden;
-  }, [exploreData, exploreFilters]);
+  }, [exploreData, exploreFilters, exploreKind]);
   const exploreSelectedPaper = exploreSelectedId
     ? exploreData.papers.find(p => p.id === exploreSelectedId) || null
     : null;
@@ -147,10 +169,20 @@ function App() {
     })();
   }, [mode]);
 
-  // Data source changed → stale selection/lens must not survive.
-  useEffect(() => { setExploreSelectedId(null); setExploreSubtreeId(null); }, [exploreDataKey]);
+  // Data source / network mode changed → stale selection/lens/filters must
+  // not survive (author facets differ from paper facets).
+  useEffect(() => {
+    setExploreSelectedId(null);
+    setExploreSubtreeId(null);
+    setExploreGraphHidden(null);
+  }, [exploreDataKey]);
+  useEffect(() => {
+    setExploreFilters({ ...XP_EMPTY_FILTERS });
+    setExploreSort(exploreNet === "collab" ? "papers" : "citations");
+  }, [exploreNet]);
 
   const handleExplorePickSource = (v) => {
+    setExploreNet("cite");
     if (v === "live") exploreUseLiveSession();
     else loadExploreRun(v);
   };
@@ -310,30 +342,48 @@ function App() {
         <>
           <ExploreList
             papers={exploreData.papers}
+            kind={exploreKind}
             selectedId={exploreSelectedId}
             onSelect={setExploreSelectedId}
             sort={exploreSort}
             setSort={setExploreSort}
             filters={exploreFilters}
             setFilters={setExploreFilters}
-            explore={explore}
+            explore={exploreNet === "collab"
+              ? { ...explore, loading: exploreCollab.loading, error: exploreCollab.error }
+              : explore}
             onPickSource={handleExplorePickSource}
+            graphHidden={exploreGraphHidden}
           />
           <div className="main main-solo">
             <ExploreNetwork
               papers={exploreData.papers}
               edges={exploreData.edges}
               dataKey={exploreDataKey}
+              kind={exploreKind}
               selectedId={exploreSelectedId}
               onSelect={setExploreSelectedId}
               subtreeId={exploreSubtreeId}
               onClearSubtree={() => setExploreSubtreeId(null)}
               filterHiddenIds={exploreFilterHidden}
+              onGraphHidden={setExploreGraphHidden}
+              netMode={exploreNet}
+              onSwitchNet={setExploreNet}
+              collabEnabled={collabEnabled}
+              collabHint={explore.source === "live"
+                ? "Author view needs a finished run — pick one in the Papers panel"
+                : ""}
+              emptyHint={exploreNet === "collab"
+                ? (exploreCollab.loading
+                    ? "Loading the collaboration network…"
+                    : (exploreCollab.error || "No author data for this run."))
+                : null}
               theme={theme}
             />
           </div>
           <ExploreDetail
             paper={exploreSelectedPaper}
+            kind={exploreKind}
             onExploreSubtree={handleExploreSubtree}
             subtreeActive={!!exploreSelectedPaper && exploreSubtreeId === exploreSelectedPaper.id}
           />

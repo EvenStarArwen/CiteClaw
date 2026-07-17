@@ -2,24 +2,16 @@
 // Section C (Run mode) — live network visualization.
 // Same engine as the Exploration page (shared CiteGraph: graphology +
 // ForceAtlas2 worker + sigma — the design's f5 reference stack), kept to the
-// run look: dot grid, year-ramp nodes, plum seed halo, no on-graph labels.
-// New papers stream in incrementally with the grow animation while the FA2
-// worker keeps untangling off the main thread — no full re-layout per
-// snapshot. Hover shows title · authors · year · venue · cites.
+// run look: dot grid, year-ramp nodes, plum seed halo, no on-graph labels,
+// legacy (log-cites) radii. New papers stream in incrementally with the grow
+// animation while the FA2 worker keeps untangling off the main thread.
+// Hover shows title · authors · year · venue · cites.
 
 function RunNetwork({ selectedPaperId, onSelectPaper, onHoverPaper, theme }) {
   const network = useLive("network");
   const accepted = useLive("accepted");
   const running = useLive("running");
   const [counts, setCounts] = React.useState({ nodes: 0, edges: 0 });
-
-  const cssVar = (name, fallback) => {
-    try {
-      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-      return v || fallback;
-    } catch (_) { return fallback; }
-  };
-  const yearColor = (y) => cssVar(`--cc-year-p-${y}`, "#8a8a8a");
 
   // Normalize the live stores into the shared graph shape (id-based edges).
   const data = React.useMemo(() => exploreFromLive(),
@@ -42,29 +34,13 @@ function RunNetwork({ selectedPaperId, onSelectPaper, onHoverPaper, theme }) {
         onHover={onHoverPaper}
         theme={theme}
         labels={false}
+        sizing="legacy"
+        legendSeed="always"
         emptyHint={running
           ? "Waiting for the first accepted papers…"
           : "The citation graph grows here during a run."}
         onStats={setCounts}
       >
-        <div className="net-legend">
-          <span className="net-legend-item">
-            <span className="net-dot seed" />
-            <span>Seed</span>
-          </span>
-          <span className="net-legend-item">
-            <span className="net-ramp">
-              {[2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025].map(y => (
-                <span key={y + theme} className="net-ramp-step" style={{ background: yearColor(y) }} />
-              ))}
-            </span>
-            <span>{cgYearDomain(data.papers).min} → {cgYearDomain(data.papers).max}</span>
-          </span>
-          <span className="net-legend-item">
-            <span className="net-hint-txt">drag · scroll · click</span>
-          </span>
-        </div>
-
         <div className="net-counter">
           <span>
             <span className="net-counter-num">{counts.nodes}</span>

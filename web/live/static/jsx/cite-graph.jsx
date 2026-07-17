@@ -2,18 +2,25 @@
 // Shared citation-graph surface — used by BOTH the Run and Explore pages.
 //
 // Engine: the design's module_a_network_f5 reference stack (graphology graph
-// + ForceAtlas2 web-worker layout + sigma WebGL renderer) with its algorithms:
-// spawn-near-neighbour node insertion, 400ms easeOutCubic grow animation,
-// continuous FA2 with auto-settle, fade-toward-paper de-emphasis.
+// + ForceAtlas2 layout + sigma WebGL renderer). Two execution modes of the
+// SAME algorithm: a one-shot synchronous pre-warm gives a fresh dataset
+// coarse structure before its first paint, then the web-worker runs a
+// bounded fast-settle window (double step size) and drops to the configured
+// gentle dynamics — full speed even in a background tab, UI never blocked.
 //
-// Look: the Run network's — camera-synced dot grid, year-ramp fills
-// (--cc-year-p-*), cream node strokes, plum seed dot with soft halo,
-// plum selection ring, run-style radii. Labels are opt-in (Explore only);
-// hovering always shows title · authors · year · venue · cites.
+// Look: the Run network's — camera-synced dot grid, ramp-coloured fills,
+// cream node strokes, plum seed dot with soft halo, plum selection ring.
+// Labels are opt-in (hidden by default); hover always shows the tooltip.
 //
-// Wrappers own their legends/counters (children overlays) and data shape:
-//   papers: [{id,title,authors,year,venue,cites,seed,depth,source,addedAt}]
-//   edges:  [{source,target}]  (paper-id pairs)
+// Data shape (papers double as author rows when kind="author"):
+//   papers: [{id,title,authors,year,venue,cites,seed,depth,source,addedAt,
+//             hIndex?,nPapers?}]
+//   edges:  [{source,target,weight?}]  (id pairs)
+//
+// Filters here are Gephi-style: filtered nodes/edges are REMOVED from the
+// graphology graph (not reducer-hidden), so ForceAtlas2 re-flows the layout
+// live; removed nodes keep a position cache so un-filtering restores them
+// where they were.
 
 function cgCssVar(name, fallback) {
   try {
@@ -53,13 +60,54 @@ function cgMulberry32(seed) {
   };
 }
 
-function cgReadPalette() {
+// ---------------------------------------------------------------- palettes
+// The default "Ember" ramp is the design's --cc-year-p-* tokens (theme-aware
+// via CSS). The alternatives are hand-tuned low-saturation ramps that sit on
+// the cream/charcoal backgrounds: dim → bright on dark, pale → deep on light
+// (old → recent in both cases). 8 stops each, like the token ramp.
+const CG_PALETTES = {
+  ember: null,  // read from CSS tokens
+  moss: {
+    light: ["#b7bfa4", "#a4b18f", "#91a27b", "#7e9268", "#6b8156", "#587045", "#465e36", "#354c28"],
+    dark:  ["#4b5442", "#57624c", "#647157", "#728062", "#80906e", "#90a07b", "#a0b089", "#b1c098"],
+  },
+  slate: {
+    light: ["#b3bcc6", "#9fabb9", "#8b99ab", "#77889d", "#64778e", "#51657e", "#3f546d", "#2e435b"],
+    dark:  ["#49525e", "#545f6e", "#606d7e", "#6d7b8e", "#7b8a9e", "#8a99ae", "#9aa9be", "#abb9cd"],
+  },
+  dusk: {
+    light: ["#c2b3bd", "#b29fad", "#a28b9d", "#92788d", "#82657d", "#71536c", "#60425a", "#4e3248"],
+    dark:  ["#564b56", "#635665", "#706274", "#7e6e83", "#8c7b92", "#9b89a1", "#aa97b0", "#b9a6bf"],
+  },
+  ash: {
+    light: ["#bdbab1", "#aca99f", "#9b988e", "#8a877e", "#79766e", "#68655e", "#57554f", "#464440"],
+    dark:  ["#565550", "#62615b", "#6f6e67", "#7c7b73", "#8a887f", "#98968c", "#a6a499", "#b5b2a7"],
+  },
+};
+const CG_PALETTE_NAMES = [
+  ["ember", "Ember (default)"], ["moss", "Moss"], ["slate", "Slate"],
+  ["dusk", "Dusk"], ["ash", "Ash"],
+];
+
+function cgTheme() {
+  const t = document.documentElement.getAttribute("data-theme");
+  return t === "dark" ? "dark" : "light";
+}
+
+function cgPaletteStops(name, theme) {
+  const p = CG_PALETTES[name];
+  if (p) return p[theme === "dark" ? "dark" : "light"];
+  const stops = [];
+  for (let y = 2018; y <= 2025; y++) stops.push(cgCssVar(`--cc-year-p-${y}`, "#8a8a8a"));
+  return stops;
+}
+
+function cgReadPalette(paletteName) {
   const bg = cgCssVar("--cc-bg", "#f5f3ee");
   const bgRgb = cgColorRgb(bg, [245, 243, 238]);
-  const years = {};
-  for (let y = 2018; y <= 2025; y++) years[y] = cgCssVar(`--cc-year-p-${y}`, "#8a8a8a");
   return {
-    bg, bgRgb, years,
+    bg, bgRgb,
+    stops: cgPaletteStops(paletteName || "ember", cgTheme()),
     seed: cgCssVar("--cc-net-seed", "#3e3548"),
     seedHalo: cgCssVar("--cc-net-seed-halo", "rgba(62, 53, 72, 0.10)"),
     seedStroke: cgCssVar("--cc-net-seed-stroke", "#faf8f2"),
@@ -73,10 +121,9 @@ function cgReadPalette() {
   };
 }
 
-// The design ships 8 ramp stops named --cc-year-p-2018..2025. Data can span
-// any era (a Gephi import may reach back decades), so the stops are mapped
-// linearly over the dataset's actual year range; the default domain
-// reproduces the original fixed 2018→2025 behaviour.
+// The design ships 8 ramp stops. Data can span any era (a Gephi import may
+// reach back decades), so the stops are mapped linearly over the dataset's
+// actual range; the default domain reproduces the fixed 2018→2025 behaviour.
 function cgYearDomain(papers) {
   let min = Infinity, max = -Infinity;
   for (const p of papers || []) {
@@ -88,22 +135,61 @@ function cgYearDomain(papers) {
   return { min, max: Math.max(max, min + 1) };
 }
 
-function cgYearColor(pal, domain, y) {
-  const yy = Number(y) || 0;
-  if (yy <= 1800) return pal.years[2021] || "#8a8a8a";
-  const t = Math.max(0, Math.min(1, (yy - domain.min) / (domain.max - domain.min)));
-  return pal.years[2018 + Math.round(t * 7)] || "#8a8a8a";
+// Author view: colour by h-index when the data has it, papers-in-collection
+// otherwise (JSON-derived collab graphs carry no h-index).
+function cgAuthorDomain(papers) {
+  let hMax = 0, pMax = 0;
+  for (const p of papers || []) {
+    if ((p.hIndex || 0) > hMax) hMax = p.hIndex || 0;
+    if ((p.nPapers || 0) > pMax) pMax = p.nPapers || 0;
+  }
+  if (hMax > 0) return { min: 0, max: hMax, field: "hIndex", caption: `h-index 0 → ${hMax}` };
+  return { min: 0, max: Math.max(1, pMax), field: "nPapers", caption: `papers 0 → ${pMax}` };
 }
 
-// Run-mode radii (snapshots._radius): seeds fixed, satellites log-cites.
-function cgRadius(p) {
+function cgColorValue(p, kind, domain) {
+  if (kind === "author") return Number(p[domain.field]) || 0;
+  const y = Number(p.year) || 0;
+  return y > 1800 ? y : null;
+}
+
+function cgRampColor(pal, domain, v) {
+  if (v == null) return pal.stops[3] || "#8a8a8a";
+  const t = Math.max(0, Math.min(1, (v - domain.min) / Math.max(1e-9, domain.max - domain.min)));
+  return pal.stops[Math.round(t * 7)] || "#8a8a8a";
+}
+
+// ------------------------------------------------------------------ sizing
+// Legacy curve = the Run canvas's radii (seeds fixed, satellites log-cites).
+function cgLegacyRadius(p) {
   if (p.seed) return 8;
   const c = Math.max(0, Number(p.cites) || 0);
   return 3.5 + Math.min(4.5, Math.log10(1 + c) * 1.2);
 }
+
+// Adjustable curve: size ∝ (v / vmax)^γ with γ = t/(1-t). contrast t = 0 →
+// every node the same size; the middle → linear in the raw value; higher →
+// only the giants stand out. Default t ≈ log-like (the legacy look).
+function cgParamRadius(p, kind, vis, vmax) {
+  const v = kind === "author" ? (Number(p.nPapers) || 0) : Math.max(0, Number(p.cites) || 0);
+  const t = Math.min(0.995, Math.max(0, vis.contrast));
+  const g = Math.min(6, t / (1 - t));
+  const w = vmax > 0 ? Math.max(0, Math.min(1, v / vmax)) : 0;
+  const s01 = g === 0 ? 1 : Math.pow(w, g);
+  let r = vis.unitSize * (3.5 + 4.5 * s01);
+  if (p.seed) r = Math.max(r, vis.unitSize * 8);
+  return r;
+}
+
+function cgRadius(p, kind, vis, vmax, legacy) {
+  return legacy ? cgLegacyRadius(p) : cgParamRadius(p, kind, vis, vmax);
+}
 // Border budget added around the fill (ring space + halo/stroke), so the
 // visible fill keeps the run-canvas sizes.
-function cgNodeSize(p) { return cgRadius(p) + (p.seed ? 5 : 2.5); }
+function cgNodeSize(p, kind, vis, vmax, legacy) {
+  const unit = legacy ? 1 : vis.unitSize;
+  return cgRadius(p, kind, vis, vmax, legacy) + (p.seed ? 5 : 2.5) * unit;
+}
 
 function cgTrunc(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 2) + "…" : s; }
 function cgEaseOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
@@ -111,44 +197,177 @@ function cgEaseOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 const CG_TRANSPARENT = "#00000000";
 
 // FA2 defaults — Gephi's citation-network recipe rather than the f5 demo's
-// small-graph aesthetics: LinLog off (Gephi default), "dissuade hubs" on,
-// overlap prevention off (at high density it disc-packs the whole graph),
-// weak gravity so tendrils/satellite components can stretch out, moderate
-// slowDown so the worker actually converges within the auto-settle window.
-// edgeWeightInfluence defaults to 0 (pure topology): similarity-style GEXF
-// weights are often degenerate (CitNet: 60% exactly 0) and turn the layout
-// into a core-knot + repulsion shell; the popover can switch weights on.
+// small-graph aesthetics. edgeWeightInfluence defaults to 0 (pure topology):
+// similarity-style GEXF weights are often degenerate (CitNet: 60% exactly 0)
+// and turn the layout into a core-knot + repulsion shell.
 const CG_FA2_DEFAULTS = {
   linLogMode: true,
   adjustSizes: false,
   outboundAttractionDistribution: false,
+  strongGravityMode: false,
   barnesHutOptimize: true,
   scalingRatio: 10,
   gravity: 1,
   slowDown: 5,
   edgeWeightInfluence: 0,
 };
+const CG_VIS_DEFAULTS = { unitSize: 1, contrast: 0.1, palette: "ember" };
+const CG_GF_DEFAULTS = { minDegree: 0, minEdgeW: 0, largestOnly: false };
+
+const CG_PREWARM_ITERS = 300; // one-shot sync FA2 before first paint (~0.3s)
+const CG_SETTLE_MS = 6500;    // fast-stepping worker window for a fresh dataset
+const CG_EDIT_MS = 1800;      // fast re-flow after filter edits
+const CG_POLISH_MS = 2500;    // gentle worker run after the fast phase
+
+// ------------------------------------------------- active-subgraph pipeline
+// Gephi-style filter chain, applied in order:
+//   1. drop nodes hidden upstream (facet/keyword filters, subtree lens)
+//   2. drop edges below the weight threshold
+//   3. drop nodes below the degree threshold (degree counted on 2's result)
+//   4. optionally keep only the largest connected component
+function cgComputeActive(papers, edges, hiddenIds, gf) {
+  let nodes = hiddenIds && hiddenIds.size
+    ? papers.filter(p => !hiddenIds.has(p.id))
+    : papers.slice();
+  let nodeSet = new Set(nodes.map(p => p.id));
+
+  const minW = Number(gf.minEdgeW) || 0;
+  const pairSeen = new Set();
+  let act = [];
+  for (const e of edges) {
+    if (!e || e.source === e.target) continue;
+    if (!nodeSet.has(e.source) || !nodeSet.has(e.target)) continue;
+    if ((e.weight == null ? 1 : e.weight) < minW) continue;
+    const key = e.source < e.target ? e.source + "|" + e.target
+                                    : e.target + "|" + e.source;
+    if (pairSeen.has(key)) continue;
+    pairSeen.add(key);
+    act.push(e);
+  }
+
+  if ((Number(gf.minDegree) || 0) > 0) {
+    const deg = {};
+    for (const e of act) {
+      deg[e.source] = (deg[e.source] || 0) + 1;
+      deg[e.target] = (deg[e.target] || 0) + 1;
+    }
+    nodes = nodes.filter(p => (deg[p.id] || 0) >= gf.minDegree);
+    nodeSet = new Set(nodes.map(p => p.id));
+    act = act.filter(e => nodeSet.has(e.source) && nodeSet.has(e.target));
+  }
+
+  if (gf.largestOnly && nodes.length) {
+    const comp = cgComponents(nodes, act);
+    let best = 0, bestSize = 0;
+    for (const [cid, size] of comp.sizes) {
+      if (size > bestSize) { best = cid; bestSize = size; }
+    }
+    nodes = nodes.filter(p => comp.of[p.id] === best);
+    nodeSet = new Set(nodes.map(p => p.id));
+    act = act.filter(e => nodeSet.has(e.source) && nodeSet.has(e.target));
+  }
+
+  return { nodes, nodeSet, edges: act };
+}
+
+// Union-find over the id lists; returns {of: id->compId, sizes: Map}.
+function cgComponents(nodes, edges) {
+  const idx = {}, parent = [], rank = [];
+  nodes.forEach((p, i) => { idx[p.id] = i; parent.push(i); rank.push(0); });
+  const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  const union = (a, b) => {
+    a = find(a); b = find(b);
+    if (a === b) return;
+    if (rank[a] < rank[b]) [a, b] = [b, a];
+    parent[b] = a;
+    if (rank[a] === rank[b]) rank[a]++;
+  };
+  for (const e of edges) union(idx[e.source], idx[e.target]);
+  const of = {}, sizes = new Map();
+  for (const p of nodes) {
+    const r = find(idx[p.id]);
+    of[p.id] = r;
+    sizes.set(r, (sizes.get(r) || 0) + 1);
+  }
+  return { of, sizes };
+}
+
+// Whole-network statistics for the stats card. Diameter is exact BFS over
+// the largest component (fine for the target <1k-node scale; skipped above
+// 1500 nodes so the UI never stalls).
+function cgComputeStats(active) {
+  const n = active.nodes.length, m = active.edges.length;
+  if (!n) return null;
+  const comp = cgComponents(active.nodes, active.edges);
+  let largest = 0;
+  for (const [, size] of comp.sizes) largest = Math.max(largest, size);
+
+  let diameter = null;
+  if (n >= 2 && n <= 1500 && largest >= 2) {
+    const idx = {}, ids = [];
+    active.nodes.forEach((p, i) => { idx[p.id] = i; ids.push(p.id); });
+    const adj = Array.from({ length: n }, () => []);
+    for (const e of active.edges) {
+      adj[idx[e.source]].push(idx[e.target]);
+      adj[idx[e.target]].push(idx[e.source]);
+    }
+    // restrict BFS sources to the largest component
+    let bestComp = -1, bestSize = 0;
+    for (const [cid, size] of comp.sizes) if (size > bestSize) { bestComp = cid; bestSize = size; }
+    const dist = new Int32Array(n);
+    const queue = new Int32Array(n);
+    diameter = 0;
+    for (let s = 0; s < n; s++) {
+      if (comp.of[ids[s]] !== bestComp) continue;
+      dist.fill(-1); dist[s] = 0;
+      let head = 0, tail = 0;
+      queue[tail++] = s;
+      let far = 0;
+      while (head < tail) {
+        const u = queue[head++];
+        for (const v of adj[u]) {
+          if (dist[v] === -1) { dist[v] = dist[u] + 1; if (dist[v] > far) far = dist[v]; queue[tail++] = v; }
+        }
+      }
+      if (far > diameter) diameter = far;
+    }
+  }
+  return {
+    nodes: n,
+    edges: m,
+    avgDeg: n ? (2 * m) / n : 0,
+    density: n > 1 ? (2 * m) / (n * (n - 1)) : 0,
+    components: comp.sizes.size,
+    largest,
+    diameter,
+  };
+}
 
 function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
-                     theme, labels = false, hiddenIds = null,
-                     tools = {}, emptyHint, onStats, children }) {
+                     theme, kind = "paper", labels = false, hiddenIds = null,
+                     sizing, tools = {}, legendSeed = "auto", sizeHint = false,
+                     emptyHint, onStats, onGraphHidden, topLeft, children }) {
   const wrapRef = React.useRef(null);
   const boxRef = React.useRef(null);
   const gridRef = React.useRef(null);
   const tipRef = React.useRef(null);
   const st = React.useRef({
     sigma: null, graph: null, layout: null, rand: cgMulberry32(7),
-    pal: null, domain: { min: 2018, max: 2025 }, adj: {}, adjPairs: {}, edgeList: [],
-    selected: null, hovered: null, active: null, connected: new Set(),
-    hidden: null, top3: new Set(), labels: false, paperById: {},
+    pal: null, cdomain: { min: 2018, max: 2025 }, adj: {}, adjPairs: {},
+    selected: null, hovered: null, anchor: null, connected: new Set(),
+    top3: new Set(), labels: false, paperById: {}, posCache: {},
+    activeData: { nodes: [], nodeSet: new Set(), edges: [] },
+    kind: "paper", legacy: false, vmax: 0, origHover: null,
     dataKey: null, stopTimer: null, animRAF: 0, replayTimer: null,
-    fa2: { ...CG_FA2_DEFAULTS },
+    syncTimer: null,
+    fa2: { ...CG_FA2_DEFAULTS }, vis: { ...CG_VIS_DEFAULTS }, gf: { ...CG_GF_DEFAULTS },
     onSelect: null, onHover: null, onStats: null,
   }).current;
   st.onSelect = onSelect || null;
   st.onHover = onHover || null;
   st.onStats = onStats || null;
-  st.labels = !!labels;
+  st.kind = kind;
+  st.legacy = sizing === "legacy";
 
   const [libs, setLibs] = React.useState(() =>
     window.GraphLibs ? (window.GraphLibs.error ? "error" : "ready") : "loading");
@@ -157,6 +376,12 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const [replaying, setReplaying] = React.useState(false);
   const [optsOpen, setOptsOpen] = React.useState(false);
   const [fa2, setFa2] = React.useState({ ...CG_FA2_DEFAULTS });
+  const [vis, setVis] = React.useState({ ...CG_VIS_DEFAULTS });
+  const [gf, setGf] = React.useState({ ...CG_GF_DEFAULTS });
+  const [showLabels, setShowLabels] = React.useState(!!labels);
+  const [stats, setStats] = React.useState(null);
+  const [palTick, setPalTick] = React.useState(0);
+  st.fa2 = fa2; st.vis = vis; st.gf = gf; st.labels = showLabels;
 
   React.useEffect(() => {
     if (libs !== "loading") return;
@@ -166,6 +391,60 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     return () => window.removeEventListener("graphlibs", onReady);
   }, [libs]);
 
+  // ---- derived data ------------------------------------------------------
+  const active = React.useMemo(
+    () => cgComputeActive(papers, edges, hiddenIds, gf),
+    [papers, edges, hiddenIds, gf]);
+  st.activeData = active;
+
+  const cdomain = React.useMemo(
+    () => (kind === "author" ? cgAuthorDomain(papers) : cgYearDomain(papers)),
+    [papers, kind]);
+
+  const vmax = React.useMemo(() => {
+    let v = 0;
+    for (const p of papers) {
+      const x = kind === "author" ? (Number(p.nPapers) || 0) : (Number(p.cites) || 0);
+      if (x > v) v = x;
+    }
+    return v;
+  }, [papers, kind]);
+  st.vmax = vmax;
+
+  const ranges = React.useMemo(() => {
+    let maxW = 0, minW = Infinity, deg = {}, maxDeg = 0;
+    for (const e of edges) {
+      if (!e || e.source === e.target) continue;
+      const w = e.weight == null ? 1 : e.weight;
+      if (w > maxW) maxW = w;
+      if (w < minW) minW = w;
+      deg[e.source] = (deg[e.source] || 0) + 1;
+      deg[e.target] = (deg[e.target] || 0) + 1;
+    }
+    for (const id in deg) if (deg[id] > maxDeg) maxDeg = deg[id];
+    return { maxW, weighted: maxW > (minW === Infinity ? 0 : minW),
+             maxDeg: Math.min(50, maxDeg) };
+  }, [edges]);
+
+  // ids removed by the graph-side filters (degree/weight/component) beyond
+  // the upstream facet filters — reported so the paper list can agree.
+  React.useEffect(() => {
+    if (!onGraphHidden) return;
+    const removed = new Set();
+    for (const p of papers) {
+      if (hiddenIds && hiddenIds.has(p.id)) continue;
+      if (!active.nodeSet.has(p.id)) removed.add(p.id);
+    }
+    onGraphHidden(removed);
+  }, [active]);  // eslint-disable-line
+
+  // stats card (debounced — diameter is the pricey part)
+  React.useEffect(() => {
+    if (!tools.stats) return;
+    const t = setTimeout(() => setStats(cgComputeStats(active)), 220);
+    return () => clearTimeout(t);
+  }, [active, tools.stats]);
+
   const emitStats = () => {
     if (st.onStats && st.graph) {
       st.onStats({ nodes: st.graph.order, edges: st.graph.size });
@@ -174,16 +453,17 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
 
   // ---- node / edge insertion (f5 spawn-near-neighbour + grow animation) --
   const nodeAttrs = (p, animate) => {
-    const size = cgNodeSize(p);
+    const size = cgNodeSize(p, st.kind, st.vis, st.vmax, st.legacy);
+    const cv = cgColorValue(p, st.kind, st.cdomain);
     return {
       label: cgTrunc(p.title, 48),
       size: animate ? 0.001 : size,
       _targetSize: size,
       _animSize: animate ? 0.001 : size,
       _animStart: performance.now(),
-      color: p.seed ? st.pal.seed : cgYearColor(st.pal, st.domain, p.year),
+      color: p.seed ? st.pal.seed : cgRampColor(st.pal, st.cdomain, cv),
       _seed: !!p.seed,
-      _year: p.year,
+      _cval: cv,
       haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
       strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
       haloSize: p.seed ? 0.22 : 0.0,
@@ -225,7 +505,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   };
 
   const rebuildAdjacency = (edgeArr) => {
-    st.adj = {}; st.adjPairs = {}; st.edgeList = edgeArr;
+    st.adj = {}; st.adjPairs = {};
     for (const e of edgeArr) {
       if (!e || e.source === e.target) continue;
       const w = e.weight == null ? 1 : e.weight;
@@ -241,20 +521,59 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       .slice(0, 3).map(p => p.id));
   };
 
-  // Layout runs hot after (re)builds, then settles; the toolbar resumes it.
-  const heatLayout = () => {
+  // ---- layout: worker (live streaming) + synchronous bursts (instant) ----
+  const heatLayout = (ms) => {
     if (!st.layout) return;
     try { st.layout.start(); } catch (_) {}
     setLayoutOn(true);
     clearTimeout(st.stopTimer);
     // dense graphs need FA2 time roughly ∝ edges, not just nodes
-    const ms = Math.min(45000,
+    const win = ms != null ? ms : Math.min(45000,
       6000 + (st.graph ? st.graph.order * 12 + st.graph.size * 5 : 0));
     st.stopTimer = setTimeout(() => {
       if (st.layout) { try { st.layout.stop(); } catch (_) {} }
       setLayoutOn(false);
+    }, win);
+  };
+
+  // One-shot synchronous FA2 head start (same algorithm + settings): a few
+  // hundred iterations before the next paint, so a fresh dataset appears
+  // with coarse structure instead of the random init. Cheap (~0.3s for 640
+  // nodes) and skipped silently if the sync entry failed to load.
+  const prewarmLayout = () => {
+    const sync = window.GraphLibs && window.GraphLibs.fa2Sync;
+    if (!st.graph || !sync || st.graph.order < 20) return;
+    try {
+      sync.assign(st.graph, {
+        iterations: CG_PREWARM_ITERS,
+        settings: { ...st.fa2, slowDown: Math.max(2, st.fa2.slowDown / 2) },
+      });
+    } catch (_) {}
+  };
+
+  // Fast settle: the SAME worker, run for a bounded window at half slowDown
+  // (double step size — many gentle iterations' worth per second), then
+  // swapped back to the configured dynamics for a short polish. Runs in the
+  // web worker, so it converges at full speed even in a background tab and
+  // never blocks the UI.
+  const makeLayout = (settings) => {
+    if (st.layout) { try { st.layout.kill(); } catch (_) {} st.layout = null; }
+    if (!st.graph || !window.GraphLibs || !window.GraphLibs.FA2Layout) return;
+    st.layout = new window.GraphLibs.FA2Layout(st.graph, { settings: { ...settings } });
+  };
+  const fastSettle = (ms) => {
+    if (!st.graph) return;
+    clearTimeout(st.stopTimer);
+    makeLayout({ ...st.fa2, slowDown: Math.max(2, st.fa2.slowDown / 2) });
+    if (!st.layout) return;
+    try { st.layout.start(); } catch (_) {}
+    setLayoutOn(true);
+    st.stopTimer = setTimeout(() => {
+      makeLayout(st.fa2);
+      heatLayout(CG_POLISH_MS);
     }, ms);
   };
+
   const toggleLayout = () => {
     if (!st.layout) return;
     if (st.layout.isRunning()) {
@@ -266,10 +585,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
 
   const rebuildLayout = (settings) => {
     if (!st.graph || !window.GraphLibs || !window.GraphLibs.FA2Layout) return;
-    st.fa2 = { ...st.fa2, ...settings };
-    if (st.layout) { try { st.layout.kill(); } catch (_) {} }
-    st.layout = new window.GraphLibs.FA2Layout(st.graph, { settings: { ...st.fa2 } });
-    heatLayout();
+    st.fa2 = { ...settings };
+    fastSettle(CG_EDIT_MS);
   };
 
   const stopReplay = () => {
@@ -281,10 +598,13 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const teardown = () => {
     stopReplay();
     clearTimeout(st.stopTimer);
+    clearTimeout(st.syncTimer);
+    clearTimeout(st.fa2Timer);
     cancelAnimationFrame(st.animRAF);
     if (st.layout) { try { st.layout.kill(); } catch (_) {} st.layout = null; }
     if (st.sigma) { try { st.sigma.kill(); } catch (_) {} st.sigma = null; }
     st.graph = null;
+    st.posCache = {};
   };
 
   // ---- camera-synced dot grid (the run canvas backdrop) -----------------
@@ -330,23 +650,24 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     }
     const { Graph, Sigma, FA2Layout, createNodeBorderProgram } = window.GraphLibs;
     st.rand = cgMulberry32(7);
-    st.pal = cgReadPalette();
-    st.domain = cgYearDomain(papers);
-    rebuildAdjacency(edges);
-    refreshTop3(papers);
+    st.pal = cgReadPalette(st.vis.palette);
+    st.cdomain = cdomain;
+    rebuildAdjacency(st.activeData.edges);
+    refreshTop3(st.activeData.nodes);
 
     const g = new Graph({ multi: false, type: "undirected" });
     st.graph = g;
     // Gephi-style init: scatter over a wide disc and let FA2 contract into
     // structure. Seeding everything near the origin (the f5 spawn rule, kept
     // for incremental/live additions) jams dense graphs into a uniform ball.
-    const R = 12 * Math.sqrt(Math.max(1, papers.length));
-    for (const p of papers) {
+    const R = 12 * Math.sqrt(Math.max(1, st.activeData.nodes.length));
+    for (const p of st.activeData.nodes) {
       const a = st.rand() * Math.PI * 2;
       const r = R * Math.sqrt(st.rand());
       addPaperNode(p, false, { x: Math.cos(a) * r, y: Math.sin(a) * r });
     }
-    for (const p of papers) addEdgesFor(p.id);
+    for (const p of st.activeData.nodes) addEdgesFor(p.id);
+    if (dataKey !== "live") prewarmLayout();  // coarse structure before paint
 
     // Node program: ring (selection) + halo (seeds) + stroke + fill.
     // If @sigma/node-border failed to load, plain circles still work.
@@ -362,7 +683,6 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       minCameraRatio: 0.05,
       maxCameraRatio: 8,
       nodeReducer: (id, data) => {
-        if (st.hidden && st.hidden.has(id)) return { ...data, hidden: true };
         const size = data._animSize ?? data.size;
         const base = { ...data, size, labelColor: st.pal.ink1,
                        ringColor: CG_TRANSPARENT, ringSize: 0.12,
@@ -374,7 +694,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         if (id === st.hovered) {
           return { ...base, zIndex: 3, ringColor: st.pal.selSoft };
         }
-        if (st.active) {
+        if (st.anchor) {
           if (st.connected.has(id)) return { ...base, zIndex: 2 };
           // run-canvas dim: alpha 0.22 against the paper base
           return { ...base,
@@ -388,20 +708,12 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       },
       edgeReducer: (edge, data) => {
         const src = st.graph.source(edge), tgt = st.graph.target(edge);
-        if (st.hidden && (st.hidden.has(src) || st.hidden.has(tgt))) {
-          return { ...data, hidden: true };
-        }
-        const yc = cgYearColor(st.pal, st.domain, st.graph.getNodeAttribute(tgt, "_year"));
-        const touches = st.active && (src === st.active || tgt === st.active);
+        const yc = cgRampColor(st.pal, st.cdomain, st.graph.getNodeAttribute(tgt, "_cval"));
+        const touches = st.anchor && (src === st.anchor || tgt === st.anchor);
         if (touches) return { ...data, color: cgFade(yc, 0.85, st.pal.bgRgb), size: 1.6, zIndex: 1 };
         return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: 0.8 };
       },
     };
-    if (!st.labels) {
-      // Run view: the .net-tip tooltip is the hover surface — suppress
-      // sigma's own white hover-label box so no text is drawn on the graph.
-      settings.defaultDrawNodeHover = () => {};
-    }
     if (createNodeBorderProgram) {
       try {
         settings.defaultNodeType = "bordered";
@@ -426,12 +738,16 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
 
     const sigma = new Sigma(g, boxRef.current, settings);
     st.sigma = sigma;
+    // The .net-tip tooltip is the hover surface; sigma's own white
+    // hover-label box only makes sense when labels are on.
+    st.origHover = sigma.getSetting("defaultDrawNodeHover");
+    if (!st.labels) sigma.setSetting("defaultDrawNodeHover", () => {});
 
     sigma.on("clickNode", ({ node }) => st.onSelect && st.onSelect(node));
     sigma.on("clickStage", () => { if (st.selected) st.onSelect && st.onSelect(null); });
     sigma.on("enterNode", ({ node, event }) => {
       st.hovered = node;
-      st.active = st.selected || st.hovered;
+      st.anchor = st.selected || st.hovered;
       recomputeConnected();
       if (st.onHover) st.onHover(node);
       showTip(node, event);
@@ -439,7 +755,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     });
     sigma.on("leaveNode", () => {
       st.hovered = null;
-      st.active = st.selected;
+      st.anchor = st.selected;
       recomputeConnected();
       if (st.onHover) st.onHover(null);
       hideTip();
@@ -450,8 +766,12 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     cam.on("updated", () => { setZoomPct(Math.round(100 / cam.ratio)); drawGrid(); });
     setZoomPct(Math.round(100 / cam.ratio));
 
-    st.layout = new FA2Layout(g, { settings: { ...st.fa2 } });
-    heatLayout();
+    if (dataKey === "live") {
+      makeLayout(st.fa2);
+      heatLayout();                  // streaming source: keep it warm
+    } else {
+      fastSettle(CG_SETTLE_MS);      // static dataset: settle now, then polish
+    }
     emitStats();
     drawGrid();
 
@@ -479,83 +799,166 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     return teardown;
   }, [libs, dataKey, papers.length === 0]);  // eslint-disable-line
 
-  // ---- incremental growth (live run streams into the same dataKey) ------
-  React.useEffect(() => {
-    if (!st.sigma || st.dataKey !== dataKey || st.replayTimer) return;
-    const dom = cgYearDomain(papers);
-    if (dom.min !== st.domain.min || dom.max !== st.domain.max) {
-      // domain stretched mid-stream — remap the colours already on canvas
-      st.domain = dom;
-      st.graph.forEachNode((nid) => {
-        const p = st.paperById[nid];
-        if (p && !p.seed) {
-          st.graph.setNodeAttribute(nid, "color", cgYearColor(st.pal, dom, p.year));
-        }
-      });
+  // ---- keep the graph in sync with data + filters (removal-based) --------
+  // One debounced diff covers live streaming (new papers appear with the
+  // grow animation) AND filter edits (nodes/edges leave the simulation and
+  // FA2 re-flows). Removed nodes park their positions in posCache so
+  // loosening a filter puts them back where they were.
+  const syncGraph = () => {
+    const g = st.graph;
+    if (!g) return;
+    const act = st.activeData;
+
+    if (st.cdomain.min !== cdomain.min || st.cdomain.max !== cdomain.max
+        || st.cdomain.field !== cdomain.field) {
+      st.cdomain = cdomain;
+      recolorNodes();
     }
-    rebuildAdjacency(edges);
-    const fresh = papers.filter(p => !st.graph.hasNode(p.id));
-    for (const p of fresh) addPaperNode(p, true);
-    let newEdges = false;
-    for (const e of st.edgeList) {
-      if (e.source !== e.target && st.graph.hasNode(e.source) && st.graph.hasNode(e.target)
-          && !st.graph.hasEdge(e.source, e.target)) {
-        st.graph.addEdge(e.source, e.target,
-          { size: 0.8, weight: e.weight == null ? 1 : e.weight });
-        newEdges = true;
+    rebuildAdjacency(act.edges);
+
+    let changed = false;
+    const toDrop = [];
+    g.forEachNode((id) => { if (!act.nodeSet.has(id)) toDrop.push(id); });
+    for (const id of toDrop) {
+      st.posCache[id] = { x: g.getNodeAttribute(id, "x"), y: g.getNodeAttribute(id, "y") };
+      g.dropNode(id);
+      changed = true;
+    }
+    let freshNodes = 0;
+    for (const p of act.nodes) {
+      if (!g.hasNode(p.id)) {
+        addPaperNode(p, true, st.posCache[p.id] || null);
+        freshNodes++;
+        changed = true;
       }
     }
-    if (fresh.length || newEdges) {
-      refreshTop3(papers);
-      heatLayout();
-      emitStats();
+    const want = new Set();
+    for (const e of act.edges) {
+      want.add(e.source < e.target ? e.source + "|" + e.target
+                                   : e.target + "|" + e.source);
     }
-  }, [papers, edges]);  // eslint-disable-line
+    const dropEdges = [];
+    g.forEachEdge((eid, attrs, s, t) => {
+      if (!want.has(s < t ? s + "|" + t : t + "|" + s)) dropEdges.push(eid);
+    });
+    for (const eid of dropEdges) { g.dropEdge(eid); changed = true; }
+    for (const e of act.edges) {
+      if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target)) {
+        g.addEdge(e.source, e.target, { size: 0.8, weight: e.weight == null ? 1 : e.weight });
+        changed = true;
+      }
+    }
 
-  // ---- selection / hidden set -> reducer inputs -------------------------
+    if (changed) {
+      refreshTop3(act.nodes);
+      if (st.dataKey === "live" && freshNodes) heatLayout();
+      else fastSettle(CG_EDIT_MS);
+      emitStats();
+      if (st.sigma) st.sigma.refresh();
+    }
+  };
+
+  React.useEffect(() => {
+    if (!st.sigma || st.dataKey !== dataKey || st.replayTimer) return;
+    clearTimeout(st.syncTimer);
+    st.syncTimer = setTimeout(syncGraph, 140);
+    return () => clearTimeout(st.syncTimer);
+  }, [active, cdomain]);  // eslint-disable-line
+
+  // ---- selection --------------------------------------------------------
   const recomputeConnected = () => {
     st.connected = new Set();
-    if (st.active && st.graph && st.graph.hasNode(st.active)) {
-      for (const nb of st.graph.neighbors(st.active)) st.connected.add(nb);
+    if (st.anchor && st.graph && st.graph.hasNode(st.anchor)) {
+      for (const nb of st.graph.neighbors(st.anchor)) st.connected.add(nb);
     }
   };
   React.useEffect(() => {
     st.selected = selectedId && st.graph && st.graph.hasNode(selectedId) ? selectedId : null;
-    st.active = st.selected || st.hovered;
+    st.anchor = st.selected || st.hovered;
     recomputeConnected();
     if (st.sigma) st.sigma.refresh();
   }, [selectedId, papers]);
-  React.useEffect(() => {
-    st.hidden = hiddenIds && hiddenIds.size ? hiddenIds : null;
-    if (st.sigma) st.sigma.refresh();
-  }, [hiddenIds]);
 
-  // ---- theme flip -> re-read tokens, recolour in place ------------------
-  // Deferred one frame: this child effect fires BEFORE app.jsx's effect that
-  // stamps data-theme on <html>, so an immediate read would get the OLD
-  // theme's tokens (same reason the old canvas renderer deferred its redraw).
+  // ---- palette / theme --------------------------------------------------
+  const recolorNodes = () => {
+    if (!st.graph) return;
+    st.graph.forEachNode((nid) => {
+      const p = st.paperById[nid];
+      if (!p) return;
+      const cv = cgColorValue(p, st.kind, st.cdomain);
+      st.graph.mergeNodeAttributes(nid, {
+        _cval: cv,
+        color: p.seed ? st.pal.seed : cgRampColor(st.pal, st.cdomain, cv),
+        haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
+        strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
+      });
+    });
+  };
+  const applyPalette = () => {
+    if (!st.sigma) return;
+    st.pal = cgReadPalette(st.vis.palette);
+    recolorNodes();
+    st.sigma.setSetting("labelColor", { attribute: "labelColor", color: st.pal.ink1 });
+    st.sigma.setSetting("defaultEdgeColor", st.pal.inkFaint);
+    st.sigma.refresh();
+    drawGrid();
+    setPalTick(t => t + 1);  // legend re-reads CSS tokens post-flip
+  };
+
+  // Theme flip: deferred one frame — this child effect fires BEFORE app.jsx's
+  // effect that stamps data-theme on <html>, so an immediate read would get
+  // the OLD theme's tokens.
   React.useEffect(() => {
     if (!st.sigma) return;
-    const id = requestAnimationFrame(() => {
-      if (!st.sigma) return;
-      st.pal = cgReadPalette();
-      st.graph.forEachNode((nid) => {
-        const p = st.paperById[nid];
-        if (!p) return;
-        st.graph.mergeNodeAttributes(nid, {
-          color: p.seed ? st.pal.seed : cgYearColor(st.pal, st.domain, p.year),
-          haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
-          strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
-        });
-      });
-      st.sigma.setSetting("labelColor", { attribute: "labelColor", color: st.pal.ink1 });
-      st.sigma.refresh();
-      drawGrid();
-    });
+    const id = requestAnimationFrame(applyPalette);
     return () => cancelAnimationFrame(id);
   }, [theme]);  // eslint-disable-line
 
-  // ---- tooltip (run skin: title + authors · year · venue · cites) -------
+  // ---- appearance edits (panel) -----------------------------------------
+  const resizeNodes = () => {
+    if (!st.graph) return;
+    st.graph.forEachNode((nid) => {
+      const p = st.paperById[nid];
+      if (!p) return;
+      const size = cgNodeSize(p, st.kind, st.vis, st.vmax, st.legacy);
+      st.graph.mergeNodeAttributes(nid, { size, _targetSize: size, _animSize: size });
+    });
+    if (st.sigma) st.sigma.refresh();
+  };
+
+  const applyFa2 = (patch) => {
+    const next = { ...st.fa2, ...patch };
+    setFa2(next);
+    st.fa2 = next;
+    clearTimeout(st.fa2Timer);
+    st.fa2Timer = setTimeout(() => rebuildLayout(st.fa2), 180);
+  };
+  const applyVis = (patch) => {
+    const next = { ...st.vis, ...patch };
+    setVis(next);
+    st.vis = next;
+    if (patch.palette != null) applyPalette();
+    if (patch.unitSize != null || patch.contrast != null) resizeNodes();
+  };
+  const applyGf = (patch) => setGf(g0 => ({ ...g0, ...patch }));
+  const toggleLabels = (on) => {
+    setShowLabels(on);
+    st.labels = on;
+    if (st.sigma) {
+      st.sigma.setSetting("labelRenderedSizeThreshold", on ? 7 : 10000);
+      try {
+        st.sigma.setSetting("defaultDrawNodeHover", on ? st.origHover : () => {});
+      } catch (_) {}
+      st.sigma.refresh();
+    }
+  };
+  const resetAll = () => {
+    applyFa2({ ...CG_FA2_DEFAULTS });
+    applyVis({ ...CG_VIS_DEFAULTS });
+    applyGf({ ...CG_GF_DEFAULTS });
+  };
+
+  // ---- tooltip (run skin) -----------------------------------------------
   const paperById = React.useMemo(() => {
     const m = {}; for (const p of papers) m[p.id] = p; return m;
   }, [papers]);
@@ -567,8 +970,11 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     if (!p || !tip) return;
     tip.innerHTML = "<b></b><span class=\"net-tip-meta\"></span>";
     tip.firstChild.textContent = p.title;
-    tip.lastChild.textContent = [p.authors, p.year, p.venue,
-      (p.cites || 0).toLocaleString() + " cites"].filter(Boolean).join(" · ");
+    tip.lastChild.textContent = (st.kind === "author"
+      ? [p.venue, p.hIndex != null ? `h-index ${p.hIndex}` : null,
+         `${p.nPapers || 0} papers`, (p.cites || 0).toLocaleString() + " cites"]
+      : [p.authors, p.year, p.venue, (p.cites || 0).toLocaleString() + " cites"]
+    ).filter(Boolean).join(" · ");
     tip.style.display = "block";
     moveTip(event);
   };
@@ -595,19 +1001,19 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     st.sigma.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }, { duration: 220 });
   };
 
-  // f5's "Simulate live growth" over the real collection: seeds first, then
+  // f5's "Simulate live growth" over the active collection: seeds first, then
   // acceptance order (depth -> stream order -> citations), batched to finish
   // in roughly 13s regardless of size.
   const replayGrowth = () => {
-    if (!st.sigma || !papers.length) return;
+    if (!st.sigma || !st.activeData.nodes.length) return;
     if (st.replayTimer) { stopReplay(); return; }
     if (st.onSelect) st.onSelect(null);
-    const order = [...papers].sort((a, b) =>
+    const order = [...st.activeData.nodes].sort((a, b) =>
       (b.seed === true) - (a.seed === true)
       || (a.depth || 0) - (b.depth || 0)
       || (a.addedAt || 0) - (b.addedAt || 0)
       || (b.cites || 0) - (a.cites || 0));
-    if (st.layout) { try { st.layout.stop(); } catch (_) {} }
+    makeLayout(st.fa2);  // replay animates under the configured dynamics
     st.graph.clear();
     hideTip();
     emitStats();
@@ -618,7 +1024,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     st.replayTimer = setInterval(() => {
       if (i >= order.length) {
         stopReplay();
-        refreshTop3(papers);
+        refreshTop3(st.activeData.nodes);
         heatLayout();
         return;
       }
@@ -631,13 +1037,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     }, 120);
   };
 
-  const applyFa2 = (patch) => {
-    const next = { ...fa2, ...patch };
-    setFa2(next);
-    rebuildLayout(next);
-  };
-
   const empty = libs !== "ready" || !papers.length;
+  const filteredOut = !empty && papers.length > 0 && !active.nodes.length;
 
   // Sigma only emits leaveNode inside the canvas — clear hover state when the
   // pointer leaves the pane entirely (else the tooltip + ring stick around).
@@ -645,13 +1046,23 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     if (!st.sigma) return;
     if (st.hovered) {
       st.hovered = null;
-      st.active = st.selected;
+      st.anchor = st.selected;
       recomputeConnected();
       if (st.onHover) st.onHover(null);
       st.sigma.refresh();
     }
     hideTip();
   };
+
+  // ---- legend content ---------------------------------------------------
+  const legendStops = cgPaletteStops(vis.palette, theme === "dark" ? "dark" : "light");
+  const showSeedLegend = legendSeed === "always"
+    || (kind === "paper" && papers.some(p => p.seed));
+  const domainCaption = kind === "author"
+    ? cdomain.caption
+    : `${cdomain.min} → ${cdomain.max}`;
+
+  const gfCount = (gf.minDegree > 0 ? 1 : 0) + (gf.minEdgeW > 0 ? 1 : 0) + (gf.largestOnly ? 1 : 0);
 
   return (
     <div className="network" ref={wrapRef} onMouseLeave={onPaneLeave}>
@@ -671,6 +1082,58 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
           {libs === "ready" && !papers.length && <span>{emptyHint || "No papers yet."}</span>}
         </div>
       )}
+      {filteredOut && (
+        <div className="cg-empty">
+          <span>Every node is filtered out — loosen the filters.</span>
+        </div>
+      )}
+
+      {libs === "ready" && (
+        <div className="cg-tl" data-paltick={palTick}>
+          <div className="net-legend">
+            {showSeedLegend && (
+              <span className="net-legend-item">
+                <span className="net-dot seed" />
+                <span>Seed</span>
+              </span>
+            )}
+            <span className="net-legend-item">
+              <span className="net-ramp">
+                {legendStops.map((c, i) => (
+                  <span key={i + theme + vis.palette} className="net-ramp-step" style={{ background: c }} />
+                ))}
+              </span>
+              <span>{domainCaption}</span>
+            </span>
+            {sizeHint && (
+              <span className="net-legend-item">
+                <span className="net-hint-txt">
+                  size ∝ {kind === "author" ? "papers" : "citations"}
+                </span>
+              </span>
+            )}
+            <span className="net-legend-item">
+              <span className="net-hint-txt">drag · scroll · click</span>
+            </span>
+          </div>
+
+          {tools.stats && stats && (
+            <div className="cg-stats">
+              <div className="cg-stats-row"><span>nodes</span><b>{stats.nodes.toLocaleString()}</b></div>
+              <div className="cg-stats-row"><span>edges</span><b>{stats.edges.toLocaleString()}</b></div>
+              <div className="cg-stats-row"><span>avg degree</span><b>{stats.avgDeg.toFixed(2)}</b></div>
+              <div className="cg-stats-row"><span>density</span><b>{stats.density < 0.001 && stats.density > 0 ? stats.density.toExponential(1) : stats.density.toFixed(3)}</b></div>
+              <div className="cg-stats-row"><span>components</span><b>{stats.components.toLocaleString()}</b></div>
+              <div className="cg-stats-row">
+                <span>diameter</span>
+                <b>{stats.diameter == null ? "—" : stats.diameter}</b>
+              </div>
+            </div>
+          )}
+
+          {topLeft}
+        </div>
+      )}
 
       {!empty && (
         <div className="net-toolbar">
@@ -678,16 +1141,23 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
           <span className="pipe-zoom">{zoomPct}%</span>
           <button className="btn-icon btn" onClick={() => zoomBy(1.25)} title="Zoom in"><Icon name="plus" size={11} /></button>
           <button className="btn-icon btn" onClick={fitView} title="Fit to view"><Icon name="maximize-2" size={11} /></button>
-          {(tools.layout || tools.replay || tools.layoutOptions) && <span className="cg-toolbar-sep" />}
+          {(tools.layout || tools.replay || tools.layoutOptions || tools.labels) && <span className="cg-toolbar-sep" />}
           {tools.layout && (
             <button className={"btn-icon btn" + (layoutOn ? " is-on" : "")} onClick={toggleLayout}
                     title={layoutOn ? "Pause force layout" : "Resume force layout"}>
               <Icon name={layoutOn ? "pause" : "play"} size={11} />
             </button>
           )}
+          {tools.labels && (
+            <button className={"btn-icon btn" + (showLabels ? " is-on" : "")}
+                    onClick={() => toggleLabels(!showLabels)}
+                    title={showLabels ? "Hide labels" : "Show labels"}>
+              <Icon name="type" size={11} />
+            </button>
+          )}
           {tools.layoutOptions && (
             <button className={"btn-icon btn" + (optsOpen ? " is-on" : "")}
-                    onClick={() => setOptsOpen(v => !v)} title="Layout options">
+                    onClick={() => setOptsOpen(v => !v)} title="Graph settings">
               <Icon name="sliders-horizontal" size={11} />
             </button>
           )}
@@ -704,8 +1174,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         <div className="cg-pop">
           <div className="cg-pop-title">Force layout</div>
           <label className="cg-pop-row">
-            <span className="cg-pop-k">Spacing</span>
-            <input type="range" min="2" max="30" step="1" value={fa2.scalingRatio}
+            <span className="cg-pop-k">Scaling</span>
+            <input type="range" min="1" max="40" step="1" value={fa2.scalingRatio}
                    onChange={e => applyFa2({ scalingRatio: +e.target.value })} />
             <span className="cg-pop-v">{fa2.scalingRatio}</span>
           </label>
@@ -716,14 +1186,14 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
             <span className="cg-pop-v">{fa2.gravity.toFixed(1)}</span>
           </label>
           <label className="cg-pop-row cg-pop-check">
+            <input type="checkbox" checked={fa2.strongGravityMode}
+                   onChange={e => applyFa2({ strongGravityMode: e.target.checked })} />
+            <span>Strong gravity</span>
+          </label>
+          <label className="cg-pop-row cg-pop-check">
             <input type="checkbox" checked={fa2.outboundAttractionDistribution}
                    onChange={e => applyFa2({ outboundAttractionDistribution: e.target.checked })} />
             <span>Dissuade hubs</span>
-          </label>
-          <label className="cg-pop-row cg-pop-check">
-            <input type="checkbox" checked={fa2.edgeWeightInfluence > 0}
-                   onChange={e => applyFa2({ edgeWeightInfluence: e.target.checked ? 1 : 0 })} />
-            <span>Use edge weights</span>
           </label>
           <label className="cg-pop-row cg-pop-check">
             <input type="checkbox" checked={fa2.linLogMode}
@@ -735,8 +1205,67 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
                    onChange={e => applyFa2({ adjustSizes: e.target.checked })} />
             <span>Prevent node overlap</span>
           </label>
-          <button className="btn btn-ghost cg-pop-reset"
-                  onClick={() => applyFa2({ ...CG_FA2_DEFAULTS })}>
+          <label className="cg-pop-row cg-pop-check">
+            <input type="checkbox" checked={fa2.edgeWeightInfluence > 0}
+                   onChange={e => applyFa2({ edgeWeightInfluence: e.target.checked ? 1 : 0 })} />
+            <span>Use edge weights</span>
+          </label>
+
+          <div className="cg-pop-title cg-pop-sec">Appearance</div>
+          <label className="cg-pop-row">
+            <span className="cg-pop-k">Node size</span>
+            <input type="range" min="0.4" max="2.2" step="0.05" value={vis.unitSize}
+                   onChange={e => applyVis({ unitSize: +e.target.value })} />
+            <span className="cg-pop-v">×{vis.unitSize.toFixed(2)}</span>
+          </label>
+          <label className="cg-pop-row" title="0 = all nodes the same size · middle = size linear in citations · high = only the giants stand out">
+            <span className="cg-pop-k">Size contrast</span>
+            <input type="range" min="0" max="0.85" step="0.01" value={vis.contrast}
+                   onChange={e => applyVis({ contrast: +e.target.value })} />
+            <span className="cg-pop-v">{vis.contrast.toFixed(2)}</span>
+          </label>
+          <label className="cg-pop-row">
+            <span className="cg-pop-k">Palette</span>
+            <select className="cg-pop-select" value={vis.palette}
+                    onChange={e => applyVis({ palette: e.target.value })}>
+              {CG_PALETTE_NAMES.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+            <span className="cg-pop-v" />
+          </label>
+          <label className="cg-pop-row cg-pop-check">
+            <input type="checkbox" checked={showLabels}
+                   onChange={e => toggleLabels(e.target.checked)} />
+            <span>Show labels</span>
+          </label>
+
+          <div className="cg-pop-title cg-pop-sec">
+            Graph filters{gfCount ? ` · ${gfCount}` : ""}
+          </div>
+          <label className="cg-pop-row">
+            <span className="cg-pop-k">Min degree</span>
+            <input type="range" min="0" max={Math.max(1, ranges.maxDeg)} step="1"
+                   value={gf.minDegree}
+                   onChange={e => applyGf({ minDegree: +e.target.value })} />
+            <span className="cg-pop-v">{gf.minDegree || "off"}</span>
+          </label>
+          {ranges.weighted && (
+            <label className="cg-pop-row" title="Edges below the threshold are removed from the simulation — the layout re-flows">
+              <span className="cg-pop-k">Min weight</span>
+              <input type="range" min="0" max={ranges.maxW} step={ranges.maxW / 100}
+                     value={gf.minEdgeW}
+                     onChange={e => applyGf({ minEdgeW: +e.target.value })} />
+              <span className="cg-pop-v">{gf.minEdgeW ? gf.minEdgeW.toFixed(2) : "off"}</span>
+            </label>
+          )}
+          <label className="cg-pop-row cg-pop-check">
+            <input type="checkbox" checked={gf.largestOnly}
+                   onChange={e => applyGf({ largestOnly: e.target.checked })} />
+            <span>Largest component only</span>
+          </label>
+
+          <button className="btn btn-ghost cg-pop-reset" onClick={resetAll}>
             <Icon name="rotate-ccw" size={11} /> Defaults
           </button>
         </div>
@@ -747,4 +1276,4 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   );
 }
 
-Object.assign(window, { CiteGraph, cgYearDomain });
+Object.assign(window, { CiteGraph, cgYearDomain, cgAuthorDomain });

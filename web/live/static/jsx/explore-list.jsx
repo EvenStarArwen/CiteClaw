@@ -1,44 +1,114 @@
 /* eslint-disable */
-// Section B (Explore mode) — the paper list, data-source picker and facet
-// filters. Mirrors the f5 reference's sidebar (sortable rows driving the
-// graph selection) plus the richer tools: a source select swapping between
-// the live session and finished runs on disk, and a Filters bar (year
-// window / min citations / seeds only — same UI as the seed search) that
-// hides papers in both this list and the graph.
+// Section B (Explore mode) — the paper/author list, data-source picker and
+// facet filters. Mirrors the f5 reference's sidebar (sortable rows driving
+// the graph selection) plus the richer tools: a source select swapping
+// between the live session and finished runs on disk, and a Filters bar
+// (year window / min citations / seeds only / keyword formula — same UI as
+// the seed search). Filters REMOVE nodes from the graph simulation, so the
+// force layout re-flows as you filter.
 
 const XP_LIST_CAP = 400;
-const XP_EMPTY_FILTERS = { yearMin: "", yearMax: "", minCites: "", seedsOnly: false };
+const XP_EMPTY_FILTERS = { yearMin: "", yearMax: "", minCites: "", seedsOnly: false, kw: "" };
+
+// Keyword formula, same DSL as the search pipeline's keyword filters:
+// bare words / "quoted phrases" combined with & | ! and parentheses, e.g.
+//   (transformer | attention) & !survey
+// Case-insensitive substring match. Anything that doesn't parse falls back
+// to matching the raw text as one plain phrase.
+function xpCompileQuery(q) {
+  const src = String(q || "").trim();
+  if (!src) return null;
+  const toks = src.match(/\(|\)|&|\||!|"[^"]*"|[^\s()&|!]+/g) || [];
+  let i = 0;
+  const parseOr = () => {
+    let l = parseAnd();
+    while (toks[i] === "|") { i++; const a = l, b = parseAnd(); l = t => a(t) || b(t); }
+    return l;
+  };
+  const parseAnd = () => {
+    let l = parseNot();
+    while (toks[i] === "&") { i++; const a = l, b = parseNot(); l = t => a(t) && b(t); }
+    return l;
+  };
+  const parseNot = () => {
+    if (toks[i] === "!") { i++; const inner = parseNot(); return t => !inner(t); }
+    return parseAtom();
+  };
+  const parseAtom = () => {
+    const tok = toks[i];
+    if (tok === "(") {
+      i++;
+      const e = parseOr();
+      if (toks[i] !== ")") throw 0;
+      i++;
+      return e;
+    }
+    if (tok == null || tok === ")" || tok === "&" || tok === "|") throw 0;
+    i++;
+    const needle = (tok[0] === '"' ? tok.slice(1, -1) : tok).toLowerCase();
+    return t => t.includes(needle);
+  };
+  try {
+    const fn = parseOr();
+    if (i !== toks.length) throw 0;
+    return fn;
+  } catch (_) {
+    const needle = src.toLowerCase();
+    return t => t.includes(needle);
+  }
+}
 
 // Shared with app.jsx (graph hiddenIds) so list + graph always agree.
-function xpFilterPredicate(f) {
+// kind="author": year/seeds don't apply, "min citations" reads as min papers,
+// and the keyword formula searches name + affiliation.
+function xpFilterPredicate(f, kind) {
   const yMin = Number(f.yearMin) || 0;
   const yMax = Number(f.yearMax) || 0;
   const cMin = Number(f.minCites) || 0;
+  const kw = xpCompileQuery(f.kw);
+  const author = kind === "author";
   return (p) => {
-    if (f.seedsOnly && !p.seed) return false;
-    if (yMin && (p.year || 0) < yMin) return false;
-    if (yMax && (p.year || 0) > yMax) return false;
-    if (cMin && (p.cites || 0) < cMin) return false;
+    if (!author) {
+      if (f.seedsOnly && !p.seed) return false;
+      if (yMin && (p.year || 0) < yMin) return false;
+      if (yMax && (p.year || 0) > yMax) return false;
+      if (cMin && (p.cites || 0) < cMin) return false;
+    } else if (cMin && (p.nPapers || 0) < cMin) {
+      return false;
+    }
+    if (kw) {
+      const hay = author
+        ? `${p.title || ""} ${p.venue || ""}`.toLowerCase()
+        : `${p.title || ""} ${p.abstract || ""}`.toLowerCase();
+      if (!kw(hay)) return false;
+    }
     return true;
   };
 }
-function xpFilterCount(f) {
-  return (f.yearMin ? 1 : 0) + (f.yearMax ? 1 : 0) + (f.minCites ? 1 : 0) + (f.seedsOnly ? 1 : 0);
+function xpFilterCount(f, kind) {
+  const base = (f.minCites ? 1 : 0) + (f.kw && f.kw.trim() ? 1 : 0);
+  if (kind === "author") return base;
+  return base + (f.yearMin ? 1 : 0) + (f.yearMax ? 1 : 0) + (f.seedsOnly ? 1 : 0);
 }
 
-function ExploreList({ papers, selectedId, onSelect, sort, setSort,
-                       filters, setFilters, explore, onPickSource }) {
+function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
+                       filters, setFilters, explore, onPickSource, graphHidden }) {
   const scrollRef = React.useRef(null);
   const [showFilters, setShowFilters] = React.useState(false);
-  const nFilters = xpFilterCount(filters);
+  const author = kind === "author";
+  const nFilters = xpFilterCount(filters, kind);
 
-  const visible = React.useMemo(
-    () => papers.filter(xpFilterPredicate(filters)), [papers, filters]);
+  const visible = React.useMemo(() => {
+    const pred = xpFilterPredicate(filters, kind);
+    return papers.filter(p => pred(p) && !(graphHidden && graphHidden.has(p.id)));
+  }, [papers, filters, kind, graphHidden]);
 
   const sorted = React.useMemo(() => {
     const copy = [...visible];
     if (sort === "citations") copy.sort((a, b) => (b.cites || 0) - (a.cites || 0));
     else if (sort === "year") copy.sort((a, b) => (b.year || 0) - (a.year || 0));
+    else if (sort === "papers") copy.sort((a, b) => (b.nPapers || 0) - (a.nPapers || 0));
+    else if (sort === "hindex") copy.sort((a, b) => (b.hIndex || 0) - (a.hIndex || 0));
     else if (sort === "title") copy.sort((a, b) => String(a.title).localeCompare(String(b.title)));
     return copy.slice(0, XP_LIST_CAP);
   }, [visible, sort]);
@@ -62,7 +132,7 @@ function ExploreList({ papers, selectedId, onSelect, sort, setSort,
   return (
     <aside className="panel panel-left">
       <div className="ph">
-        <span className="ph-title">Papers</span>
+        <span className="ph-title">{author ? "Authors" : "Papers"}</span>
         <span className="ph-count">
           <span style={{ color: "var(--cc-ink-1)", fontWeight: 600 }}>{visible.length.toLocaleString()}</span>
           <span>{visible.length !== papers.length ? ` of ${papers.length.toLocaleString()}` : " in graph"}</span>
@@ -89,9 +159,20 @@ function ExploreList({ papers, selectedId, onSelect, sort, setSort,
       </div>
       <div className="xp-controls">
         <select className="accepted-sort" value={sort} onChange={e => setSort(e.target.value)}>
-          <option value="citations">Sort by: Citations</option>
-          <option value="year">Sort by: Year</option>
-          <option value="title">Sort by: Title</option>
+          {author ? (
+            <>
+              <option value="papers">Sort by: Papers</option>
+              <option value="hindex">Sort by: h-index</option>
+              <option value="citations">Sort by: Citations</option>
+              <option value="title">Sort by: Name</option>
+            </>
+          ) : (
+            <>
+              <option value="citations">Sort by: Citations</option>
+              <option value="year">Sort by: Year</option>
+              <option value="title">Sort by: Title</option>
+            </>
+          )}
         </select>
       </div>
 
@@ -110,26 +191,42 @@ function ExploreList({ papers, selectedId, onSelect, sort, setSort,
       </div>
       {showFilters && (
         <div className="seed-filters">
-          <label className="seed-filter-row">
-            <span className="seed-filter-k">Year ≥</span>
-            <input type="number" placeholder="any" value={filters.yearMin}
-                   onChange={e => patchF({ yearMin: e.target.value })} />
+          <label className="seed-filter-row xp-filter-kw">
+            <span className="seed-filter-k">{author ? "Name match" : "Keywords"}</span>
+            <input type="text" spellCheck="false"
+                   placeholder={author ? "name or affiliation" : 'e.g. (deep | neural) & !survey'}
+                   title={author
+                     ? "Match author name or affiliation. Supports & | ! and parentheses."
+                     : "Match title + abstract. Supports & | ! ( ) and \"quoted phrases\", e.g. (graph | network) & !survey"}
+                   value={filters.kw}
+                   onChange={e => patchF({ kw: e.target.value })} />
           </label>
+          {!author && (
+            <>
+              <label className="seed-filter-row">
+                <span className="seed-filter-k">Year ≥</span>
+                <input type="number" placeholder="any" value={filters.yearMin}
+                       onChange={e => patchF({ yearMin: e.target.value })} />
+              </label>
+              <label className="seed-filter-row">
+                <span className="seed-filter-k">Year ≤</span>
+                <input type="number" placeholder="any" value={filters.yearMax}
+                       onChange={e => patchF({ yearMax: e.target.value })} />
+              </label>
+            </>
+          )}
           <label className="seed-filter-row">
-            <span className="seed-filter-k">Year ≤</span>
-            <input type="number" placeholder="any" value={filters.yearMax}
-                   onChange={e => patchF({ yearMax: e.target.value })} />
-          </label>
-          <label className="seed-filter-row">
-            <span className="seed-filter-k">Min citations</span>
-            <input type="number" min="0" step="10" placeholder="0" value={filters.minCites}
+            <span className="seed-filter-k">{author ? "Min papers" : "Min citations"}</span>
+            <input type="number" min="0" step={author ? 1 : 10} placeholder="0" value={filters.minCites}
                    onChange={e => patchF({ minCites: e.target.value })} />
           </label>
-          <label className="seed-filter-row">
-            <span className="seed-filter-k">Seeds only</span>
-            <input type="checkbox" checked={filters.seedsOnly}
-                   onChange={e => patchF({ seedsOnly: e.target.checked })} />
-          </label>
+          {!author && (
+            <label className="seed-filter-row">
+              <span className="seed-filter-k">Seeds only</span>
+              <input type="checkbox" checked={filters.seedsOnly}
+                     onChange={e => patchF({ seedsOnly: e.target.checked })} />
+            </label>
+          )}
         </div>
       )}
 
@@ -139,10 +236,12 @@ function ExploreList({ papers, selectedId, onSelect, sort, setSort,
         {!explore.loading && !visible.length && !explore.error && (
           <div className="xp-note">
             {papers.length
-              ? "No papers match the filters."
+              ? `No ${author ? "authors" : "papers"} match the filters.`
               : explore.source === "live"
                 ? "No papers in this session yet. Run a pipeline, or pick a finished run above."
-                : "This run has no accepted papers."}
+                : author
+                  ? "No author data for this run."
+                  : "This run has no accepted papers."}
           </div>
         )}
         {sorted.map(p => (
@@ -158,9 +257,13 @@ function ExploreList({ papers, selectedId, onSelect, sort, setSort,
             </div>
             <div className="xp-item-meta">
               <span className="xp-item-sub">
-                {[p.authors, p.year || null].filter(Boolean).join(" · ")}
+                {author
+                  ? [p.venue || null, p.hIndex != null ? `h ${p.hIndex}` : null].filter(Boolean).join(" · ") || "—"
+                  : [p.authors, p.year || null].filter(Boolean).join(" · ")}
               </span>
-              <span className="xp-item-cites">{fmtK(p.cites || 0)}</span>
+              <span className="xp-item-cites">
+                {author ? `${(p.nPapers || 0).toLocaleString()}p` : fmtK(p.cites || 0)}
+              </span>
             </div>
           </div>
         ))}
@@ -178,4 +281,4 @@ function ExploreList({ papers, selectedId, onSelect, sort, setSort,
   );
 }
 
-Object.assign(window, { ExploreList, xpFilterPredicate, XP_EMPTY_FILTERS });
+Object.assign(window, { ExploreList, xpFilterPredicate, xpCompileQuery, XP_EMPTY_FILTERS });

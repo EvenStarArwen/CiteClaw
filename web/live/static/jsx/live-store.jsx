@@ -35,7 +35,9 @@ const LIVE = (function () {
     // explore mode — "live" mirrors the current session; a run path swaps in
     // an on-disk collection loaded through /api/explore/run
     explore: { source: "live", papers: [], edges: [], runs: [], runsLoaded: false,
-               runPath: null, meta: null, loading: false, error: null, version: 0 },
+               runPath: null, meta: null, loading: false, error: null, version: 0,
+               // author co-authorship view of the loaded run (fetched lazily)
+               collab: { forPath: null, papers: [], edges: [], loading: false, error: null } },
   };
   return {
     getState: () => state,
@@ -224,6 +226,8 @@ async function refreshExploreRuns() {
   }
 }
 
+const _EMPTY_COLLAB = { forPath: null, papers: [], edges: [], loading: false, error: null };
+
 async function loadExploreRun(path) {
   _patchExplore({ loading: true, error: null });
   try {
@@ -233,11 +237,28 @@ async function loadExploreRun(path) {
       source: "run", runPath: path, meta: d.meta || null,
       papers: d.papers || [], edges: d.edges || [],
       loading: false, version: (ex.version || 0) + 1,
+      collab: { ..._EMPTY_COLLAB },
     });
     return { ok: true };
   } catch (e) {
     _patchExplore({ loading: false, error: e.message });
     return { ok: false, error: e.message };
+  }
+}
+
+// Lazy-fetch the author co-authorship network for the loaded run (Finalize's
+// collaboration_network.graphml, or derived from the collection JSON).
+async function loadExploreCollab(path) {
+  const cur = LIVE.get("explore").collab || _EMPTY_COLLAB;
+  if (cur.forPath === path && !cur.error && (cur.papers.length || cur.loading)) return;
+  _patchExplore({ collab: { forPath: path, papers: [], edges: [], loading: true, error: null } });
+  try {
+    const d = await _api("/api/explore/collab?path=" + encodeURIComponent(path));
+    _patchExplore({ collab: { forPath: path, papers: d.papers || [], edges: d.edges || [],
+                              loading: false, error: null } });
+  } catch (e) {
+    _patchExplore({ collab: { forPath: path, papers: [], edges: [],
+                              loading: false, error: e.message } });
   }
 }
 
@@ -290,5 +311,6 @@ function exploreFromLive() {
 Object.assign(window, {
   LIVE, useLive, fmtK, fmtNum, fmtDur,
   refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun,
-  refreshExploreRuns, loadExploreRun, exploreUseLiveSession, exploreFromLive,
+  refreshExploreRuns, loadExploreRun, loadExploreCollab, exploreUseLiveSession,
+  exploreFromLive,
 });

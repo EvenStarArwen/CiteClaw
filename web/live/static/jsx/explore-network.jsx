@@ -1,21 +1,16 @@
 /* eslint-disable */
-// Section C (Explore mode) — full-page citation-network exploration.
-// A thin wrapper over the shared CiteGraph (see cite-graph.jsx): same engine
-// and look as the Run network, plus the richer tools — labels, growth
-// replay, force-layout options, facet filters (from the Papers panel) and
-// the 2-hop "Explore subtree" lens.
+// Section C (Explore mode) — full-page network exploration.
+// A wrapper over the shared CiteGraph (see cite-graph.jsx): same engine and
+// look as the Run network, plus the richer tools — the graph-settings panel
+// (layout / appearance / Gephi-style structural filters), stats card, label
+// toggle, growth replay, facet filters (from the Papers panel), the 2-hop
+// "Explore subtree" lens, and the citation ↔ collaboration network switch.
 
-function ExploreNetwork({ papers, edges, dataKey, selectedId, onSelect,
-                          subtreeId, onClearSubtree, filterHiddenIds, theme }) {
+function ExploreNetwork({ papers, edges, dataKey, kind, selectedId, onSelect,
+                          subtreeId, onClearSubtree, filterHiddenIds,
+                          onGraphHidden, netMode, onSwitchNet, collabEnabled,
+                          collabHint, emptyHint, theme }) {
   const [counts, setCounts] = React.useState({ nodes: 0, edges: 0 });
-
-  const cssVar = (name, fallback) => {
-    try {
-      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-      return v || fallback;
-    } catch (_) { return fallback; }
-  };
-  const yearColor = (y) => cssVar(`--cc-year-p-${y}`, "#8a8a8a");
 
   // 2-hop neighbourhood of the subtree anchor, from the edge list.
   const subtreeSet = React.useMemo(() => {
@@ -41,6 +36,7 @@ function ExploreNetwork({ papers, edges, dataKey, selectedId, onSelect,
   }, [subtreeId, edges]);
 
   // hidden = failing the facet filters ∪ outside the subtree lens
+  // (CiteGraph REMOVES these from the simulation, so the layout re-flows)
   const hiddenIds = React.useMemo(() => {
     if (!subtreeSet && (!filterHiddenIds || !filterHiddenIds.size)) return null;
     const hidden = new Set(filterHiddenIds || []);
@@ -50,13 +46,6 @@ function ExploreNetwork({ papers, edges, dataKey, selectedId, onSelect,
     return hidden;
   }, [papers, subtreeSet, filterHiddenIds]);
 
-  const visible = hiddenIds ? papers.filter(p => !hiddenIds.has(p.id)).length : papers.length;
-  const visibleLinks = React.useMemo(() => {
-    if (!hiddenIds) return null;  // fall back to the live graph count
-    let n = 0;
-    for (const e of edges) if (!hiddenIds.has(e.source) && !hiddenIds.has(e.target)) n++;
-    return n;
-  }, [edges, hiddenIds]);
   const subtreePaper = subtreeId ? papers.find(p => p.id === subtreeId) : null;
 
   return (
@@ -65,63 +54,42 @@ function ExploreNetwork({ papers, edges, dataKey, selectedId, onSelect,
         papers={papers}
         edges={edges}
         dataKey={dataKey}
+        kind={kind}
         selectedId={selectedId}
         onSelect={onSelect}
         theme={theme}
-        labels={true}
+        labels={false}
         hiddenIds={hiddenIds}
-        tools={{ layout: true, layoutOptions: true, replay: true }}
-        emptyHint="Nothing to explore yet. Run a pipeline, or pick a finished run in the Papers panel."
+        onGraphHidden={onGraphHidden}
+        tools={{ layout: true, layoutOptions: true, replay: true, labels: true, stats: true }}
+        sizeHint={true}
+        emptyHint={emptyHint || "Nothing to explore yet. Run a pipeline, or pick a finished run in the Papers panel."}
         onStats={setCounts}
-      >
-        <div className="net-legend">
-          {papers.some(p => p.seed) && (
-            <span className="net-legend-item">
-              <span className="net-dot seed" />
-              <span>Seed</span>
-            </span>
-          )}
-          <span className="net-legend-item">
-            <span className="net-ramp">
-              {[2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025].map(y => (
-                <span key={y + theme} className="net-ramp-step" style={{ background: yearColor(y) }} />
-              ))}
-            </span>
-            <span>{cgYearDomain(papers).min} → {cgYearDomain(papers).max}</span>
-          </span>
-          <span className="net-legend-item">
-            <span className="net-hint-txt">size ∝ citations</span>
-          </span>
-          <span className="net-legend-item">
-            <span className="net-hint-txt">drag · scroll · click</span>
-          </span>
-        </div>
-
-        {subtreePaper && (
+        topLeft={subtreePaper && (
           <div className="cg-chip">
             <Icon name="git-branch" size={11} />
             <span className="cg-chip-txt">
-              Subtree · {subtreePaper.title.length > 34
+              {kind === "author" ? "Ego network" : "Subtree"} · {subtreePaper.title.length > 34
                 ? subtreePaper.title.slice(0, 32) + "…" : subtreePaper.title}
-              {subtreeSet ? ` · ${subtreeSet.size} papers` : ""}
+              {subtreeSet ? ` · ${subtreeSet.size}` : ""}
             </span>
             <button className="ph-btn" onClick={onClearSubtree} title="Show full graph">
               <Icon name="x" size={11} />
             </button>
           </div>
         )}
-
+      >
         <div className="net-counter">
           <span>
-            <span className="net-counter-num">{Math.min(visible, counts.nodes).toLocaleString()}</span>
-            <span className="net-counter-lbl">papers</span>
+            <span className="net-counter-num">{counts.nodes.toLocaleString()}</span>
+            <span className="net-counter-lbl">{kind === "author" ? "authors" : "papers"}</span>
           </span>
           <span className="net-counter-sep">·</span>
           <span>
-            <span className="net-counter-num">{(visibleLinks ?? counts.edges).toLocaleString()}</span>
+            <span className="net-counter-num">{counts.edges.toLocaleString()}</span>
             <span className="net-counter-lbl">links</span>
           </span>
-          {visible !== papers.length && (
+          {counts.nodes !== papers.length && papers.length > 0 && (
             <>
               <span className="net-counter-sep">·</span>
               <span>
@@ -131,6 +99,23 @@ function ExploreNetwork({ papers, edges, dataKey, selectedId, onSelect,
               </span>
             </>
           )}
+        </div>
+
+        <div className="cg-seg" title={collabEnabled ? "" : (collabHint || "")}>
+          <button
+            className={"cg-seg-btn" + (netMode === "cite" ? " is-on" : "")}
+            onClick={() => onSwitchNet("cite")}
+          >
+            <Icon name="git-fork" size={11} /> Citation
+          </button>
+          <button
+            className={"cg-seg-btn" + (netMode === "collab" ? " is-on" : "")}
+            disabled={!collabEnabled}
+            onClick={() => collabEnabled && onSwitchNet("collab")}
+            title={collabEnabled ? "Author co-authorship network" : (collabHint || "No author data for this source")}
+          >
+            <Icon name="users" size={11} /> Authors
+          </button>
         </div>
       </CiteGraph>
     </section>
