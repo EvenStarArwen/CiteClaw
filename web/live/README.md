@@ -57,29 +57,47 @@ uploaded).
    collection after (or during) a run:
    - **Papers** (left): pick the data source — the current session or any
      finished run found under `runs/` — then sort, and narrow with the
-     Filters bar (year window / min citations / seeds only). Filters apply
-     to the list *and* the graph. Gephi exports work too: drop a
+     Filters bar: year window, min citations, seeds only, and a **keyword
+     formula** over title + abstract using the search pipeline's DSL
+     (`(graph | network) & !survey`, quotes for phrases). Filters apply to
+     the list *and* the graph. Gephi exports work too: drop a
      `citation_network.gexf` into `runs/<name>/` and it appears as an
      explorable dataset (node attrs `paper_id`/`title`/`year`/`venue`/
      `abstract`/`citation_count` are picked up when present).
-   - **Graph** (center): the same engine as the Run view, plus labels, a
-     growth replay (⟲ replays how the collection was accepted), a force-
-     layout options popover (spacing / gravity / LinLog / overlap), zoom
-     controls, and hover tooltips.
+   - **Graph** (center): the same engine as the Run view, plus a growth
+     replay (⟲), a label toggle (off by default), hover tooltips, a
+     network-stats card (nodes / edges / avg degree / density / components /
+     diameter), a **Citation ↔ Authors** switch (the co-authorship network,
+     from Finalize's `collaboration_network.graphml` or derived from the
+     collection JSON; sized by papers, coloured by h-index), and a
+     **graph-settings panel** (sliders icon) with three sections:
+       - *Force layout*: scaling, gravity, strong gravity, dissuade hubs,
+         LinLog clustering, prevent node overlap, edge-weight influence.
+       - *Appearance*: node size, size contrast (uniform ↔ linear in
+         citations), colour palette (Ember default + Moss / Slate / Dusk /
+         Ash — low-saturation ramps tuned for both themes), labels.
+       - *Graph filters*: min degree, min edge weight, largest component
+         only. These are Gephi-style — filtered nodes/edges are **removed
+         from the simulation**, so the layout re-flows live (and restores
+         cached positions when you loosen a filter).
    - **Details** (right): the selected paper — abstract (with an OpenAlex
      fallback when Semantic Scholar has none), metadata, a Semantic Scholar
-     link, and **Explore subtree**, which trims the graph to the paper's
-     2-hop citation neighbourhood.
+     link, and **Explore subtree** (papers) / **ego network** (authors),
+     which trims the graph to the 2-hop neighbourhood.
 
 Each run's outputs (`literature_collection.json`, `.bib`,
 `citation_network.graphml`, …) are written to `runs/webui/<run-id>/`.
 
 Both graph views share one renderer: a **graphology** graph laid out by
-**ForceAtlas2** (the Gephi algorithm) in a web worker and drawn by
-**sigma.js** on WebGL — so layout never blocks the UI, and new papers are
-inserted incrementally during a live run instead of re-laying-out from
-scratch. The libraries load from esm.sh at page load; the Explore/Run graph
-therefore needs internet access (as do the searches themselves).
+**ForceAtlas2** (the Gephi algorithm) and drawn by **sigma.js** on WebGL.
+The same algorithm runs in two modes: opening a static dataset does a quick
+synchronous pre-warm and then a bounded **fast-settle** in a web worker
+(double step size for a few seconds, then the gentle configured dynamics) —
+so a <1k-node graph reaches its layout in seconds without ever blocking the
+UI — while a live run keeps the worker warm and inserts new papers
+incrementally instead of re-laying-out from scratch. The libraries load
+from esm.sh at page load; the Explore/Run graph therefore needs internet
+access (as do the searches themselves).
 
 ---
 
