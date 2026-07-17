@@ -170,13 +170,18 @@ function cgLegacyRadius(p) {
 // Adjustable curve: size ∝ (v / vmax)^γ with γ = t/(1-t). contrast t = 0 →
 // every node the same size; the middle → linear in the raw value; higher →
 // only the giants stand out. Default t ≈ log-like (the legacy look).
+// Contrast also widens the size RANGE itself: the default keeps the classic
+// 3.5–8 band, but cranked up the giants grow to ~10× the floor
+// (Gephi-style ranking) instead of only redistributing inside a fixed
+// 2.3× band — which read as "no contrast" on long-tailed citation counts.
 function cgParamRadius(p, kind, vis, vmax) {
   const v = kind === "author" ? (Number(p.nPapers) || 0) : Math.max(0, Number(p.cites) || 0);
   const t = Math.min(0.995, Math.max(0, vis.contrast));
   const g = Math.min(6, t / (1 - t));
   const w = vmax > 0 ? Math.max(0, Math.min(1, v / vmax)) : 0;
   const s01 = g === 0 ? 1 : Math.pow(w, g);
-  let r = vis.unitSize * (3.5 + 4.5 * s01);
+  const span = 4.5 + 36 * t * t;
+  let r = vis.unitSize * (3.5 + span * s01);
   if (p.seed) r = Math.max(r, vis.unitSize * 8);
   return r;
 }
