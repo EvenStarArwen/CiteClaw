@@ -2464,8 +2464,10 @@ button { cursor: pointer; }
 .lc {
   display: inline-flex; align-items: center; justify-content: center;
   line-height: 0;
+  flex: none;
 }
 .lc > i { display: inline-block; }
+.lc > svg { width: 100%; height: 100%; }
 
 /* === webui/build-mode.css === */
 /* ==========================================================================
@@ -4200,7 +4202,9 @@ select.gp-v { cursor: pointer; }
   background: var(--cc-bg);
   overflow: hidden;
 }
-.network svg { width: 100%; height: 100%; display: block; }
+/* legacy full-bleed rule for the old svg graph — scoped to the direct child
+   so overlay icons (toolbar, chips) inside .network keep their own size */
+.network > svg { width: 100%; height: 100%; display: block; }
 .net-legend {
   position: absolute; top: 12px; left: 14px;
   display: flex; align-items: center; gap: 14px;
@@ -4919,3 +4923,201 @@ select.gp-v { cursor: pointer; }
   font-family: var(--cc-font-mono); font-size: 11px; color: var(--cc-ink-3);
   padding-bottom: 12px; border-bottom: 1px solid var(--cc-rule-soft);
 }
+
+/* ==========================================================================
+   SHARED CITATION GRAPH (CiteGraph — Run network + Explore page)
+   Engine chrome for the sigma/FA2 surface: underlay dot-grid canvas, empty
+   states, toolbar extensions, force-layout options popover, subtree chip.
+   ========================================================================== */
+.cg-grid  { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.cg-sigma { position: absolute; inset: 0; }
+.cg-sigma canvas { outline: none; }
+
+.cg-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 48px; text-align: center;
+  font-size: 12px; font-style: italic; line-height: 1.6;
+  color: var(--cc-ink-3);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.cg-toolbar-sep {
+  width: 1px; height: 14px;
+  background: var(--cc-rule-strong);
+  margin: 0 3px;
+}
+.net-toolbar .btn-icon.is-on {
+  background: var(--cc-hover-deep);
+  color: var(--cc-accent);
+}
+
+/* Force-layout options popover (Explore) */
+.cg-pop {
+  position: absolute; bottom: 46px; left: 14px;
+  width: 248px;
+  background: var(--cc-panel);
+  border: 1px solid var(--cc-rule-strong);
+  border-radius: 6px;
+  box-shadow: var(--cc-shadow-3);
+  padding: 12px;
+  z-index: 6;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.cg-pop-title {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cc-ink-2);
+}
+.cg-pop-row {
+  display: grid; grid-template-columns: 62px 1fr 30px;
+  align-items: center; gap: 8px;
+  font-size: 11px; color: var(--cc-ink-2);
+}
+.cg-pop-row input[type="range"] { width: 100%; accent-color: var(--cc-accent); }
+.cg-pop-k {
+  font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cc-ink-3);
+}
+.cg-pop-v {
+  font-family: var(--cc-font-mono); font-size: 10px;
+  color: var(--cc-ink-1); text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cg-pop-check {
+  display: flex; gap: 7px; align-items: center;
+  font-size: 11px; color: var(--cc-ink-1);
+}
+.cg-pop-check input { accent-color: var(--cc-accent); }
+.cg-pop-reset { align-self: flex-start; margin-top: 2px; }
+
+/* Subtree lens chip */
+.cg-chip {
+  position: absolute; top: 52px; left: 14px;
+  display: flex; align-items: center; gap: 6px;
+  background: var(--cc-chrome-blur, var(--cc-chrome));
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--cc-rule);
+  border-radius: 5px;
+  padding: 4px 5px 4px 9px;
+  font-family: var(--cc-font-mono); font-size: 10px;
+  color: var(--cc-ink-2);
+  z-index: 4;
+}
+.cg-chip-txt {
+  max-width: 340px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ==========================================================================
+   EXPLORE MODE — Papers panel (left) + Details panel (right)
+   ========================================================================== */
+.xp-controls {
+  display: flex; gap: 6px; align-items: center;
+  padding: 8px 12px 0;
+}
+.xp-controls + .xp-controls { padding-top: 6px; padding-bottom: 8px; }
+
+.xp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 12px; }
+.xp-scroll::-webkit-scrollbar { width: 8px; }
+.xp-scroll::-webkit-scrollbar-thumb {
+  background: var(--cc-rule); border-radius: 4px;
+  border: 2px solid var(--cc-chrome);
+}
+
+.xp-note {
+  padding: 14px 10px; font-size: 12px; line-height: 1.55;
+  color: var(--cc-ink-3); font-style: italic;
+}
+.xp-note-err { color: var(--cc-danger); font-style: normal; }
+
+.xp-item {
+  padding: 8px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.xp-item:hover { background: var(--cc-hover-soft); }
+.xp-item.is-selected { background: var(--cc-paper); border-color: var(--cc-rule-strong); }
+.xp-item + .xp-item { border-top: 1px solid var(--cc-rule-soft); border-radius: 0; }
+.xp-item:first-child, .xp-item:last-child, .xp-item.is-selected { border-radius: 5px; }
+.xp-item + .xp-item.is-selected,
+.xp-item.is-selected + .xp-item { border-top-color: transparent; }
+
+.xp-item-title {
+  font-size: 12px; font-weight: 600; line-height: 1.35;
+  color: var(--cc-ink-1); letter-spacing: -0.005em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+.xp-seed-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--cc-net-seed);
+  margin-right: 5px;
+}
+.xp-item-meta {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 10.5px; color: var(--cc-ink-3);
+}
+.xp-item-sub {
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.xp-item-cites {
+  flex: none;
+  font-family: var(--cc-font-mono); font-weight: 500;
+  color: var(--cc-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mono palette: selected row follows the accepted-list treatment */
+:root[data-palette="mono"] .xp-item { border: 1px solid transparent; background: transparent; border-radius: var(--mono-r-md); }
+:root[data-palette="mono"] .xp-item:hover { background: #fafaf8; }
+:root[data-theme="dark"][data-palette="mono"] .xp-item:hover { background: var(--cc-hover-soft); }
+:root[data-palette="mono"] .xp-item.is-selected {
+  background: #ffffff; border-color: transparent;
+  box-shadow: 0 0 0 1px var(--cc-rule), 0 2px 6px rgba(10, 10, 10, 0.05);
+  border-radius: var(--mono-r-md);
+}
+:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected {
+  background: #0a0a0a; box-shadow: none;
+}
+:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-title,
+:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-cites { color: #ffffff !important; }
+:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-sub { color: rgba(255, 255, 255, 0.72) !important; }
+:root[data-palette="mono"][data-mono-acc="outline"] .xp-item.is-selected {
+  background: #ffffff; box-shadow: none; border: 1px solid #0a0a0a;
+}
+:root[data-palette="mono"][data-mono-acc="rail"] .xp-item.is-selected {
+  background: #ffffff; box-shadow: inset 3px 0 0 #0a0a0a; border: 1px solid transparent;
+}
+:root[data-theme="dark"][data-palette="mono"] .xp-item.is-selected { background: var(--cc-paper); }
+
+/* Details panel */
+.xp-detail-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.xp-detail-empty {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 34px; text-align: center;
+  font-size: 12px; font-style: italic; line-height: 1.6;
+  color: var(--cc-ink-3);
+}
+.xp-tag {
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cc-ink-3);
+  background: var(--cc-hover-soft);
+  border-radius: 3px;
+  padding: 2px 6px;
+  margin-left: 4px;
+}
+.xp-tag-seed { color: var(--cc-on-accent); background: var(--cc-net-seed); }
+.btn.is-on { border-color: var(--cc-accent); color: var(--cc-accent); }

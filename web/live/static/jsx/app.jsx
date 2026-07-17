@@ -109,6 +109,56 @@ function App() {
   };
   const selectedNode = findStep(pipeline, selectedId);
 
+  // ---- Explore mode (selection, sort, facet filters, subtree lens) ----
+  const explore = useLive("explore");
+  const liveAccepted = useLive("accepted");
+  const [exploreSort, setExploreSort] = useState("citations");
+  const [exploreFilters, setExploreFilters] = useState(() => ({ ...XP_EMPTY_FILTERS }));
+  const [exploreSelectedId, setExploreSelectedId] = useState(null);
+  const [exploreSubtreeId, setExploreSubtreeId] = useState(null);
+
+  const exploreData = React.useMemo(() => (
+    explore.source === "run"
+      ? { papers: explore.papers, edges: explore.edges }
+      : exploreFromLive()
+  ), [explore.source, explore.version, liveNetwork.version, liveAccepted.length]);
+  const exploreDataKey = explore.source === "run" ? "run:" + explore.runPath : "live";
+  const exploreFilterHidden = React.useMemo(() => {
+    const pred = xpFilterPredicate(exploreFilters);
+    const hidden = new Set();
+    for (const p of exploreData.papers) if (!pred(p)) hidden.add(p.id);
+    return hidden;
+  }, [exploreData, exploreFilters]);
+  const exploreSelectedPaper = exploreSelectedId
+    ? exploreData.papers.find(p => p.id === exploreSelectedId) || null
+    : null;
+
+  // First entry into Explore: scan disk runs; if the live session is empty,
+  // auto-load the freshest finished run so the page never opens blank.
+  useEffect(() => {
+    if (mode !== "explore") return;
+    (async () => {
+      const st = LIVE.get("explore");
+      const runs = st.runsLoaded ? st.runs : await refreshExploreRuns();
+      const ex = LIVE.get("explore");
+      const liveEmpty = !(LIVE.get("network").nodes || []).length
+        && !(LIVE.get("accepted") || []).length;
+      if (ex.source === "live" && liveEmpty && runs.length) loadExploreRun(runs[0].path);
+    })();
+  }, [mode]);
+
+  // Data source changed → stale selection/lens must not survive.
+  useEffect(() => { setExploreSelectedId(null); setExploreSubtreeId(null); }, [exploreDataKey]);
+
+  const handleExplorePickSource = (v) => {
+    if (v === "live") exploreUseLiveSession();
+    else loadExploreRun(v);
+  };
+  const handleExploreSubtree = () => {
+    if (!exploreSelectedPaper) return;
+    setExploreSubtreeId(cur => cur === exploreSelectedPaper.id ? null : exploreSelectedPaper.id);
+  };
+
   const patchSelectedConfig = (patch) => {
     setPipeline(ps => mapStep(ps, selectedId, n => ({ ...n, config: { ...n.config, ...patch } })));
   };
@@ -194,6 +244,7 @@ function App() {
         accepted={liveMetrics.accepted}
         elapsed={fmtDur(liveMetrics.elapsedSec)}
         runStatus={runStatus}
+        explorePapers={exploreData.papers.length}
       />
 
       <ColSplitter
@@ -232,15 +283,13 @@ function App() {
             onRemove={removeSelected}
           />
         </>
-      ) : (
+      ) : mode === "run" ? (
         <>
           <RunProgress />
           <div className="main" style={{ gridTemplateRows: `${(tweaks.runSplit ?? 0.62) * 100}% 6px 1fr` }}>
             <RunNetwork
-              key={liveNetwork.version}
               selectedPaperId={runSelectedPaperId}
               onSelectPaper={handleSelectRunPaper}
-              hoverPaperId={runHoverPaperId}
               onHoverPaper={setRunHoverPaperId}
               theme={theme}
             />
@@ -255,6 +304,38 @@ function App() {
             onSelectPaper={handleSelectRunPaper}
             detailOpen={detailOpen}
             onCloseDetail={() => setDetailOpen(false)}
+          />
+        </>
+      ) : (
+        <>
+          <ExploreList
+            papers={exploreData.papers}
+            selectedId={exploreSelectedId}
+            onSelect={setExploreSelectedId}
+            sort={exploreSort}
+            setSort={setExploreSort}
+            filters={exploreFilters}
+            setFilters={setExploreFilters}
+            explore={explore}
+            onPickSource={handleExplorePickSource}
+          />
+          <div className="main main-solo">
+            <ExploreNetwork
+              papers={exploreData.papers}
+              edges={exploreData.edges}
+              dataKey={exploreDataKey}
+              selectedId={exploreSelectedId}
+              onSelect={setExploreSelectedId}
+              subtreeId={exploreSubtreeId}
+              onClearSubtree={() => setExploreSubtreeId(null)}
+              filterHiddenIds={exploreFilterHidden}
+              theme={theme}
+            />
+          </div>
+          <ExploreDetail
+            paper={exploreSelectedPaper}
+            onExploreSubtree={handleExploreSubtree}
+            subtreeActive={!!exploreSelectedPaper && exploreSubtreeId === exploreSelectedPaper.id}
           />
         </>
       )}
@@ -273,6 +354,8 @@ function App() {
           done={liveProgress.done}
           total={liveProgress.total}
           seedsSelected={seedsSelected}
+          explorePapers={exploreData.papers.length}
+          exploreSource={explore.source === "run" ? explore.runPath : "live session"}
         />
       )}
 

@@ -44,6 +44,7 @@ ASSEMBLY_ORDER = [
     "build-config.jsx",
     "build-step-config.jsx",
     "run-progress.jsx",
+    "cite-graph.jsx",
     "run-network.jsx",
     "run-dashboard.jsx",
     "run-accepted.jsx",
@@ -75,11 +76,18 @@ _HEAD = """<!doctype html>
 (async () => {
   try {
     const [g, s, f] = await Promise.all([
-      import("https://esm.sh/graphology@0.26"),
-      import("https://esm.sh/sigma@3"),
-      import("https://esm.sh/graphology-layout-forceatlas2@0.10/worker"),
+      import("https://esm.sh/graphology@0.26.0"),
+      import("https://esm.sh/sigma@3.0.3"),
+      import("https://esm.sh/graphology-layout-forceatlas2@0.10.1/worker"),
     ]);
     window.GraphLibs = { Graph: g.default, Sigma: s.default, FA2Layout: f.default };
+    try {
+      // seed halo / node stroke / selection ring; plain circles without it.
+      // ?deps pins the peer sigma to the SAME build as the main import —
+      // esm.sh otherwise resolves a beta whose /rendering entry mismatches.
+      const nb = await import("https://esm.sh/@sigma/node-border@3.0.0?deps=sigma@3.0.3");
+      window.GraphLibs.createNodeBorderProgram = nb.createNodeBorderProgram;
+    } catch (e) {}
   } catch (e) {
     window.GraphLibs = { error: String((e && e.message) || e) };
   }

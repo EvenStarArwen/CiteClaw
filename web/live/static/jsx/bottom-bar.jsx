@@ -2,7 +2,7 @@
 // Section F — Xcode-style status bar.
 
 function BottomBar({ mode, running, pipelineLen, edgesLen, accepted, elapsed, progressPct,
-                    metrics, current, done, total, seedsSelected }) {
+                    metrics, current, done, total, seedsSelected, explorePapers, exploreSource }) {
   metrics = metrics || {};
   return (
     <footer className="statusbar">
@@ -29,6 +29,19 @@ function BottomBar({ mode, running, pipelineLen, edgesLen, accepted, elapsed, pr
           <span className="sb-item">
             <span className="sb-key">Seeds</span>
             <span className="sb-val">{seedsSelected != null ? seedsSelected : 0} selected</span>
+          </span>
+        </>
+      ) : mode === "explore" ? (
+        <>
+          <span className="sb-item">
+            <Icon name="compass" size={11} style={{ color: "var(--cc-ink-3)" }} />
+            <span className="sb-key">Exploring</span>
+            <span className="sb-val">{exploreSource || "live session"}</span>
+          </span>
+          <span className="sb-sep">·</span>
+          <span className="sb-item">
+            <span className="sb-key">Papers</span>
+            <span className="sb-val">{(explorePapers || 0).toLocaleString()}</span>
           </span>
         </>
       ) : (

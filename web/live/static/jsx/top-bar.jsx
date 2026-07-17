@@ -4,7 +4,7 @@
 // lightweight meta counters, primary action on the right.
 
 function TopBar({ mode, setMode, running, onRun, onPause, onReset, onOpenSettings,
-                 theme, onToggleTheme, blocks, accepted, elapsed, runStatus }) {
+                 theme, onToggleTheme, blocks, accepted, elapsed, runStatus, explorePapers }) {
   return (
     <header className="topbar">
       <div className="tb-brand">
@@ -25,6 +25,10 @@ function TopBar({ mode, setMode, running, onRun, onPause, onReset, onOpenSetting
           className={"mode-btn" + (mode === "run" ? " on" : "")}
           onClick={() => setMode("run")}
         >Run</button>
+        <button
+          className={"mode-btn" + (mode === "explore" ? " on" : "")}
+          onClick={() => setMode("explore")}
+        >Explore</button>
       </div>
 
       <div className="tb-spacer" />
@@ -33,6 +37,11 @@ function TopBar({ mode, setMode, running, onRun, onPause, onReset, onOpenSetting
         <div className="tb-meta">
           <span className="tb-meta-num">{blocks != null ? blocks : 0}</span>
           <span className="tb-meta-lbl">blocks</span>
+        </div>
+      ) : mode === "explore" ? (
+        <div className="tb-meta">
+          <span className="tb-meta-num">{(explorePapers || 0).toLocaleString()}</span>
+          <span className="tb-meta-lbl">papers</span>
         </div>
       ) : (
         <div className="tb-meta">

@@ -32,6 +32,10 @@ const LIVE = (function () {
     logs: [],
     lastAddedId: null,
     settings: { model: "gemini-3.1-flash-lite", effort: "minimal", maxPapers: 200, keys: {}, models: [], loaded: false },
+    // explore mode — "live" mirrors the current session; a run path swaps in
+    // an on-disk collection loaded through /api/explore/run
+    explore: { source: "live", papers: [], edges: [], runs: [], runsLoaded: false,
+               runPath: null, meta: null, loading: false, error: null, version: 0 },
   };
   return {
     getState: () => state,
@@ -204,7 +208,87 @@ async function stopRun() {
   LIVE.set({ running: false });
 }
 
+// ---- exploration mode ----
+function _patchExplore(patch) {
+  LIVE.set({ explore: Object.assign({}, LIVE.get("explore"), patch) });
+}
+
+async function refreshExploreRuns() {
+  try {
+    const runs = await _api("/api/explore/runs");
+    _patchExplore({ runs, runsLoaded: true });
+    return runs;
+  } catch (_) {
+    _patchExplore({ runs: [], runsLoaded: true });
+    return [];
+  }
+}
+
+async function loadExploreRun(path) {
+  _patchExplore({ loading: true, error: null });
+  try {
+    const d = await _api("/api/explore/run?path=" + encodeURIComponent(path));
+    const ex = LIVE.get("explore");
+    _patchExplore({
+      source: "run", runPath: path, meta: d.meta || null,
+      papers: d.papers || [], edges: d.edges || [],
+      loading: false, version: (ex.version || 0) + 1,
+    });
+    return { ok: true };
+  } catch (e) {
+    _patchExplore({ loading: false, error: e.message });
+    return { ok: false, error: e.message };
+  }
+}
+
+function exploreUseLiveSession() {
+  const ex = LIVE.get("explore");
+  _patchExplore({ source: "live", runPath: null, meta: null, error: null,
+                  version: (ex.version || 0) + 1 });
+}
+
+// Derive explore-shaped {papers, edges} from the live session's stores.
+// Network nodes carry seed flags + cites for papers the accepted stream may
+// not have (top-cited cap ordering); join the two by paper id.
+function exploreFromLive() {
+  const accepted = LIVE.get("accepted") || [];
+  const net = LIVE.get("network") || { nodes: [], edges: [] };
+  const byId = {};
+  for (const p of accepted) byId[p.id] = p;
+  const papers = [];
+  const have = new Set();
+  for (const n of net.nodes || []) {
+    const p = byId[n.paperId];
+    papers.push({
+      id: n.paperId,
+      title: (p && p.title) || n.paperId,
+      authors: (p && p.authors) || "",
+      year: (p && p.year) || n.year || 0,
+      venue: (p && p.venue) || "",
+      cites: (p && p.cites) != null ? p.cites : (n.cites || 0),
+      seed: !!n.seed,
+      depth: p ? p.depth : 0,
+      source: (p && p.source) || (n.seed ? "seed" : ""),
+      score: (p && p.score) || 0,
+      abstract: "",
+      addedAt: p ? p.addedAt : 0,
+    });
+    have.add(n.paperId);
+  }
+  for (const p of accepted) {
+    if (have.has(p.id)) continue;
+    papers.push({ ...p, cites: p.cites || 0, seed: p.source === "seed", abstract: "" });
+  }
+  const edges = [];
+  for (const e of net.edges || []) {
+    const a = net.nodes[e.a], b = net.nodes[e.b];
+    if (a && b) edges.push({ source: a.paperId, target: b.paperId });
+  }
+  return { papers, edges };
+}
+
 Object.assign(window, {
   LIVE, useLive, fmtK, fmtNum, fmtDur,
   refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun,
+  refreshExploreRuns, loadExploreRun, exploreUseLiveSession, exploreFromLive,
 });
