@@ -151,4 +151,49 @@ function SettingsModal({ open, onClose }) {
   );
 }
 
-Object.assign(window, { SettingsModal });
+// Small alert dialog shown when a run can't start (missing API key, no seeds,
+// unsupported model …). Mirrors the Settings modal's cream chrome.
+function RunErrorDialog({ error, onClose, onOpenSettings }) {
+  React.useEffect(() => {
+    if (!error) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [error, onClose]);
+  React.useEffect(() => { if (window.lucide) window.lucide.createIcons({ attrs: { "stroke-width": 1.75 } }); });
+
+  if (!error) return null;
+  const wantsSettings = /settings|api key|\bkey\b/i.test(error);
+
+  const T = {
+    backdrop: { position: "fixed", inset: 0, background: "rgba(30,39,53,0.30)", zIndex: 240,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
+    card: { width: "min(440px, 96vw)", background: "var(--cc-panel)", overflow: "hidden",
+      border: "1px solid var(--cc-rule-strong)", borderRadius: 8, boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
+    head: { display: "flex", alignItems: "center", gap: 9,
+      padding: "14px 18px", borderBottom: "1px solid var(--cc-rule)", background: "var(--cc-chrome)" },
+    body: { padding: 18, fontSize: 13, color: "var(--cc-ink-1)", lineHeight: 1.55 },
+    foot: { display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--cc-rule)" },
+  };
+  return (
+    <div style={T.backdrop} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={T.card} role="alertdialog" aria-modal="true">
+        <div style={T.head}>
+          <span style={{ color: "var(--cc-danger)", display: "inline-flex" }}><Icon name="alert-triangle" size={16} /></span>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>Can’t start the run</span>
+        </div>
+        <div style={T.body}>{error}</div>
+        <div style={T.foot}>
+          <button className="btn btn-ghost" onClick={onClose}>Dismiss</button>
+          {wantsSettings && (
+            <button className="btn btn-primary" onClick={onOpenSettings}>
+              <Icon name="settings" size={13} /> Open Settings
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { SettingsModal, RunErrorDialog });

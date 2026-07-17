@@ -92,6 +92,7 @@ function App() {
   const progressPct = liveProgress.overallPct || 0;
   const seedsSelected = liveSeeds.filter(s => s.starred).length;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [runError, setRunError] = useState(null);
   useEffect(() => { refreshSettings(); }, []);
 
   // Pipeline state (Build mode)
@@ -138,8 +139,32 @@ function App() {
     setSelectedId(null);
   };
 
-  // Top-bar actions — launch / stop a real run through the backend
-  const handleRun = () => { setMode("run"); startRun(pipeline, LIVE.getState().seeds); };
+  // Top-bar actions — launch / stop a real run through the backend.
+  // Validate first (client-side) so a missing key / no seeds pops a dialog
+  // instead of silently switching to an empty Run view or wiping prior results.
+  const handleRun = async () => {
+    const st = LIVE.get("settings");
+    const starred = (LIVE.get("seeds") || []).filter(s => s.starred);
+    if (!starred.length) {
+      setRunError("No seed papers selected. Star at least one paper (☆ → ★) in the Seeds panel before running.");
+      return;
+    }
+    if (st.loaded) {
+      const m = (st.model || "").toLowerCase();
+      const keys = st.keys || {};
+      if (m.startsWith("gemini") && !keys.gemini_api_key) {
+        setRunError("No Gemini API key set. Open Settings (the gear, top-right) and add your Gemini API key before running.");
+        return;
+      }
+      if ((m.startsWith("gpt") || m.startsWith("o")) && !keys.openai_api_key) {
+        setRunError("No OpenAI API key set. Open Settings (the gear, top-right) and add your OpenAI API key before running.");
+        return;
+      }
+    }
+    const res = await startRun(pipeline, LIVE.getState().seeds);
+    if (res && res.ok) setMode("run");
+    else setRunError((res && res.error) || "Could not start the run. Check your settings and try again.");
+  };
   const handlePause = () => { stopRun(); };
   const handleReset = () => { stopRun(); };
 
@@ -252,6 +277,12 @@ function App() {
       )}
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <RunErrorDialog
+        error={runError}
+        onClose={() => setRunError(null)}
+        onOpenSettings={() => { setRunError(null); setSettingsOpen(true); }}
+      />
 
       <TweaksPanel
         visible={tweaksVisible}
