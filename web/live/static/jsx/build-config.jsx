@@ -75,14 +75,197 @@ function removeFromTree(t, id) {
 
 // --- components -----------------------------------------------------------
 
-function ConfigField({ label, children, wide, full, hint }) {
+function ConfigField({ label, children, wide, full, hint, info }) {
   return (
     <div className={"field" + (wide ? " field-wide" : "") + (full ? " field-full" : "")}>
-      <span className="field-label">{label}</span>
+      <span className="field-label">{label}{info && <InfoDot text={info} />}</span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}
     </div>
   );
+}
+
+// The current year — the hard ceiling for any "max year" control (a paper
+// can't be published in the future). Read at render time in the browser.
+const NOW_YEAR = new Date().getFullYear();
+
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+// A small "i-in-a-circle" that toggles a one-line description popover. Used to
+// explain each configurable option without cluttering the form with prose.
+function InfoDot({ text }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+  return (
+    <span className="info-dot-wrap" ref={ref}>
+      <button type="button" className={"info-dot" + (open ? " is-open" : "")}
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        title="What is this?" aria-label="What is this?">i</button>
+      {open && <span className="info-pop" role="tooltip">{text}</span>}
+    </span>
+  );
+}
+
+// A −/value/+ integer control whose buttons GRAY OUT (and no-op) at the bounds,
+// so the user simply cannot pick an illegal value. The ceiling is enforced live
+// even while typing; the floor is applied on blur so 4-digit years type freely.
+function NumStepper({ value, onChange, lo, hi, step }) {
+  const s = step || 1;
+  const v = Number.isFinite(value) ? value : (lo != null ? lo : 0);
+  const clampHi = (x) => (Number.isFinite(x) ? (hi != null ? Math.min(hi, x) : x) : v);
+  const clamp = (x) => {
+    if (!Number.isFinite(x)) return v;
+    if (lo != null) x = Math.max(lo, x);
+    if (hi != null) x = Math.min(hi, x);
+    return x;
+  };
+  const atLo = lo != null && v <= lo;
+  const atHi = hi != null && v >= hi;
+  return (
+    <div className="numstep">
+      <button type="button" className="numstep-btn" disabled={atLo}
+        onClick={() => onChange(clamp(v - s))} aria-label="Decrease">−</button>
+      <input className="numstep-val" type="number" value={v}
+        onChange={e => onChange(clampHi(+e.target.value))}
+        onBlur={e => onChange(clamp(+e.target.value))} />
+      <button type="button" className="numstep-btn" disabled={atHi}
+        onClick={() => onChange(clamp(v + s))} aria-label="Increase">+</button>
+    </div>
+  );
+}
+
+// --- named-formula consistency (keyword / query editors) -----------------
+// Identifiers referenced by a boolean formula (everything that isn't & | ! ( )).
+function _formulaTokens(formula) {
+  const m = String(formula || "").match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+  return Array.from(new Set(m));
+}
+// Cross-check a name→value dict against the formula that references the names.
+// errors block a legal config; warnings just advise. Phrasing is user-facing.
+function checkNamedFormula(dict, formula, noun) {
+  noun = noun || "keyword";
+  const names = Object.keys(dict || {});
+  const used = _formulaTokens(formula);
+  const errors = [], warnings = [];
+  if (!String(formula || "").trim()) errors.push("The formula is empty — write an expression such as " + (names[0] || (noun === "query" ? "q1" : "k1")) + ".");
+  names.forEach(n => {
+    if (!n.trim()) errors.push("A " + noun + " has no name.");
+    if ((dict[n] == null || dict[n] === "")) warnings.push(cap(noun) + " “" + n + "” has no " + (noun === "query" ? "prompt" : "text") + " yet.");
+  });
+  used.forEach(t => { if (!names.includes(t)) errors.push("The formula uses “" + t + "”, but no " + noun + " named “" + t + "” is defined."); });
+  names.forEach(n => { if (n.trim() && !used.includes(n)) warnings.push(cap(noun) + " “" + n + "” is never used in the formula."); });
+  return { errors, warnings };
+}
+
+// Red errors + amber warnings under a formula editor.
+function ValidationNotes({ errors, warnings }) {
+  if (!(errors && errors.length) && !(warnings && warnings.length)) return null;
+  return (
+    <div className="val-notes field-full">
+      {(errors || []).map((m, i) => (
+        <div key={"e" + i} className="val-note val-note-err"><Icon name="alert-circle" size={12} /><span>{m}</span></div>
+      ))}
+      {(warnings || []).map((m, i) => (
+        <div key={"w" + i} className="val-note val-note-warn"><Icon name="alert-triangle" size={12} /><span>{m}</span></div>
+      ))}
+    </div>
+  );
+}
+
+// One editable name→value row. The NAME is editable (identifier-safe chars only)
+// and commits on blur/Enter; a rename to an empty or duplicate name reverts.
+function KVRow({ name, value, siblings, noun, onRename, onValue, onRemove }) {
+  const [draft, setDraft] = React.useState(name);
+  React.useEffect(() => { setDraft(name); }, [name]);
+  const nk = draft.trim();
+  const bad = !nk || (nk !== name && siblings.includes(nk));
+  const commit = () => {
+    if (bad) { setDraft(name); return; }
+    if (nk !== name) onRename(name, nk);
+  };
+  return (
+    <div className="cfg-kv">
+      <input className={"cfg-kv-k" + (bad ? " is-bad" : "")} value={draft}
+        onChange={e => setDraft(e.target.value.replace(/[^A-Za-z0-9_]/g, ""))}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
+        title="Rename this identifier — reference it in the formula" />
+      <input className="cfg-kv-v" value={value}
+        placeholder={noun === "query" ? "yes/no question about the paper…" : "literal string to match…"}
+        onChange={e => onValue(name, e.target.value)} />
+      <button className="cfg-measure-del" onClick={() => onRemove(name)} title={"Remove " + noun}>×</button>
+    </div>
+  );
+}
+
+// The shared Formula + named-dict editor used by keyword filters and the LLM
+// filter (queries). Renaming a key also rewrites the matching token in the
+// formula so the two stay consistent; the validation still flags real typos.
+function NamedDictEditor({ p, patch, field, noun, formulaInfo }) {
+  const dict = p[field] || {};
+  const names = Object.keys(dict);
+  const { errors, warnings } = checkNamedFormula(dict, p.formula, noun);
+
+  const setValue = (nm, v) => patch({ [field]: { ...dict, [nm]: v } });
+  const rename = (oldK, newK) => {
+    const renamed = {};
+    names.forEach(k => { renamed[k === oldK ? newK : k] = dict[k]; });
+    const nf = String(p.formula || "").replace(new RegExp("\\b" + oldK + "\\b", "g"), newK);
+    patch({ [field]: renamed, formula: nf });
+  };
+  const remove = (nm) => { const next = { ...dict }; delete next[nm]; patch({ [field]: next }); };
+  const add = () => {
+    const base = noun === "query" ? "q" : "k";
+    let i = names.length + 1, nm = base + i;
+    while (dict[nm] !== undefined) nm = base + (++i);
+    patch({ [field]: { ...dict, [nm]: "" } });
+  };
+
+  return (
+    <>
+      <ConfigField label="Formula" wide info={formulaInfo}
+        hint="Operators: & (and) · | (or) · ! (not) · ( )">
+        <input value={p.formula || ""} onChange={e => patch({ formula: e.target.value })}
+          placeholder={names[0] || (noun === "query" ? "q1" : "k1")} />
+      </ConfigField>
+      <ConfigField label={noun === "query" ? "Queries" : "Keywords"} full
+        hint={noun === "query" ? "name → prompt" : "name → literal string"}
+        info={noun === "query"
+          ? "Each row is a named yes/no question the model answers about the paper; reference the names in the formula above."
+          : "Each row maps a short name to a literal string to look for; reference the names in the formula above."}>
+        <div className="cfg-kv-list">
+          {names.map(nm => (
+            <KVRow key={nm} name={nm} value={dict[nm]} noun={noun}
+              siblings={names.filter(n => n !== nm)}
+              onRename={rename} onValue={setValue} onRemove={remove} />
+          ))}
+          <button className="cfg-measure-add" onClick={add}>
+            <Icon name="plus" size={11} /> Add {noun}
+          </button>
+        </div>
+      </ConfigField>
+      <ValidationNotes errors={errors} warnings={warnings} />
+    </>
+  );
+}
+
+const MEASURE_INFO = {
+  RefSim: "Jaccard overlap between this paper's reference list and the anchor paper's. No parameters.",
+  CitSim: "Jaccard overlap between the sets of papers that cite each one. “Cited at least” lets any paper with that many citations pass outright.",
+  SemanticSim: "Cosine similarity of title+abstract embeddings (SPECTER2 by default).",
+};
+function measureDefaults(kind) {
+  if (kind === "CitSim") return { kind: "CitSim", pass_if_cited_at_least: 200 };
+  if (kind === "SemanticSim") return { kind: "SemanticSim", embedder: "s2" };
+  return { kind: "RefSim" };
 }
 
 function AddFilterPopover({ onPick, onClose, allowComposite = true, anchorRef }) {
@@ -239,7 +422,7 @@ function filterSummary(n) {
   };
   const scopeLabel = {
     title: "Title",
-    title_abstract: "Title & abstract",
+    title_abstract: "Abstract",
     venue: "Venue",
     full_text: "Full text",
   };
@@ -304,12 +487,11 @@ function FilterParams({ node, onPatch }) {
     case "YearFilter":
       return (
         <>
-          <ConfigField label="Min year"><input type="number" value={p.min} onChange={e => set("min", +e.target.value)} /></ConfigField>
-          <ConfigField label="Max year"><input type="number" value={p.max} onChange={e => set("max", +e.target.value)} /></ConfigField>
-          <ConfigField label="Preset" wide>
-            <select onChange={e => onPatch({ min: +e.target.value.split("-")[0], max: +e.target.value.split("-")[1] })} value={`${p.min}-${p.max}`}>
-              <option>2015-2025</option><option>2019-2025</option><option>2022-2025</option>
-            </select>
+          <ConfigField label="Min year" info="Papers published before this year are rejected. Can't go above the max year.">
+            <NumStepper value={p.min} lo={1900} hi={p.max ?? NOW_YEAR} onChange={v => set("min", v)} />
+          </ConfigField>
+          <ConfigField label="Max year" info="Papers published after this year are rejected. Can't go below the min year, and can't exceed the current year.">
+            <NumStepper value={p.max} lo={p.min ?? 1900} hi={NOW_YEAR} onChange={v => set("max", v)} />
           </ConfigField>
         </>
       );
@@ -324,59 +506,79 @@ function FilterParams({ node, onPatch }) {
           </ConfigField>
         </>
       );
-    case "SimilarityFilter":
+    case "SimilarityFilter": {
+      const measures = p.measures || [];
+      const setKind = (i, kind) => set("measures", measures.map((m, j) => j === i ? measureDefaults(kind) : m));
+      const patchMeasure = (i, patch) => set("measures", measures.map((m, j) => j === i ? { ...m, ...patch } : m));
+      const removeMeasure = (i) => set("measures", measures.filter((_, j) => j !== i));
+      const addMeasure = () => set("measures", [...measures, measureDefaults("RefSim")]);
       return (
         <>
-          <ConfigField label="Threshold"><input type="number" step="0.005" value={p.threshold} onChange={e => set("threshold", +e.target.value)} /></ConfigField>
-          <ConfigField label="Measures" full hint="Max over normalized scores">
+          <ConfigField label="Threshold" info="A paper passes when its best measure score is at least this value (scores run 0–1).">
+            <input type="number" step="0.005" min="0" max="1" value={p.threshold}
+              onChange={e => set("threshold", +e.target.value)} />
+          </ConfigField>
+          <ConfigField label="No data" info="What to do when no measure can score a paper (e.g. it has no references or embedding).">
+            <select value={p.on_no_data || "pass"} onChange={e => set("on_no_data", e.target.value)}>
+              <option value="pass">pass through</option>
+              <option value="reject">reject</option>
+            </select>
+          </ConfigField>
+          <ConfigField label="Measures" full hint="Max over normalized scores"
+            info="Each measure scores a paper 0–1 against the anchor; the filter keeps the highest score.">
             <div className="cfg-measure-list">
-              {(p.measures || []).map((m, i) => (
-                <div key={i} className="cfg-measure">
-                  <span className="cfg-measure-kind">{m.kind}</span>
-                  <span className="cfg-measure-params">
-                    {m.kind === "CitSim" && <>cited ≥ {m.pass_if_cited_at_least ?? "—"}</>}
-                    {m.kind === "SemanticSim" && <>embedder: {m.embedder ?? "s2"}</>}
-                  </span>
-                  <button className="cfg-measure-del" onClick={() => set("measures", p.measures.filter((_, j) => j !== i))}>×</button>
+              {measures.map((m, i) => (
+                <div key={i} className="cfg-measure2">
+                  <div className="cfg-measure2-head">
+                    <select className="cfg-measure2-kind" value={m.kind} onChange={e => setKind(i, e.target.value)}>
+                      <option value="RefSim">RefSim</option>
+                      <option value="CitSim">CitSim</option>
+                      <option value="SemanticSim">SemanticSim</option>
+                    </select>
+                    <InfoDot text={MEASURE_INFO[m.kind]} />
+                    <button className="cfg-measure-del" onClick={() => removeMeasure(i)} title="Remove measure">×</button>
+                  </div>
+                  {m.kind === "CitSim" && (
+                    <label className="cfg-measure2-param">
+                      <span>Cited at least</span>
+                      <input type="number" min="0" step="10" value={m.pass_if_cited_at_least ?? 200}
+                        onChange={e => patchMeasure(i, { pass_if_cited_at_least: Math.max(0, +e.target.value || 0) })} />
+                    </label>
+                  )}
+                  {m.kind === "SemanticSim" && (
+                    <label className="cfg-measure2-param">
+                      <span>Embedder</span>
+                      <select value={m.embedder || "s2"} onChange={e => patchMeasure(i, { embedder: e.target.value })}>
+                        <option value="s2">s2 · SPECTER2</option>
+                        <option value="voyage">voyage</option>
+                        <option value="local">local</option>
+                      </select>
+                    </label>
+                  )}
+                  {m.kind === "RefSim" && <div className="cfg-measure2-none">No parameters.</div>}
                 </div>
               ))}
-              <button className="cfg-measure-add" onClick={() => set("measures", [...(p.measures || []), { kind: "RefSim" }])}>
+              <button className="cfg-measure-add" onClick={addMeasure}>
                 <Icon name="plus" size={11} /> Add measure
               </button>
             </div>
           </ConfigField>
         </>
       );
+    }
     case "LLMFilter":
       return (
         <>
-          <ConfigField label="Scope">
+          <ConfigField label="Scope" info="What text the model reads when judging each paper.">
             <select value={p.scope} onChange={e => set("scope", e.target.value)}>
-              <option>title</option><option>title_abstract</option><option>venue</option><option>full_text</option>
+              <option value="title">Title</option>
+              <option value="title_abstract">Abstract</option>
+              <option value="venue">Venue</option>
+              <option value="full_text">Full text</option>
             </select>
           </ConfigField>
-          <ConfigField label="Formula" wide hint="Boolean over named queries — & | !">
-            <input value={p.formula} onChange={e => set("formula", e.target.value)} />
-          </ConfigField>
-          <ConfigField label="Queries" full hint="name → prompt">
-            <div className="cfg-kv-list">
-              {Object.entries(p.queries || {}).map(([k, v]) => (
-                <div key={k} className="cfg-kv">
-                  <input className="cfg-kv-k" value={k} readOnly />
-                  <input className="cfg-kv-v" value={v} onChange={e => set("queries", { ...p.queries, [k]: e.target.value })} />
-                  <button className="cfg-measure-del" onClick={() => {
-                    const { [k]: _, ...rest } = p.queries; set("queries", rest);
-                  }}>×</button>
-                </div>
-              ))}
-              <button className="cfg-measure-add" onClick={() => {
-                const name = "q" + (Object.keys(p.queries || {}).length + 1);
-                set("queries", { ...(p.queries || {}), [name]: "" });
-              }}>
-                <Icon name="plus" size={11} /> Add query
-              </button>
-            </div>
-          </ConfigField>
+          <NamedDictEditor p={p} patch={(obj) => onPatch({ ...p, ...obj })} field="queries" noun="query"
+            formulaInfo="Boolean expression over the named questions below." />
         </>
       );
     case "TitleKeywordFilter":
@@ -384,33 +586,15 @@ function FilterParams({ node, onPatch }) {
     case "VenueKeywordFilter":
       return (
         <>
-          <ConfigField label="Match">
+          <ConfigField label="Match" info="How each literal string is compared to the text: as a substring (anywhere), a whole word, or a prefix (starts-with).">
             <select value={p.match} onChange={e => set("match", e.target.value)}>
-              <option>substring</option><option>whole_word</option><option>starts_with</option>
+              <option value="substring">substring</option>
+              <option value="whole_word">whole word</option>
+              <option value="starts_with">starts with</option>
             </select>
           </ConfigField>
-          <ConfigField label="Formula" wide hint="Boolean over named keywords — & | !">
-            <input value={p.formula} onChange={e => set("formula", e.target.value)} />
-          </ConfigField>
-          <ConfigField label="Keywords" full hint="name → literal string">
-            <div className="cfg-kv-list">
-              {Object.entries(p.keywords || {}).map(([k, v]) => (
-                <div key={k} className="cfg-kv">
-                  <input className="cfg-kv-k" value={k} readOnly />
-                  <input className="cfg-kv-v" value={v} onChange={e => set("keywords", { ...p.keywords, [k]: e.target.value })} />
-                  <button className="cfg-measure-del" onClick={() => {
-                    const { [k]: _, ...rest } = p.keywords; set("keywords", rest);
-                  }}>×</button>
-                </div>
-              ))}
-              <button className="cfg-measure-add" onClick={() => {
-                const name = "k" + (Object.keys(p.keywords || {}).length + 1);
-                set("keywords", { ...(p.keywords || {}), [name]: "" });
-              }}>
-                <Icon name="plus" size={11} /> Add keyword
-              </button>
-            </div>
-          </ConfigField>
+          <NamedDictEditor p={p} patch={(obj) => onPatch({ ...p, ...obj })} field="keywords" noun="keyword"
+            formulaInfo="Boolean expression over the named keywords below." />
         </>
       );
     default:
@@ -435,15 +619,22 @@ function BlockParams({ node, onPatchConfig }) {
       </>
     );
   }
-  if (node.kind === "fwd" || node.kind === "bwd") {
+  if (node.kind === "fwd") {
     return (
-      <>
-        <ConfigField label="Depth k" hint="How many hops"><input type="number" value={c.depth} onChange={e => onPatchConfig({ depth: +e.target.value })} /></ConfigField>
-        <ConfigField label="Max children" hint="Per parent paper"><input type="number" value={c.maxChildren} onChange={e => onPatchConfig({ maxChildren: +e.target.value })} /></ConfigField>
-        <ConfigField label="Direction" wide>
-          <input disabled value={node.kind === "fwd" ? "outgoing citations (citers)" : "references"} />
-        </ConfigField>
-      </>
+      <ConfigField label="Max citing papers" wide
+        hint="per source · highest-cited kept first"
+        info="For each source paper, keep only this many citing papers — the highest-cited ones — before screening. This is the CLI's max_citations (default 100).">
+        <input type="number" min="1" step="10" value={c.maxCitations ?? 100}
+          onChange={e => onPatchConfig({ maxCitations: Math.max(1, +e.target.value || 1) })} />
+      </ConfigField>
+    );
+  }
+  if (node.kind === "bwd") {
+    return (
+      <div className="cfg-note">
+        <Icon name="info" size={13} />
+        <span>Backward screening walks <strong>every</strong> reference of each paper — there is no fan-out cap. Shape what's kept with the filter pipeline below.</span>
+      </div>
     );
   }
   if (node.kind === "rerank") {

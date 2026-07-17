@@ -133,8 +133,10 @@ def _translate_step(node: dict[str, Any]) -> dict[str, Any]:
         return {"step": "LoadSeeds"}
     if kind == "fwd":
         step: dict[str, Any] = {"step": "ExpandForward"}
-        if cfg.get("maxChildren") is not None:
-            step["max_citations"] = int(cfg["maxChildren"])
+        # ``maxChildren`` is the pre-rename key; accept it for older payloads.
+        cap = cfg.get("maxCitations", cfg.get("maxChildren"))
+        if cap is not None:
+            step["max_citations"] = int(cap)
         if screener:
             step["screener"] = screener
         return step

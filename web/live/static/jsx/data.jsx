@@ -44,7 +44,7 @@ const INITIAL_PIPELINE = [
     config: { query: "protein structure prediction", years: "2019-2025", maxSeeds: 42 },
     screener: null },
   { id: "n2", kind: "fwd",    name: "Forward screener", localId: "FWD-02",
-    config: { depth: 2, maxChildren: 200 },
+    config: { maxCitations: 200 },
     screener: {
       id: "f1", kind: "Sequential",
       children: [
@@ -71,7 +71,7 @@ const INITIAL_PIPELINE = [
       ]
     } },
   { id: "n3", kind: "bwd",    name: "Backward screener", localId: "BWD-03",
-    config: { depth: 2, maxChildren: 100 },
+    config: {},
     screener: {
       id: "g1", kind: "Sequential",
       children: [

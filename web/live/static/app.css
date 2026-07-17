@@ -3875,6 +3875,95 @@ select.gp-v { cursor: pointer; }
 .cfg-kv-v { font-size: 11px; }
 .cc-mono-xs { font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-3); }
 
+/* info dot + popover (per-option help) */
+.info-dot-wrap { position: relative; display: inline-flex; margin-left: 5px; vertical-align: middle; }
+.info-dot {
+  width: 13px; height: 13px; border-radius: 50%; padding: 0;
+  border: 1px solid var(--cc-rule-strong); background: var(--cc-paper);
+  color: var(--cc-ink-3); font-family: var(--cc-font-mono);
+  font-size: 9px; font-style: italic; font-weight: 700; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.info-dot:hover, .info-dot.is-open { color: var(--cc-accent); border-color: var(--cc-accent); }
+.info-pop {
+  position: absolute; z-index: 60; top: 19px; left: 50%; transform: translateX(-50%);
+  width: 218px; max-width: 62vw;
+  background: var(--cc-ink-1); color: var(--cc-paper);
+  padding: 8px 10px; border-radius: 6px;
+  font-size: 11px; line-height: 1.45; font-weight: 400;
+  text-transform: none; letter-spacing: 0;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+}
+.info-pop::before {
+  content: ""; position: absolute; top: -5px; left: 50%; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-bottom: 5px solid var(--cc-ink-1);
+}
+
+/* bounded number stepper — buttons gray out at the limits */
+.numstep { display: inline-flex; align-items: stretch; }
+.numstep-btn {
+  width: 26px; border: 1px solid var(--cc-rule-strong); background: var(--cc-paper);
+  color: var(--cc-ink-2); font-size: 14px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.numstep-btn:first-child { border-radius: 5px 0 0 5px; }
+.numstep-btn:last-child { border-radius: 0 5px 5px 0; }
+.numstep-btn:hover:not(:disabled) { color: var(--cc-ink-1); border-color: var(--cc-ink-2); background: var(--cc-hover-soft); }
+.numstep-btn:disabled { color: var(--cc-ink-faint); opacity: 0.45; cursor: not-allowed; }
+.numstep-val {
+  width: 64px !important; text-align: center;
+  border-left: none !important; border-right: none !important; border-radius: 0 !important;
+  -moz-appearance: textfield;
+}
+.numstep-val::-webkit-outer-spin-button, .numstep-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* similarity measure editor (per-measure type + params) */
+.cfg-measure2 {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 7px 8px; background: var(--cc-paper);
+  border: 1px solid var(--cc-rule-strong); border-radius: 5px;
+}
+.cfg-measure2-head { display: flex; align-items: center; gap: 6px; }
+.cfg-measure2-kind { flex: 0 0 auto; min-width: 122px; font-family: var(--cc-font-mono); font-size: 11px !important; }
+.cfg-measure2-head .cfg-measure-del { margin-left: auto; font-size: 14px; }
+.cfg-measure2-param { display: flex; align-items: center; gap: 8px; }
+.cfg-measure2-param > span {
+  min-width: 92px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--cc-ink-3);
+}
+.cfg-measure2-param input, .cfg-measure2-param select {
+  flex: 1 1 auto; padding: 4px 8px; background: var(--cc-paper);
+  border: 1px solid var(--cc-rule-strong); border-radius: 5px;
+  font-size: 12px; color: var(--cc-ink-1); outline: none;
+}
+.cfg-measure2-none { font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-faint); }
+
+/* editable name→value key (was read-only) + inline validation */
+.cfg-kv-k {
+  background: var(--cc-paper) !important;
+  border: 1px solid var(--cc-rule-strong) !important; border-radius: 5px;
+  outline: none;
+}
+.cfg-kv-k:focus { border-color: var(--cc-accent) !important; }
+.cfg-kv-k.is-bad { border-color: var(--cc-danger) !important; color: var(--cc-danger) !important; }
+.val-notes { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.val-note { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; line-height: 1.35; }
+.val-note > span { flex: 1 1 auto; }
+.val-note svg { flex: 0 0 auto; margin-top: 1px; }
+.val-note-err { color: var(--cc-danger); }
+.val-note-warn { color: var(--cc-warning, #b8860b); }
+
+/* small inline note (e.g. backward screener has no cap) */
+.cfg-note {
+  grid-column: 1 / -1;
+  display: flex; align-items: flex-start; gap: 7px;
+  padding: 9px 11px; border-radius: 6px;
+  background: var(--cc-hover-soft); border: 1px solid var(--cc-rule);
+  font-size: 11.5px; line-height: 1.45; color: var(--cc-ink-2);
+}
+.cfg-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--cc-ink-3); }
+
 /* ---------- E: Building blocks palette ---------- */
 .blocks-list { padding: 0 8px 16px; display: flex; flex-direction: column; gap: 1px; }
 .blocks-cat {

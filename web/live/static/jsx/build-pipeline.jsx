@@ -401,8 +401,8 @@ function newStep(kind) {
   const n = ++__sid;
   const localId = m.prefix + "-" + String(n).padStart(2, "0");
   const node = { id: "n" + n, kind, name: m.name, localId, config: {}, screener: null };
-  if (kind === "fwd")         node.config = { depth: 2, maxChildren: 200 };
-  else if (kind === "bwd")    node.config = { depth: 2, maxChildren: 100 };
+  if (kind === "fwd")         node.config = { maxCitations: 100 };
+  else if (kind === "bwd")    node.config = {};
   else if (kind === "rerank") node.config = { lambda: 0.4, targetN: 500 };
   else if (kind === "seed")   node.config = { query: "", years: "2019-2025", maxSeeds: 42 };
   return node;
