@@ -58,7 +58,10 @@ uploaded).
    - **Papers** (left): pick the data source — the current session or any
      finished run found under `runs/` — then sort, and narrow with the
      Filters bar (year window / min citations / seeds only). Filters apply
-     to the list *and* the graph.
+     to the list *and* the graph. Gephi exports work too: drop a
+     `citation_network.gexf` into `runs/<name>/` and it appears as an
+     explorable dataset (node attrs `paper_id`/`title`/`year`/`venue`/
+     `abstract`/`citation_count` are picked up when present).
    - **Graph** (center): the same engine as the Run view, plus labels, a
      growth replay (⟲ replays how the collection was accepted), a force-
      layout options popover (spacing / gravity / LinLog / overlap), zoom
