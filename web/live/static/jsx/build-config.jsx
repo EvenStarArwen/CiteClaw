@@ -16,12 +16,16 @@ const LEAF_KINDS = [
   { kind: "VenueKeywordFilter",    label: "Venue keyword",     desc: "same DSL, venue" },
 ];
 const COMPOSITE_OPTS = [
-  { kind: "Sequential", label: "Sequential", desc: "AND · short-circuit" },
-  { kind: "Any",        label: "Any",        desc: "OR · short-circuit" },
-  { kind: "Not",        label: "Not",        desc: "invert one child" },
-  { kind: "Route",      label: "Route",      desc: "if / elif / else" },
-  { kind: "Parallel",   label: "Parallel",   desc: "broadcast · union outputs" },
+  { kind: "Sequential", label: "Match ALL", desc: "AND · every child must pass" },
+  { kind: "Any",        label: "Match ANY", desc: "OR · at least one passes" },
+  { kind: "Not",        label: "Exclude",   desc: "NOT · invert one child" },
+  { kind: "Route",      label: "Route",     desc: "if / elif / else dispatch" },
+  { kind: "Parallel",   label: "Parallel",  desc: "broadcast · union outputs" },
 ];
+// Plain-English labels for composite filter groups (the raw CLI names
+// Sequential/Any confuse users). Pill text + the muted meta line beside it.
+const COMPOSITE_LABEL = { Sequential: "Match ALL", Any: "Match ANY", Not: "Exclude", Route: "Route", Parallel: "Parallel" };
+const COMPOSITE_META  = { Sequential: "AND · all must pass", Any: "OR · one is enough", Not: "invert the child", Route: "if / elif / else", Parallel: "union of branches" };
 
 // --- tree helpers ---------------------------------------------------------
 let __fid = 1000;
@@ -421,8 +425,11 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
   return (
     <div className={"ft-comp ft-comp-" + node.kind.toLowerCase() + (selected ? " is-selected" : "")}>
       <div className="ft-comp-head" onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}>
-        <span className="ft-comp-kind">{node.kind}</span>
-        <span className="ft-comp-meta">{kids.length} {kids.length === 1 ? "child" : "children"}</span>
+        <span className="ft-comp-kind">{COMPOSITE_LABEL[node.kind] || node.kind}</span>
+        <span className="ft-comp-meta">
+          {COMPOSITE_META[node.kind] ? COMPOSITE_META[node.kind] + " · " : ""}
+          {kids.length} {kids.length === 1 ? "filter" : "filters"}
+        </span>
         <button className="ft-leaf-x" onClick={(e) => { e.stopPropagation(); onRemove(node.id); }} title="Remove">×</button>
       </div>
       <div className={"ft-comp-body" + (node.kind === "Parallel" ? " ft-comp-body-parallel" : "")}>
