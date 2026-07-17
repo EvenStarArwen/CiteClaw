@@ -407,15 +407,23 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     () => (kind === "author" ? cgAuthorDomain(papers) : cgYearDomain(papers)),
     [papers, kind]);
 
+  // Size-normalization ceiling over the VISIBLE nodes, not the full dataset:
+  // capping citations at 1000 while a 224k-cite giant exists off-screen must
+  // not squash every visible node onto the size floor — sizes rank within
+  // the filtered view, like Gephi's ranking on a filtered workspace.
   const vmax = React.useMemo(() => {
     let v = 0;
-    for (const p of papers) {
+    for (const p of active.nodes) {
       const x = kind === "author" ? (Number(p.nPapers) || 0) : (Number(p.cites) || 0);
       if (x > v) v = x;
     }
     return v;
-  }, [papers, kind]);
+  }, [active, kind]);
   st.vmax = vmax;
+  React.useEffect(() => {
+    st.vmax = vmax;
+    if (!st.legacy) resizeNodes();  // renormalize what's already on canvas
+  }, [vmax]);  // eslint-disable-line
 
   const ranges = React.useMemo(() => {
     let maxW = 0, minW = Infinity, deg = {}, maxDeg = 0;
