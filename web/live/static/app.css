@@ -5011,6 +5011,87 @@ select.gp-v { cursor: pointer; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* Top-left overlay stack: legend · stats card · lens chip */
+.cg-tl {
+  position: absolute; top: 12px; left: 14px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  z-index: 4;
+  pointer-events: none;
+}
+.cg-tl > * { pointer-events: auto; }
+.cg-tl .net-legend,
+.cg-tl .cg-chip { position: static; top: auto; left: auto; }
+
+/* Whole-network statistics card (Explore) */
+.cg-stats {
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--cc-chrome-blur, var(--cc-chrome));
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--cc-rule);
+  padding: 7px 11px; border-radius: 5px;
+  font-family: var(--cc-font-mono); font-size: 9px;
+  color: var(--cc-ink-3);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  min-width: 128px;
+}
+.cg-stats-row {
+  display: flex; justify-content: space-between; gap: 14px;
+}
+.cg-stats-row b {
+  font-weight: 600; color: var(--cc-ink-1);
+  font-variant-numeric: tabular-nums; text-transform: none; letter-spacing: 0;
+}
+
+/* Graph-settings panel grows sections — keep it inside the pane */
+.cg-pop {
+  max-height: calc(100% - 60px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cg-pop::-webkit-scrollbar { width: 8px; }
+.cg-pop::-webkit-scrollbar-thumb {
+  background: var(--cc-rule-strong); border-radius: 4px;
+  border: 2px solid var(--cc-panel);
+}
+.cg-pop-sec {
+  margin-top: 5px; padding-top: 9px;
+  border-top: 1px solid var(--cc-rule);
+}
+.cg-pop-select {
+  width: 100%; box-sizing: border-box;
+  padding: 4px 6px; font-size: 11px;
+  border: 1px solid var(--cc-btn-border); border-radius: 4px;
+  background: var(--cc-paper); color: var(--cc-ink-1);
+}
+
+/* Citation ↔ collaboration segmented switch (top-right, under the counter) */
+.cg-seg {
+  position: absolute; top: 52px; right: 14px;
+  display: flex; gap: 2px; align-items: center;
+  background: var(--cc-chrome-blur, var(--cc-chrome));
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--cc-rule);
+  padding: 3px; border-radius: 5px;
+  z-index: 4;
+}
+.cg-seg-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: none; background: transparent; cursor: pointer;
+  padding: 4px 9px; border-radius: 3px;
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cc-ink-3);
+}
+.cg-seg-btn:hover:not(:disabled) { color: var(--cc-ink-1); background: var(--cc-hover); }
+.cg-seg-btn.is-on { color: var(--cc-ink-1); background: var(--cc-hover-deep); }
+.cg-seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Keyword-formula filter input stretches across the filter row */
+.xp-filter-kw input {
+  flex: 1; width: auto; min-width: 0;
+  font-family: var(--cc-font-mono); font-size: 11px;
+}
+
 /* ==========================================================================
    EXPLORE MODE — Papers panel (left) + Details panel (right)
    ========================================================================== */
@@ -5096,6 +5177,36 @@ select.gp-v { cursor: pointer; }
   background: #ffffff; box-shadow: inset 3px 0 0 #0a0a0a; border: 1px solid transparent;
 }
 :root[data-theme="dark"][data-palette="mono"] .xp-item.is-selected { background: var(--cc-paper); }
+
+/* ---- Dark mode for the mono skin's hardcoded white chrome ----------------
+   The design's dark+mono block only flips tokens; its floating white cards
+   (#ffffff literals) never got dark counterparts, so dark mode rendered
+   light ink on white cards (invisible titles). Re-skin the structural
+   surfaces + content cards from tokens; deliberate inversions (white
+   primary pill, tb-meta chip, black-selected rows) stay as designed. */
+:root[data-theme="dark"][data-palette="mono"] .panel,
+:root[data-theme="dark"][data-palette="mono"] .pane,
+:root[data-theme="dark"][data-palette="mono"] .config {
+  background: var(--cc-panel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme="dark"][data-palette="mono"] .ft-leaf,
+:root[data-theme="dark"][data-palette="mono"] .searchbox,
+:root[data-theme="dark"][data-palette="mono"] .seeds-counter,
+:root[data-theme="dark"][data-palette="mono"] .acc-item.is-selected {
+  background: var(--cc-paper);
+}
+:root[data-theme="dark"][data-palette="mono"] .ft-leaf.is-selected {
+  background: var(--cc-paper);
+  border-color: var(--cc-ink-1);
+  box-shadow: 0 0 0 2px var(--cc-ink-1), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme="dark"][data-palette="mono"] .seed-card:hover { background: var(--cc-hover-soft); }
+:root[data-theme="dark"][data-palette="mono"] .seed-card.is-selected { background: var(--cc-paper); }
+:root[data-theme="dark"][data-palette="mono"][data-mono-seedfill="orange-chip"] .seed-card.is-selected {
+  background: #2a2019;
+  box-shadow: inset 0 0 0 1px #4a3527;
+}
 
 /* Details panel */
 .xp-detail-scroll {
