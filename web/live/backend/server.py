@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from . import keys_store, models_catalog
 from .abstracts import fetch_abstract
 from .config_translate import TranslationError, build_config
-from .explore_runs import list_explore_runs, load_explore_run
+from .explore_runs import list_explore_runs, load_explore_collab, load_explore_run
 from .run_manager import manager
 from .s2_seeds import S2SearchError, search_seeds
 from .snapshots import build_graph, build_metrics
@@ -81,6 +81,13 @@ _HEAD = """<!doctype html>
       import("https://esm.sh/graphology-layout-forceatlas2@0.10.1/worker"),
     ]);
     window.GraphLibs = { Graph: g.default, Sigma: s.default, FA2Layout: f.default };
+    try {
+      // synchronous entry of the SAME package: instant one-shot layout
+      // bursts (static datasets) next to the worker's live streaming mode.
+      // Optional — the worker alone still lays everything out.
+      const fs = await import("https://esm.sh/graphology-layout-forceatlas2@0.10.1");
+      window.GraphLibs.fa2Sync = fs.default;
+    } catch (e) {}
     try {
       // seed halo / node stroke / selection ring; plain circles without it.
       // ?deps pins the peer sigma to the SAME build as the main import —
@@ -235,6 +242,19 @@ async def explore_run(path: str) -> dict:
         return await asyncio.to_thread(load_explore_run, path)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="run not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/explore/collab")
+async def explore_collab(path: str) -> dict:
+    """Author co-authorship view of a run (graphml, or derived from JSON)."""
+    try:
+        return await asyncio.to_thread(load_explore_collab, path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="run not found")
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

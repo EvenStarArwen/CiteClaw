@@ -32,8 +32,11 @@ from .snapshots import _authors_str, _score
 
 RUNS_ROOT = Path("runs")
 GEXF_NAME = "citation_network.gexf"
+COLLAB_NAME = "collaboration_network.graphml"
 
 _MAX_PAPERS = 1500  # keep FA2 + the list responsive on big runs
+_MAX_AUTHORS = 1500
+_MAX_AUTHORS_PER_PAPER = 25  # consortium papers would explode the pair count
 
 # path-str -> (mtime, meta dict); avoids re-parsing unchanged files on list
 _meta_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -293,4 +296,158 @@ def load_explore_run(rel_path: str) -> dict[str, Any]:
         "papers": papers,
         "edges": edges,
         "meta": {**meta, "dropped": dropped},
+    }
+
+
+# ------------------------------------------------- collaboration network ----
+#
+# The Explore page can switch to the author co-authorship view. Preferred
+# source is Finalize's ``collaboration_network.graphml`` (igraph export with
+# h_index / affiliation / edge strength); runs that only have a
+# ``literature_collection.json`` get the same graph derived from the papers'
+# full author lists (strength = Σ 1/N per shared paper — the Finalize rule).
+# GEXF drop-ins carry no author lists, so they have no collaboration view.
+#
+# Author nodes reuse the paper payload shape (id/title/venue/cites/...) so the
+# front-end graph, list and detail panels work unchanged; author-specific
+# extras ride along as ``hIndex`` / ``nPapers`` / ``authorId``.
+
+def _author_row(*, aid: str, name: str, affiliation: str, cites: int,
+                h_index: int | None, n_papers: int, author_id: str) -> dict[str, Any]:
+    return {
+        "id": aid,
+        "title": name,
+        "authors": "",
+        "year": 0,
+        "venue": affiliation,
+        "cites": cites,
+        "seed": False,
+        "depth": 0,
+        "source": "",
+        "score": 0.0,
+        "abstract": "",
+        "hIndex": h_index,
+        "nPapers": n_papers,
+        "authorId": author_id,
+    }
+
+
+def _parse_graphml_collab(path: Path) -> dict[str, Any]:
+    root = ET.parse(path).getroot()
+
+    key_names: dict[str, str] = {}  # key id -> attr.name
+    for el in root.iter():
+        if _tag(el) == "key" and el.get("id"):
+            key_names[el.get("id")] = (el.get("attr.name") or "").strip().lower()
+
+    authors: list[dict[str, Any]] = []
+    node_to_aid: dict[str, str] = {}
+    seen: set[str] = set()
+    for el in root.iter():
+        if _tag(el) != "node":
+            continue
+        nid = el.get("id") or ""
+        vals: dict[str, str] = {}
+        for d in el:
+            if _tag(d) == "data":
+                vals[key_names.get(d.get("key") or "", d.get("key") or "")] = d.text or ""
+        name = (vals.get("name") or "").strip() or nid
+        aid = (vals.get("author_id") or "").strip() or name
+        if not aid or aid in seen:
+            continue
+        seen.add(aid)
+        node_to_aid[nid] = aid
+        authors.append(_author_row(
+            aid=aid, name=name,
+            affiliation=(vals.get("affiliation") or "").strip(),
+            cites=_int(vals.get("total_citation")),
+            h_index=_int(vals.get("h_index")),
+            n_papers=_int(vals.get("paper_count_in_community"))
+                     or _int(vals.get("paper_count_s2")),
+            author_id=(vals.get("author_id") or "").strip(),
+        ))
+
+    seen_edges: set[tuple[str, str]] = set()
+    edges: list[dict[str, Any]] = []
+    for el in root.iter():
+        if _tag(el) != "edge":
+            continue
+        a = node_to_aid.get(el.get("source") or "")
+        b = node_to_aid.get(el.get("target") or "")
+        if not a or not b or a == b:
+            continue
+        key = (a, b) if a < b else (b, a)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
+        w = 0.0
+        for d in el:
+            if _tag(d) == "data" and key_names.get(d.get("key") or "") in ("strength", "weight"):
+                try:
+                    w = float(d.text or 0.0)
+                except (TypeError, ValueError):
+                    w = 0.0
+                break
+        edges.append({"source": a, "target": b, "weight": w})
+    return {"papers": authors, "edges": edges}
+
+
+def _derive_collab(raw_papers: list[dict[str, Any]]) -> dict[str, Any]:
+    n_papers: dict[str, int] = {}
+    cites: dict[str, int] = {}
+    strength: dict[tuple[str, str], float] = {}
+    for p in raw_papers:
+        names = [a.get("name", "").strip() for a in (p.get("authors") or [])
+                 if isinstance(a, dict) and a.get("name", "").strip()]
+        names = list(dict.fromkeys(names))[:_MAX_AUTHORS_PER_PAPER]
+        if not names:
+            continue
+        n = len(names)
+        c = int(p.get("citation_count") or 0)
+        for nm in names:
+            n_papers[nm] = n_papers.get(nm, 0) + 1
+            cites[nm] = cites.get(nm, 0) + c
+        for i in range(n):
+            for j in range(i + 1, n):
+                key = (names[i], names[j]) if names[i] < names[j] else (names[j], names[i])
+                strength[key] = strength.get(key, 0.0) + 1.0 / n
+    authors = [
+        _author_row(aid=nm, name=nm, affiliation="", cites=cites.get(nm, 0),
+                    h_index=None, n_papers=k, author_id="")
+        for nm, k in n_papers.items()
+    ]
+    edges = [{"source": a, "target": b, "weight": round(w, 4)}
+             for (a, b), w in strength.items()]
+    return {"papers": authors, "edges": edges}
+
+
+def load_explore_collab(rel_path: str) -> dict[str, Any]:
+    run_dir = _resolve_run_dir(rel_path)
+    gm = run_dir / COLLAB_NAME
+    if gm.is_file():
+        payload = _parse_graphml_collab(gm)
+        derived = False
+    else:
+        jf = run_dir / "literature_collection.json"
+        if not jf.is_file():
+            if (run_dir / GEXF_NAME).is_file():
+                raise LookupError(
+                    "This dataset has no author data — GEXF exports carry no author lists.")
+            raise FileNotFoundError(rel_path)
+        with open(jf, encoding="utf-8") as f:
+            data = json.load(f)
+        payload = _derive_collab(list(data.get("papers") or []))
+        derived = True
+
+    raw = sorted(payload["papers"],
+                 key=lambda a: (a["nPapers"], a["cites"]), reverse=True)
+    dropped = max(0, len(raw) - _MAX_AUTHORS)
+    authors = raw[:_MAX_AUTHORS]
+    kept = {a["id"] for a in authors}
+    edges = [e for e in payload["edges"] if e["source"] in kept and e["target"] in kept]
+    return {
+        "papers": authors,
+        "edges": edges,
+        "meta": {"path": rel_path, "kind": "author", "derived": derived,
+                 "dropped": dropped},
     }
