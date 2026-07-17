@@ -475,21 +475,28 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   }, [hiddenIds]);
 
   // ---- theme flip -> re-read tokens, recolour in place ------------------
+  // Deferred one frame: this child effect fires BEFORE app.jsx's effect that
+  // stamps data-theme on <html>, so an immediate read would get the OLD
+  // theme's tokens (same reason the old canvas renderer deferred its redraw).
   React.useEffect(() => {
     if (!st.sigma) return;
-    st.pal = cgReadPalette();
-    st.graph.forEachNode((id) => {
-      const p = st.paperById[id];
-      if (!p) return;
-      st.graph.mergeNodeAttributes(id, {
-        color: p.seed ? st.pal.seed : cgYearColor(st.pal, p.year),
-        haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
-        strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
+    const id = requestAnimationFrame(() => {
+      if (!st.sigma) return;
+      st.pal = cgReadPalette();
+      st.graph.forEachNode((nid) => {
+        const p = st.paperById[nid];
+        if (!p) return;
+        st.graph.mergeNodeAttributes(nid, {
+          color: p.seed ? st.pal.seed : cgYearColor(st.pal, p.year),
+          haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
+          strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
+        });
       });
+      st.sigma.setSetting("labelColor", { attribute: "labelColor", color: st.pal.ink1 });
+      st.sigma.refresh();
+      drawGrid();
     });
-    st.sigma.setSetting("labelColor", { attribute: "labelColor", color: st.pal.ink1 });
-    st.sigma.refresh();
-    drawGrid();
+    return () => cancelAnimationFrame(id);
   }, [theme]);  // eslint-disable-line
 
   // ---- tooltip (run skin: title + authors · year · venue · cites) -------
