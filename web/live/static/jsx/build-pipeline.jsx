@@ -850,23 +850,28 @@ function HoverBelowAdd({ el, ctx }) {
   );
 }
 
-// A sequence: elements stacked vertically + a trailing adder. Simple down-edges
-// join consecutive steps; parallels carry their own fork/join bands.
+// A sequence: elements stacked vertically. Persistent add buttons appear
+// ONLY at the tail of the ROOT pipeline — inside parallel branches they'd
+// multiply into visual noise, so branch tails (and everything else) use the
+// hover "add … below" affordance instead.
 function SeqView({ seq, ctx, depth }) {
   const last = seq[seq.length - 1];
+  const showTailAdder = depth === 0;
   return (
     <div className="pipe-seq">
       {seq.map((el, i) => {
         const prev = seq[i - 1];
         const needEdge = i > 0 && prev.kind !== "parallel" && el.kind !== "parallel";
-        const isLast = i === seq.length - 1;   // the trailing adder covers this one
+        // the root tail adder covers the last element; everywhere else the
+        // hover control is the only (and sufficient) insertion point
+        const hoverAdd = !(i === seq.length - 1 && showTailAdder);
         return (
           <React.Fragment key={el.id}>
             {needEdge && <VEdge />}
             {el.kind === "parallel" ? (
               <div className="pipe-step-row pipe-parallel-hoverwrap">
                 <ParallelBlock node={el} ctx={ctx} depth={depth} />
-                {!isLast && <HoverBelowAdd el={el} ctx={ctx} />}
+                {hoverAdd && <HoverBelowAdd el={el} ctx={ctx} />}
               </div>
             ) : (() => {
               const view = resolveStepView(el, ctx.pipeline);
@@ -884,14 +889,14 @@ function SeqView({ seq, ctx, depth }) {
                       ⇄ {view._syncLocal}
                     </span>
                   )}
-                  {!isLast && <HoverBelowAdd el={el} ctx={ctx} />}
+                  {hoverAdd && <HoverBelowAdd el={el} ctx={ctx} />}
                 </div>
               );
             })()}
           </React.Fragment>
         );
       })}
-      <SeqAdder last={last} ctx={ctx} />
+      {showTailAdder && <SeqAdder last={last} ctx={ctx} />}
     </div>
   );
 }

@@ -10,9 +10,11 @@ full ordered event log so a browser that connects mid-run replays cleanly.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 import uuid
+from collections import deque
 from typing import Any
 
 from .snapshots import build_graph, build_metrics, paper_dict
@@ -136,6 +138,11 @@ class RunState:
         self.config = config
         self.status = "starting"  # starting|running|done|error|stopped
         self.events: list[dict[str, Any]] = []
+        # High-churn streams are compacted for replay: only the latest
+        # activity/metrics/graph snapshot and the last 200 log lines are
+        # kept, so a browser reconnecting mid-run gets a bounded backlog.
+        self.log_tail: deque[dict[str, Any]] = deque(maxlen=200)
+        self.latest: dict[str, dict[str, Any]] = {}
         self.subscribers: set[asyncio.Queue] = set()
         self.lock = threading.Lock()
         self.ctx = None
@@ -144,6 +151,175 @@ class RunState:
         self.progress = StepProgress(steps_meta)
         self.error: str | None = None
         self.summary: dict[str, Any] | None = None
+
+
+class WebDashboard:
+    """DashboardLike shim — the CLI's two-level progress protocol, on the web.
+
+    Core steps already narrate their inner life through the active dashboard
+    (outer bar over source papers, inner phase bar per fetch/enrich/screen
+    phase, S2 retry banners, notes). This shim forwards all of it to the
+    browser as throttled ``activity`` events plus ``log`` lines, so the Run
+    sidebar can show a real double progress bar and a liveness feed instead
+    of going dark for the whole step.
+    """
+
+    def __init__(self, mgr: "RunManager", rs: RunState):
+        self.mgr = mgr
+        self.rs = rs
+        self._outer: dict[str, Any] | None = None
+        self._inner: dict[str, Any] | None = None
+        self._retry: str | None = None
+        self._seen = 0
+        self._last_emit = 0.0
+        self._last_retry_logged: str | None = None
+
+    # -- DashboardLike protocol ----------------------------------------
+    def attach(self, ctx) -> None:
+        # _expand_helpers reads ctx.dashboard (not the contextvar)
+        ctx.dashboard = self
+
+    def begin_run(self) -> None: ...
+
+    def begin_step(self, idx: int, name: str, desc: str = "") -> None:
+        self._outer = None
+        self._inner = None
+        self._retry = None
+        self._seen = 0
+        self._emit(force=True)
+
+    def end_step(self, *, candidates: int | None = None) -> None:
+        self._outer = None
+        self._inner = None
+        self._retry = None
+        self._emit(force=True)
+
+    def enable_outer_bar(self, total: int, *, description: str = "source papers") -> None:
+        self._outer = {"desc": str(description), "total": int(total), "done": 0}
+        self._emit(force=True)
+
+    def advance_outer(self, n: int = 1) -> None:
+        if self._outer:
+            self._outer["done"] += n
+        self._emit()
+
+    def begin_phase(self, description: str, total) -> None:
+        self._inner = {"desc": str(description),
+                       "total": int(total) if total else None, "done": 0}
+        self._emit(force=True)
+        self._log("PHASE", str(description)
+                  + (f" · {int(total):,} items" if total else ""))
+
+    def retotal_phase(self, total) -> None:
+        if self._inner:
+            self._inner["total"] = int(total) if total else None
+        self._emit(force=True)
+
+    def tick_inner(self, n: int = 1) -> None:
+        if self._inner:
+            self._inner["done"] += n
+        self._emit()
+
+    def complete_phase(self) -> None:
+        if self._inner and self._inner.get("total"):
+            self._inner["done"] = self._inner["total"]
+        self._emit(force=True)
+
+    def note_candidates_seen(self, n: int = 1) -> None:
+        self._seen += n
+        self._emit()
+
+    def paper_accepted(self, paper, *, saturation=None) -> None: ...
+
+    def set_retry_status(self, msg: str) -> None:
+        msg = str(msg)
+        self._retry = msg
+        self._emit(force=True)
+        # log each DISTINCT retry banner (attempt counter changes count)
+        if msg != self._last_retry_logged:
+            self._last_retry_logged = msg
+            self._log("RETRY", msg)
+
+    def clear_retry_status(self) -> None:
+        if self._retry is not None:
+            self._retry = None
+            self._emit(force=True)
+
+    def warn(self, msg: str) -> None:
+        self._log("WARN", str(msg))
+
+    def note(self, msg: str) -> None:
+        self._log("NOTE", str(msg))
+
+    def finalize(self) -> None: ...
+
+    # -- plumbing -------------------------------------------------------
+    def _log(self, tag: str, msg: str) -> None:
+        self.mgr.broadcast(self.rs, {"type": "log", "log": {
+            "t": time.strftime("%H:%M:%S"), "tag": tag, "msg": msg[:240]}})
+
+    def _emit(self, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and now - self._last_emit < 0.25:
+            return
+        self._last_emit = now
+        self.mgr.broadcast(self.rs, {"type": "activity", "activity": {
+            "outer": dict(self._outer) if self._outer else None,
+            "inner": dict(self._inner) if self._inner else None,
+            "retry": self._retry,
+            "seen": self._seen,
+        }})
+
+
+class _LogBridge(logging.Handler):
+    """Forward citeclaw log records to the browser's live log.
+
+    Captures the same chatter the CLI's file log sees (every S2 request /
+    retry at DEBUG, LLM batch warnings, step notes) so the user can watch
+    each tiny API step. Rate-limited so a pathological burst can't swamp
+    the WebSocket.
+    """
+
+    def __init__(self, mgr: "RunManager", rs: RunState):
+        super().__init__(level=logging.DEBUG)
+        self.mgr = mgr
+        self.rs = rs
+        self._window_start = 0.0
+        self._window_count = 0
+        self._dropped = 0
+
+    def emit(self, record: logging.LogRecord) -> None:  # noqa: D102
+        try:
+            now = time.monotonic()
+            if now - self._window_start > 2.0:
+                if self._dropped:
+                    self._send("LOG", f"… {self._dropped} more log lines suppressed")
+                self._window_start = now
+                self._window_count = 0
+                self._dropped = 0
+            if self._window_count >= 30:
+                self._dropped += 1
+                return
+            self._window_count += 1
+
+            name = record.name
+            if record.levelno >= logging.ERROR:
+                tag = "ERR"
+            elif record.levelno >= logging.WARNING:
+                tag = "WARN"
+            elif name.startswith("citeclaw.s2"):
+                tag = "S2"
+            elif "llm" in name or "screening" in name:
+                tag = "LLM"
+            else:
+                tag = "LOG"
+            self._send(tag, record.getMessage())
+        except Exception:  # noqa: BLE001 — logging must never break the run
+            pass
+
+    def _send(self, tag: str, msg: str) -> None:
+        self.mgr.broadcast(self.rs, {"type": "log", "log": {
+            "t": time.strftime("%H:%M:%S"), "tag": tag, "msg": str(msg)[:240]}})
 
 
 class WebFanoutSink:
@@ -217,7 +393,13 @@ class RunManager:
     # ---- event fan-out ------------------------------------------------
     def broadcast(self, rs: RunState, ev: dict[str, Any]) -> None:
         with rs.lock:
-            rs.events.append(ev)
+            t = ev.get("type")
+            if t in ("activity", "metrics", "graph"):
+                rs.latest[t] = ev            # replay keeps only the newest
+            elif t == "log":
+                rs.log_tail.append(ev)       # replay keeps the last 200
+            else:
+                rs.events.append(ev)
             subs = list(rs.subscribers)
         loop = self.loop
         if loop is None:
@@ -231,7 +413,10 @@ class RunManager:
     def subscribe(self, rs: RunState) -> tuple[asyncio.Queue, list[dict[str, Any]]]:
         q: asyncio.Queue = asyncio.Queue()
         with rs.lock:
-            backlog = list(rs.events)
+            backlog = list(rs.events) + list(rs.log_tail)
+            for key in ("metrics", "graph", "activity"):
+                if key in rs.latest:
+                    backlog.append(rs.latest[key])
             rs.subscribers.add(q)
         return q, backlog
 
@@ -265,14 +450,28 @@ class RunManager:
 
         rs.status = "running"
         self.broadcast(rs, {"type": "hello", "run_id": rs.run_id,
+                            "started_at": time.time(),
                             "progress": rs.progress.snapshot()})
+        # Fine-grained visibility: the dashboard shim narrates within-step
+        # phases (run_pipeline installs it as ctx.dashboard + the active
+        # contextvar dashboard); the log bridge relays every citeclaw log
+        # line (S2 calls, retries, LLM warnings) to the browser's live log.
+        dash = WebDashboard(self, rs)
+        cc_logger = logging.getLogger("citeclaw")
+        prior_level = cc_logger.level
+        bridge = _LogBridge(self, rs)
+        cc_logger.addHandler(bridge)
+        # let DEBUG records reach OUR handler; console handlers keep their
+        # own (higher) levels, so the terminal stays quiet
+        if prior_level == logging.NOTSET or prior_level > logging.DEBUG:
+            cc_logger.setLevel(logging.DEBUG)
         s2 = cache = None
         try:
             ctx, s2, cache = build_context(rs.config)
             rs.ctx = ctx
             sink = WebFanoutSink(self, rs)
             try:
-                run_pipeline(ctx, event_sink=sink)
+                run_pipeline(ctx, event_sink=sink, dashboard=dash)
                 rs.status = "done"
             except _StopRun:
                 try:
@@ -293,6 +492,11 @@ class RunManager:
             rs.error = f"{type(e).__name__}: {e}"
             self.broadcast(rs, {"type": "error", "message": rs.error})
         finally:
+            try:
+                cc_logger.removeHandler(bridge)
+                cc_logger.setLevel(prior_level)
+            except Exception:
+                pass
             for closer in (s2, cache):
                 try:
                     if closer is not None:

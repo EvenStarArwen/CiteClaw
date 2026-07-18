@@ -31,6 +31,13 @@ const LIVE = (function () {
     error: null,
     logs: [],
     lastAddedId: null,
+    // liveness: what the current step is doing right now (outer/inner bars,
+    // retry banner), when the last backend event arrived, and a 1s clock so
+    // "Xs ago" and the elapsed timer tick without server traffic
+    activity: null,
+    lastEventAt: 0,
+    nowMs: Date.now(),
+    runStartedAt: null,
     settings: { model: "gemini-3.1-flash-lite", effort: "minimal", maxPapers: 200, keys: {}, models: [], loaded: false },
     // explore mode — "live" mirrors the current session; a run path swaps in
     // an on-disk collection loaded through /api/explore/run; "upload" shows a
@@ -124,16 +131,42 @@ async function fetchSeedAbstract(paper) {
   });
 }
 
-function _pushLog(tag, msg) {
-  const now = new Date();
-  const t = now.toTimeString().slice(0, 8);
-  LIVE.set({ logs: [{ t, tag, msg }].concat(LIVE.get("logs")).slice(0, 40) });
+function _pushLog(tag, msg, t) {
+  t = t || new Date().toTimeString().slice(0, 8);
+  LIVE.set({ logs: [{ t, tag, msg }].concat(LIVE.get("logs")).slice(0, 200) });
+}
+
+// 1-second ticker while a run is live: keeps the elapsed clock and the
+// "last event Xs ago" heartbeat moving even when the pipeline is deep in a
+// long API call and no events arrive.
+let _runTicker = null;
+function _startRunTicker() {
+  if (_runTicker) return;
+  _runTicker = setInterval(() => {
+    const st = LIVE.getState();
+    if (!st.running) { clearInterval(_runTicker); _runTicker = null; return; }
+    const patch = { nowMs: Date.now() };
+    if (st.runStartedAt) {
+      const secs = (Date.now() - st.runStartedAt) / 1000;
+      if (secs > (st.metrics.elapsedSec || 0)) {
+        patch.metrics = Object.assign({}, st.metrics, { elapsedSec: secs });
+      }
+    }
+    LIVE.set(patch);
+  }, 1000);
 }
 
 let _netThrottle = 0;
 function _handleEvent(m) {
+  LIVE.set({ lastEventAt: Date.now() });
   if (m.type === "hello") {
-    LIVE.set({ progress: m.progress });
+    LIVE.set({ progress: m.progress,
+      runStartedAt: m.started_at ? m.started_at * 1000 : (LIVE.get("runStartedAt") || Date.now()) });
+    _startRunTicker();
+  } else if (m.type === "activity") {
+    LIVE.set({ activity: m.activity });
+  } else if (m.type === "log") {
+    _pushLog(m.log.tag, m.log.msg, m.log.t);
   } else if (m.type === "progress") {
     LIVE.set({ progress: m.progress });
     if (m.progress.current) _pushLog("STEP", m.progress.current);
@@ -153,12 +186,12 @@ function _handleEvent(m) {
       LIVE.set({ network: { nodes: m.graph.nodes, edges: m.graph.edges, version: (cur.version || 0) + 1 } });
     }
   } else if (m.type === "error") {
-    LIVE.set({ running: false, runStatus: "error", error: m.message });
+    LIVE.set({ running: false, runStatus: "error", error: m.message, activity: null });
     _pushLog("ERR", m.message);
   } else if (m.type === "done") {
     const cur = LIVE.get("network");
     window.NETWORK = { nodes: cur.nodes, edges: cur.edges };
-    LIVE.set({ running: false, runStatus: m.status,
+    LIVE.set({ running: false, runStatus: m.status, activity: null,
       network: { nodes: cur.nodes, edges: cur.edges, version: (cur.version || 0) + 1 } });
     _pushLog("DONE", "run " + m.status);
   }
@@ -189,7 +222,9 @@ async function startRun(pipeline, seeds) {
     progress: { steps: [], done: 0, total: 0, current: null, overallPct: 0 },
     network: { nodes: [], edges: [], version: netVer },
     metrics: LIVE.emptyMetrics(),
+    activity: null, lastEventAt: Date.now(), runStartedAt: Date.now(),
   });
+  _startRunTicker();
   window.NETWORK = { nodes: [], edges: [] };
   window.ACCEPTED_PAPERS = [];
   let data;

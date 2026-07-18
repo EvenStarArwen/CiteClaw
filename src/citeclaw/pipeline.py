@@ -340,6 +340,7 @@ def run_pipeline(
     ctx: Context,
     *,
     event_sink: EventSink | None = None,
+    dashboard=None,
 ) -> dict:
     """Run the configured pipeline against ``ctx``.
 
@@ -349,6 +350,11 @@ def run_pipeline(
     legacy CLI behavior is unchanged when no caller provides a sink.
     The web backend will pass in a fan-out sink that forwards events
     to WebSocket subscribers.
+
+    ``dashboard`` optionally injects a DashboardLike progress consumer
+    (the web backend's shim that streams the two-level step progress to
+    the browser). Default: auto-pick a Rich Dashboard on a TTY, else
+    NullDashboard — exactly the legacy behavior.
     """
     cfg = ctx.config
     pipeline = _ensure_resolve_seeds(cfg.pipeline_built or [], cfg)
@@ -361,7 +367,8 @@ def run_pipeline(
     # context so the step can read it without re-plumbing pipeline state.
     ctx.pipeline_started_at = time.monotonic()
 
-    dashboard = _build_dashboard(cfg, len(pipeline))
+    if dashboard is None:
+        dashboard = _build_dashboard(cfg, len(pipeline))
     ctx.dashboard = dashboard
     dashboard.attach(ctx)
     cv_token = set_active_dashboard(dashboard)
