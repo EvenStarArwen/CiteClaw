@@ -119,11 +119,17 @@ function App() {
 
   // Citation (default) ↔ collaboration network switch. The author view is
   // loaded lazily per run (Finalize graphml or derived from the collection
-  // JSON); the live session and GEXF drop-ins have no author lists.
+  // JSON); the live session and GEXF drop-ins have no author lists. An
+  // uploaded file fixes its own kind (a collaboration_network.graphml IS the
+  // author view; a citation file has no author lists).
   const [exploreNet, setExploreNet] = useState("cite");
   const exploreCollab = explore.collab || { papers: [], edges: [] };
+  const exploreUpload = explore.source === "upload" ? (explore.upload || null) : null;
+  const uploadIsAuthor = !!(exploreUpload && exploreUpload.kind === "author");
   const collabEnabled = explore.source === "run";
-  const exploreKind = exploreNet === "collab" ? "author" : "paper";
+  const exploreKind = exploreUpload
+    ? (uploadIsAuthor ? "author" : "paper")
+    : (exploreNet === "collab" ? "author" : "paper");
   useEffect(() => {
     if (exploreNet === "collab" && explore.source === "run" && explore.runPath) {
       loadExploreCollab(explore.runPath);
@@ -132,25 +138,37 @@ function App() {
   }, [exploreNet, explore.source, explore.runPath]);
 
   const exploreData = React.useMemo(() => {
+    if (exploreUpload) {
+      return { papers: exploreUpload.papers || [], edges: exploreUpload.edges || [] };
+    }
     if (exploreNet === "collab") {
       return { papers: exploreCollab.papers || [], edges: exploreCollab.edges || [] };
     }
     return explore.source === "run"
       ? { papers: explore.papers, edges: explore.edges }
       : exploreFromLive();
-  }, [exploreNet, exploreCollab, explore.source, explore.version,
+  }, [exploreNet, exploreCollab, exploreUpload, explore.source, explore.version,
       liveNetwork.version, liveAccepted.length]);
-  const exploreDataKey = (explore.source === "run" ? "run:" + explore.runPath : "live")
-    + (exploreNet === "collab" ? ":collab" : "");
+  const exploreDataKey = exploreUpload
+    ? "upload:" + exploreUpload.token + ":" + exploreUpload.name
+    : (explore.source === "run" ? "run:" + explore.runPath : "live")
+      + (exploreNet === "collab" ? ":collab" : "");
   // Nodes removed by the graph-side filters (degree / edge weight / largest
   // component) inside CiteGraph — mirrored into the list so both agree.
   const [exploreGraphHidden, setExploreGraphHidden] = useState(null);
+  // Facet edits reach the simulation debounced — typing "250" into Min
+  // citations re-laid-out the graph on every keystroke; the list stays live.
+  const [exploreFiltersApplied, setExploreFiltersApplied] = useState(exploreFilters);
+  useEffect(() => {
+    const t = setTimeout(() => setExploreFiltersApplied(exploreFilters), 250);
+    return () => clearTimeout(t);
+  }, [exploreFilters]);
   const exploreFilterHidden = React.useMemo(() => {
-    const pred = xpFilterPredicate(exploreFilters, exploreKind);
+    const pred = xpFilterPredicate(exploreFiltersApplied, exploreKind);
     const hidden = new Set();
     for (const p of exploreData.papers) if (!pred(p)) hidden.add(p.id);
     return hidden;
-  }, [exploreData, exploreFilters, exploreKind]);
+  }, [exploreData, exploreFiltersApplied, exploreKind]);
   const exploreSelectedPaper = exploreSelectedId
     ? exploreData.papers.find(p => p.id === exploreSelectedId) || null
     : null;
@@ -178,13 +196,18 @@ function App() {
   }, [exploreDataKey]);
   useEffect(() => {
     setExploreFilters({ ...XP_EMPTY_FILTERS });
-    setExploreSort(exploreNet === "collab" ? "papers" : "citations");
-  }, [exploreNet]);
+    setExploreSort(exploreKind === "author" ? "papers" : "citations");
+  }, [exploreKind]);
 
   const handleExplorePickSource = (v) => {
     setExploreNet("cite");
     if (v === "live") exploreUseLiveSession();
+    else if (v === "upload") exploreUseUpload();
     else loadExploreRun(v);
+  };
+  const handleExploreFile = (file) => {
+    setExploreNet("cite");
+    loadExploreUpload(file);
   };
   const handleExploreSubtree = () => {
     if (!exploreSelectedPaper) return;
@@ -349,10 +372,11 @@ function App() {
             setSort={setExploreSort}
             filters={exploreFilters}
             setFilters={setExploreFilters}
-            explore={exploreNet === "collab"
+            explore={!exploreUpload && exploreNet === "collab"
               ? { ...explore, loading: exploreCollab.loading, error: exploreCollab.error }
               : explore}
             onPickSource={handleExplorePickSource}
+            onPickFile={handleExploreFile}
             graphHidden={exploreGraphHidden}
           />
           <div className="main main-solo">
@@ -367,13 +391,18 @@ function App() {
               onClearSubtree={() => setExploreSubtreeId(null)}
               filterHiddenIds={exploreFilterHidden}
               onGraphHidden={setExploreGraphHidden}
-              netMode={exploreNet}
+              netMode={exploreUpload ? (uploadIsAuthor ? "collab" : "cite") : exploreNet}
               onSwitchNet={setExploreNet}
+              citeEnabled={!uploadIsAuthor}
               collabEnabled={collabEnabled}
-              collabHint={explore.source === "live"
-                ? "Author view needs a finished run — pick one in the Papers panel"
-                : ""}
-              emptyHint={exploreNet === "collab"
+              collabHint={exploreUpload
+                ? (uploadIsAuthor
+                    ? "This uploaded file IS a collaboration network"
+                    : "Uploaded citation files carry no author lists")
+                : explore.source === "live"
+                  ? "Author view needs a finished run — pick one in the Papers panel"
+                  : ""}
+              emptyHint={!exploreUpload && exploreNet === "collab"
                 ? (exploreCollab.loading
                     ? "Loading the collaboration network…"
                     : (exploreCollab.error || "No author data for this run."))
@@ -405,7 +434,9 @@ function App() {
           total={liveProgress.total}
           seedsSelected={seedsSelected}
           explorePapers={exploreData.papers.length}
-          exploreSource={explore.source === "run" ? explore.runPath : "live session"}
+          exploreSource={explore.source === "run"
+            ? explore.runPath
+            : exploreUpload ? exploreUpload.name : "live session"}
         />
       )}
 

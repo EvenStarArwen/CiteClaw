@@ -33,11 +33,14 @@ const LIVE = (function () {
     lastAddedId: null,
     settings: { model: "gemini-3.1-flash-lite", effort: "minimal", maxPapers: 200, keys: {}, models: [], loaded: false },
     // explore mode — "live" mirrors the current session; a run path swaps in
-    // an on-disk collection loaded through /api/explore/run
+    // an on-disk collection loaded through /api/explore/run; "upload" shows a
+    // local graph file opened through the browser file picker
     explore: { source: "live", papers: [], edges: [], runs: [], runsLoaded: false,
                runPath: null, meta: null, loading: false, error: null, version: 0,
                // author co-authorship view of the loaded run (fetched lazily)
-               collab: { forPath: null, papers: [], edges: [], loading: false, error: null } },
+               collab: { forPath: null, papers: [], edges: [], loading: false, error: null },
+               // last uploaded local graph file (kept so the source select can return to it)
+               upload: null },
   };
   return {
     getState: () => state,
@@ -268,6 +271,45 @@ function exploreUseLiveSession() {
                   version: (ex.version || 0) + 1 });
 }
 
+// ---- local graph files (browser file picker → POST raw bytes) ----
+// The backend sniffs the XML (GraphML/GEXF, citation vs collaboration
+// attributes) and 400s with a human-readable reason when incompatible.
+async function loadExploreUpload(file) {
+  _patchExplore({ loading: true, error: null });
+  try {
+    const r = await fetch("/api/explore/upload?name=" + encodeURIComponent(file.name),
+                          { method: "POST", body: file });
+    if (!r.ok) {
+      let msg = "Upload failed (HTTP " + r.status + ").";
+      try {
+        const j = await r.json();
+        if (j && j.detail) msg = j.detail;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+    const d = await r.json();
+    const ex = LIVE.get("explore");
+    _patchExplore({
+      source: "upload", meta: d.meta || null, error: null, loading: false,
+      upload: { name: file.name, kind: (d.meta && d.meta.kind) || "paper",
+                papers: d.papers || [], edges: d.edges || [],
+                token: ((ex.upload && ex.upload.token) || 0) + 1 },
+      version: (ex.version || 0) + 1,
+    });
+    return { ok: true };
+  } catch (e) {
+    _patchExplore({ loading: false, error: e.message });
+    return { ok: false, error: e.message };
+  }
+}
+
+function exploreUseUpload() {
+  const ex = LIVE.get("explore");
+  if (!ex.upload) return;
+  _patchExplore({ source: "upload", meta: null, error: null,
+                  version: (ex.version || 0) + 1 });
+}
+
 // Derive explore-shaped {papers, edges} from the live session's stores.
 // Network nodes carry seed flags + cites for papers the accepted stream may
 // not have (top-cited cap ordering); join the two by paper id.
@@ -312,5 +354,5 @@ Object.assign(window, {
   LIVE, useLive, fmtK, fmtNum, fmtDur,
   refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun,
   refreshExploreRuns, loadExploreRun, loadExploreCollab, exploreUseLiveSession,
-  exploreFromLive,
+  loadExploreUpload, exploreUseUpload, exploreFromLive,
 });

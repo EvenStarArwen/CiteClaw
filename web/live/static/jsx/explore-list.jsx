@@ -95,16 +95,31 @@ function xpFilterCount(f, kind) {
 }
 
 function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
-                       filters, setFilters, explore, onPickSource, graphHidden }) {
+                       filters, setFilters, explore, onPickSource, onPickFile,
+                       graphHidden }) {
   const scrollRef = React.useRef(null);
+  const fileRef = React.useRef(null);
   const [showFilters, setShowFilters] = React.useState(false);
   const author = kind === "author";
   const nFilters = xpFilterCount(filters, kind);
 
+  // Facet filters remove rows; graph-side structural filters (min degree /
+  // edge weight / largest component) do NOT — those papers stay listed but
+  // are dimmed, since they exist in the collection yet not in the network
+  // view. Removing them entirely would make the collection look smaller than
+  // it is; keeping them undimmed would invite hunting for missing nodes.
   const visible = React.useMemo(() => {
     const pred = xpFilterPredicate(filters, kind);
-    return papers.filter(p => pred(p) && !(graphHidden && graphHidden.has(p.id)));
-  }, [papers, filters, kind, graphHidden]);
+    return papers.filter(pred);
+  }, [papers, filters, kind]);
+  const offSet = graphHidden && graphHidden.size ? graphHidden : null;
+  const nOff = React.useMemo(() => {
+    if (!offSet) return 0;
+    let k = 0;
+    for (const p of visible) if (offSet.has(p.id)) k++;
+    return k;
+  }, [visible, offSet]);
+  const inGraph = visible.length - nOff;
 
   const sorted = React.useMemo(() => {
     const copy = [...visible];
@@ -128,7 +143,8 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
     }
   }, [selectedId]);
 
-  const srcValue = explore.source === "run" ? explore.runPath : "live";
+  const srcValue = explore.source === "run" ? explore.runPath
+    : explore.source === "upload" ? "upload" : "live";
   const liveCount = (LIVE.get("accepted") || []).length;
   const patchF = (patch) => setFilters({ ...filters, ...patch });
 
@@ -137,8 +153,13 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
       <div className="ph">
         <span className="ph-title">{author ? "Authors" : "Papers"}</span>
         <span className="ph-count">
-          <span style={{ color: "var(--cc-ink-1)", fontWeight: 600 }}>{visible.length.toLocaleString()}</span>
+          <span style={{ color: "var(--cc-ink-1)", fontWeight: 600 }}>{inGraph.toLocaleString()}</span>
           <span>{visible.length !== papers.length ? ` of ${papers.length.toLocaleString()}` : " in graph"}</span>
+          {nOff > 0 && (
+            <span title="In the collection, but removed from the network view by the graph filters (min degree / edge weight / largest component)">
+              {" "}· {nOff.toLocaleString()} off
+            </span>
+          )}
         </span>
       </div>
 
@@ -150,6 +171,11 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
           title="Data source"
         >
           <option value="live">Current session · {liveCount.toLocaleString()} papers</option>
+          {explore.upload && (
+            <option value="upload">
+              File · {explore.upload.name} · {(explore.upload.papers || []).length.toLocaleString()} nodes
+            </option>
+          )}
           {explore.runs.map(r => (
             <option key={r.path} value={r.path}>
               {r.label} · {r.papers.toLocaleString()} papers · {r.modified}
@@ -159,6 +185,17 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
         <button className="ph-btn" onClick={() => refreshExploreRuns()} title="Rescan runs on disk">
           <Icon name="refresh-cw" size={12} />
         </button>
+        <button className="ph-btn" onClick={() => fileRef.current && fileRef.current.click()}
+                title="Open a local graph file (.graphml / .gexf) — a CiteClaw citation or collaboration network">
+          <Icon name="upload" size={12} />
+        </button>
+        <input ref={fileRef} type="file" accept=".graphml,.gexf,.xml"
+               style={{ display: "none" }}
+               onChange={e => {
+                 const f = e.target.files && e.target.files[0];
+                 e.target.value = "";  // same file re-picked should re-fire
+                 if (f && onPickFile) onPickFile(f);
+               }} />
       </div>
       <div className="xp-controls">
         <select className="accepted-sort" value={sort} onChange={e => setSort(e.target.value)}>
@@ -252,36 +289,46 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
                   : "This run has no accepted papers."}
           </div>
         )}
-        {sorted.map(p => (
-          <div
-            key={p.id}
-            data-paper-id={p.id}
-            className={"xp-item" + (selectedId === p.id ? " is-selected" : "")}
-            onClick={() => onSelect(p.id === selectedId ? null : p.id)}
-          >
-            <div className="xp-item-title">
-              {p.seed && <span className="xp-seed-dot" title="Seed paper" />}
-              {p.title}
+        {sorted.map(p => {
+          const off = offSet ? offSet.has(p.id) : false;
+          return (
+            <div
+              key={p.id}
+              data-paper-id={p.id}
+              className={"xp-item" + (selectedId === p.id ? " is-selected" : "")
+                + (off ? " is-offnet" : "")}
+              onClick={() => onSelect(p.id === selectedId ? null : p.id)}
+              title={off
+                ? "In the collection, but not in the network view — removed by the graph filters (min degree / edge weight / largest component)"
+                : undefined}
+            >
+              <div className="xp-item-title">
+                {p.seed && <span className="xp-seed-dot" title="Seed paper" />}
+                {p.title}
+              </div>
+              <div className="xp-item-meta">
+                <span className="xp-item-sub">
+                  {author
+                    ? [p.venue || null, p.hIndex != null ? `h ${p.hIndex}` : null].filter(Boolean).join(" · ") || "—"
+                    : [p.authors, p.year || null].filter(Boolean).join(" · ")}
+                </span>
+                <span className="xp-item-cites">
+                  {off && <Icon name="unlink" size={10} className="xp-offnet-ic" />}
+                  {author ? `${(p.nPapers || 0).toLocaleString()}p` : fmtK(p.cites || 0)}
+                </span>
+              </div>
             </div>
-            <div className="xp-item-meta">
-              <span className="xp-item-sub">
-                {author
-                  ? [p.venue || null, p.hIndex != null ? `h ${p.hIndex}` : null].filter(Boolean).join(" · ") || "—"
-                  : [p.authors, p.year || null].filter(Boolean).join(" · ")}
-              </span>
-              <span className="xp-item-cites">
-                {author ? `${(p.nPapers || 0).toLocaleString()}p` : fmtK(p.cites || 0)}
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="acc-foot">
         <span className="acc-foot-stream">
           {explore.source === "run"
             ? <>run · <span className="cc-mono-xs">{explore.runPath}</span></>
-            : "live session"}
+            : explore.source === "upload"
+              ? <>file · <span className="cc-mono-xs">{explore.upload ? explore.upload.name : ""}</span></>
+              : "live session"}
         </span>
         <span>{Math.min(XP_LIST_CAP, visible.length)} of {visible.length.toLocaleString()}</span>
       </div>

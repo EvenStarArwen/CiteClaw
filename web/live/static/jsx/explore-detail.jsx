@@ -78,10 +78,20 @@ function ExploreDetail({ paper, kind, onExploreSubtree, subtreeActive }) {
                 <div className="acc-detail-k">h-index</div>
                 <div className="acc-detail-v">{paper.hIndex != null ? paper.hIndex : "—"}</div>
               </div>
-              <div style={{ gridColumn: "1 / 3" }}>
-                <div className="acc-detail-k">Total citations</div>
+              <div title="Total citations of this author's papers inside the collection — not their whole publication record">
+                <div className="acc-detail-k">Citations in network</div>
                 <div className="acc-detail-v">{(paper.cites || 0).toLocaleString()}</div>
               </div>
+              <div title="Year of this author's earliest paper in the collection">
+                <div className="acc-detail-k">First paper</div>
+                <div className="acc-detail-v">{paper.year || "—"}</div>
+              </div>
+              {paper.citesAll != null && (
+                <div style={{ gridColumn: "1 / 3" }}>
+                  <div className="acc-detail-k">Citations (all publications)</div>
+                  <div className="acc-detail-v">{paper.citesAll.toLocaleString()}</div>
+                </div>
+              )}
             </>
           ) : (
             <>

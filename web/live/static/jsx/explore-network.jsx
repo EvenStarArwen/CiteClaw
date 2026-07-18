@@ -8,8 +8,8 @@
 
 function ExploreNetwork({ papers, edges, dataKey, kind, selectedId, onSelect,
                           subtreeId, onClearSubtree, filterHiddenIds,
-                          onGraphHidden, netMode, onSwitchNet, collabEnabled,
-                          collabHint, emptyHint, theme }) {
+                          onGraphHidden, netMode, onSwitchNet, citeEnabled = true,
+                          collabEnabled, collabHint, emptyHint, theme }) {
   const [counts, setCounts] = React.useState({ nodes: 0, edges: 0 });
 
   // 2-hop neighbourhood of the subtree anchor, from the edge list.
@@ -104,7 +104,9 @@ function ExploreNetwork({ papers, edges, dataKey, kind, selectedId, onSelect,
         <div className="cg-seg" title={collabEnabled ? "" : (collabHint || "")}>
           <button
             className={"cg-seg-btn" + (netMode === "cite" ? " is-on" : "")}
-            onClick={() => onSwitchNet("cite")}
+            disabled={!citeEnabled}
+            onClick={() => citeEnabled && onSwitchNet("cite")}
+            title={citeEnabled ? "" : (collabHint || "")}
           >
             <Icon name="git-fork" size={11} /> Citation
           </button>

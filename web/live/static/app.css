@@ -5064,6 +5064,21 @@ select.gp-v { cursor: pointer; }
   background: var(--cc-paper); color: var(--cc-ink-1);
 }
 
+/* Gephi-style exact-value ranges: [min] – [max] spinner pair */
+.cg-pop-pair {
+  grid-column: 2 / 4;
+  display: flex; align-items: center; gap: 5px;
+}
+.cg-pop-num {
+  width: 100%; min-width: 0; box-sizing: border-box;
+  padding: 3px 5px; font-size: 11px;
+  font-family: var(--cc-font-mono); font-variant-numeric: tabular-nums;
+  border: 1px solid var(--cc-btn-border); border-radius: 4px;
+  background: var(--cc-paper); color: var(--cc-ink-1);
+}
+.cg-pop-num:focus { outline: none; border-color: var(--cc-accent); }
+.cg-pop-dash { color: var(--cc-ink-3); font-size: 10px; }
+
 /* Citation ↔ collaboration segmented switch (top-right, under the counter) */
 .cg-seg {
   position: absolute; top: 52px; right: 14px;
@@ -5177,6 +5192,19 @@ select.gp-v { cursor: pointer; }
   background: #ffffff; box-shadow: inset 3px 0 0 #0a0a0a; border: 1px solid transparent;
 }
 :root[data-theme="dark"][data-palette="mono"] .xp-item.is-selected { background: var(--cc-paper); }
+
+/* In the collection but removed from the network view by graph filters
+   (min degree / edge weight / largest component): stays listed, reads
+   muted, and carries an unlink glyph next to the count. Opacity-based so
+   it survives every theme/palette combination. */
+.xp-item.is-offnet { opacity: 0.55; }
+.xp-item.is-offnet:hover,
+.xp-item.is-offnet.is-selected { opacity: 0.8; }
+.xp-item.is-offnet .xp-item-title { color: var(--cc-ink-2); font-weight: 500; }
+.xp-offnet-ic {
+  display: inline-flex; vertical-align: -1px;
+  margin-right: 4px; color: var(--cc-ink-3);
+}
 
 /* ---- Dark mode for the mono skin's hardcoded white chrome ----------------
    The design's dark+mono block only flips tokens; its floating white cards
