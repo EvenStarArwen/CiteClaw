@@ -43,61 +43,189 @@ class _StopRun(Exception):
     """Raised inside the sink to abort a run at the next step/paper boundary."""
 
 
-def _brief_step(s: dict[str, Any]) -> str:
-    """Short label for one step inside a Parallel branch, params inline."""
+def _brief_hint(s: dict[str, Any]) -> str:
+    """Short param hint for one step inside a Parallel branch."""
     name = s.get("step")
-    label = _STEP_META.get(name, ("", name or "Step", ""))[1]
-    if name == "ExpandForward" and s.get("max_citations"):
-        return f"{label} (≤{s['max_citations']} citers/source)"
+    if name == "ExpandForward":
+        return f"≤{s.get('max_citations', 100)} citers per source"
+    if name == "ExpandBackward":
+        return "every reference, no cap"
     if name == "Rerank":
         d = s.get("diversity")
         extra = f", {d.get('type')}-diverse" if isinstance(d, dict) and d.get("type") else ""
-        return f"{label} (top {s.get('k', 100)} by {s.get('metric', 'citation')}{extra})"
-    return label
+        return f"top {s.get('k', 100)} by {s.get('metric', 'citation')}{extra}"
+    return ""
 
 
-def _step_detail(s: dict[str, Any]) -> list[str]:
-    """Plain-language lines describing what a step does inside — shown when
-    the user expands the step in the progress sidebar."""
+def _filter_chain(block: dict[str, Any] | None) -> list[str]:
+    """Compact one-line-per-layer description of a screener cascade."""
+    if not block:
+        return []
+
+    def label(b: dict[str, Any]) -> str:
+        t = b.get("type")
+        if t == "YearFilter":
+            return f"Year {b.get('min', '…')}–{b.get('max', '…')}"
+        if t == "CitationFilter":
+            return f"Citation β={b.get('beta', '…')}"
+        if t == "AbstractKeywordFilter":
+            return "Abstract keywords"
+        if t == "TitleKeywordFilter":
+            return "Title keywords"
+        if t == "VenueKeywordFilter":
+            return "Venue keywords"
+        if t == "SimilarityFilter":
+            return f"Similarity ≥ {b.get('threshold', '…')}"
+        if t == "LLMFilter":
+            return f"LLM ({b.get('scope', 'title_abstract')})"
+        if t == "Sequential":
+            return " → ".join(label(x) for x in b.get("layers", []))
+        if t == "Any":
+            return "any of: " + " | ".join(label(x) for x in b.get("layers", []))
+        if t == "Not":
+            return "not " + label(b.get("layer") or {})
+        return str(t or "?")
+
+    lines: list[str] = []
+
+    def walk_top(b: dict[str, Any]) -> None:
+        t = b.get("type")
+        if t == "Sequential":
+            for x in b.get("layers", []):
+                walk_top(x)
+        elif t == "Route":
+            lines.append("Route · first matching condition decides the branch:")
+            for r in b.get("routes", []):
+                if "default" in r:
+                    lines.append("· else → " + label(r["default"]))
+                    continue
+                cond = r.get("if") or {}
+                if "VenueIn" in cond:
+                    c = "venue ∋ " + " / ".join(cond["VenueIn"])
+                elif "CitAtLeast" in cond:
+                    c = f"citations ≥ {cond['CitAtLeast']}"
+                elif "YearAtLeast" in cond:
+                    c = f"year ≥ {cond['YearAtLeast']}"
+                else:
+                    c = str(cond)
+                lines.append(f"· {c} → " + label(r.get("pass_to") or {}))
+        else:
+            lines.append(label(b))
+
+    walk_top(block)
+    return lines
+
+
+def _step_road(s: dict[str, Any]) -> dict[str, Any]:
+    """The step's internal ROADMAP: its stages in order, with live-match keys.
+
+    ``key`` is the prefix the core uses for ``begin_phase`` descriptions, so
+    the front end can highlight the stage that is running right now. The
+    special key ``__screen`` matches "none of the others" — during screening
+    the inner bar carries the individual FILTER names.
+    """
     name = s.get("step")
-    if name == "Parallel":
-        out = []
-        for i, b in enumerate(s.get("branches") or [], 1):
-            out.append(f"Branch {i}: " + " → ".join(_brief_step(x) for x in b))
-        out.append("Branches receive the same input and run one after another; "
-                   "their outputs are merged (union) before the next step.")
-        return out
+    screen = {
+        "key": "__screen", "label": "Screen candidates",
+        "hint": "each batch runs the filter cascade below; the live bar shows the filter being applied",
+        "filters": _filter_chain(s.get("screener")),
+    }
     if name == "ExpandForward":
-        cap = s.get("max_citations") or 100
-        return [f"For each source paper: fetch up to {cap} citing papers from "
-                "Semantic Scholar (page by page), enrich them with metadata + "
-                "abstracts, then screen each batch through the filter pipeline."]
+        cap = s.get("max_citations", 100)
+        return {"loop": True,
+                "blurb": "The stages below repeat for every source paper in the signal.",
+                "stages": [
+                    {"key": "fetch citers", "label": "Fetch citing papers",
+                     "hint": f"up to {cap} per source, page by page from Semantic Scholar"},
+                    {"key": "fetch source refs", "label": "Fetch the source's references",
+                     "hint": "needed for reference-overlap similarity"},
+                    {"key": "enrich · batch", "label": "Enrich metadata",
+                     "hint": "bulk-fill missing fields"},
+                    {"key": "enrich · abstracts", "label": "Enrich abstracts",
+                     "hint": "S2 first, OpenAlex fallback"},
+                    screen,
+                ]}
     if name == "ExpandBackward":
-        return ["For each source paper: fetch every reference from Semantic "
-                "Scholar, enrich with metadata + abstracts, then screen each "
-                "batch through the filter pipeline. No fan-out cap — this is "
-                "usually the longest step."]
+        return {"loop": True,
+                "blurb": "The stages below repeat for every source paper — every reference is walked (no cap).",
+                "stages": [
+                    {"key": "fetch refs", "label": "Fetch references",
+                     "hint": "all of them, page by page"},
+                    {"key": "s2: resolve", "label": "Resolve OpenAlex fallback DOIs",
+                     "hint": "only when S2 has no reference list for a source"},
+                    {"key": "enrich · abstracts", "label": "Enrich abstracts",
+                     "hint": "S2 first, OpenAlex fallback"},
+                    screen,
+                ]}
+    if name == "Parallel":
+        n = len(s.get("branches") or [])
+        branches = []
+        for i, b in enumerate(s.get("branches") or [], 1):
+            branches.append([{
+                "key": f"branch {i}/{n} · {x.get('step')}",
+                "label": _STEP_META.get(x.get("step"), ("", x.get("step") or "Step", ""))[1],
+                "hint": _brief_hint(x),
+            } for x in b])
+        return {"loop": False,
+                "blurb": "Each branch receives the same input; branches run one after "
+                         "another and their outputs are merged (union) before the next step.",
+                "stages": [], "branches": branches}
+    if name == "Rerank":
+        stages = [{"key": "compute", "label": f"Score every paper · {s.get('metric', 'citation')}",
+                   "hint": "graph metric over the collected network"}]
+        d = s.get("diversity")
+        if d:
+            algo = d.get("type") if isinstance(d, dict) else str(d)
+            stages.append({"key": "cluster-diverse", "label": f"Cluster-diverse top-{s.get('k', 100)}",
+                           "hint": f"{algo} clustering, floor-then-proportional allocation"})
+        else:
+            stages.append({"key": "rank top", "label": f"Keep top-{s.get('k', 100)}",
+                           "hint": "plain sort + cut"})
+        return {"loop": False,
+                "blurb": "Non-destructive — only the forwarded signal is trimmed; the collection keeps everything.",
+                "stages": stages}
     if name == "ExpandBySearch":
         it = (s.get("agent") or {}).get("max_iterations", 1)
-        return [f"The LLM designs Semantic Scholar queries (up to {it} rounds) "
-                "and the results are screened through the filter pipeline. "
-                "Experimental."]
-    if name == "Rerank":
-        return [_brief_step(s) + "."]
+        return {"loop": True,
+                "blurb": "Experimental — the CLI search agent is a placeholder for now.",
+                "stages": [
+                    {"key": "search", "label": "LLM-designed Semantic Scholar search",
+                     "hint": f"up to {it} query rounds"},
+                    screen,
+                ]}
     if name == "ReScreen":
-        return ["Re-apply the screener to the whole collection (seeds exempt); "
-                "papers that fail are removed."]
+        return {"loop": False,
+                "blurb": "Re-applies the screener to the whole collection (seeds exempt); failures are removed.",
+                "stages": [screen]}
     if name == "ResolveSeeds":
-        return ["Resolve title-only seeds to Semantic Scholar records."]
+        return {"loop": False, "blurb": "Resolves title-only seeds to Semantic Scholar records.",
+                "stages": [{"key": "resolve seed titles", "label": "Resolve seed titles",
+                            "hint": "one S2 title match per seed"}]}
     if name == "LoadSeeds":
-        return ["Fetch metadata for every seed paper and put them in the collection."]
+        return {"loop": False, "blurb": "Puts the seed papers into the collection.",
+                "stages": [{"key": "fetch seed metadata", "label": "Fetch seed metadata",
+                            "hint": "one S2 lookup per seed"}]}
     if name == "MergeDuplicates":
-        return ["Detect preprint ↔ published duplicates (DOI/arXiv links + title "
-                "and embedding similarity) and merge them."]
+        return {"loop": False, "blurb": "Preprint ↔ published dedup before the artifacts are written.",
+                "stages": [
+                    {"key": "prefetch embeddings", "label": "Prefetch embeddings", "hint": "SPECTER2, for title similarity"},
+                    {"key": "detect duplicate clusters", "label": "Detect duplicate clusters",
+                     "hint": "DOI/arXiv links + title + embedding similarity"},
+                    {"key": "merge clusters", "label": "Merge clusters", "hint": "the published version wins"},
+                ]}
     if name == "Finalize":
-        return ["Write literature_collection.json / .bib, citation_network.graphml "
-                "and the collaboration network."]
-    return []
+        return {"loop": False, "blurb": "Writes every artifact of the run.",
+                "stages": [
+                    {"key": "enrich missing references", "label": "Enrich missing references", "hint": "for complete graph edges"},
+                    {"key": "enrich missing abstracts", "label": "Enrich missing abstracts", "hint": ""},
+                    {"key": "build output", "label": "Build the output collection", "hint": ""},
+                    {"key": "write JSON", "label": "Write literature_collection.json", "hint": ""},
+                    {"key": "write BibTeX", "label": "Write the .bib file", "hint": ""},
+                    {"key": "write run_state", "label": "Write run_state.json", "hint": ""},
+                    {"key": "write graphs", "label": "Write citation + collaboration graphs", "hint": "GraphML"},
+                    {"key": "write rejections", "label": "Write the rejection ledger", "hint": ""},
+                ]}
+    return {"loop": False, "blurb": "", "stages": []}
 
 
 def _steps_meta_from_config(config) -> list[dict[str, Any]]:
@@ -125,7 +253,7 @@ def _steps_meta_from_config(config) -> list[dict[str, Any]]:
             "status": "idle",
             "sub": "pending",
             "pct": 0,
-            "detail": _step_detail(s),
+            "road": _step_road(s),
         })
     return steps
 
@@ -254,6 +382,7 @@ class WebDashboard:
         self._inner: dict[str, Any] | None = None
         self._retry: str | None = None
         self._seen = 0
+        self._lane: str | None = None   # last "branch i/n · Step" phase seen
         self._last_emit = 0.0
         self._last_retry_logged: str | None = None
 
@@ -269,12 +398,14 @@ class WebDashboard:
         self._inner = None
         self._retry = None
         self._seen = 0
+        self._lane = None
         self._emit(force=True)
 
     def end_step(self, *, candidates: int | None = None) -> None:
         self._outer = None
         self._inner = None
         self._retry = None
+        self._lane = None
         self._emit(force=True)
 
     def enable_outer_bar(self, total: int, *, description: str = "source papers") -> None:
@@ -287,11 +418,16 @@ class WebDashboard:
         self._emit()
 
     def begin_phase(self, description: str, total) -> None:
-        self._inner = {"desc": str(description),
+        d = str(description)
+        # Parallel announces "branch i/n · Step" before running each sub-step,
+        # which then overwrites the phase with its own — latch the lane so the
+        # step-detail page can highlight which branch is live throughout.
+        if d.startswith("branch "):
+            self._lane = d
+        self._inner = {"desc": d,
                        "total": int(total) if total else None, "done": 0}
         self._emit(force=True)
-        self._log("PHASE", str(description)
-                  + (f" · {int(total):,} items" if total else ""))
+        self._log("PHASE", d + (f" · {int(total):,} items" if total else ""))
 
     def retotal_phase(self, total) -> None:
         if self._inner:
@@ -356,6 +492,7 @@ class WebDashboard:
             "inner": dict(self._inner) if self._inner else None,
             "retry": self._retry,
             "seen": self._seen,
+            "lane": self._lane,
         }})
 
 

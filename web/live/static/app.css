@@ -5558,6 +5558,118 @@ select.gp-v { cursor: pointer; }
 .accepted-controls { padding-bottom: 10px; }
 .accepted-scroll { padding-top: 6px; }
 
+/* ── Step-detail page: the step's internal ROADMAP ─────────────────────── */
+.sd-step-head { display: flex; align-items: center; gap: 10px; }
+.sd-badge { flex: 0 0 auto; }
+.sd-step-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sd-step-name { font-size: 15px; font-weight: 650; color: var(--cc-ink-1); }
+.sd-step-chip {
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 999px;
+  background: var(--cc-hover-deep); color: var(--cc-ink-2);
+}
+.sd-step-chip.is-active { background: var(--cc-accent); color: var(--cc-on-accent, #fff); }
+.sd-step-chip.is-done { background: color-mix(in srgb, var(--cc-positive, #2e7d32) 16%, transparent); color: var(--cc-positive, #2e7d32); }
+.sd-step-chip.is-error { background: color-mix(in srgb, var(--cc-danger) 16%, transparent); color: var(--cc-danger); }
+.sd-step-sub {
+  font-family: var(--cc-font-mono); font-size: 10.5px; color: var(--cc-ink-2);
+  white-space: normal; word-break: break-word; line-height: 1.5;
+  margin-top: 6px;
+}
+.sd-step-blurb { font-size: 11.5px; line-height: 1.55; color: var(--cc-ink-2); margin-top: 8px; }
+.sd-activity { margin: 12px 0 0; }
+
+.road { margin-top: 14px; display: flex; flex-direction: column; gap: 0; }
+.road-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--cc-ink-3);
+  margin-bottom: 8px;
+}
+.road-loop-chip {
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 500;
+  letter-spacing: 0; text-transform: none;
+  padding: 1px 7px; border-radius: 999px;
+  background: var(--cc-hover-soft); border: 1px solid var(--cc-rule);
+  color: var(--cc-ink-2);
+}
+.road-lane {
+  margin-bottom: 10px; padding: 9px 10px;
+  background: var(--cc-panel); border: 1px solid var(--cc-rule); border-radius: 7px;
+}
+.road-lane-head {
+  font-family: var(--cc-font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-ink-3);
+  margin-bottom: 6px;
+}
+.road-node {
+  position: relative;
+  display: grid; grid-template-columns: 22px 1fr; gap: 10px;
+  padding: 6px 0;
+}
+/* connector between nodes */
+.road-node::before {
+  content: ""; position: absolute; left: 10px; top: 28px; bottom: -8px;
+  width: 1px;
+  background: repeating-linear-gradient(to bottom, var(--cc-rule-strong) 0 3px, transparent 3px 6px);
+}
+.road-node:last-child::before { display: none; }
+.road-dot {
+  width: 21px; height: 21px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--cc-font-mono); font-size: 10px; font-weight: 600;
+  background: var(--cc-hover-soft); border: 1px solid var(--cc-rule-strong);
+  color: var(--cc-ink-3);
+  z-index: 1;
+}
+.road-node.is-done .road-dot {
+  background: var(--cc-positive, #2e7d32); border-color: var(--cc-positive, #2e7d32);
+  color: #fff;
+}
+.road-node.is-active .road-dot {
+  background: var(--cc-accent); border-color: var(--cc-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cc-accent) 22%, transparent);
+  animation: prog-log-pulse 1.5s ease-in-out infinite;
+}
+.road-node.is-error .road-dot { background: var(--cc-danger); border-color: var(--cc-danger); color: #fff; }
+.road-node.is-pending { opacity: 0.66; }
+.road-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.road-label { font-size: 12px; font-weight: 550; color: var(--cc-ink-1); line-height: 1.35; }
+.road-node.is-active .road-label { color: var(--cc-accent); }
+.road-hint { font-size: 10.5px; line-height: 1.45; color: var(--cc-ink-3); }
+.road-filters {
+  margin-top: 4px; padding: 6px 8px;
+  background: var(--cc-hover-soft); border: 1px solid var(--cc-rule-soft); border-radius: 5px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.road-filter {
+  font-family: var(--cc-font-mono); font-size: 9.5px; line-height: 1.5;
+  color: var(--cc-ink-2);
+  white-space: normal; word-break: break-word;
+}
+.road-live { margin-top: 5px; }
+
+/* Expanded log line: its own block — time + tag header, then the full
+   message in a padded panel at full width. */
+.prog-log-open {
+  margin: 3px 0; padding: 6px 8px;
+  background: var(--cc-hover-soft);
+  border: 1px solid var(--cc-rule-soft);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.prog-log-open-head { display: flex; align-items: center; gap: 8px; }
+.prog-log-open-msg {
+  margin-top: 6px; padding: 7px 9px;
+  background: var(--cc-paper);
+  border: 1px solid var(--cc-rule);
+  border-radius: 5px;
+  font-family: var(--cc-font-mono); font-size: 10.5px; line-height: 1.6;
+  color: var(--cc-ink-1);
+  white-space: pre-wrap; word-break: break-word;
+}
+
 /* Steps the run never reached (paper/budget cap, stop, error): resolved as
    "skipped" with the reason, instead of dangling as "pending" forever. */
 .prog-step.is-skipped { opacity: 0.62; }

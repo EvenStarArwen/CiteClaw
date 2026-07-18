@@ -1,12 +1,12 @@
 /* eslint-disable */
 // Section B (Run mode) — Pipeline progress (live).
-// Steps (click one to expand its full description, sub-structure and — when
-// it's the active step — the live sub-progress bars) + CURRENT ACTIVITY (the
-// CLI's double progress bar + liveness heartbeat) + summary + live log
-// (click a line to read the full message; only the last 100 are kept).
+// The step list navigates: clicking a step OPENS ITS OWN PAGE (the same
+// slide-in pattern as the paper-abstract view) showing the step's internal
+// ROADMAP — its stages as a visual sub-pipeline with the live position
+// highlighted and the progress bars embedded. The sidebar root keeps the
+// step list + Current activity + summary + live log (click a line for the
+// full message; only the last 100 are kept).
 
-// One activity bar: label · counts · determinate fill (or an indeterminate
-// shimmer when the total is unknown, e.g. paginated fetches).
 function ActivityBar({ bar, inner }) {
   if (!bar) return null;
   const hasTotal = bar.total != null && bar.total > 0;
@@ -30,8 +30,8 @@ function ActivityBar({ bar, inner }) {
   );
 }
 
-// The within-step live view (bars + retry + counter) — shown in the
-// Current-activity card AND inside the expanded active step.
+// The within-step live view (bars + retry + counter) — Current-activity card
+// and the step-detail page both use it.
 function ActivityDetail({ activity }) {
   return (
     <>
@@ -55,8 +55,6 @@ function ActivityDetail({ activity }) {
   );
 }
 
-// Liveness heartbeat: seconds since the last backend event, colour-coded so
-// "is it dead?" has an answer at a glance.
 function Heartbeat({ lastEventAt, nowMs }) {
   const ago = Math.max(0, Math.round((nowMs - (lastEventAt || nowMs)) / 1000));
   const state = ago < 10 ? "ok" : ago < 60 ? "slow" : "stale";
@@ -70,6 +68,148 @@ function Heartbeat({ lastEventAt, nowMs }) {
   );
 }
 
+// Which roadmap stage is live? Match the inner phase description against the
+// stage keys; "__screen" wins when nothing else matches (screening phases
+// carry the individual filter names).
+function _liveStageKey(stages, activity) {
+  const desc = activity && activity.inner && activity.inner.desc;
+  if (!desc) return null;
+  for (const st of stages) {
+    if (st.key !== "__screen" && desc.startsWith(st.key)) return st.key;
+  }
+  return stages.some(st => st.key === "__screen") ? "__screen" : null;
+}
+
+// One roadmap node.
+function RoadNode({ index, label, hint, filters, state, liveBar }) {
+  return (
+    <div className={"road-node is-" + state}>
+      <span className="road-dot">
+        {state === "done" ? "✓" : state === "active" ? "" : index}
+      </span>
+      <div className="road-body">
+        <span className="road-label">{label}</span>
+        {hint ? <span className="road-hint">{hint}</span> : null}
+        {filters && filters.length > 0 && (
+          <div className="road-filters">
+            {filters.map((f, i) => <div key={i} className="road-filter">{f}</div>)}
+          </div>
+        )}
+        {state === "active" && liveBar && <div className="road-live"><ActivityBar bar={liveBar} /></div>}
+        {state === "active" && !liveBar && (
+          <div className="road-live"><div className="prog-bar-track"><div className="prog-bar-fill act-bar-indet" /></div></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Full-page detail for one pipeline step: header, live bars, and the ROADMAP.
+function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBack }) {
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onBack(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onBack]);
+
+  const road = s.road || { stages: [], loop: false, blurb: "" };
+  const isActive = s.status === "active";
+  const liveKey = isActive ? _liveStageKey(road.stages || [], activity) : null;
+  const stages = road.stages || [];
+  const liveIdx = liveKey ? stages.findIndex(st => st.key === liveKey) : -1;
+  const lane = isActive && activity ? activity.lane : null;
+
+  const stageState = (st, i) => {
+    if (s.status === "done") return "done";
+    if (s.status === "skipped" || s.status === "idle") return "pending";
+    if (s.status === "error") return i < liveIdx ? "done" : i === liveIdx ? "error" : "pending";
+    if (!isActive) return "pending";
+    if (liveIdx < 0) return "pending";
+    if (i === liveIdx) return "active";
+    // looping steps revisit stages per source paper — only the current one
+    // is meaningful; linear steps genuinely progress top to bottom.
+    if (road.loop) return "pending";
+    return i < liveIdx ? "done" : "pending";
+  };
+
+  const statusChip = { idle: "pending", active: "running", done: "done", skipped: "skipped", error: "failed" };
+
+  return (
+    <aside className="panel panel-left">
+      <div className="ph">
+        <span className="ph-title">Step detail</span>
+        <span className="ph-count">{s.localId}</span>
+      </div>
+      <div className="seed-detail">
+        <button className="seed-detail-back" onClick={onBack} title="Back (Esc)">
+          <Icon name="arrow-left" size={13} /> Back to progress
+        </button>
+        <div className="seed-detail-body">
+          <div className="sd-step-head">
+            <span className={"prog-badge sd-badge is-" + s.status}>
+              {s.status === "done" ? "✓" : s.status === "skipped" ? "→" : s.status === "error" ? "!" : index + 1}
+            </span>
+            <div className="sd-step-title">
+              <span className="sd-step-name">{s.name}</span>
+              <span className={"sd-step-chip is-" + s.status}>{statusChip[s.status] || s.status}</span>
+            </div>
+          </div>
+          <div className="sd-step-sub">{s.localId} · {s.sub}</div>
+          {road.blurb ? <div className="sd-step-blurb">{road.blurb}</div> : null}
+
+          {isActive && (
+            <div className="prog-activity sd-activity">
+              <div className="prog-activity-head">
+                <span>Live</span>
+                <Heartbeat lastEventAt={lastEventAt} nowMs={nowMs} />
+              </div>
+              <ActivityBar bar={activity && activity.outer} />
+              {activity && activity.retry && (
+                <div className="act-retry"><Icon name="refresh-cw" size={11} /> {activity.retry}</div>
+              )}
+              {activity && activity.seen > 0 && (
+                <div className="act-seen">{activity.seen.toLocaleString()} candidates seen</div>
+              )}
+            </div>
+          )}
+
+          {road.branches && road.branches.length > 0 ? (
+            <div className="road">
+              <div className="road-title">Branches</div>
+              {road.branches.map((b, i) => (
+                <div key={i} className="road-lane">
+                  <div className="road-lane-head">Branch {i + 1}</div>
+                  {b.map((node, j) => {
+                    const nodeActive = !!(lane && lane === node.key);
+                    return (
+                      <RoadNode key={j} index={j + 1} label={node.label} hint={node.hint}
+                        state={s.status === "done" ? "done" : nodeActive ? "active" : "pending"}
+                        liveBar={nodeActive && activity ? activity.inner : null} />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ) : stages.length > 0 ? (
+            <div className="road">
+              <div className="road-title">
+                Stages{road.loop ? <span className="road-loop-chip">↻ per source paper</span> : null}
+              </div>
+              {stages.map((st, i) => (
+                <RoadNode key={st.key} index={i + 1} label={st.label} hint={st.hint}
+                  filters={st.filters} state={stageState(st, i)}
+                  liveBar={i === liveIdx && activity ? activity.inner : null} />
+              ))}
+            </div>
+          ) : (
+            <div className="sd-step-blurb">No internal stages for this step.</div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 function RunProgress() {
   const progress = useLive("progress");
   const logs = useLive("logs");
@@ -78,10 +218,9 @@ function RunProgress() {
   const lastEventAt = useLive("lastEventAt");
   const nowMs = useLive("nowMs");
   const steps = progress.steps || [];
-  const [openStep, setOpenStep] = React.useState(null);       // localId | null
+  const [detailStep, setDetailStep] = React.useState(null);   // localId | null
   const [openLogs, setOpenLogs] = React.useState(() => new Set());
 
-  const toggleStep = (id) => setOpenStep(cur => (cur === id ? null : id));
   const toggleLog = (id) => setOpenLogs(cur => {
     const next = new Set(cur);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -96,6 +235,14 @@ function RunProgress() {
     : tag === "LLM" ? "prog-log-tag--llm"
     : tag === "PHASE" ? "prog-log-tag--phase"
     : "prog-log-tag--info";
+
+  const detail = detailStep ? steps.find(x => x.localId === detailStep) : null;
+  if (detail) {
+    return <StepDetailPage s={detail} index={steps.indexOf(detail)}
+      activity={activity} running={running}
+      lastEventAt={lastEventAt} nowMs={nowMs}
+      onBack={() => setDetailStep(null)} />;
+  }
 
   return (
     <aside className="panel panel-left">
@@ -115,53 +262,27 @@ function RunProgress() {
               </div>
             </div>
           )}
-          {steps.map((s, i) => {
-            const open = openStep === (s.localId || i);
-            return (
-              <div key={s.localId || i}
-                className={"prog-step is-" + s.status + (open ? " is-open" : "")}
-                onClick={() => toggleStep(s.localId || i)}
-                title={open ? "Collapse" : "Click for what this step does and where it is"}>
-                <span className="prog-badge">
-                  {s.status === "done" ? "✓" : s.status === "skipped" ? "→" : s.status === "error" ? "!" : i + 1}
+          {steps.map((s, i) => (
+            <div key={s.localId || i}
+              className={"prog-step is-" + s.status + " is-navigable"}
+              onClick={() => setDetailStep(s.localId)}
+              title="Open this step's roadmap">
+              <span className="prog-badge">
+                {s.status === "done" ? "✓" : s.status === "skipped" ? "→" : s.status === "error" ? "!" : i + 1}
+              </span>
+              <div className="prog-body">
+                <span className="prog-name">{s.name}
+                  <Icon name="chevron-right" size={10} className="prog-chev" />
                 </span>
-                <div className="prog-body">
-                  <span className="prog-name">{s.name}
-                    <Icon name={open ? "chevron-up" : "chevron-down"} size={10} className="prog-chev" />
-                  </span>
-                  {!open && <span className="prog-meta">{s.localId} · {s.sub}</span>}
-                  {s.status === "active" && !open && (
-                    <div className="prog-bar-track">
-                      <div className="prog-bar-fill act-bar-indet" />
-                    </div>
-                  )}
-                  {open && (
-                    <div className="prog-step-detail" onClick={(e) => e.stopPropagation()}>
-                      <div className="prog-step-detail-sub">{s.localId} · {s.sub}</div>
-                      {(s.detail || []).map((d, j) => (
-                        <div key={j} className="prog-step-detail-line">{d}</div>
-                      ))}
-                      {s.status === "active" && (
-                        <div className="prog-step-detail-act">
-                          <ActivityDetail activity={activity} />
-                        </div>
-                      )}
-                      {s.status === "idle" && (
-                        <div className="prog-step-detail-line prog-step-detail-dim">Not started yet.</div>
-                      )}
-                      {s.status === "skipped" && (
-                        <div className="prog-step-detail-line prog-step-detail-dim">
-                          This step never ran — the pipeline ended before reaching it
-                          (paper/budget cap, a stop, or an error; the reason is in the
-                          line above and the live log).
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <span className="prog-meta">{s.localId} · {s.sub}</span>
+                {s.status === "active" && (
+                  <div className="prog-bar-track">
+                    <div className="prog-bar-fill act-bar-indet" />
+                  </div>
+                )}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
 
         {running && (
@@ -203,11 +324,18 @@ function RunProgress() {
             )}
             {logs.map((l) => {
               const open = openLogs.has(l.id);
-              return (
-                <div key={l.id}
-                  className={"prog-log-row is-clickable" + (open ? " is-open" : "")}
-                  onClick={() => toggleLog(l.id)}
-                  title={open ? "Collapse" : "Click to read the full message"}>
+              return open ? (
+                <div key={l.id} className="prog-log-open" onClick={() => toggleLog(l.id)}
+                  title="Click to collapse">
+                  <div className="prog-log-open-head">
+                    <span className="prog-log-t">{l.t}</span>
+                    <span className={"prog-log-tag " + tagClass(l.tag)}>{l.tag}</span>
+                  </div>
+                  <div className="prog-log-open-msg">{l.msg}</div>
+                </div>
+              ) : (
+                <div key={l.id} className="prog-log-row is-clickable" onClick={() => toggleLog(l.id)}
+                  title="Click to read the full message">
                   <span className="prog-log-t">{l.t}</span>
                   <span className={"prog-log-tag " + tagClass(l.tag)}>{l.tag}</span>
                   <span className="prog-log-msg">{l.msg}</span>
