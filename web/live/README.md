@@ -118,6 +118,12 @@ This first release only actually runs **`gemini-3.1-flash-lite`** with
 Gemini model with prices, but selecting any other one will report
 "not supported yet" when you press Run.
 
+The model in Settings is the **default** — every LLM filter can override the
+model and reasoning effort in its own config (Build tab → click the filter),
+so different filters can screen with different models once more are
+supported. The run guard checks support + the matching API key for every
+override, not just the default.
+
 > Note: the id originally requested — `gemini-3.1-flash-lite-preview` — no
 > longer exists (the model reached general availability), so it's accepted as
 > an **alias** and runs against the GA id `gemini-3.1-flash-lite`

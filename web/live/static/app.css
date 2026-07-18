@@ -4915,6 +4915,10 @@ select.gp-v { cursor: pointer; }
 }
 .cfg-section-hint { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--cc-ink-faint); }
 .cfg-step-params, .cfg-detail-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+/* field-wide's `span 2` would conjure an IMPLICIT auto-sized second column
+   in this single-column grid (auto-placed neighbours then content-size it and
+   starve the 1fr track to 0). Pin every field to the one real column. */
+.cfg-step-params > .field, .cfg-detail-grid > .field { grid-column: 1 / -1 !important; }
 .cfg-tree-wrap { }
 
 /* Filter config detail (reuses .seed-detail shell) */

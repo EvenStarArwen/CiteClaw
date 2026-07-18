@@ -35,7 +35,7 @@ function defaultParams(kind) {
     case "YearFilter":            return { min: 2019, max: 2025 };
     case "CitationFilter":        return { beta: 30 };
     case "SimilarityFilter":      return { threshold: 0.025, measures: [{ kind: "RefSim" }] };
-    case "LLMFilter":             return { scope: "title_abstract", formula: "q1", queries: { q1: "" } };
+    case "LLMFilter":             return { scope: "title_abstract", formula: "q1", queries: { q1: "" }, model: "", effort: "" };
     case "TitleKeywordFilter":    return { match: "substring", formula: "k1", keywords: { k1: "" } };
     case "AbstractKeywordFilter": return { match: "substring", formula: "k1", keywords: { k1: "" } };
     case "VenueKeywordFilter":    return { match: "starts_with", formula: "k1", keywords: { k1: "Nature" } };
@@ -331,6 +331,35 @@ function VoyageKeyField() {
   );
 }
 
+// Per-filter LLM model override — "Default" follows the Settings pick; the
+// list mirrors the Settings catalog (prices + which model this build actually
+// runs). Different filters may use different models: the CLI's per-block
+// `model:` override, surfaced per use-case.
+function ModelOverrideSelect({ value, onChange }) {
+  const settings = useLive("settings");
+  const models = settings.models || [];
+  const byProv = {};
+  models.forEach(m => (byProv[m.provider] || (byProv[m.provider] = [])).push(m));
+  const known = models.some(m => m.id === value);
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}>
+      <option value="">
+        Default (Settings{settings.model ? " · " + settings.model : ""})
+      </option>
+      {["gemini", "openai"].map(prov => (
+        <optgroup key={prov} label={prov === "gemini" ? "Google Gemini" : "OpenAI"}>
+          {(byProv[prov] || []).map(m => (
+            <option key={m.id} value={m.id}>
+              {m.label} — ${m.input}/${m.output}{m.supported ? " ✓" : " · not yet runnable"}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+      {value && !known && <option value={value}>{value}</option>}
+    </select>
+  );
+}
+
 function AddFilterPopover({ onPick, onClose, allowComposite = true, anchorRef }) {
   const [pos, setPos] = React.useState(null);
   React.useEffect(() => {
@@ -496,7 +525,7 @@ function filterSummary(n) {
     case "YearFilter":            return `${p.min ?? "…"} – ${p.max ?? "…"}`;
     case "CitationFilter":        return `β = ${p.beta ?? "…"} cites/yr of age`;
     case "SimilarityFilter":      return `similarity ≥ ${p.threshold ?? ""} · ${(p.measures || []).length} measures`;
-    case "LLMFilter":             return `${scopeLabel[p.scope] || p.scope} · ${queryText(p)}`;
+    case "LLMFilter":             return `${scopeLabel[p.scope] || p.scope} · ${queryText(p)}${p.model ? ` · ${p.model}` : ""}`;
     case "TitleKeywordFilter":    return `Title ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
     case "AbstractKeywordFilter": return `Abstract ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
     case "VenueKeywordFilter":    return `Venue ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
@@ -644,6 +673,19 @@ function FilterParams({ node, onPatch }) {
               <option value="title_abstract">Abstract</option>
               <option value="venue">Venue</option>
               <option value="full_text">Full text</option>
+            </select>
+          </ConfigField>
+          <ConfigField label="Model"
+            info="Which LLM screens THIS filter. Default follows Settings; overriding lets each filter pick its own model — e.g. cheap triage on titles, a stronger model on abstracts. The run checks that the matching API key is set.">
+            <ModelOverrideSelect value={p.model || ""} onChange={v => set("model", v)} />
+          </ConfigField>
+          <ConfigField label="Effort"
+            info="Reasoning effort for this filter only. Default follows Settings.">
+            <select value={p.effort || ""} onChange={e => set("effort", e.target.value)}>
+              <option value="">Default (Settings)</option>
+              {["minimal", "low", "medium", "high"].map(x => (
+                <option key={x} value={x}>{x}</option>
+              ))}
             </select>
           </ConfigField>
           <NamedDictEditor p={p} patch={(obj) => onPatch({ ...p, ...obj })} field="queries" noun="query"

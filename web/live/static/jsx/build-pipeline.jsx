@@ -799,8 +799,27 @@ function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle,
   );
 }
 
+// Visit every LLM-dependent piece of a pipeline sequence — today that is each
+// LLMFilter node inside any screener tree (forward/backward/rescreener),
+// recursing through parallel branches and composite filters (children/layer).
+// Used by the Settings key notice and the run guard to know which models and
+// therefore which API keys a run actually needs.
+function forEachLlmFilter(seq, cb) {
+  const walkFilter = (f, step) => {
+    if (!f) return;
+    if (f.kind === "LLMFilter") cb(f, step);
+    if (f.layer) walkFilter(f.layer, step);
+    (f.children || []).forEach((c) => walkFilter(c, step));
+  };
+  (seq || []).forEach((node) => {
+    if (!node) return;
+    if (node.kind === "parallel") (node.branches || []).forEach((b) => forEachLlmFilter(b, cb));
+    else walkFilter(node.screener, node);
+  });
+}
+
 Object.assign(window, {
   BuildPipeline, PipelineBlock,
   newStep, newParallel, findStep, mapStep, removeStep,
-  insertAfter, addParallelBranch, countSteps,
+  insertAfter, addParallelBranch, countSteps, forEachLlmFilter,
 });

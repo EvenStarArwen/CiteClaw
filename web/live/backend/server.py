@@ -281,6 +281,18 @@ async def explore_upload(req: Request, name: str = "graph") -> dict:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _iter_llm_blocks(obj):
+    """Yield every LLMFilter block dict anywhere in a translated config."""
+    if isinstance(obj, dict):
+        if obj.get("type") == "LLMFilter":
+            yield obj
+        for v in obj.values():
+            yield from _iter_llm_blocks(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _iter_llm_blocks(v)
+
+
 @app.post("/api/run")
 async def create_run(req: Request) -> dict:
     body = await req.json()
@@ -315,6 +327,25 @@ async def create_run(req: Request) -> dict:
                                 screening_model=resolved, reasoning_effort=effort)
     except TranslationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # --- per-filter model overrides: same support + key rules as the default ---
+    for blk in _iter_llm_blocks(cfg_dict):
+        m = (blk.get("model") or "").strip()
+        if not m:
+            continue
+        e = (blk.get("reasoning_effort") or effort).strip()
+        if not models_catalog.is_supported(m, e):
+            raise HTTPException(status_code=400, detail=(
+                f"An LLM filter overrides its model to '{m}' (effort '{e}'). "
+                + models_catalog.support_error(m, e)))
+        if m.startswith("gemini-") and not presence["gemini_api_key"]:
+            raise HTTPException(status_code=400,
+                                detail="An LLM filter uses a Gemini model but no Gemini API key is set. "
+                                       "Open Settings (gear, top-right) and add it.")
+        if (m.startswith("gpt") or m.startswith("o")) and not presence["openai_api_key"]:
+            raise HTTPException(status_code=400,
+                                detail="An LLM filter uses an OpenAI model but no OpenAI API key is set. "
+                                       "Open Settings and add it.")
 
     try:
         settings = load_settings(None, overrides=cfg_dict)

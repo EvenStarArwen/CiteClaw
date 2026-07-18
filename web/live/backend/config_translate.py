@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .models_catalog import resolve_model
+
 # Design leaf-kind -> CiteClaw block ``type``. Names already match 1:1, but
 # we keep an explicit table so an unknown kind fails loudly rather than
 # silently producing an invalid config.
@@ -115,8 +117,16 @@ def _translate_filter(node: dict[str, Any]) -> dict[str, Any]:
             out["prompt"] = params["prompt"]
         else:
             raise TranslationError("LLMFilter needs a prompt or a formula+queries")
-        # per-filter model/effort overrides are intentionally NOT honored here:
-        # the whole run is pinned to the single supported model (see run guard).
+        # Per-filter model/effort overrides — the CLI's per-block ``model:`` /
+        # ``reasoning_effort:``, so different filters can screen with different
+        # models. Aliases resolve to the GA id here; the run endpoint validates
+        # support + key presence for every override before starting.
+        m = str(params.get("model") or "").strip()
+        if m:
+            out["model"] = resolve_model(m)
+        eff = str(params.get("effort") or params.get("reasoning_effort") or "").strip()
+        if eff:
+            out["reasoning_effort"] = eff
     return out
 
 

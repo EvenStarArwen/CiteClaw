@@ -255,15 +255,24 @@ function App() {
       return;
     }
     if (st.loaded) {
-      const m = (st.model || "").toLowerCase();
       const keys = st.keys || {};
-      if (m.startsWith("gemini") && !keys.gemini_api_key) {
-        setRunError("No Gemini API key set. Open Settings (the gear, top-right) and add your Gemini API key before running.");
-        return;
-      }
-      if ((m.startsWith("gpt") || m.startsWith("o")) && !keys.openai_api_key) {
-        setRunError("No OpenAI API key set. Open Settings (the gear, top-right) and add your OpenAI API key before running.");
-        return;
+      // Key requirements come from EVERY model the run will touch: the
+      // Settings default plus each LLM filter's own override.
+      const used = [{ model: st.model || "", where: "the default screening model (Settings)" }];
+      forEachLlmFilter(pipeline, (f) => {
+        const m = f.params && f.params.model;
+        if (m) used.push({ model: m, where: "an LLM filter's model override" });
+      });
+      for (const u of used) {
+        const m = u.model.toLowerCase();
+        if (m.startsWith("gemini") && !keys.gemini_api_key) {
+          setRunError(`No Gemini API key set — needed by ${u.where}. Open Settings (the gear, top-right) and add it before running.`);
+          return;
+        }
+        if ((m.startsWith("gpt") || m.startsWith("o")) && !keys.openai_api_key) {
+          setRunError(`No OpenAI API key set — needed by ${u.where}. Open Settings (the gear, top-right) and add it before running.`);
+          return;
+        }
       }
     }
     const res = await startRun(pipeline, LIVE.getState().seeds);
@@ -440,7 +449,7 @@ function App() {
         />
       )}
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} pipeline={pipeline} />
 
       <RunErrorDialog
         error={runError}
