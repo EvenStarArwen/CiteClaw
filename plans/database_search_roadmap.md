@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-07-18 11:37 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval). ❌ push failed: `git push origin HEAD:main` rejected non-fast-forward — local branch `webui-gpt5.6` is behind/diverged from origin/main (5fc814a); committed locally only, not force-pushed. User needs to reconcile branches.
 - 2026-07-17 22:13 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 - 2026-07-17 21:12 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 - 2026-07-17 20:11 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-07-17 15:00 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 - 2026-07-17 13:59 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 - 2026-07-17 12:58 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
-- 2026-07-17 11:56 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 ---
 
 ## Architectural decisions (reference)
