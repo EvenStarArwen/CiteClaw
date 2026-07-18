@@ -5511,6 +5511,52 @@ select.gp-v { cursor: pointer; }
    through and intertwine with the bar's own text. Same canvas colour,
    painted solid. */
 :root[data-palette="mono"] .statusbar { background: var(--cc-bg); }
+/* …and the dashboard pane must CONTAIN its content: long rejection lists
+   used to grow past the pane instead of scrolling inside it. */
+.dashboard { overflow: hidden; }
+.dash-bars { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+
+/* Expandable progress steps: click for the full description, the step's
+   sub-structure (e.g. a Parallel's branches) and — while active — the live
+   sub-progress bars. */
+.prog-step { cursor: pointer; }
+.prog-chev { margin-left: 5px; color: var(--cc-ink-faint); vertical-align: middle; }
+.prog-step.is-open { background: var(--cc-hover-soft); border-radius: 6px; }
+.prog-step-detail {
+  margin-top: 6px;
+  display: flex; flex-direction: column; gap: 6px;
+  cursor: default;
+}
+.prog-step-detail-sub {
+  font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-2);
+  white-space: normal; word-break: break-word; line-height: 1.5;
+}
+.prog-step-detail-line {
+  font-size: 10.5px; line-height: 1.5; color: var(--cc-ink-2);
+  white-space: normal; word-break: break-word;
+  padding-left: 8px; border-left: 2px solid var(--cc-rule);
+}
+.prog-step-detail-dim { color: var(--cc-ink-faint); border-left-color: transparent; }
+.prog-step-detail-act {
+  margin-top: 2px; padding: 8px 9px;
+  background: var(--cc-paper);
+  border: 1px solid var(--cc-rule);
+  border-radius: 6px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+
+/* Expandable log rows: the sidebar is narrow, so lines ellipsise — click
+   one to read the whole message, wrapped. */
+.prog-log-row.is-clickable { cursor: pointer; border-radius: 4px; }
+.prog-log-row.is-clickable:hover { background: var(--cc-hover-soft); }
+.prog-log-row.is-open { background: var(--cc-hover-soft); }
+.prog-log-row.is-open .prog-log-msg {
+  white-space: normal; word-break: break-word; overflow: visible; line-height: 1.5;
+}
+
+/* Breathing room between the accepted-list controls and the first card */
+.accepted-controls { padding-bottom: 10px; }
+.accepted-scroll { padding-top: 6px; }
 
 /* ── Multi-line LLM query prompts (drag the corner to resize) ─────────── */
 .cfg-kv-multiline { align-items: start; }

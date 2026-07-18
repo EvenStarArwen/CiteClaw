@@ -131,9 +131,13 @@ async function fetchSeedAbstract(paper) {
   });
 }
 
+// Only the most recent 100 lines are kept (older ones are dropped) so the
+// log can stream for hours without growing the page. Entries carry a stable
+// id so the UI can keep a clicked row expanded while new lines arrive.
+let _logSeq = 0;
 function _pushLog(tag, msg, t) {
   t = t || new Date().toTimeString().slice(0, 8);
-  LIVE.set({ logs: [{ t, tag, msg }].concat(LIVE.get("logs")).slice(0, 200) });
+  LIVE.set({ logs: [{ id: ++_logSeq, t, tag, msg }].concat(LIVE.get("logs")).slice(0, 100) });
 }
 
 // 1-second ticker while a run is live: keeps the elapsed clock and the

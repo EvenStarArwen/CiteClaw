@@ -43,6 +43,63 @@ class _StopRun(Exception):
     """Raised inside the sink to abort a run at the next step/paper boundary."""
 
 
+def _brief_step(s: dict[str, Any]) -> str:
+    """Short label for one step inside a Parallel branch, params inline."""
+    name = s.get("step")
+    label = _STEP_META.get(name, ("", name or "Step", ""))[1]
+    if name == "ExpandForward" and s.get("max_citations"):
+        return f"{label} (≤{s['max_citations']} citers/source)"
+    if name == "Rerank":
+        d = s.get("diversity")
+        extra = f", {d.get('type')}-diverse" if isinstance(d, dict) and d.get("type") else ""
+        return f"{label} (top {s.get('k', 100)} by {s.get('metric', 'citation')}{extra})"
+    return label
+
+
+def _step_detail(s: dict[str, Any]) -> list[str]:
+    """Plain-language lines describing what a step does inside — shown when
+    the user expands the step in the progress sidebar."""
+    name = s.get("step")
+    if name == "Parallel":
+        out = []
+        for i, b in enumerate(s.get("branches") or [], 1):
+            out.append(f"Branch {i}: " + " → ".join(_brief_step(x) for x in b))
+        out.append("Branches receive the same input and run one after another; "
+                   "their outputs are merged (union) before the next step.")
+        return out
+    if name == "ExpandForward":
+        cap = s.get("max_citations") or 100
+        return [f"For each source paper: fetch up to {cap} citing papers from "
+                "Semantic Scholar (page by page), enrich them with metadata + "
+                "abstracts, then screen each batch through the filter pipeline."]
+    if name == "ExpandBackward":
+        return ["For each source paper: fetch every reference from Semantic "
+                "Scholar, enrich with metadata + abstracts, then screen each "
+                "batch through the filter pipeline. No fan-out cap — this is "
+                "usually the longest step."]
+    if name == "ExpandBySearch":
+        it = (s.get("agent") or {}).get("max_iterations", 1)
+        return [f"The LLM designs Semantic Scholar queries (up to {it} rounds) "
+                "and the results are screened through the filter pipeline. "
+                "Experimental."]
+    if name == "Rerank":
+        return [_brief_step(s) + "."]
+    if name == "ReScreen":
+        return ["Re-apply the screener to the whole collection (seeds exempt); "
+                "papers that fail are removed."]
+    if name == "ResolveSeeds":
+        return ["Resolve title-only seeds to Semantic Scholar records."]
+    if name == "LoadSeeds":
+        return ["Fetch metadata for every seed paper and put them in the collection."]
+    if name == "MergeDuplicates":
+        return ["Detect preprint ↔ published duplicates (DOI/arXiv links + title "
+                "and embedding similarity) and merge them."]
+    if name == "Finalize":
+        return ["Write literature_collection.json / .bib, citation_network.graphml "
+                "and the collaboration network."]
+    return []
+
+
 def _steps_meta_from_config(config) -> list[dict[str, Any]]:
     """Build the progress-step list from the translated pipeline.
 
@@ -68,6 +125,7 @@ def _steps_meta_from_config(config) -> list[dict[str, Any]]:
             "status": "idle",
             "sub": "pending",
             "pct": 0,
+            "detail": _step_detail(s),
         })
     return steps
 
@@ -139,9 +197,9 @@ class RunState:
         self.status = "starting"  # starting|running|done|error|stopped
         self.events: list[dict[str, Any]] = []
         # High-churn streams are compacted for replay: only the latest
-        # activity/metrics/graph snapshot and the last 200 log lines are
+        # activity/metrics/graph snapshot and the last 100 log lines are
         # kept, so a browser reconnecting mid-run gets a bounded backlog.
-        self.log_tail: deque[dict[str, Any]] = deque(maxlen=200)
+        self.log_tail: deque[dict[str, Any]] = deque(maxlen=100)
         self.latest: dict[str, dict[str, Any]] = {}
         self.subscribers: set[asyncio.Queue] = set()
         self.lock = threading.Lock()
