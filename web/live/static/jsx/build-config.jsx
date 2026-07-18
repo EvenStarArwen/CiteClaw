@@ -48,17 +48,28 @@ function defaultParams(kind) {
 function newNode(kind) {
   if (COMPOSITE_KINDS.includes(kind)) {
     if (kind === "Not") return { id: nextFid(), kind, layer: { id: nextFid(), kind: "YearFilter", params: defaultParams("YearFilter") } };
-    if (kind === "Route") return { id: nextFid(), kind, routes: [], else: null };
+    if (kind === "Route") {
+      // Start with one venue condition + an empty ELSE, so the shape of
+      // if / else routing is visible immediately.
+      return { id: nextFid(), kind,
+        routes: [{ id: nextFid(), if: { kind: "VenueIn", values: ["Nature"] }, pass_to: null }],
+        else: null };
+    }
     return { id: nextFid(), kind, children: [] };
   }
   return { id: nextFid(), kind, params: defaultParams(kind) };
 }
-// Recursively find + update + remove nodes by id
+// Recursively find + update + remove nodes by id. Route nodes hold their
+// children in routes[].pass_to and .else, so every walker visits those too.
 function findNode(t, id) {
   if (!t) return null;
   if (t.id === id) return t;
   for (const c of (t.children || [])) { const r = findNode(c, id); if (r) return r; }
   if (t.layer) { const r = findNode(t.layer, id); if (r) return r; }
+  for (const rt of (t.routes || [])) {
+    if (rt && rt.pass_to) { const r = findNode(rt.pass_to, id); if (r) return r; }
+  }
+  if (t.else) { const r = findNode(t.else, id); if (r) return r; }
   return null;
 }
 function mapTree(t, id, fn) {
@@ -66,6 +77,11 @@ function mapTree(t, id, fn) {
   if (t.id === id) return fn(t);
   if (t.children) return { ...t, children: t.children.map(c => mapTree(c, id, fn)) };
   if (t.layer)    return { ...t, layer: mapTree(t.layer, id, fn) };
+  if (t.routes) {
+    return { ...t,
+      routes: t.routes.map(r => (r && r.pass_to ? { ...r, pass_to: mapTree(r.pass_to, id, fn) } : r)),
+      else: t.else ? mapTree(t.else, id, fn) : t.else };
+  }
   return t;
 }
 function removeFromTree(t, id) {
@@ -77,6 +93,15 @@ function removeFromTree(t, id) {
   }
   if (t.layer && t.layer.id === id) return { ...t, layer: null };
   if (t.layer) return { ...t, layer: removeFromTree(t.layer, id) };
+  if (t.routes) {
+    return { ...t,
+      routes: t.routes.map(r => {
+        if (!r || !r.pass_to) return r;
+        if (r.pass_to.id === id) return { ...r, pass_to: null };
+        return { ...r, pass_to: removeFromTree(r.pass_to, id) };
+      }),
+      else: t.else ? (t.else.id === id ? null : removeFromTree(t.else, id)) : t.else };
+  }
   return t;
 }
 // Swap the node with `id` with its previous/next SIBLING (dir −1 / +1) so
@@ -95,6 +120,11 @@ function moveInTree(t, id, dir) {
     return { ...t, children: t.children.map(c => moveInTree(c, id, dir)) };
   }
   if (t.layer) return { ...t, layer: moveInTree(t.layer, id, dir) };
+  if (t.routes) {
+    return { ...t,
+      routes: t.routes.map(r => (r && r.pass_to ? { ...r, pass_to: moveInTree(r.pass_to, id, dir) } : r)),
+      else: t.else ? moveInTree(t.else, id, dir) : t.else };
+  }
   return t;
 }
 // Deep-copy a filter subtree with FRESH ids everywhere, so a pasted filter is
@@ -106,11 +136,26 @@ function cloneFilterNode(node) {
     if (n.id) n.id = nextFid();
     (n.children || []).forEach(walk);
     if (n.layer) walk(n.layer);
-    (n.routes || []).forEach(r => { if (r && r.pass_to) walk(r.pass_to); });
+    (n.routes || []).forEach(r => {
+      if (!r) return;
+      if (r.id) r.id = nextFid();          // route ROWS carry ids too
+      if (r.pass_to) walk(r.pass_to);
+    });
     if (n.else) walk(n.else);
   };
   walk(c);
   return c;
+}
+// Human-readable label for one Route condition.
+function predicateSummary(p) {
+  if (!p) return "always";
+  if (p.kind === "VenueIn") {
+    const vs = (p.values || []).filter(v => String(v).trim());
+    return vs.length ? "venue contains " + vs.join(" / ") : "venue contains … (empty)";
+  }
+  if (p.kind === "CitAtLeast") return `citations ≥ ${p.n ?? "…"}`;
+  if (p.kind === "YearAtLeast") return `year ≥ ${p.n ?? "…"}`;
+  return p.kind || "?";
 }
 // One shared filter clipboard for the whole builder — copy in one step's
 // screener, paste in any other (the "copy mask / paste mask" pattern). The
@@ -129,9 +174,13 @@ function clipLabel(n) {
 function clipDesc(n) {
   if (!n) return "";
   if (COMPOSITE_KINDS.includes(n.kind)) {
-    const leaves = (t) => COMPOSITE_KINDS.includes(t.kind)
-      ? (t.children || (t.layer ? [t.layer] : [])).reduce((s, c) => s + leaves(c), 0)
-      : 1;
+    const leaves = (t) => {
+      if (!COMPOSITE_KINDS.includes(t.kind)) return 1;
+      let kids = t.children || (t.layer ? [t.layer] : []);
+      if (t.kind === "Route")
+        kids = [...(t.routes || []).map(r => r && r.pass_to), t.else].filter(Boolean);
+      return kids.reduce((s, c) => s + leaves(c), 0);
+    };
     const k = leaves(n);
     return `group with ${k} filter${k === 1 ? "" : "s"} inside`;
   }
@@ -549,7 +598,25 @@ function FilterNodeActs({ node, canUp, canDown, onMove, onRemove }) {
   );
 }
 
-function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemove, onMove, canUp, canDown }) {
+// An empty Route branch slot: an "Add filter" button opening the same
+// popover as everywhere else; the pick lands in that route's pass_to / else.
+function RouteSlot({ onPick }) {
+  const [adding, setAdding] = React.useState(false);
+  const btnRef = React.useRef(null);
+  return (
+    <div className="ft-add-wrap">
+      <button ref={btnRef} className="ft-add" onClick={(e) => { e.stopPropagation(); setAdding(true); }}>
+        <Icon name="plus" size={11} /> Add filter for this branch
+      </button>
+      {adding && (
+        <AddFilterPopover allowComposite anchorRef={btnRef}
+          onPick={onPick} onClose={() => setAdding(false)} />
+      )}
+    </div>
+  );
+}
+
+function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemove, onMove, onAddToRoute, canUp, canDown }) {
   const [adding, setAdding] = React.useState(false);
   const addBtnRef = React.useRef(null);
   const isComposite = COMPOSITE_KINDS.includes(node.kind);
@@ -564,6 +631,45 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
             the row is too narrow to show anything readable */}
         <span className="ft-leaf-body"><span className="ft-leaf-body-txt">{filterSummary(node)}</span></span>
         <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
+      </div>
+    );
+  }
+
+  // ── Route: labelled IF / ELIF / ELSE branches, each with its own subtree.
+  // Clicking the head (or a condition label) opens the conditions editor in
+  // the detail panel; the branch subtrees are edited right here in the tree.
+  if (node.kind === "Route") {
+    const routes = node.routes || [];
+    const passProps = { depth: depth + 1, selectedId, onSelect, onAddChild, onRemove, onMove, onAddToRoute };
+    const slot = (label, sub, slotId) => (
+      <div className="ft-route" key={slotId}>
+        <div className="ft-route-head" onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
+          title="Click to edit this Route's conditions">
+          <span className="ft-route-if">{label.word}</span>
+          <span className="ft-route-pred">{label.pred}</span>
+        </div>
+        <div className="ft-route-target">
+          {sub
+            ? <FilterTreeNode node={sub} {...passProps} />
+            : <RouteSlot onPick={(n) => onAddToRoute(node.id, slotId, n)} />}
+        </div>
+      </div>
+    );
+    return (
+      <div className={"ft-comp ft-comp-route" + (selected ? " is-selected" : "")}>
+        <div className="ft-comp-head" onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
+          title="if / elif / else dispatch — first matching condition decides the branch. Click to edit the conditions.">
+          <span className="ft-comp-kind">Route</span>
+          <span className="ft-comp-meta"><span className="ft-comp-meta-txt">
+            first match wins · {routes.length} condition{routes.length === 1 ? "" : "s"} + else
+          </span></span>
+          <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
+        </div>
+        <div className="ft-comp-body">
+          {routes.map((r, i) => slot(
+            { word: i === 0 ? "IF" : "ELIF", pred: predicateSummary(r.if) }, r.pass_to, r.id))}
+          {slot({ word: "ELSE", pred: "everything else" }, node.else, "__else")}
+        </div>
       </div>
     );
   }
@@ -594,6 +700,7 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
             onAddChild={onAddChild}
             onRemove={onRemove}
             onMove={onMove}
+            onAddToRoute={onAddToRoute}
             canUp={kidsMovable && i > 0}
             canDown={kidsMovable && i < kids.length - 1}
           />
@@ -648,6 +755,7 @@ function filterSummary(n) {
     full_text: "Full text",
   };
   switch (n.kind) {
+    case "Route":                 return `first match wins · ${(n.routes || []).length} condition${(n.routes || []).length === 1 ? "" : "s"} + else`;
     case "YearFilter":            return `${p.min ?? "…"} – ${p.max ?? "…"}`;
     case "CitationFilter":        return `β = ${p.beta ?? "…"} cites/yr of age`;
     case "SimilarityFilter":      return `similarity ≥ ${p.threshold ?? ""} · ${(p.measures || []).length} measures`;
@@ -659,7 +767,7 @@ function filterSummary(n) {
   }
 }
 
-function FilterTree({ screener, selectedId, onSelect, onAddRoot, onAddChild, onRemove, onMove }) {
+function FilterTree({ screener, selectedId, onSelect, onAddRoot, onAddChild, onRemove, onMove, onAddToRoute }) {
   const [adding, setAdding] = React.useState(false);
   const rootAddRef = React.useRef(null);
 
@@ -694,18 +802,106 @@ function FilterTree({ screener, selectedId, onSelect, onAddRoot, onAddChild, onR
         onAddChild={onAddChild}
         onRemove={onRemove}
         onMove={onMove || (() => {})}
+        onAddToRoute={onAddToRoute || (() => {})}
       />
     </div>
   );
 }
 
+// One Route condition row: predicate kind + value, reorder, remove. The
+// venue list edits through a local draft (committed on blur/Enter) so typing
+// commas doesn't fight the parser.
+function RouteCondRow({ route, index, count, onPatch, onMove, onRemove }) {
+  const p = route.if || {};
+  const joined = (p.values || []).join(", ");
+  const [venueDraft, setVenueDraft] = React.useState(joined);
+  React.useEffect(() => { setVenueDraft(joined); }, [route.id, joined]);
+  const commitVenues = () => {
+    const vs = venueDraft.split(",").map(s => s.trim()).filter(Boolean);
+    onPatch({ if: { kind: "VenueIn", values: vs } });
+  };
+  const setKind = (k) => {
+    if (k === "VenueIn") onPatch({ if: { kind: "VenueIn", values: p.values || [] } });
+    else onPatch({ if: { kind: k, n: p.n ?? (k === "YearAtLeast" ? 2020 : 100) } });
+  };
+  return (
+    <div className="cfg-route-row">
+      <span className="cfg-route-word">{index === 0 ? "IF" : "ELIF"}</span>
+      <select className="cfg-route-kind" value={p.kind || "VenueIn"} onChange={e => setKind(e.target.value)}>
+        <option value="VenueIn">venue contains</option>
+        <option value="CitAtLeast">citations ≥</option>
+        <option value="YearAtLeast">year ≥</option>
+      </select>
+      {(p.kind || "VenueIn") === "VenueIn" ? (
+        <input className="cfg-route-val" value={venueDraft} placeholder="Nature, Science, Cell"
+          onChange={e => setVenueDraft(e.target.value)}
+          onBlur={commitVenues}
+          onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
+          title="Comma-separated venue substrings, matched case-insensitively" />
+      ) : (
+        <input className="cfg-route-val" type="number" value={p.n ?? 0}
+          onChange={e => onPatch({ if: { kind: p.kind, n: Math.max(0, +e.target.value || 0) } })} />
+      )}
+      <span className="cfg-route-acts">
+        <button className="ft-act" disabled={index === 0} title="Check earlier"
+          onClick={() => onMove(-1)}><Icon name="arrow-up" size={11} /></button>
+        <button className="ft-act" disabled={index >= count - 1} title="Check later"
+          onClick={() => onMove(+1)}><Icon name="arrow-down" size={11} /></button>
+        <button className="cfg-measure-del" onClick={onRemove}
+          title="Remove this condition — its branch filters go with it">×</button>
+      </span>
+    </div>
+  );
+}
+
 // --- Right-side inspector panes ------------------------------------------
-function FilterParams({ node, onPatch }) {
+function FilterParams({ node, onPatch, onPatchNode }) {
   if (!node) return null;
   const p = node.params || {};
   const set = (k, v) => onPatch({ ...p, [k]: v });
 
   switch (node.kind) {
+    case "Route": {
+      const routes = node.routes || [];
+      const setRoutes = (next) => onPatchNode({ routes: next });
+      const patchRow = (i, patch) => setRoutes(routes.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+      const moveRow = (i, dir) => {
+        const j = i + dir;
+        if (j < 0 || j >= routes.length) return;
+        const next = routes.slice();
+        [next[i], next[j]] = [next[j], next[i]];
+        setRoutes(next);
+      };
+      const removeRow = (i) => setRoutes(routes.filter((_, j) => j !== i));
+      const addRow = () => setRoutes([...routes, { id: nextFid(), if: { kind: "VenueIn", values: [] }, pass_to: null }]);
+      return (
+        <>
+          <div className="cfg-note">
+            <Icon name="info" size={13} />
+            <span>
+              Conditions are checked <strong>top to bottom</strong> — the first
+              match decides which branch screens the paper; papers matching
+              none take the <strong>ELSE</strong> branch. The branches
+              themselves live in the filter tree (go Back and expand the
+              Route).
+            </span>
+          </div>
+          <ConfigField label="Conditions" full>
+            <div className="cfg-kv-list">
+              {routes.map((r, i) => (
+                <RouteCondRow key={r.id} route={r} index={i} count={routes.length}
+                  onPatch={(patch) => patchRow(i, patch)}
+                  onMove={(dir) => moveRow(i, dir)}
+                  onRemove={() => removeRow(i)} />
+              ))}
+              <button className="cfg-measure-add" onClick={addRow}>
+                <Icon name="plus" size={11} /> Add condition
+              </button>
+            </div>
+          </ConfigField>
+        </>
+      );
+    }
     case "YearFilter":
       return (
         <>
@@ -876,6 +1072,7 @@ function BlockParams({ node, onPatchConfig }) {
     );
   }
   if (node.kind === "rerank") {
+    const div = c.diversity || "off";
     return (
       <>
         <ConfigField label="Metric"
@@ -890,12 +1087,61 @@ function BlockParams({ node, onPatchConfig }) {
             onChange={e => onPatchConfig({ targetN: Math.max(1, +e.target.value || 1) })} />
         </ConfigField>
         <ConfigField label="Diversity" wide
-          info="Off keeps a plain top-K. Cluster-diverse spreads the top-K across communities in the citation graph (floor-then-proportional) so one dense topic can't crowd out the rest — pick the clustering algorithm.">
-          <select value={c.diversity || "off"} onChange={e => onPatchConfig({ diversity: e.target.value })}>
+          info="Off keeps a plain top-K. Otherwise the signal is clustered on the spot and the top-K is spread across the clusters (floor-then-proportional) so one dense topic can't crowd out the rest. louvain / walktrap partition the citation graph; topic model clusters SPECTER2 embeddings (UMAP + HDBSCAN).">
+          <select value={div} onChange={e => onPatchConfig({ diversity: e.target.value })}>
             <option value="off">off · plain top-K</option>
-            <option value="walktrap">cluster-diverse · walktrap</option>
             <option value="louvain">cluster-diverse · louvain</option>
+            <option value="walktrap">cluster-diverse · walktrap</option>
+            <option value="topic_model">cluster-diverse · topic model</option>
           </select>
+        </ConfigField>
+        {div === "walktrap" && (
+          <ConfigField label="Communities" info="How many communities Walktrap targets (the CLI's n_communities).">
+            <input type="number" min="2" step="1" value={c.divCommunities ?? 3}
+              onChange={e => onPatchConfig({ divCommunities: Math.max(2, +e.target.value || 2) })} />
+          </ConfigField>
+        )}
+        {div === "topic_model" && (
+          <>
+            <ConfigField label="Min cluster" info="HDBSCAN's minimum cluster size (the CLI's min_cluster_size).">
+              <input type="number" min="2" step="1" value={c.divMinCluster ?? 5}
+                onChange={e => onPatchConfig({ divMinCluster: Math.max(2, +e.target.value || 2) })} />
+            </ConfigField>
+            <ConfigField label="Neighbors" info="UMAP's n_neighbors. Leave 0 for the adaptive default.">
+              <input type="number" min="0" step="1" value={c.divNeighbors ?? 0}
+                onChange={e => onPatchConfig({ divNeighbors: Math.max(0, +e.target.value || 0) })} />
+            </ConfigField>
+            <div className="cfg-note">
+              <Icon name="info" size={13} />
+              <span>Topic-model clustering needs the optional extra
+                (<code>pip install 'citeclaw[topic_model]'</code>) on the machine
+                running the server — the run stops with a clear error if it's
+                missing.</span>
+            </div>
+          </>
+        )}
+      </>
+    );
+  }
+  if (node.kind === "search") {
+    return (
+      <>
+        <div className="cfg-note cfg-note-warn">
+          <Icon name="alert-triangle" size={13} />
+          <span><strong>Experimental.</strong> The CLI's search agent is a
+            placeholder right now — this step is wired up end-to-end, but
+            don't expect strong results yet. It asks the LLM to design
+            Semantic Scholar queries from the topic and screens whatever
+            comes back with the filter pipeline below.</span>
+        </div>
+        <ConfigField label="Max iterations"
+          info="How many query-design → search → screen rounds the agent may run (the CLI's agent.max_iterations).">
+          <NumStepper value={c.maxIterations ?? 4} lo={1} hi={10} onChange={v => onPatchConfig({ maxIterations: v })} />
+        </ConfigField>
+        <ConfigField label="Papers / iteration" wide hint="cap on candidates fetched per round"
+          info="Total candidate cap per iteration (the CLI's agent.max_papers_per_iteration). Each 1000 costs one Semantic Scholar request.">
+          <input type="number" min="100" step="100" value={c.maxPerIteration ?? 10000}
+            onChange={e => onPatchConfig({ maxPerIteration: Math.max(100, +e.target.value || 100) })} />
         </ConfigField>
       </>
     );

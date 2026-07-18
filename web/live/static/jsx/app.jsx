@@ -97,7 +97,7 @@ function App() {
 
   // Pipeline state (Build mode)
   const [pipeline, setPipeline] = useState(window.INITIAL_PIPELINE);
-  const [selectedId, setSelectedId] = useState("n3");  // Backward selected by default
+  const [selectedId, setSelectedId] = useState("n2");  // round-1 Forward selected by default
 
   // Run-mode paper selection (shared by network + accepted list)
   const [runSelectedPaperId, setRunSelectedPaperId] = useState(null);

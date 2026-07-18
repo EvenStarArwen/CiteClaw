@@ -72,9 +72,36 @@ def _translate_filter(node: dict[str, Any]) -> dict[str, Any]:
                 raise TranslationError("Not filter needs exactly one child")
             return {"type": "Not", "layer": translated[0]}
         if kind == "Route":
-            # Design Route children carry {if, pass_to} / {default}; pass them
-            # through unchanged (predicate keys already match builder.py).
-            return {"type": "Route", "routes": node.get("routes", [])}
+            # UI shape: routes[{id, if: {kind, values|n}, pass_to: node}] +
+            # else. CLI shape: routes[{if: {VenueIn: [...]}, pass_to: block},
+            # ..., {default: block}].
+            out_routes: list[dict[str, Any]] = []
+            for r in node.get("routes") or []:
+                pred = (r or {}).get("if") or {}
+                pk = pred.get("kind")
+                if pk == "VenueIn":
+                    values = [str(v).strip() for v in (pred.get("values") or []) if str(v).strip()]
+                    if not values:
+                        raise TranslationError(
+                            "A Route venue condition has no venues — add at least "
+                            "one (click the Route to edit its conditions)."
+                        )
+                    cond: dict[str, Any] = {"VenueIn": values}
+                elif pk in ("CitAtLeast", "YearAtLeast"):
+                    cond = {pk: int(pred.get("n") or 0)}
+                else:
+                    raise TranslationError(f"Route condition has an unknown predicate: {pk!r}")
+                if not r.get("pass_to"):
+                    raise TranslationError(
+                        "A Route condition has no branch filters — add a filter "
+                        "under it in the filter tree."
+                    )
+                out_routes.append({"if": cond, "pass_to": _translate_filter(r["pass_to"])})
+            if node.get("else"):
+                out_routes.append({"default": _translate_filter(node["else"])})
+            if not out_routes:
+                raise TranslationError("Route has no conditions and no else branch.")
+            return {"type": "Route", "routes": out_routes}
         # Sequential / Any / Parallel all use ``layers``
         return {"type": kind, "layers": translated}
 
@@ -157,6 +184,20 @@ def _translate_step(node: dict[str, Any]) -> dict[str, Any]:
         if screener:
             step["screener"] = screener
         return step
+    if kind == "search":
+        # ExpandBySearch — the CLI agent is a placeholder today; wired through
+        # faithfully so it starts working the moment the CLI side does.
+        step = {"step": "ExpandBySearch"}
+        agent: dict[str, Any] = {}
+        if cfg.get("maxIterations") is not None:
+            agent["max_iterations"] = int(cfg["maxIterations"])
+        if cfg.get("maxPerIteration") is not None:
+            agent["max_papers_per_iteration"] = int(cfg["maxPerIteration"])
+        if agent:
+            step["agent"] = agent
+        if screener:
+            step["screener"] = screener
+        return step
     if kind == "rerank":
         step = {"step": "Rerank", "metric": cfg.get("metric") or "citation"}
         if cfg.get("targetN") is not None:
@@ -166,8 +207,17 @@ def _translate_step(node: dict[str, Any]) -> dict[str, Any]:
         if div is None and cfg.get("lambda") is not None and float(cfg["lambda"]) > 0:
             div = "walktrap"
         if div and div not in ("off", "none"):
+            # Inline clusterer spec — the CLI runs the same registry the
+            # standalone Cluster step uses (louvain / walktrap / topic_model).
             if div == "walktrap":
-                step["diversity"] = {"type": "walktrap", "n_communities": 3}
+                step["diversity"] = {"type": "walktrap",
+                                     "n_communities": int(cfg.get("divCommunities") or 3)}
+            elif div == "topic_model":
+                d: dict[str, Any] = {"type": "topic_model",
+                                     "min_cluster_size": int(cfg.get("divMinCluster") or 5)}
+                if int(cfg.get("divNeighbors") or 0) > 0:
+                    d["n_neighbors"] = int(cfg["divNeighbors"])
+                step["diversity"] = d
             else:
                 step["diversity"] = {"type": div}
         return step

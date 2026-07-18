@@ -37,62 +37,85 @@ const BLOCK_CATALOG = [
   ]},
 ];
 
-// The pipeline: 4 connected nodes. Screener nodes carry a filter TREE
-// (Sequential / Parallel / Any / Not / Route + leaves), not a flat list.
+// The default pipeline: the self-driving-labs / AI-scientist snowball
+// config, translated from its original YAML. One screener ("venue_gate")
+// routes every paper by venue family — top journals skip the citation bar,
+// preprints face a high one (β=30), everything else a moderate one (β=10) —
+// then all branches apply the same abstract-keyword prefilter + title LLM.
+// The screener is embedded per expansion step (fresh ids per copy); the
+// repeated forward/backward/rerank steps in rounds 2–3 are LINKED copies of
+// the round-1 originals, so editing one screener updates the whole pipeline.
+//
+// Differences from the original YAML, on purpose:
+//  · ExpandBySearch is omitted (the CLI agent is a placeholder for now —
+//    the step is still selectable from the add-step menu).
+//  · Cluster+Rerank({cluster: X}) pairs are collapsed into diversified
+//    reranks with INLINE louvain (functionally equivalent here; only the
+//    exported cluster_<name> graph attributes are lost).
+//  · VenuePreset is approximated with VenueIn substrings.
+//  · The unused "agent" keyword is included in the abstract formula.
+
+// One fresh copy of the shared screener tree; `p` prefixes every node id so
+// each embedding is independent.
+function _sdlScreener(p) {
+  const KW = {
+    self_driving: "self-driving", self_driv: "self driving",
+    autonomous_lab: "autonomous", automated: "automated",
+    ai_scientist: "ai scientist", ai_scientist2: "ai-scientist",
+    co_scientist: "co-scientist", LLM: "large language model", LLM2: "LLM",
+    laboratory: "laborator", agent: "agent",
+  };
+  const FORMULA = "self_driving | self_driv | autonomous_lab | automated | ai_scientist | ai_scientist2 | co_scientist | LLM | LLM2 | laboratory | agent";
+  const absKw = (id) => ({ id, kind: "AbstractKeywordFilter",
+    params: { match: "substring", formula: FORMULA, keywords: { ...KW } } });
+  const titleLlm = (id) => ({ id, kind: "LLMFilter",
+    params: { scope: "title", formula: "q1",
+      queries: { q1: "The paper is about self-driving / autonomous laboratories or AI scientists or AI agents for research / scientific discovery." },
+      model: "", effort: "" } });
+  const cit = (id, beta) => ({ id, kind: "CitationFilter", params: { beta } });
+  const seq = (id, children) => ({ id, kind: "Sequential", children });
+  return seq(p + "root", [
+    { id: p + "gate", kind: "Route",
+      routes: [
+        { id: p + "gr1", if: { kind: "VenueIn", values: ["Nature", "Science", "Cell"] },
+          pass_to: seq(p + "b1", [absKw(p + "b1k"), titleLlm(p + "b1l")]) },
+        { id: p + "gr2", if: { kind: "VenueIn", values: ["rxiv", "SSRN", "Research Square", "preprint"] },
+          pass_to: seq(p + "b2", [cit(p + "b2c", 30), absKw(p + "b2k"), titleLlm(p + "b2l")]) },
+      ],
+      else: seq(p + "b3", [cit(p + "b3c", 10), absKw(p + "b3k"), titleLlm(p + "b3l")]) },
+  ]);
+}
+
 const INITIAL_PIPELINE = [
-  { id: "n1", kind: "seed",   name: "Seed set",         localId: "SED-01",
-    config: { query: "machine learning weather forecasting", years: "2019-2025", maxSeeds: 42 },
+  { id: "n1", kind: "seed", name: "Seed set", localId: "SED-01",
+    config: { query: "", years: "2019-2025", maxSeeds: 42 },
     screener: null },
-  { id: "n2", kind: "fwd",    name: "Forward screener", localId: "FWD-02",
-    config: { maxCitations: 200 },
-    screener: {
-      id: "f1", kind: "Sequential",
-      children: [
-        { id: "f1a", kind: "YearFilter",     params: { min: 2019, max: 2025 } },
-        { id: "f1b", kind: "AbstractKeywordFilter",
-          params: { match: "substring",
-                    formula: "(ml | phys) & !erratum",
-                    keywords: { ml: "machine learning", phys: "physics", erratum: "erratum" } } },
-        { id: "f1c", kind: "SimilarityFilter",
-          params: { threshold: 0.025,
-                    measures: [
-                      { kind: "RefSim" },
-                      { kind: "CitSim", pass_if_cited_at_least: 200 },
-                      { kind: "SemanticSim", embedder: "s2" },
-                    ] } },
-        { id: "f1d", kind: "LLMFilter",
-          params: { scope: "title_abstract",
-                    formula: "(q_ml | q_stats) & !q_survey",
-                    queries: {
-                      q_ml: "the paper proposes a new ML/DL method",
-                      q_stats: "the paper proposes a new statistical method",
-                      q_survey: "the paper is a pure survey or review",
-                    } } },
-      ]
-    } },
-  { id: "n3", kind: "bwd",    name: "Backward screener", localId: "BWD-03",
-    config: {},
-    screener: {
-      id: "g1", kind: "Sequential",
-      children: [
-        { id: "g1a", kind: "YearFilter",     params: { min: 2018, max: 2025 } },
-        { id: "g1b", kind: "CitationFilter", params: { beta: 30 } },
-        { id: "g1c", kind: "Any",
-          children: [
-            { id: "g1c1", kind: "VenueKeywordFilter",
-              params: { match: "starts_with",
-                        formula: "nat | sci | pnas",
-                        keywords: { nat: "Nature", sci: "Science", pnas: "PNAS" } } },
-            { id: "g1c2", kind: "LLMFilter",
-              params: { scope: "title_abstract",
-                        formula: "q_method",
-                        queries: { q_method: "the paper proposes a new method" } } },
-          ] },
-      ]
-    } },
-  { id: "n4", kind: "rerank", name: "Diversified rerank", localId: "RRK-04",
-    config: { metric: "citation", targetN: 500, diversity: "walktrap" },
-    screener: null },
+  // Round 1: forward + backward snowball from the seeds, both screened.
+  { id: "par1", kind: "parallel", branches: [
+    [ { id: "n2", kind: "fwd", name: "Forward screener", localId: "FWD-02",
+        config: { maxCitations: 200 }, screener: _sdlScreener("f") } ],
+    [ { id: "n3", kind: "bwd", name: "Backward screener", localId: "BWD-03",
+        config: {}, screener: _sdlScreener("g") } ],
+  ] },
+  // Round 2: cluster-diverse pagerank top-20 anchors a second forward hop;
+  // the backward branch walks everything again. fwd/bwd are linked copies.
+  { id: "par2", kind: "parallel", branches: [
+    [ { id: "n4", kind: "rerank", name: "Diversified rerank", localId: "RRK-04",
+        config: { metric: "pagerank", targetN: 20, diversity: "louvain" }, screener: null },
+      { id: "n5", kind: "fwd", name: "Forward screener", localId: "FWD-05",
+        config: {}, screener: null, syncOf: "n2", synced: true } ],
+    [ { id: "n6", kind: "bwd", name: "Backward screener", localId: "BWD-06",
+        config: {}, screener: null, syncOf: "n3", synced: true } ],
+  ] },
+  // Round 3: same shape again — every step a linked copy.
+  { id: "par3", kind: "parallel", branches: [
+    [ { id: "n7", kind: "rerank", name: "Diversified rerank", localId: "RRK-07",
+        config: {}, screener: null, syncOf: "n4", synced: true },
+      { id: "n8", kind: "fwd", name: "Forward screener", localId: "FWD-08",
+        config: {}, screener: null, syncOf: "n2", synced: true } ],
+    [ { id: "n9", kind: "bwd", name: "Backward screener", localId: "BWD-09",
+        config: {}, screener: null, syncOf: "n3", synced: true } ],
+  ] },
 ];
 
 // ~60 accepted papers so we can show "50 most recent" virtualization comfortably.

@@ -5,16 +5,19 @@
 
 function PipelineBlock({ node, selected, onClick, style, index }) {
   const iconFor = {
-    seed: "flag", fwd: "arrow-right", bwd: "arrow-left",
-    rerank: "sliders-horizontal", rsc: "filter", sink: "inbox",
+    seed: "flag", fwd: "arrow-right", bwd: "arrow-left", search: "search",
+    rerank: "sliders-horizontal", rsc: "filter", cluster: "shapes", sink: "inbox",
   };
 
-  // Count leaves in the screener tree (nodes whose kind is not a composite)
+  // Count leaves in the screener tree (nodes whose kind is not a composite).
+  // Route holds its children in routes[].pass_to + else.
   const COMPOSITE = new Set(["Sequential", "Parallel", "Any", "Not", "Route"]);
   const countLeaves = (t) => {
     if (!t) return 0;
     if (!COMPOSITE.has(t.kind)) return 1;
-    const kids = t.children || (t.layer ? [t.layer] : []);
+    let kids = t.children || (t.layer ? [t.layer] : []);
+    if (t.kind === "Route")
+      kids = [...(t.routes || []).map(r => r && r.pass_to), t.else].filter(Boolean);
     return kids.reduce((s, c) => s + countLeaves(c), 0);
   };
   const filterCount = countLeaves(node.screener);
@@ -25,8 +28,8 @@ function PipelineBlock({ node, selected, onClick, style, index }) {
   };
 
   const kindLabel = {
-    seed: "Source", fwd: "Expander", bwd: "Expander",
-    rerank: "Reranker", rsc: "Reranker", sink: "Sink",
+    seed: "Source", fwd: "Expander", bwd: "Expander", search: "Expander",
+    rerank: "Reranker", rsc: "Reranker", cluster: "Analyzer", sink: "Sink",
   };
   const stepNum = String(index + 1).padStart(2, "0");
   const iconName = iconFor[node.kind] || "square";
@@ -385,6 +388,7 @@ const STEP_META = {
   seed:   { name: "Seed set",          prefix: "SED" },
   fwd:    { name: "Forward screener",  prefix: "FWD" },
   bwd:    { name: "Backward screener", prefix: "BWD" },
+  search: { name: "Search agent",      prefix: "SEA" },
   rerank: { name: "Diversified rerank", prefix: "RRK" },
   rsc:    { name: "Rescreener",        prefix: "RSC" },
 };
@@ -392,8 +396,9 @@ const STEP_META = {
 const ADDABLE_STEPS = [
   { kind: "fwd",    label: "Forward screener",  desc: "follow citations",  icon: "arrow-right" },
   { kind: "bwd",    label: "Backward screener", desc: "walk references",   icon: "arrow-left" },
-  { kind: "rerank", label: "Diversified rerank", desc: "MMR top-K",        icon: "sliders-horizontal" },
-  { kind: "rsc",    label: "Rescreener",        desc: "LLM re-filter",     icon: "filter" },
+  { kind: "search", label: "Search agent",      desc: "experimental · LLM-designed S2 queries", icon: "search" },
+  { kind: "rerank", label: "Diversified rerank", desc: "top-K · cluster-diverse", icon: "sliders-horizontal" },
+  { kind: "rsc",    label: "Rescreener",        desc: "re-filter the collection", icon: "filter" },
 ];
 
 function newStep(kind) {
@@ -403,7 +408,8 @@ function newStep(kind) {
   const node = { id: "n" + n, kind, name: m.name, localId, config: {}, screener: null };
   if (kind === "fwd")         node.config = { maxCitations: 100 };
   else if (kind === "bwd")    node.config = {};
-  else if (kind === "rerank") node.config = { metric: "citation", targetN: 100, diversity: "walktrap" };
+  else if (kind === "search") node.config = { maxIterations: 4, maxPerIteration: 10000 };
+  else if (kind === "rerank") node.config = { metric: "citation", targetN: 100, diversity: "louvain" };
   else if (kind === "seed")   node.config = { query: "", years: "2019-2025", maxSeeds: 42 };
   return node;
 }
@@ -766,7 +772,7 @@ function ParallelBlock({ node, ctx, depth }) {
       <div className="pipe-parallel-row">
         {showBranchAdd && (
           <div className="pipe-branch-add pipe-branch-add-ghost" aria-hidden="true">
-            <span className="pipe-add pipe-add-branch"><Icon name="git-branch" size={12} /> branch</span>
+            <span className="pipe-add pipe-add-branch"><Icon name="git-branch" size={12} /> add branch</span>
           </div>
         )}
         <div className="pipe-parallel-box">
@@ -781,7 +787,7 @@ function ParallelBlock({ node, ctx, depth }) {
         </div>
         {showBranchAdd && (
           <div className="pipe-branch-add">
-            <StepAddButton label="branch" className="pipe-add-branch" icon="git-branch"
+            <StepAddButton label="add branch" className="pipe-add-branch" icon="git-branch"
               reusable={ctx.reusable} onPick={(k) => ctx.addBranch(node.id, k)} />
           </div>
         )}
@@ -809,19 +815,37 @@ function SeqAdder({ last, ctx }) {
     <div className="pipe-adder">
       <VEdge />
       <div className="pipe-adder-row">
-        {/* ghost of equal width balances "parallel" so "add step" stays centred */}
+        {/* ghost of equal width balances "add parallel" so "add step" stays centred */}
         {showParallel && (
           <span className="pipe-add pipe-add-parallel pipe-adder-ghost" aria-hidden="true">
-            <Icon name="git-branch" size={12} /> parallel
+            <Icon name="git-branch" size={12} /> add parallel
           </span>
         )}
         <StepAddButton label="add step" className="pipe-add-serial"
           reusable={ctx.reusable} onPick={(k) => ctx.appendAfter(last.id, k)} />
         {showParallel && (
-          <StepAddButton label="parallel" className="pipe-add-parallel" icon="git-branch"
+          <StepAddButton label="add parallel" className="pipe-add-parallel" icon="git-branch"
             reusable={ctx.reusable} onPick={(k) => ctx.appendParallel(last.id, k)} />
         )}
       </div>
+    </div>
+  );
+}
+
+// Hover affordance for inserting mid-sequence: appears under a block on
+// hover, offering "add step below" (+ "add parallel below" when the column
+// budget allows). The end-of-sequence adder still handles appending.
+function HoverBelowAdd({ el, ctx }) {
+  const showParallel = el.kind !== "seed" && el.kind !== "parallel"
+    && canAddParallel(ctx.pipeline, el.id);
+  return (
+    <div className="pipe-hover-add">
+      <StepAddButton label="add step below" className="pipe-add-below"
+        reusable={ctx.reusable} onPick={(k) => ctx.appendAfter(el.id, k)} />
+      {showParallel && (
+        <StepAddButton label="add parallel below" className="pipe-add-below" icon="git-branch"
+          reusable={ctx.reusable} onPick={(k) => ctx.appendParallel(el.id, k)} />
+      )}
     </div>
   );
 }
@@ -835,11 +859,15 @@ function SeqView({ seq, ctx, depth }) {
       {seq.map((el, i) => {
         const prev = seq[i - 1];
         const needEdge = i > 0 && prev.kind !== "parallel" && el.kind !== "parallel";
+        const isLast = i === seq.length - 1;   // the trailing adder covers this one
         return (
           <React.Fragment key={el.id}>
             {needEdge && <VEdge />}
             {el.kind === "parallel" ? (
-              <ParallelBlock node={el} ctx={ctx} depth={depth} />
+              <div className="pipe-step-row pipe-parallel-hoverwrap">
+                <ParallelBlock node={el} ctx={ctx} depth={depth} />
+                {!isLast && <HoverBelowAdd el={el} ctx={ctx} />}
+              </div>
             ) : (() => {
               const view = resolveStepView(el, ctx.pipeline);
               return (
@@ -856,6 +884,7 @@ function SeqView({ seq, ctx, depth }) {
                       ⇄ {view._syncLocal}
                     </span>
                   )}
+                  {!isLast && <HoverBelowAdd el={el} ctx={ctx} />}
                 </div>
               );
             })()}
@@ -914,6 +943,8 @@ function forEachLlmFilter(seq, cb) {
     if (f.kind === "LLMFilter") cb(f, step);
     if (f.layer) walkFilter(f.layer, step);
     (f.children || []).forEach((c) => walkFilter(c, step));
+    (f.routes || []).forEach((r) => { if (r && r.pass_to) walkFilter(r.pass_to, step); });
+    if (f.else) walkFilter(f.else, step);
   };
   (seq || []).forEach((node) => {
     if (!node) return;

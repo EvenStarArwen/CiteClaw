@@ -48,28 +48,37 @@ uploaded).
      Results come 100 at a time — the header shows how many of the total
      matches are loaded, and **Load more** pages deeper (S2 serves the first
      1,000 matches per query; past that, refine the query).
-   - **Pipeline** (center-top): the chain of steps (Seed set → Forward /
-     Backward screeners → Rerank). Click a block to configure it below.
-     Every "add step" menu also offers **Reuse an existing step**: pick one
-     and a **linked copy** is inserted there — it always runs with the
-     original's parameters and filters (edit the original once, every copy
-     follows), wears a **⇄ ORIGINAL-ID** badge in the pipeline, and its own
-     config panel is locked with an explanatory note. **Unsync** in that
-     note makes the copy independent (it keeps a snapshot and becomes
-     editable; **Re-sync** goes back to mirroring). Deleting the original
-     automatically turns its copies independent — nothing loses its
-     screener. The **⧉** button in a step's header is a shortcut for
-     "linked copy right after this step".
+   - **Pipeline** (center-top): the chain of steps. The default pipeline is
+     a real three-round snowball (parallel forward + backward expansion,
+     then two rounds of cluster-diverse pagerank rerank → re-expand), whose
+     screener routes each paper by venue family before keyword + LLM
+     screening. **Hovering any block** offers *add step below* / *add
+     parallel below*, so steps insert anywhere — not just at the end.
+     Every add menu also offers **Reuse an existing step**: pick one and a
+     **linked copy** is inserted there — it always runs with the original's
+     parameters and filters (edit the original once, every copy follows),
+     wears a **⇄ ORIGINAL-ID** badge, and its config panel is locked with
+     an **Unsync** escape (Re-sync goes back; deleting the original turns
+     its copies independent). The **⧉** header button is a shortcut for
+     "linked copy right after this step". A **Search agent** step
+     (ExpandBySearch) is selectable too — wired through to the CLI, but the
+     CLI agent is a placeholder today, so it's marked experimental.
    - **Config** (center-bottom): the selected block's filter tree
-     (year / citation / keyword / similarity / LLM filters). Hovering a
-     filter reveals **↑ / ↓** (reorder — add a filter at the end, walk it
-     up to where it belongs, e.g. a cheap citation cap *before* an
-     expensive LLM screen), **⧉ copy** and **×**; every "Add" menu then
-     offers **Paste** of the copied filter (whole groups too), in this step
-     or any other. Rows show as much of a filter's summary as fits and hide
-     it entirely when only a meaningless fragment would fit (the tooltip
-     always has the full text). LLM query prompts are multi-line boxes —
-     drag the lower-right corner to enlarge them.
+     (year / citation / keyword / similarity / LLM filters, plus **Route** —
+     if / elif / else dispatch: the tree shows each condition's branch
+     inline, and clicking the Route opens its conditions editor, with
+     venue-contains / citations≥ / year≥ predicates checked top-to-bottom).
+     The rerank's **diversity** runs the CLI's full clusterer registry:
+     louvain, walktrap (n communities), or topic model (UMAP+HDBSCAN;
+     needs the optional extra). Hovering a filter reveals **↑ / ↓**
+     (reorder — add a filter at the end, walk it up to where it belongs,
+     e.g. a cheap citation cap *before* an expensive LLM screen),
+     **⧉ copy** and **×**; every "Add" menu then offers **Paste** of the
+     copied filter (whole groups too), in this step or any other. Rows show
+     as much of a filter's summary as fits and hide it entirely when only a
+     meaningless fragment would fit (the tooltip always has the full text).
+     LLM query prompts are multi-line boxes — drag the lower-right corner
+     to enlarge them.
 2. Press **Run pipeline** (top-right).
 3. **Run tab** shows it live: pipeline progress + log (left), the citation
    graph growing (center), metrics + rejections + cost (dashboard), and the

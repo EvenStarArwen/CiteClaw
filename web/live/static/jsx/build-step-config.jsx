@@ -31,7 +31,9 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
   const resync = () => onPatchStep({ synced: true });
 
   const selNode = view && view.screener ? findNode(view.screener, selFilterId) : null;
-  const selFilter = selNode && !COMPOSITE_KINDS.includes(selNode.kind) ? selNode : null;
+  // Leaves open the filter detail; so does Route (its conditions editor).
+  const selFilter = selNode && (!COMPOSITE_KINDS.includes(selNode.kind) || selNode.kind === "Route")
+    ? selNode : null;
 
   React.useEffect(() => {
     if (!selFilter) return;
@@ -55,7 +57,8 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
   // Seed set → the accepted-papers "cart" (its own panel), not a param form.
   if (node.kind === "seed") return <SeedSetConfig />;
 
-  const isScreener = node.kind === "fwd" || node.kind === "bwd" || node.kind === "rsc";
+  const isScreener = node.kind === "fwd" || node.kind === "bwd" || node.kind === "rsc"
+    || node.kind === "search";
 
   // --- screener tree ops (mirror the old BuildConfig) ---
   const setScreener = (t) => onUpdateScreener(t);
@@ -71,7 +74,16 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
     if (selFilterId === id) setSelFilterId(null);
   };
   const patchFilter = (id, params) => setScreener(mapTree(node.screener, id, (n) => ({ ...n, params })));
+  const patchFilterNode = (id, patch) => setScreener(mapTree(node.screener, id, (n) => ({ ...n, ...patch })));
   const moveFilter = (id, dir) => setScreener(moveInTree(node.screener, id, dir));
+  // Drop a picked filter into a Route branch slot (a route row's pass_to,
+  // or "__else" for the else branch), then open it for configuration.
+  const addToRoute = (routeNodeId, slotId, child) => {
+    setScreener(mapTree(node.screener, routeNodeId, (n) => slotId === "__else"
+      ? { ...n, else: child }
+      : { ...n, routes: (n.routes || []).map(r => (r.id === slotId ? { ...r, pass_to: child } : r)) }));
+    setSelFilterId(child.id);
+  };
 
   // --- FILTER DETAIL (full-panel config for one leaf filter) ---
   // Synced copies never drill in: their filters belong to the origin.
@@ -87,10 +99,14 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
             <Icon name="arrow-left" size={13} /> Back to filters
           </button>
           <div className="seed-detail-body">
-            <div className="cfg-detail-kind">{selFilter.kind.replace("Filter", "")} filter</div>
+            <div className="cfg-detail-kind">
+              {selFilter.kind === "Route" ? "Route" : selFilter.kind.replace("Filter", "") + " filter"}
+            </div>
             <div className="cfg-detail-summary">{filterSummary(selFilter)}</div>
             <div className="config-inspect-grid cfg-detail-grid">
-              <FilterParams node={selFilter} onPatch={(params) => patchFilter(selFilter.id, params)} />
+              <FilterParams node={selFilter}
+                onPatch={(params) => patchFilter(selFilter.id, params)}
+                onPatchNode={(patch) => patchFilterNode(selFilter.id, patch)} />
             </div>
           </div>
           <div className="seed-detail-foot">
@@ -192,6 +208,7 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
                   onAddChild={addChild}
                   onRemove={removeFilter}
                   onMove={moveFilter}
+                  onAddToRoute={addToRoute}
                 />
               </div>
             </div>

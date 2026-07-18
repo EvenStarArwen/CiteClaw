@@ -5365,6 +5365,63 @@ select.gp-v { cursor: pointer; }
 }
 .cfg-sync-btn:hover { border-color: var(--cc-accent); color: var(--cc-accent); }
 
+/* ── Route: IF / ELIF / ELSE branches in the filter tree ──────────────── */
+.ft-route { display: flex; flex-direction: column; gap: 5px; }
+.ft-route-head {
+  display: flex; align-items: baseline; gap: 7px;
+  cursor: pointer; padding: 1px 2px;
+  min-width: 0;
+}
+.ft-route-if {
+  flex: 0 0 auto;
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--cc-paper); background: #5c7a5a;
+  padding: 2px 6px; border-radius: 3px;
+}
+.ft-route-pred {
+  font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.ft-route-head:hover .ft-route-pred { color: var(--cc-ink-1); }
+.ft-route-target { margin-left: 14px; display: flex; flex-direction: column; }
+.ft-route-target > .ft-add-wrap { align-self: flex-start; }
+
+/* Route condition rows in the detail editor */
+.cfg-route-row {
+  display: grid; grid-template-columns: auto minmax(0, 0.9fr) minmax(0, 1.1fr) auto;
+  align-items: center; gap: 6px;
+}
+.cfg-route-word {
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.08em; color: var(--cc-ink-3); width: 30px;
+}
+.cfg-route-kind { min-width: 0; font-size: 11px !important; }
+.cfg-route-val { min-width: 0; font-size: 11px !important; }
+.cfg-route-acts { display: inline-flex; align-items: center; gap: 1px; }
+
+/* amber variant of the inline note (experimental warnings) */
+.cfg-note-warn { border-color: color-mix(in srgb, var(--cc-warning, #b8860b) 45%, var(--cc-rule)); }
+.cfg-note-warn svg { color: var(--cc-warning, #b8860b); }
+.cfg-note code {
+  font-family: var(--cc-font-mono); font-size: 10px;
+  background: var(--cc-paper); padding: 1px 4px; border-radius: 3px;
+}
+
+/* ── Hover "insert below" on pipeline blocks ──────────────────────────── */
+.pipe-hover-add {
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  padding-top: 5px;                 /* contiguous hover bridge from the block */
+  display: none; align-items: center; gap: 6px;
+  z-index: 6; white-space: nowrap;
+}
+.pipe-step-row:hover > .pipe-hover-add, .pipe-hover-add:hover,
+.pipe-hover-add:has(.ft-pop) { display: inline-flex; }   /* stay while its picker is open */
+.pipe-hover-add .pipe-add {
+  background: var(--cc-panel);
+  box-shadow: 0 2px 8px rgba(20, 15, 10, 0.14);
+}
+
 /* ── Multi-line LLM query prompts (drag the corner to resize) ─────────── */
 .cfg-kv-multiline { align-items: start; }
 .cfg-kv-multiline .cfg-kv-k { margin-top: 1px; }
