@@ -76,6 +76,64 @@ function removeFromTree(t, id) {
   if (t.layer) return { ...t, layer: removeFromTree(t.layer, id) };
   return t;
 }
+// Swap the node with `id` with its previous/next SIBLING (dir −1 / +1) so
+// filters can be inserted anywhere: add at the end, then move it up.
+function moveInTree(t, id, dir) {
+  if (!t) return t;
+  if (t.children) {
+    const i = t.children.findIndex(c => c.id === id);
+    if (i >= 0) {
+      const j = i + dir;
+      if (j < 0 || j >= t.children.length) return t;
+      const kids = t.children.slice();
+      [kids[i], kids[j]] = [kids[j], kids[i]];
+      return { ...t, children: kids };
+    }
+    return { ...t, children: t.children.map(c => moveInTree(c, id, dir)) };
+  }
+  if (t.layer) return { ...t, layer: moveInTree(t.layer, id, dir) };
+  return t;
+}
+// Deep-copy a filter subtree with FRESH ids everywhere, so a pasted filter is
+// fully independent of its original (edits never leak between the two).
+function cloneFilterNode(node) {
+  const c = JSON.parse(JSON.stringify(node));
+  const walk = (n) => {
+    if (!n || typeof n !== "object") return;
+    if (n.id) n.id = nextFid();
+    (n.children || []).forEach(walk);
+    if (n.layer) walk(n.layer);
+    (n.routes || []).forEach(r => { if (r && r.pass_to) walk(r.pass_to); });
+    if (n.else) walk(n.else);
+  };
+  walk(c);
+  return c;
+}
+// One shared filter clipboard for the whole builder — copy in one step's
+// screener, paste in any other (the "copy mask / paste mask" pattern). The
+// clip is snapshotted at copy time, so later edits to the source don't follow.
+let FILTER_CLIP = null;
+function copyFilterToClip(node) { FILTER_CLIP = JSON.parse(JSON.stringify(node)); }
+function getFilterClip() { return FILTER_CLIP; }
+// Short label + summary for the paste entry (leaf → its catalog label,
+// composite → its plain-English label + leaf count).
+function clipLabel(n) {
+  if (!n) return "";
+  if (COMPOSITE_KINDS.includes(n.kind)) return COMPOSITE_LABEL[n.kind] || n.kind;
+  const leaf = LEAF_KINDS.find(l => l.kind === n.kind);
+  return (leaf ? leaf.label : n.kind.replace("Filter", "")) + " filter";
+}
+function clipDesc(n) {
+  if (!n) return "";
+  if (COMPOSITE_KINDS.includes(n.kind)) {
+    const leaves = (t) => COMPOSITE_KINDS.includes(t.kind)
+      ? (t.children || (t.layer ? [t.layer] : [])).reduce((s, c) => s + leaves(c), 0)
+      : 1;
+    const k = leaves(n);
+    return `group with ${k} filter${k === 1 ? "" : "s"} inside`;
+  }
+  return filterSummary(n);
+}
 
 // --- components -----------------------------------------------------------
 
@@ -213,6 +271,8 @@ function ValidationNotes({ errors, warnings }) {
 
 // One editable name→value row. The NAME is editable (identifier-safe chars only)
 // and commits on blur/Enter; a rename to an empty or duplicate name reverts.
+// Query prompts get a TEXTAREA (drag the lower-right corner to grow it) —
+// screening prompts run long, and a one-line input scrolls like an address bar.
 function KVRow({ name, value, siblings, noun, onRename, onValue, onRemove }) {
   const [draft, setDraft] = React.useState(name);
   React.useEffect(() => { setDraft(name); }, [name]);
@@ -222,16 +282,23 @@ function KVRow({ name, value, siblings, noun, onRename, onValue, onRemove }) {
     if (bad) { setDraft(name); return; }
     if (nk !== name) onRename(name, nk);
   };
+  const multiline = noun === "query";
   return (
-    <div className="cfg-kv">
+    <div className={"cfg-kv" + (multiline ? " cfg-kv-multiline" : "")}>
       <input className={"cfg-kv-k" + (bad ? " is-bad" : "")} value={draft}
         onChange={e => setDraft(e.target.value.replace(/[^A-Za-z0-9_]/g, ""))}
         onBlur={commit}
         onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
         title="Rename this identifier — reference it in the formula" />
-      <input className="cfg-kv-v" value={value}
-        placeholder={noun === "query" ? "yes/no question about the paper…" : "literal string to match…"}
-        onChange={e => onValue(name, e.target.value)} />
+      {multiline ? (
+        <textarea className="cfg-kv-v cfg-kv-ta" rows={2} value={value}
+          placeholder="yes/no question about the paper… (drag the corner to enlarge)"
+          onChange={e => onValue(name, e.target.value)} />
+      ) : (
+        <input className="cfg-kv-v" value={value}
+          placeholder="literal string to match…"
+          onChange={e => onValue(name, e.target.value)} />
+      )}
       <button className="cfg-measure-del" onClick={() => onRemove(name)} title={"Remove " + noun}>×</button>
     </div>
   );
@@ -362,6 +429,7 @@ function ModelOverrideSelect({ value, onChange }) {
 
 function AddFilterPopover({ onPick, onClose, allowComposite = true, anchorRef }) {
   const [pos, setPos] = React.useState(null);
+  const clip = getFilterClip();
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -373,7 +441,7 @@ function AddFilterPopover({ onPick, onClose, allowComposite = true, anchorRef })
       const el = anchorRef?.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      const popW = 280, popH = 360;
+      const popW = 280, popH = clip ? 420 : 360;
       const margin = 8;
       // Prefer below; flip up if no room
       let top = r.bottom + 4;
@@ -402,6 +470,18 @@ function AddFilterPopover({ onPick, onClose, allowComposite = true, anchorRef })
         className="ft-pop ft-pop-fixed"
         style={pos ? { top: pos.top, left: pos.left } : { visibility: "hidden" }}
       >
+        {clip && (
+          <div className="ft-pop-group">
+            <div className="ft-pop-label">Clipboard</div>
+            <div className="ft-pop-list">
+              <button className="ft-pop-item ft-pop-item-paste"
+                onClick={() => { onPick(cloneFilterNode(clip)); onClose(); }}>
+                <span className="ft-pop-name"><Icon name="clipboard-paste" size={11} /> Paste {clipLabel(clip)}</span>
+                <span className="ft-pop-desc">{clipDesc(clip)}</span>
+              </button>
+            </div>
+          </div>
+        )}
         <div className="ft-pop-group">
           <div className="ft-pop-label">Leaf filters</div>
           <div className="ft-pop-list">
@@ -431,7 +511,42 @@ function AddFilterPopover({ onPick, onClose, allowComposite = true, anchorRef })
   );
 }
 
-function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemove }) {
+// Hover actions shared by leaf rows and composite headers: move among
+// siblings (↑/↓ — this is how a filter gets INSERTED BEFORE an existing one:
+// add it at the end, then walk it up), copy to the clipboard, remove.
+function FilterNodeActs({ node, canUp, canDown, onMove, onRemove }) {
+  const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(t);
+  }, [copied]);
+  const movable = canUp || canDown;
+  return (
+    <span className="ft-node-acts">
+      {movable && (
+        <>
+          <button className="ft-act" disabled={!canUp} title="Move up"
+            onClick={(e) => { e.stopPropagation(); onMove(node.id, -1); }}>
+            <Icon name="arrow-up" size={11} />
+          </button>
+          <button className="ft-act" disabled={!canDown} title="Move down"
+            onClick={(e) => { e.stopPropagation(); onMove(node.id, +1); }}>
+            <Icon name="arrow-down" size={11} />
+          </button>
+        </>
+      )}
+      <button className={"ft-act" + (copied ? " is-copied" : "")}
+        title="Copy filter — paste it from any “Add” menu, in this step or another"
+        onClick={(e) => { e.stopPropagation(); copyFilterToClip(node); setCopied(true); }}>
+        <Icon name={copied ? "check" : "copy"} size={11} />
+      </button>
+      <button className="ft-leaf-x" onClick={(e) => { e.stopPropagation(); onRemove(node.id); }} title="Remove">×</button>
+    </span>
+  );
+}
+
+function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemove, onMove, canUp, canDown }) {
   const [adding, setAdding] = React.useState(false);
   const addBtnRef = React.useRef(null);
   const isComposite = COMPOSITE_KINDS.includes(node.kind);
@@ -442,7 +557,7 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
       <div className={"ft-leaf" + (selected ? " is-selected" : "")} onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}>
         <span className="ft-leaf-kind">{node.kind.replace("Filter", "")}</span>
         <span className="ft-leaf-body">{filterSummary(node)}</span>
-        <button className="ft-leaf-x" onClick={(e) => { e.stopPropagation(); onRemove(node.id); }} title="Remove">×</button>
+        <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
       </div>
     );
   }
@@ -450,6 +565,7 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
   const kids = node.kind === "Not"
     ? (node.layer ? [node.layer] : [])
     : (node.children || []);
+  const kidsMovable = node.kind !== "Not" && kids.length > 1;
 
   return (
     <div className={"ft-comp ft-comp-" + node.kind.toLowerCase() + (selected ? " is-selected" : "")}>
@@ -459,10 +575,10 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
           {COMPOSITE_META[node.kind] ? COMPOSITE_META[node.kind] + " · " : ""}
           {kids.length} {kids.length === 1 ? "filter" : "filters"}
         </span>
-        <button className="ft-leaf-x" onClick={(e) => { e.stopPropagation(); onRemove(node.id); }} title="Remove">×</button>
+        <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
       </div>
       <div className={"ft-comp-body" + (node.kind === "Parallel" ? " ft-comp-body-parallel" : "")}>
-        {kids.map(c => (
+        {kids.map((c, i) => (
           <FilterTreeNode
             key={c.id}
             node={c} depth={depth + 1}
@@ -470,6 +586,9 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
             onSelect={onSelect}
             onAddChild={onAddChild}
             onRemove={onRemove}
+            onMove={onMove}
+            canUp={kidsMovable && i > 0}
+            canDown={kidsMovable && i < kids.length - 1}
           />
         ))}
         {(node.kind !== "Not" || kids.length === 0) && (
@@ -533,7 +652,7 @@ function filterSummary(n) {
   }
 }
 
-function FilterTree({ screener, selectedId, onSelect, onAddRoot, onAddChild, onRemove }) {
+function FilterTree({ screener, selectedId, onSelect, onAddRoot, onAddChild, onRemove, onMove }) {
   const [adding, setAdding] = React.useState(false);
   const rootAddRef = React.useRef(null);
 
@@ -567,6 +686,7 @@ function FilterTree({ screener, selectedId, onSelect, onAddRoot, onAddChild, onR
         onSelect={onSelect}
         onAddChild={onAddChild}
         onRemove={onRemove}
+        onMove={onMove || (() => {})}
       />
     </div>
   );

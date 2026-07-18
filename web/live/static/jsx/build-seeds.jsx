@@ -121,6 +121,9 @@ function BuildSeeds({ onSelectSeed }) {
   const [showFilters, setShowFilters] = React.useState(false);
   const [year, setYear] = React.useState("Any");
   const [minCites, setMinCites] = React.useState(0);
+  // Pagination over S2's relevance search: total matches, the next page's
+  // offset (null = exhausted), and how many results this query has fetched.
+  const [page, setPage] = React.useState({ total: 0, next: null, fetched: 0 });
 
   const candidates = seeds.filter(p => !p.starred);
   const acceptedCount = seeds.length - candidates.length;
@@ -131,13 +134,32 @@ function BuildSeeds({ onSelectSeed }) {
     if (!q) return;
     setBusy(true); setErr(null);
     try {
-      const results = await searchSeeds(q, f || { year, minCites });
+      const res = await searchSeeds(q, f || { year, minCites });
+      const results = res.items || [];
       const starredMap = {};
       seeds.forEach(p => { if (p.starred) starredMap[p.id] = p; });
       const merged = results.map(r => ({ ...r, starred: !!starredMap[r.id] }));
       const seen = new Set(results.map(r => r.id));
       Object.values(starredMap).forEach(p => { if (!seen.has(p.id)) merged.push(p); });
       LIVE.set({ seeds: merged, searchQuery: q });
+      setPage({ total: res.total || 0, next: res.next, fetched: results.length });
+    } catch (e) {
+      setErr(e.message || "search failed");
+    }
+    setBusy(false);
+  };
+
+  const loadMore = async () => {
+    if (busy || page.next == null || !query.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await searchSeeds(query, { year, minCites }, page.next);
+      const items = res.items || [];
+      const cur = LIVE.get("seeds");
+      const have = new Set(cur.map(p => p.id));
+      const fresh = items.filter(r => !have.has(r.id)).map(r => ({ ...r, starred: false }));
+      LIVE.set({ seeds: cur.concat(fresh) });
+      setPage(pg => ({ total: res.total || pg.total, next: res.next, fetched: pg.fetched + items.length }));
     } catch (e) {
       setErr(e.message || "search failed");
     }
@@ -176,7 +198,14 @@ function BuildSeeds({ onSelectSeed }) {
     <aside className="panel panel-left">
       <div className="ph">
         <span className="ph-title">Seeds</span>
-        <span className="ph-count">{busy ? "…" : candidates.length + " results"}</span>
+        <span className="ph-count" title={page.total > page.fetched
+          ? `Semantic Scholar matched ${page.total.toLocaleString()} papers — ${page.fetched} loaded so far`
+          : undefined}>
+          {busy && !candidates.length ? "…"
+            : page.total > page.fetched
+              ? `${candidates.length} of ${page.total.toLocaleString()}`
+              : candidates.length + " results"}
+        </span>
       </div>
 
       <div className="searchbox">
@@ -237,6 +266,18 @@ function BuildSeeds({ onSelectSeed }) {
             <SeedCard key={p.id} paper={p} mode="candidate" onOpen={setDetailId} onAction={acceptSeed} />
           ))}
         </div>
+        {page.next != null && candidates.length > 0 && (
+          <button className="seeds-more" onClick={loadMore} disabled={busy}>
+            {busy ? "Loading…" : <><Icon name="chevron-down" size={12} /> Load {Math.min(100, page.total - page.fetched)} more
+              <span className="seeds-more-total"> · {page.total.toLocaleString()} matched</span></>}
+          </button>
+        )}
+        {page.next == null && page.fetched >= 900 && page.total > page.fetched && (
+          <div className="seeds-cap-note">
+            Semantic Scholar serves at most the first 1,000 matches per query —
+            refine the query or tighten the filters to reach the rest.
+          </div>
+        )}
       </div>
     </aside>
   );

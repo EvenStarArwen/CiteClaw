@@ -34,14 +34,24 @@ def _api_key() -> str:
             or os.environ.get("CITECLAW_S2_API_KEY") or "").strip()
 
 
-def search_seeds(query: str, limit: int = 20, year: str = "",
-                 min_citations: int = 0) -> list[dict]:
+# S2's relevance search serves at most the first 1000 matches (offset+limit
+# must stay <= 1000); each page holds up to 100.
+_S2_MAX_REACH = 1000
+_EMPTY_PAGE = {"total": 0, "offset": 0, "next": None, "items": []}
+
+
+def search_seeds(query: str, limit: int = 100, year: str = "",
+                 min_citations: int = 0, offset: int = 0) -> dict:
     query = (query or "").strip()
     if not query:
-        return []
+        return dict(_EMPTY_PAGE)
+    offset = max(0, int(offset))
+    if offset >= _S2_MAX_REACH:
+        return {"total": 0, "offset": offset, "next": None, "items": []}
+    limit = max(1, min(100, int(limit), _S2_MAX_REACH - offset))
     key = _api_key()
     headers = {"x-api-key": key} if key else {}
-    params = {"query": query, "limit": max(1, min(40, int(limit))), "fields": _FIELDS}
+    params = {"query": query, "limit": limit, "offset": offset, "fields": _FIELDS}
     # Native S2 search filters: year range ("2019-2025") and a citation floor.
     year = (year or "").strip()
     if year and year.lower() != "any":
@@ -77,7 +87,9 @@ def search_seeds(query: str, limit: int = 20, year: str = "",
                 "Semantic Scholar rejected the API key. Check the key in "
                 "Settings (gear, top-right).")
         r.raise_for_status()
-        data = r.json().get("data") or []
+        js = r.json()
+        data = js.get("data") or []
+        total = int(js.get("total") or 0)
 
     out = []
     for p in data:
@@ -91,4 +103,7 @@ def search_seeds(query: str, limit: int = 20, year: str = "",
             "cites": p.get("citationCount") or 0,
             "externalIds": p.get("externalIds") or {},
         })
-    return out
+    end = offset + len(data)
+    has_more = bool(data) and end < min(total, _S2_MAX_REACH)
+    return {"total": total, "offset": offset,
+            "next": end if has_more else None, "items": out}

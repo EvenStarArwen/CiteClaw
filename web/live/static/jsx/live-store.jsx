@@ -102,9 +102,12 @@ async function saveSettings(patch) {
   return s;
 }
 
-async function searchSeeds(q, filters) {
+// Returns a page: {total, offset, next, items} — `next` is the offset of the
+// following page, or null when exhausted (S2 serves the first 1000 matches).
+async function searchSeeds(q, filters, offset) {
   const f = filters || {};
-  const params = new URLSearchParams({ q: q || "", limit: "25" });
+  const params = new URLSearchParams({ q: q || "", limit: "100" });
+  if (offset) params.set("offset", String(offset));
   if (f.year && f.year !== "Any") params.set("year", f.year);
   if (f.minCites) params.set("min_cites", String(f.minCites));
   return _api("/api/seeds/search?" + params.toString());

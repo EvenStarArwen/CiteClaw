@@ -243,6 +243,15 @@ function App() {
     setPipeline(ps => removeStep(ps, selectedId));
     setSelectedId(null);
   };
+  // Duplicate the selected step (config + screener, fresh ids) right after
+  // itself — reusing a hand-built screener never means re-typing it.
+  const duplicateSelected = () => {
+    const src = findStep(pipeline, selectedId);
+    if (!src || src.kind === "seed" || src.kind === "parallel") return;
+    const copy = cloneStep(src);
+    setPipeline(ps => insertAfter(ps, selectedId, copy));
+    setSelectedId(copy.id);
+  };
 
   // Top-bar actions — launch / stop a real run through the backend.
   // Validate first (client-side) so a missing key / no seeds pops a dialog
@@ -345,6 +354,7 @@ function App() {
             onPatchConfig={patchSelectedConfig}
             onUpdateScreener={updateScreener}
             onRemove={removeSelected}
+            onDuplicate={duplicateSelected}
           />
         </>
       ) : mode === "run" ? (

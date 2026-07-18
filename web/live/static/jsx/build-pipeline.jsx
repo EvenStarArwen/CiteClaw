@@ -408,6 +408,20 @@ function newStep(kind) {
   return node;
 }
 function newParallel(branches) { return { id: "par" + (++__sid), kind: "parallel", branches }; }
+// Deep-copy a STEP (config + whole screener tree) under a fresh id/localId,
+// so "duplicate step" never means re-typing a screener. The screener is
+// re-id'd via cloneFilterNode so the copy is fully independent.
+function cloneStep(step) {
+  const m = STEP_META[step.kind] || { name: step.kind, prefix: "STP" };
+  const n = ++__sid;
+  const copy = JSON.parse(JSON.stringify({ ...step, screener: null }));
+  return {
+    ...copy,
+    id: "n" + n,
+    localId: m.prefix + "-" + String(n).padStart(2, "0"),
+    screener: step.screener ? cloneFilterNode(step.screener) : null,
+  };
+}
 
 // Find a step node by id anywhere in the sequence tree (recurses into branches).
 function findStep(seq, id) {
@@ -820,6 +834,6 @@ function forEachLlmFilter(seq, cb) {
 
 Object.assign(window, {
   BuildPipeline, PipelineBlock,
-  newStep, newParallel, findStep, mapStep, removeStep,
+  newStep, newParallel, cloneStep, findStep, mapStep, removeStep,
   insertAfter, addParallelBranch, countSteps, forEachLlmFilter,
 });

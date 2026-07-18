@@ -8,7 +8,7 @@
 // Reuses the tree helpers + FilterTree / FilterParams / BlockParams defined in
 // build-config.jsx (all files are concatenated into one script).
 
-function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove }) {
+function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove, onDuplicate }) {
   const [selFilterId, setSelFilterId] = React.useState(null);
 
   React.useEffect(() => { setSelFilterId(null); }, [node ? node.id : null]);
@@ -54,6 +54,7 @@ function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove }) {
     if (selFilterId === id) setSelFilterId(null);
   };
   const patchFilter = (id, params) => setScreener(mapTree(node.screener, id, (n) => ({ ...n, params })));
+  const moveFilter = (id, dir) => setScreener(moveInTree(node.screener, id, dir));
 
   // --- FILTER DETAIL (full-panel config for one leaf filter) ---
   if (selFilter) {
@@ -99,9 +100,15 @@ function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove }) {
             <div className="cfg-step-sub">{node.kind} · {node.localId}</div>
           </div>
           {node.kind !== "seed" && (
-            <button className="ph-btn cfg-step-remove" onClick={onRemove} title="Remove step">
-              <Icon name="trash-2" size={14} />
-            </button>
+            <>
+              <button className="ph-btn cfg-step-dup" onClick={onDuplicate}
+                title="Duplicate this step — an identical copy (filters included) is inserted right after it">
+                <Icon name="copy" size={14} />
+              </button>
+              <button className="ph-btn cfg-step-remove" onClick={onRemove} title="Remove step">
+                <Icon name="trash-2" size={14} />
+              </button>
+            </>
           )}
         </div>
 
@@ -126,6 +133,7 @@ function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove }) {
                 onAddRoot={addRoot}
                 onAddChild={addChild}
                 onRemove={removeFilter}
+                onMove={moveFilter}
               />
             </div>
           </div>

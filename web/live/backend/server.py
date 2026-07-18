@@ -210,10 +210,11 @@ async def get_models() -> list[dict]:
 
 
 @app.get("/api/seeds/search")
-async def seeds_search(q: str = "", limit: int = 20, year: str = "", min_cites: int = 0) -> JSONResponse:
+async def seeds_search(q: str = "", limit: int = 100, year: str = "",
+                       min_cites: int = 0, offset: int = 0) -> JSONResponse:
     try:
-        results = await asyncio.to_thread(search_seeds, q, limit, year, min_cites)
-        return JSONResponse(results)
+        page = await asyncio.to_thread(search_seeds, q, limit, year, min_cites, offset)
+        return JSONResponse(page)
     except S2SearchError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except httpx.HTTPError as e:

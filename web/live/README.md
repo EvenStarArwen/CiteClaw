@@ -45,10 +45,22 @@ uploaded).
 1. **Build tab**
    - **Seeds** (left): type a query, press **Enter** to search Semantic
      Scholar, click papers to ⭐ them. Starred papers seed the search.
+     Results come 100 at a time — the header shows how many of the total
+     matches are loaded, and **Load more** pages deeper (S2 serves the first
+     1,000 matches per query; past that, refine the query).
    - **Pipeline** (center-top): the chain of steps (Seed set → Forward /
      Backward screeners → Rerank). Click a block to configure it below.
+     The **⧉ duplicate** button in a step's config header inserts an
+     identical copy — filters included — right after it, so a hand-built
+     screener never has to be rebuilt.
    - **Config** (center-bottom): the selected block's filter tree
-     (year / citation / keyword / similarity / LLM filters).
+     (year / citation / keyword / similarity / LLM filters). Hovering a
+     filter reveals **↑ / ↓** (reorder — add a filter at the end, walk it
+     up to where it belongs, e.g. a cheap citation cap *before* an
+     expensive LLM screen) and **⧉ copy**; every "Add" menu then offers
+     **Paste** of the copied filter (whole groups too), in this step or any
+     other. LLM query prompts are multi-line boxes — drag the lower-right
+     corner to enlarge them.
 2. Press **Run pipeline** (top-right).
 3. **Run tab** shows it live: pipeline progress + log (left), the citation
    graph growing (center), metrics + rejections + cost (dashboard), and the

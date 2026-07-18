@@ -3481,7 +3481,7 @@ button { cursor: pointer; }
   text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--cc-ink-3);
 }
-.field input, .field select {
+.field input, .field select, .field textarea {
   padding: 5px 9px;
   background: var(--cc-paper);
   border: 1px solid var(--cc-rule-strong);
@@ -3490,10 +3490,11 @@ button { cursor: pointer; }
   outline: none;
   font-variant-numeric: tabular-nums;
 }
-.field input:focus, .field select:focus {
+.field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--cc-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--cc-accent) 14%, transparent);
 }
+.field textarea { font-family: inherit; line-height: 1.5; }
 .field-hint { font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-3); }
 
 /* Filter chips */
@@ -5269,3 +5270,61 @@ select.gp-v { cursor: pointer; }
 }
 .xp-tag-seed { color: var(--cc-on-accent); background: var(--cc-net-seed); }
 .btn.is-on { border-color: var(--cc-accent); color: var(--cc-accent); }
+
+/* ── Seeds pagination (Load more over S2 relevance pages) ─────────────── */
+.seeds-more {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin: 6px 8px 10px;
+  padding: 7px 10px;
+  background: transparent;
+  border: 1px dashed var(--cc-rule-strong);
+  border-radius: 6px;
+  font-size: 11.5px; color: var(--cc-ink-2);
+  cursor: pointer;
+  width: calc(100% - 16px);
+}
+.seeds-more:hover:not(:disabled) { color: var(--cc-ink-1); border-color: var(--cc-ink-2); background: var(--cc-hover-soft); }
+.seeds-more:disabled { opacity: 0.55; cursor: default; }
+.seeds-more-total { color: var(--cc-ink-3); font-family: var(--cc-font-mono); font-size: 10px; }
+.seeds-cap-note {
+  margin: 2px 8px 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--cc-hover-soft); border: 1px solid var(--cc-rule);
+  font-size: 10.5px; line-height: 1.5; color: var(--cc-ink-3);
+}
+
+/* ── Filter-tree row actions: move ↑/↓ · copy · remove ────────────────── */
+.ft-node-acts { display: inline-flex; align-items: center; gap: 1px; }
+.ft-act {
+  width: 18px; height: 18px; padding: 0;
+  background: transparent; border: none; color: var(--cc-ink-faint);
+  border-radius: 3px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 90ms, color 90ms, background 90ms;
+}
+.ft-leaf:hover .ft-act, .ft-comp-head:hover .ft-act,
+.ft-act.is-copied { opacity: 1; }
+.ft-act:hover:not(:disabled) { color: var(--cc-ink-1); background: var(--cc-hover-soft); }
+.ft-act:disabled { opacity: 0; cursor: default; pointer-events: none; }
+.ft-leaf:hover .ft-act:disabled, .ft-comp-head:hover .ft-act:disabled { opacity: 0.22; }
+.ft-act.is-copied { color: var(--cc-positive, #2e7d32); }
+
+/* Paste entry at the top of the Add-filter popover */
+.ft-pop-item-paste .ft-pop-name {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--cc-accent);
+}
+
+/* ── Multi-line LLM query prompts (drag the corner to resize) ─────────── */
+.cfg-kv-multiline { align-items: start; }
+.cfg-kv-multiline .cfg-kv-k { margin-top: 1px; }
+.cfg-kv-multiline .cfg-measure-del { margin-top: 4px; }
+.cfg-kv-ta {
+  resize: vertical;
+  min-height: 52px;
+  font-family: inherit;
+  font-size: 11.5px !important;
+  line-height: 1.5;
+}
