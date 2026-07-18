@@ -8,12 +8,29 @@
 // Reuses the tree helpers + FilterTree / FilterParams / BlockParams defined in
 // build-config.jsx (all files are concatenated into one script).
 
-function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove, onDuplicate }) {
+function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRemove, onDuplicate, onPatchStep }) {
   const [selFilterId, setSelFilterId] = React.useState(null);
 
   React.useEffect(() => { setSelFilterId(null); }, [node ? node.id : null]);
 
-  const selNode = node && node.screener ? findNode(node.screener, selFilterId) : null;
+  // Linked-copy state: a synced duplicate shows (and runs with) its ORIGIN's
+  // parameters + filters and is locked here; unsyncing snapshots them into
+  // this step, which then configures independently.
+  const origin = node && node.syncOf ? findStep(pipeline || [], node.syncOf) : null;
+  const isSynced = !!(node && node.syncOf && node.synced !== false && origin);
+  const view = isSynced ? resolveStepView(node, pipeline) : node;
+  const deps = node ? syncDependents(pipeline || [], node.id) : [];
+  const unsync = () => {
+    const src = resolveStepView(node, pipeline);
+    onPatchStep({
+      synced: false,
+      config: JSON.parse(JSON.stringify(src.config || {})),
+      screener: src.screener ? cloneFilterNode(src.screener) : null,
+    });
+  };
+  const resync = () => onPatchStep({ synced: true });
+
+  const selNode = view && view.screener ? findNode(view.screener, selFilterId) : null;
   const selFilter = selNode && !COMPOSITE_KINDS.includes(selNode.kind) ? selNode : null;
 
   React.useEffect(() => {
@@ -57,7 +74,8 @@ function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove, onDu
   const moveFilter = (id, dir) => setScreener(moveInTree(node.screener, id, dir));
 
   // --- FILTER DETAIL (full-panel config for one leaf filter) ---
-  if (selFilter) {
+  // Synced copies never drill in: their filters belong to the origin.
+  if (selFilter && !isSynced) {
     return (
       <aside className="panel panel-right">
         <div className="ph">
@@ -112,32 +130,73 @@ function BuildStepConfig({ node, onPatchConfig, onUpdateScreener, onRemove, onDu
           )}
         </div>
 
-        <div className="cfg-section">
-          <div className="cfg-section-head">Step parameters</div>
-          <div className="config-inspect-grid cfg-step-params">
-            <BlockParams node={node} onPatchConfig={onPatchConfig} />
-          </div>
-        </div>
-
-        {isScreener && (
-          <div className="cfg-section">
-            <div className="cfg-section-head">
-              Filter pipeline
-              <span className="cfg-section-hint">click a filter to configure</span>
-            </div>
-            <div className="cfg-tree-wrap">
-              <FilterTree
-                screener={node.screener}
-                selectedId={selFilterId}
-                onSelect={setSelFilterId}
-                onAddRoot={addRoot}
-                onAddChild={addChild}
-                onRemove={removeFilter}
-                onMove={moveFilter}
-              />
-            </div>
+        {isSynced && (
+          <div className="cfg-note cfg-sync-note">
+            <Icon name="link-2" size={13} />
+            <span>
+              <strong>Synced to {origin.name} · {origin.localId}.</strong> This
+              linked copy always runs with {origin.localId}'s parameters and
+              filters, so it's locked here — edit {origin.localId} to change
+              every linked copy at once, or unsync to configure this one on
+              its own.
+            </span>
+            <button className="cfg-sync-btn" onClick={unsync}
+              title="Make this copy independent — it keeps a snapshot of the current configuration and becomes editable">
+              Unsync
+            </button>
           </div>
         )}
+        {!isSynced && node.syncOf && origin && (
+          <div className="cfg-note cfg-sync-note is-off">
+            <Icon name="unlink" size={13} />
+            <span>Independent copy of {origin.localId} — configured on its own.</span>
+            <button className="cfg-sync-btn" onClick={resync}
+              title={"Sync back to " + origin.localId + " — this copy's own configuration is discarded and it mirrors " + origin.localId + " again"}>
+              Re-sync
+            </button>
+          </div>
+        )}
+        {deps.length > 0 && (
+          <div className="cfg-note cfg-sync-note">
+            <Icon name="link-2" size={13} />
+            <span>
+              <strong>{deps.map(d => d.localId).join(", ")}</strong>
+              {deps.length === 1 ? " is a linked copy" : " are linked copies"} of
+              this step — edits here apply there too.
+            </span>
+          </div>
+        )}
+
+        <div className={isSynced ? "cfg-locked" : undefined}>
+          <div className="cfg-section">
+            <div className="cfg-section-head">Step parameters</div>
+            <div className="config-inspect-grid cfg-step-params">
+              <BlockParams node={view} onPatchConfig={onPatchConfig} />
+            </div>
+          </div>
+
+          {isScreener && (
+            <div className="cfg-section">
+              <div className="cfg-section-head">
+                Filter pipeline
+                <span className="cfg-section-hint">
+                  {isSynced ? "locked · synced to " + origin.localId : "click a filter to configure"}
+                </span>
+              </div>
+              <div className="cfg-tree-wrap">
+                <FilterTree
+                  screener={view.screener}
+                  selectedId={selFilterId}
+                  onSelect={setSelFilterId}
+                  onAddRoot={addRoot}
+                  onAddChild={addChild}
+                  onRemove={removeFilter}
+                  onMove={moveFilter}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   );

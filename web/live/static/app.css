@@ -5294,28 +5294,76 @@ select.gp-v { cursor: pointer; }
   font-size: 10.5px; line-height: 1.5; color: var(--cc-ink-3);
 }
 
-/* ── Filter-tree row actions: move ↑/↓ · copy · remove ────────────────── */
-.ft-node-acts { display: inline-flex; align-items: center; gap: 1px; }
+/* ── Filter-tree row actions: a hover-only OVERLAY (↑ ↓ ⧉ ×) floating over
+   the row's right edge. It reserves NO width, so the summary text gets the
+   whole row while you're not hovering. ──────────────────────────────────── */
+.ft-leaf, .ft-comp-head { position: relative; }
+.ft-node-acts {
+  display: none;
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  align-items: center; gap: 1px;
+  padding: 1px 2px 1px 5px;
+  border-radius: 4px;
+  /* follow the row's own background in every palette/theme combination */
+  background: inherit;
+}
+.ft-leaf:hover .ft-node-acts, .ft-comp-head:hover .ft-node-acts { display: inline-flex; }
 .ft-act {
   width: 18px; height: 18px; padding: 0;
   background: transparent; border: none; color: var(--cc-ink-faint);
   border-radius: 3px; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  opacity: 0;
-  transition: opacity 90ms, color 90ms, background 90ms;
 }
-.ft-leaf:hover .ft-act, .ft-comp-head:hover .ft-act,
-.ft-act.is-copied { opacity: 1; }
 .ft-act:hover:not(:disabled) { color: var(--cc-ink-1); background: var(--cc-hover-soft); }
-.ft-act:disabled { opacity: 0; cursor: default; pointer-events: none; }
-.ft-leaf:hover .ft-act:disabled, .ft-comp-head:hover .ft-act:disabled { opacity: 0.22; }
+.ft-act:disabled { opacity: 0.25; cursor: default; }
 .ft-act.is-copied { color: var(--cc-positive, #2e7d32); }
+
+/* Summaries that can't show anything readable disappear instead of
+   truncating into noise ("V…"): the text lives in an inner span, and a
+   container query on its cell hides it below a readable width. The row's
+   tooltip always carries the full summary. */
+.ft-leaf-body { container-type: inline-size; min-width: 0; }
+.ft-leaf-body-txt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 96px) { .ft-leaf-body-txt { display: none; } }
+.ft-comp-meta { container-type: inline-size; min-width: 0; }
+.ft-comp-meta-txt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 100px) { .ft-comp-meta-txt { display: none; } }
 
 /* Paste entry at the top of the Add-filter popover */
 .ft-pop-item-paste .ft-pop-name {
   display: inline-flex; align-items: center; gap: 5px;
   color: var(--cc-accent);
 }
+/* "Reuse an existing step" entries in the add-step picker */
+.ft-pop-item-reuse .ft-pop-name {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--cc-accent);
+}
+
+/* ── Linked (synced) step copies ───────────────────────────────────────── */
+.pipe-step-row { position: relative; }
+.pipe-sync-badge {
+  position: absolute; top: -7px; right: -7px; z-index: 3;
+  font-family: var(--cc-font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.04em; white-space: nowrap;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--cc-ink-1); color: var(--cc-paper);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+/* Config panel of a synced copy: everything is view-only. */
+.cfg-locked { pointer-events: none; opacity: 0.55; user-select: none; }
+.cfg-sync-note { margin-bottom: 12px; }
+.cfg-sync-note > span { flex: 1 1 auto; }
+.cfg-sync-note > .lc { color: var(--cc-accent); }
+.cfg-sync-note.is-off > .lc { color: var(--cc-ink-3); }
+.cfg-sync-btn {
+  flex: 0 0 auto; align-self: center;
+  padding: 4px 10px; border-radius: 5px;
+  border: 1px solid var(--cc-rule-strong); background: var(--cc-paper);
+  font-size: 11px; color: var(--cc-ink-1); cursor: pointer; white-space: nowrap;
+}
+.cfg-sync-btn:hover { border-color: var(--cc-accent); color: var(--cc-accent); }
 
 /* ── Multi-line LLM query prompts (drag the corner to resize) ─────────── */
 .cfg-kv-multiline { align-items: start; }

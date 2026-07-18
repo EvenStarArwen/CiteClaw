@@ -223,35 +223,48 @@ function App() {
 
   // Pipeline construction — a single insertion primitive (insertAfter) drives
   // serial extend + parallel fan-out; addParallelBranch adds a branch (max 2);
-  // removeStep prunes and collapses empties.
-  const appendAfter = (anchorId, kind) => {
-    const step = newStep(kind);
+  // removeStep prunes and collapses empties. Pickers hand back either a kind
+  // string (fresh step) or {existing: id} (linked copy of that step).
+  const makeStep = (pick) => (typeof pick === "string"
+    ? newStep(pick)
+    : newSyncedStep(findStep(pipeline, pick.existing), pipeline));
+  const appendAfter = (anchorId, pick) => {
+    const step = makeStep(pick);
     setPipeline(ps => insertAfter(ps, anchorId, step));
     setSelectedId(step.id);
   };
-  const appendParallel = (anchorId, kind) => {
-    const step = newStep(kind);
+  const appendParallel = (anchorId, pick) => {
+    const step = makeStep(pick);
     setPipeline(ps => insertAfter(ps, anchorId, newParallel([[step]])));
     setSelectedId(step.id);
   };
-  const addBranch = (parId, kind) => {
-    const step = newStep(kind);
+  const addBranch = (parId, pick) => {
+    const step = makeStep(pick);
     setPipeline(ps => addParallelBranch(ps, parId, step));
     setSelectedId(step.id);
   };
   const removeSelected = () => {
-    setPipeline(ps => removeStep(ps, selectedId));
+    // Copies linked to the removed step first freeze into independent
+    // snapshots of its final state, so nothing silently loses its screener.
+    setPipeline(ps => removeStep(unlinkDependents(ps, selectedId), selectedId));
     setSelectedId(null);
   };
-  // Duplicate the selected step (config + screener, fresh ids) right after
-  // itself — reusing a hand-built screener never means re-typing it.
+  // Header ⧉: insert a linked copy right after the step (any other position
+  // is reachable through the add-step pickers' "reuse an existing step").
   const duplicateSelected = () => {
     const src = findStep(pipeline, selectedId);
     if (!src || src.kind === "seed" || src.kind === "parallel") return;
-    const copy = cloneStep(src);
+    const copy = newSyncedStep(src, pipeline);
     setPipeline(ps => insertAfter(ps, selectedId, copy));
     setSelectedId(copy.id);
   };
+  // Generic step patch (sync/unsync toggles, etc.).
+  const patchSelectedStep = (patch) => {
+    setPipeline(ps => mapStep(ps, selectedId, n => ({ ...n, ...patch })));
+  };
+  // What a run actually executes: synced copies resolved to their origin's
+  // config + screener. Key checks and serialization all use this view.
+  const pipelineResolved = React.useMemo(() => materializePipeline(pipeline), [pipeline]);
 
   // Top-bar actions — launch / stop a real run through the backend.
   // Validate first (client-side) so a missing key / no seeds pops a dialog
@@ -268,7 +281,7 @@ function App() {
       // Key requirements come from EVERY model the run will touch: the
       // Settings default plus each LLM filter's own override.
       const used = [{ model: st.model || "", where: "the default screening model (Settings)" }];
-      forEachLlmFilter(pipeline, (f) => {
+      forEachLlmFilter(pipelineResolved, (f) => {
         const m = f.params && f.params.model;
         if (m) used.push({ model: m, where: "an LLM filter's model override" });
       });
@@ -284,7 +297,7 @@ function App() {
         }
       }
     }
-    const res = await startRun(pipeline, LIVE.getState().seeds);
+    const res = await startRun(pipelineResolved, LIVE.getState().seeds);
     if (res && res.ok) setMode("run");
     else setRunError((res && res.error) || "Could not start the run. Check your settings and try again.");
   };
@@ -351,10 +364,12 @@ function App() {
           </div>
           <BuildStepConfig
             node={selectedNode}
+            pipeline={pipeline}
             onPatchConfig={patchSelectedConfig}
             onUpdateScreener={updateScreener}
             onRemove={removeSelected}
             onDuplicate={duplicateSelected}
+            onPatchStep={patchSelectedStep}
           />
         </>
       ) : mode === "run" ? (
@@ -459,7 +474,7 @@ function App() {
         />
       )}
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} pipeline={pipeline} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} pipeline={pipelineResolved} />
 
       <RunErrorDialog
         error={runError}

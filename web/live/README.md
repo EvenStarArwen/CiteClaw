@@ -50,17 +50,26 @@ uploaded).
      1,000 matches per query; past that, refine the query).
    - **Pipeline** (center-top): the chain of steps (Seed set → Forward /
      Backward screeners → Rerank). Click a block to configure it below.
-     The **⧉ duplicate** button in a step's config header inserts an
-     identical copy — filters included — right after it, so a hand-built
-     screener never has to be rebuilt.
+     Every "add step" menu also offers **Reuse an existing step**: pick one
+     and a **linked copy** is inserted there — it always runs with the
+     original's parameters and filters (edit the original once, every copy
+     follows), wears a **⇄ ORIGINAL-ID** badge in the pipeline, and its own
+     config panel is locked with an explanatory note. **Unsync** in that
+     note makes the copy independent (it keeps a snapshot and becomes
+     editable; **Re-sync** goes back to mirroring). Deleting the original
+     automatically turns its copies independent — nothing loses its
+     screener. The **⧉** button in a step's header is a shortcut for
+     "linked copy right after this step".
    - **Config** (center-bottom): the selected block's filter tree
      (year / citation / keyword / similarity / LLM filters). Hovering a
      filter reveals **↑ / ↓** (reorder — add a filter at the end, walk it
      up to where it belongs, e.g. a cheap citation cap *before* an
-     expensive LLM screen) and **⧉ copy**; every "Add" menu then offers
-     **Paste** of the copied filter (whole groups too), in this step or any
-     other. LLM query prompts are multi-line boxes — drag the lower-right
-     corner to enlarge them.
+     expensive LLM screen), **⧉ copy** and **×**; every "Add" menu then
+     offers **Paste** of the copied filter (whole groups too), in this step
+     or any other. Rows show as much of a filter's summary as fits and hide
+     it entirely when only a meaningless fragment would fit (the tooltip
+     always has the full text). LLM query prompts are multi-line boxes —
+     drag the lower-right corner to enlarge them.
 2. Press **Run pipeline** (top-right).
 3. **Run tab** shows it live: pipeline progress + log (left), the citation
    graph growing (center), metrics + rejections + cost (dashboard), and the

@@ -26,6 +26,9 @@ const COMPOSITE_OPTS = [
 // Sequential/Any confuse users). Pill text + the muted meta line beside it.
 const COMPOSITE_LABEL = { Sequential: "Match ALL", Any: "Match ANY", Not: "Exclude", Route: "Route", Parallel: "Parallel" };
 const COMPOSITE_META  = { Sequential: "AND · all must pass", Any: "OR · one is enough", Not: "invert the child", Route: "if / elif / else", Parallel: "union of branches" };
+// Compact pill labels for the long keyword-filter kinds — full names blew up
+// the row and squeezed the summary down to useless fragments.
+const LEAF_PILL = { TitleKeywordFilter: "Title kw", AbstractKeywordFilter: "Abs kw", VenueKeywordFilter: "Venue kw" };
 
 // --- tree helpers ---------------------------------------------------------
 let __fid = 1000;
@@ -554,9 +557,12 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
 
   if (!isComposite) {
     return (
-      <div className={"ft-leaf" + (selected ? " is-selected" : "")} onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}>
-        <span className="ft-leaf-kind">{node.kind.replace("Filter", "")}</span>
-        <span className="ft-leaf-body">{filterSummary(node)}</span>
+      <div className={"ft-leaf" + (selected ? " is-selected" : "")} onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
+        title={filterSummary(node)}>
+        <span className="ft-leaf-kind">{LEAF_PILL[node.kind] || node.kind.replace("Filter", "")}</span>
+        {/* inner span so a container query can hide the summary entirely when
+            the row is too narrow to show anything readable */}
+        <span className="ft-leaf-body"><span className="ft-leaf-body-txt">{filterSummary(node)}</span></span>
         <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
       </div>
     );
@@ -569,12 +575,13 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
 
   return (
     <div className={"ft-comp ft-comp-" + node.kind.toLowerCase() + (selected ? " is-selected" : "")}>
-      <div className="ft-comp-head" onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}>
+      <div className="ft-comp-head" onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
+        title={(COMPOSITE_META[node.kind] || "") + " · " + kids.length + (kids.length === 1 ? " filter" : " filters")}>
         <span className="ft-comp-kind">{COMPOSITE_LABEL[node.kind] || node.kind}</span>
-        <span className="ft-comp-meta">
+        <span className="ft-comp-meta"><span className="ft-comp-meta-txt">
           {COMPOSITE_META[node.kind] ? COMPOSITE_META[node.kind] + " · " : ""}
           {kids.length} {kids.length === 1 ? "filter" : "filters"}
-        </span>
+        </span></span>
         <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
       </div>
       <div className={"ft-comp-body" + (node.kind === "Parallel" ? " ft-comp-body-parallel" : "")}>

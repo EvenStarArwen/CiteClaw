@@ -408,19 +408,76 @@ function newStep(kind) {
   return node;
 }
 function newParallel(branches) { return { id: "par" + (++__sid), kind: "parallel", branches }; }
-// Deep-copy a STEP (config + whole screener tree) under a fresh id/localId,
-// so "duplicate step" never means re-typing a screener. The screener is
-// re-id'd via cloneFilterNode so the copy is fully independent.
-function cloneStep(step) {
-  const m = STEP_META[step.kind] || { name: step.kind, prefix: "STP" };
+
+// ── Linked duplicates (the YAML "declare a block once, reference it
+//    anywhere" semantics, surfaced visually) ─────────────────────────────
+// A duplicate carries {syncOf: <origin step id>, synced: true|false}.
+// While synced it READS THROUGH to the origin's config + screener (single
+// source of truth — editing the origin updates every linked copy, and the
+// copies are locked). Unsyncing snapshots the origin's current state into
+// the copy, which then configures independently. Links always point at the
+// ROOT origin, never at another duplicate, so there are no chains.
+
+// Every step node in pre-order, recursing through parallel branches.
+function allSteps(seq) {
+  const out = [];
+  const walk = (s) => { for (const el of (s || [])) { if (el.kind === "parallel") (el.branches || []).forEach(walk); else out.push(el); } };
+  walk(seq);
+  return out;
+}
+// Read-through view: a synced duplicate renders and runs with its origin's
+// config/screener. Independent steps come back unchanged.
+function resolveStepView(node, pipeline) {
+  if (!node || !node.syncOf || node.synced === false) return node;
+  const origin = findStep(pipeline, node.syncOf);
+  if (!origin) return node;
+  return { ...node, config: origin.config, screener: origin.screener,
+           _syncLocal: origin.localId, _syncName: origin.name };
+}
+// New linked duplicate of `origin` (root-resolved). The stored
+// config/screener are only a fallback snapshot for unsync / origin loss.
+function newSyncedStep(origin, pipeline) {
+  const root = (origin.syncOf && findStep(pipeline, origin.syncOf)) || origin;
+  const src = resolveStepView(root, pipeline);
+  const m = STEP_META[root.kind] || { name: root.kind, prefix: "STP" };
   const n = ++__sid;
-  const copy = JSON.parse(JSON.stringify({ ...step, screener: null }));
   return {
-    ...copy,
-    id: "n" + n,
+    id: "n" + n, kind: root.kind, name: root.name,
     localId: m.prefix + "-" + String(n).padStart(2, "0"),
-    screener: step.screener ? cloneFilterNode(step.screener) : null,
+    config: JSON.parse(JSON.stringify(src.config || {})),
+    screener: src.screener ? cloneFilterNode(src.screener) : null,
+    syncOf: root.id, synced: true,
   };
+}
+// Steps currently synced to `originId`.
+function syncDependents(pipeline, originId) {
+  return allSteps(pipeline).filter(s => s.syncOf === originId && s.synced !== false);
+}
+// Serialize-time resolution: bake every synced duplicate's origin state in
+// and strip the sync fields — the run backend never needs to know.
+function materializePipeline(pipeline) {
+  const walkSeq = (s) => (s || []).map(el => {
+    if (el.kind === "parallel") return { ...el, branches: (el.branches || []).map(walkSeq) };
+    const { syncOf, synced, _syncLocal, _syncName, ...clean } = resolveStepView(el, pipeline);
+    return clean;
+  });
+  return walkSeq(pipeline);
+}
+// Before deleting a step, turn every copy linked to it independent, frozen
+// at the origin's final state (already-unsynced copies just lose the link).
+function unlinkDependents(pipeline, originId) {
+  const origin = findStep(pipeline, originId);
+  const walkSeq = (s) => (s || []).map(el => {
+    if (el.kind === "parallel") return { ...el, branches: (el.branches || []).map(walkSeq) };
+    if (el.syncOf !== originId) return el;
+    const { syncOf, synced, ...rest } = el;
+    if (el.synced === false || !origin) return rest;
+    const src = resolveStepView(origin, pipeline);
+    return { ...rest,
+      config: JSON.parse(JSON.stringify(src.config || {})),
+      screener: src.screener ? cloneFilterNode(src.screener) : null };
+  });
+  return walkSeq(pipeline);
 }
 
 // Find a step node by id anywhere in the sequence tree (recurses into branches).
@@ -550,9 +607,12 @@ function _sameGeom(a, b) {
   return true;
 }
 
-// Popover that lists the addable step kinds, anchored to its trigger button.
-function StepPicker({ onPick, onClose, anchorRef }) {
+// Popover that lists the addable step kinds — plus every EXISTING step, so a
+// screener built once can be dropped in anywhere as a linked (synced) copy.
+// onPick receives either a kind string (fresh step) or {existing: <step id>}.
+function StepPicker({ onPick, onClose, anchorRef, reusable }) {
   const [pos, setPos] = React.useState(null);
+  const existing = reusable || [];
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -563,7 +623,8 @@ function StepPicker({ onPick, onClose, anchorRef }) {
       const el = anchorRef?.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      const popW = 240, popH = 230, margin = 8;
+      const popW = 250, margin = 8;
+      const popH = Math.min(360, 230 + (existing.length ? 34 + existing.length * 36 : 0));
       let top = r.bottom + 4;
       if (top + popH > window.innerHeight - margin) top = Math.max(margin, r.top - 4 - popH);
       let left = r.left;
@@ -574,11 +635,11 @@ function StepPicker({ onPick, onClose, anchorRef }) {
     window.addEventListener("scroll", compute, true);
     window.addEventListener("resize", compute);
     return () => { window.removeEventListener("scroll", compute, true); window.removeEventListener("resize", compute); };
-  }, [anchorRef]);
+  }, [anchorRef, existing.length]);
   return (
     <>
       <div className="ft-pop-scrim" onClick={onClose} />
-      <div className="ft-pop ft-pop-fixed" style={pos ? { top: pos.top, left: pos.left, width: 240 } : { visibility: "hidden" }}>
+      <div className="ft-pop ft-pop-fixed" style={pos ? { top: pos.top, left: pos.left, width: 250 } : { visibility: "hidden" }}>
         <div className="ft-pop-group">
           <div className="ft-pop-label">Add a step</div>
           <div className="ft-pop-list">
@@ -590,13 +651,28 @@ function StepPicker({ onPick, onClose, anchorRef }) {
             ))}
           </div>
         </div>
+        {existing.length > 0 && (
+          <div className="ft-pop-group">
+            <div className="ft-pop-label">Reuse an existing step</div>
+            <div className="ft-pop-list">
+              {existing.map(s => (
+                <button key={s.id} className="ft-pop-item ft-pop-item-reuse"
+                  onClick={() => { onPick({ existing: s.id }); onClose(); }}
+                  title={"Insert a linked copy of " + s.localId + " — it stays in sync until you unsync it in its config"}>
+                  <span className="ft-pop-name"><Icon name="link-2" size={11} /> {s.name}</span>
+                  <span className="ft-pop-desc">{s.localId} · linked copy — edits to {s.localId} apply here too</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
 }
 
-// A button that opens the StepPicker and calls onPick(kind).
-function StepAddButton({ onPick, label, className, icon }) {
+// A button that opens the StepPicker and forwards its pick.
+function StepAddButton({ onPick, label, className, icon, reusable }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
   return (
@@ -604,7 +680,7 @@ function StepAddButton({ onPick, label, className, icon }) {
       <button ref={ref} className={"pipe-add " + (className || "")} onClick={() => setOpen(true)}>
         <Icon name={icon || "plus"} size={12} /> {label}
       </button>
-      {open && <StepPicker anchorRef={ref} onPick={onPick} onClose={() => setOpen(false)} />}
+      {open && <StepPicker anchorRef={ref} reusable={reusable} onPick={onPick} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -706,7 +782,7 @@ function ParallelBlock({ node, ctx, depth }) {
         {showBranchAdd && (
           <div className="pipe-branch-add">
             <StepAddButton label="branch" className="pipe-add-branch" icon="git-branch"
-              onPick={(k) => ctx.addBranch(node.id, k)} />
+              reusable={ctx.reusable} onPick={(k) => ctx.addBranch(node.id, k)} />
           </div>
         )}
       </div>
@@ -724,7 +800,7 @@ function SeqAdder({ last, ctx }) {
     return (
       <div className="pipe-adder">
         <StepAddButton label="merge branches" className="pipe-add-merge" icon="git-merge"
-          onPick={(k) => ctx.appendAfter(last.id, k)} />
+          reusable={ctx.reusable} onPick={(k) => ctx.appendAfter(last.id, k)} />
       </div>
     );
   }
@@ -739,10 +815,11 @@ function SeqAdder({ last, ctx }) {
             <Icon name="git-branch" size={12} /> parallel
           </span>
         )}
-        <StepAddButton label="add step" className="pipe-add-serial" onPick={(k) => ctx.appendAfter(last.id, k)} />
+        <StepAddButton label="add step" className="pipe-add-serial"
+          reusable={ctx.reusable} onPick={(k) => ctx.appendAfter(last.id, k)} />
         {showParallel && (
           <StepAddButton label="parallel" className="pipe-add-parallel" icon="git-branch"
-            onPick={(k) => ctx.appendParallel(last.id, k)} />
+            reusable={ctx.reusable} onPick={(k) => ctx.appendParallel(last.id, k)} />
         )}
       </div>
     </div>
@@ -763,16 +840,25 @@ function SeqView({ seq, ctx, depth }) {
             {needEdge && <VEdge />}
             {el.kind === "parallel" ? (
               <ParallelBlock node={el} ctx={ctx} depth={depth} />
-            ) : (
-              <div className="pipe-step-row">
-                <PipelineBlock
-                  node={el} index={ctx.indexOf[el.id] || 0}
-                  selected={ctx.selectedId === el.id}
-                  onClick={() => ctx.onSelect(el.id)}
-                  style={ctx.style}
-                />
-              </div>
-            )}
+            ) : (() => {
+              const view = resolveStepView(el, ctx.pipeline);
+              return (
+                <div className="pipe-step-row">
+                  <PipelineBlock
+                    node={view} index={ctx.indexOf[el.id] || 0}
+                    selected={ctx.selectedId === el.id}
+                    onClick={() => ctx.onSelect(el.id)}
+                    style={ctx.style}
+                  />
+                  {view._syncLocal && (
+                    <span className="pipe-sync-badge"
+                      title={"Linked copy of " + view._syncLocal + " — runs with its parameters and filters"}>
+                      ⇄ {view._syncLocal}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </React.Fragment>
         );
       })}
@@ -792,6 +878,10 @@ function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle,
     appendAfter: onAppendAfter,
     appendParallel: onAppendParallel,
     addBranch: onAddBranch,
+    // Steps offered by the "reuse an existing step" pickers: everything but
+    // the seed and synced duplicates (those resolve to their origin anyway).
+    reusable: allSteps(pipeline).filter(s =>
+      s.kind !== "seed" && !(s.syncOf && s.synced !== false)),
   };
   const n = countSteps(pipeline);
   return (
@@ -834,6 +924,7 @@ function forEachLlmFilter(seq, cb) {
 
 Object.assign(window, {
   BuildPipeline, PipelineBlock,
-  newStep, newParallel, cloneStep, findStep, mapStep, removeStep,
+  newStep, newParallel, newSyncedStep, findStep, mapStep, removeStep,
   insertAfter, addParallelBranch, countSteps, forEachLlmFilter,
+  allSteps, resolveStepView, syncDependents, materializePipeline, unlinkDependents,
 });
