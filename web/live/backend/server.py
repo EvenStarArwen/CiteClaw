@@ -20,7 +20,12 @@ from fastapi.staticfiles import StaticFiles
 from . import keys_store, models_catalog
 from .abstracts import fetch_abstract
 from .config_translate import TranslationError, build_config
-from .explore_runs import list_explore_runs, load_explore_collab, load_explore_run
+from .explore_runs import (
+    list_explore_runs,
+    load_explore_collab,
+    load_explore_run,
+    load_explore_upload,
+)
 from .run_manager import manager
 from .s2_seeds import S2SearchError, search_seeds
 from .snapshots import build_graph, build_metrics
@@ -255,6 +260,23 @@ async def explore_collab(path: str) -> dict:
         raise HTTPException(status_code=404, detail="run not found")
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+_UPLOAD_MAX = 60 * 1024 * 1024  # graph XML this big would stall the browser anyway
+
+
+@app.post("/api/explore/upload")
+async def explore_upload(req: Request, name: str = "graph") -> dict:
+    """Open a local GraphML/GEXF picked in the browser. Raw body upload (no
+    multipart dependency); parsed in memory, never written to disk."""
+    data = await req.body()
+    if len(data) > _UPLOAD_MAX:
+        raise HTTPException(status_code=400,
+                            detail=f"'{name}' is larger than 60 MB — too big to explore in the browser.")
+    try:
+        return await asyncio.to_thread(load_explore_upload, name, data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
