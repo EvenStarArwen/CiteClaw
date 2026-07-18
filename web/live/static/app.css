@@ -5115,6 +5115,11 @@ select.gp-v { cursor: pointer; }
   padding: 8px 12px 0;
 }
 .xp-controls + .xp-controls { padding-top: 6px; padding-bottom: 8px; }
+/* A <select>'s flex minimum is its longest option — at narrow sidebar widths
+   it refused to shrink and shoved the refresh/upload buttons out of the
+   panel. Let it shrink (the displayed value ellipsizes); icons never do. */
+.xp-controls .accepted-sort { min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
+.xp-controls .ph-btn { flex: none; }
 
 .xp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 12px; }
 .xp-scroll::-webkit-scrollbar { width: 8px; }
