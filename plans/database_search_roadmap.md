@@ -57,6 +57,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
 
+- 2026-07-18 20:50 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval). Push blocker persists: `webui-gpt5.6` is 29 ahead / 1 behind origin/main — cron cannot fast-forward push; user must merge/rebase origin/main or open a PR.
 - 2026-07-18 19:49 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval). Push blocker persists: `webui-gpt5.6` is 28 ahead / 1 behind origin/main — cron cannot fast-forward push; user must merge/rebase origin/main or open a PR.
 - 2026-07-18 18:48 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval). Push blocker persists: `webui-gpt5.6` is 27 ahead / 1 behind origin/main — cron cannot fast-forward push; user must merge/rebase origin/main or open a PR.
 - 2026-07-18 16:42 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval). Push blocker persists: `webui-gpt5.6` is 26 ahead / 1 behind origin/main — cron cannot fast-forward push; user must merge/rebase origin/main or open a PR.
@@ -66,7 +67,6 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 - 2026-07-18 12:38 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval). ❌ push still rejected non-fast-forward: local `webui-gpt5.6` remains diverged from origin/main. Committed locally only. User must reconcile branches (merge/rebase origin/main into webui-gpt5.6 or push to a feature branch and PR).
 - 2026-07-18 11:37 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval). ❌ push failed: `git push origin HEAD:main` rejected non-fast-forward — local branch `webui-gpt5.6` is behind/diverged from origin/main (5fc814a); committed locally only, not force-pushed. User needs to reconcile branches.
 - 2026-07-17 22:13 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
-- 2026-07-17 21:12 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 ---
 
 ## Architectural decisions (reference)
