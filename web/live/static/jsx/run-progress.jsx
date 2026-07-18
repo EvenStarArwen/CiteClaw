@@ -123,7 +123,7 @@ function RunProgress() {
                 onClick={() => toggleStep(s.localId || i)}
                 title={open ? "Collapse" : "Click for what this step does and where it is"}>
                 <span className="prog-badge">
-                  {s.status === "done" ? "✓" : i + 1}
+                  {s.status === "done" ? "✓" : s.status === "skipped" ? "→" : s.status === "error" ? "!" : i + 1}
                 </span>
                 <div className="prog-body">
                   <span className="prog-name">{s.name}
@@ -148,6 +148,13 @@ function RunProgress() {
                       )}
                       {s.status === "idle" && (
                         <div className="prog-step-detail-line prog-step-detail-dim">Not started yet.</div>
+                      )}
+                      {s.status === "skipped" && (
+                        <div className="prog-step-detail-line prog-step-detail-dim">
+                          This step never ran — the pipeline ended before reaching it
+                          (paper/budget cap, a stop, or an error; the reason is in the
+                          line above and the live log).
+                        </div>
                       )}
                     </div>
                   )}

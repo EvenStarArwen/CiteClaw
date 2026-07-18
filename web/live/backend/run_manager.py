@@ -177,16 +177,38 @@ class StepProgress:
             self.steps[i]["pct"] = 100
             self.steps[i]["sub"] = f"{in_c:,} in · {out_c:,} pass · +{delta:,}"
 
+    def finish(self, status: str, note: str | None) -> None:
+        """Resolve every unfinished step when the run ends.
+
+        Steps the pipeline never reached (paper/budget cap hit, user stop,
+        error) are marked ``skipped`` with the reason, so the list never
+        shows "pending" steps after a Finalize — which read as if the run
+        had silently jumped over them.
+        """
+        for s in self.steps:
+            if s["status"] == "active":
+                s["status"] = "error" if status == "error" else "skipped"
+                s["sub"] = ("failed — see the live log" if status == "error"
+                            else "interrupted — run stopped here")
+            elif s["status"] == "idle":
+                s["status"] = "skipped"
+                s["sub"] = note or (
+                    "skipped — run stopped before this step" if status == "stopped"
+                    else "skipped — run ended before this step")
+
     def snapshot(self) -> dict[str, Any]:
         done = sum(1 for s in self.steps if s["status"] == "done")
+        resolved = sum(1 for s in self.steps if s["status"] in ("done", "skipped", "error"))
         total = len(self.steps)
         cur = next((s["name"] for s in self.steps if s["status"] == "active"), None)
+        # A finished run reads 100% even when steps were skipped by the cap.
+        pct = 100 if total and resolved == total else (round(100 * done / total) if total else 0)
         return {
             "steps": self.steps,
             "done": done,
             "total": total,
             "current": cur,
-            "overallPct": round(100 * done / total) if total else 0,
+            "overallPct": pct,
         }
 
 
@@ -209,6 +231,9 @@ class RunState:
         self.progress = StepProgress(steps_meta)
         self.error: str | None = None
         self.summary: dict[str, Any] | None = None
+        # Set when the core announces an early stop (budget / paper cap) so
+        # skipped steps can carry the actual reason.
+        self.stop_note: str | None = None
 
 
 class WebDashboard:
@@ -304,7 +329,12 @@ class WebDashboard:
             self._emit(force=True)
 
     def warn(self, msg: str) -> None:
-        self._log("WARN", str(msg))
+        m = str(msg)
+        # The core announces cap/budget stops via warn("Budget/cap reached —
+        # stopping early"); remember it so skipped steps can say WHY.
+        if "stopping early" in m.lower():
+            self.rs.stop_note = "skipped — " + m
+        self._log("WARN", m)
 
     def note(self, msg: str) -> None:
         self._log("NOTE", str(msg))
@@ -561,6 +591,14 @@ class RunManager:
                         closer.close()
                 except Exception:
                     pass
+
+        # Resolve unreached steps (skipped/interrupted, with the reason) so
+        # the list never ends with "pending" rows after Finalize already ran.
+        try:
+            rs.progress.finish(rs.status, rs.stop_note)
+            self.broadcast(rs, {"type": "progress", "progress": rs.progress.snapshot()})
+        except Exception:
+            pass
 
         # final snapshots so the UI shows the completed graph + numbers
         if rs.ctx is not None:

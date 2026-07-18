@@ -5558,6 +5558,19 @@ select.gp-v { cursor: pointer; }
 .accepted-controls { padding-bottom: 10px; }
 .accepted-scroll { padding-top: 6px; }
 
+/* Steps the run never reached (paper/budget cap, stop, error): resolved as
+   "skipped" with the reason, instead of dangling as "pending" forever. */
+.prog-step.is-skipped { opacity: 0.62; }
+.prog-step.is-skipped .prog-badge {
+  background: transparent; color: var(--cc-ink-3);
+  border: 1px dashed var(--cc-ink-faint);
+}
+.prog-step.is-skipped .prog-meta { font-style: italic; }
+.prog-step.is-error .prog-badge {
+  background: var(--cc-danger); color: var(--cc-paper); border: none;
+}
+.prog-step.is-error .prog-meta { color: var(--cc-danger); }
+
 /* ── Multi-line LLM query prompts (drag the corner to resize) ─────────── */
 .cfg-kv-multiline { align-items: start; }
 .cfg-kv-multiline .cfg-kv-k { margin-top: 1px; }
