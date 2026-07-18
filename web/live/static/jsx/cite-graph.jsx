@@ -135,20 +135,27 @@ function cgYearDomain(papers) {
   return { min, max: Math.max(max, min + 1) };
 }
 
-// Author view: colour by h-index when the data has it, papers-in-collection
-// otherwise (JSON-derived collab graphs carry no h-index).
+// Author view: colour by the year the author first appeared in the
+// collection (author_graph.py's `year_entered`, or derived). Data without
+// years (older exports) falls back to h-index, then papers-in-collection.
 function cgAuthorDomain(papers) {
-  let hMax = 0, pMax = 0;
+  let yMin = Infinity, yMax = -Infinity, hMax = 0, pMax = 0;
   for (const p of papers || []) {
+    const y = Number(p.year) || 0;
+    if (y > 1800) { if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
     if ((p.hIndex || 0) > hMax) hMax = p.hIndex || 0;
     if ((p.nPapers || 0) > pMax) pMax = p.nPapers || 0;
+  }
+  if (isFinite(yMin)) {
+    return { min: yMin, max: Math.max(yMax, yMin + 1), field: "year",
+             caption: `first paper ${yMin} → ${yMax}` };
   }
   if (hMax > 0) return { min: 0, max: hMax, field: "hIndex", caption: `h-index 0 → ${hMax}` };
   return { min: 0, max: Math.max(1, pMax), field: "nPapers", caption: `papers 0 → ${pMax}` };
 }
 
 function cgColorValue(p, kind, domain) {
-  if (kind === "author") return Number(p[domain.field]) || 0;
+  if (kind === "author" && domain.field !== "year") return Number(p[domain.field]) || 0;
   const y = Number(p.year) || 0;
   return y > 1800 ? y : null;
 }
@@ -167,22 +174,34 @@ function cgLegacyRadius(p) {
   return 3.5 + Math.min(4.5, Math.log10(1 + c) * 1.2);
 }
 
-// Adjustable curve: size ∝ (v / vmax)^γ with γ = t/(1-t). contrast t = 0 →
-// every node the same size; the middle → linear in the raw value; higher →
-// only the giants stand out. Default t ≈ log-like (the legacy look).
-// Contrast also widens the size RANGE itself: the default keeps the classic
-// 3.5–8 band, but cranked up the giants grow to ~10× the floor
-// (Gephi-style ranking) instead of only redistributing inside a fixed
-// 2.3× band — which read as "no contrast" on long-tailed citation counts.
+// Gephi-style ranking: the user sets the EXACT min/max radius (so a 1 → 100
+// range is a genuine 100× difference) and picks a transformation applied to
+// the normalized value — the analogue of Gephi's spline presets. Concave
+// curves (√, ∛, log) lift the long tail's small values; convex ones (², ³)
+// reserve size for the giants. Min = max gives uniform nodes.
+const CG_CURVES = {
+  linear: t => t,
+  sqrt: t => Math.sqrt(t),
+  cbrt: t => Math.cbrt(t),
+  log: t => Math.log10(1 + 99 * t) / 2,   // two decades of dynamic range
+  pow2: t => t * t,
+  pow3: t => t * t * t,
+};
+const CG_CURVE_NAMES = [
+  ["linear", "Linear"], ["sqrt", "Square root"], ["cbrt", "Cube root"],
+  ["log", "Log"], ["pow2", "Squared"], ["pow3", "Cubed"],
+];
+
+// Node size value: citations for papers, in-collection citations for authors
+// (the collab payload's `cites` is intra_network_citation).
 function cgParamRadius(p, kind, vis, vmax) {
-  const v = kind === "author" ? (Number(p.nPapers) || 0) : Math.max(0, Number(p.cites) || 0);
-  const t = Math.min(0.995, Math.max(0, vis.contrast));
-  const g = Math.min(6, t / (1 - t));
-  const w = vmax > 0 ? Math.max(0, Math.min(1, v / vmax)) : 0;
-  const s01 = g === 0 ? 1 : Math.pow(w, g);
-  const span = 4.5 + 36 * t * t;
-  let r = vis.unitSize * (3.5 + span * s01);
-  if (p.seed) r = Math.max(r, vis.unitSize * 8);
+  const v = Math.max(0, Number(p.cites) || 0);
+  const lo = Math.max(0.5, Number(vis.minSize) || 0.5);
+  const hi = Math.max(lo, Number(vis.maxSize) || lo);
+  const t = vmax > 0 ? Math.max(0, Math.min(1, v / vmax)) : 0;
+  const f = CG_CURVES[vis.sizeCurve] || CG_CURVES.sqrt;
+  let r = lo + (hi - lo) * f(t);
+  if (p.seed) r = Math.max(r, lo + 0.45 * (hi - lo));  // seeds never vanish
   return r;
 }
 
@@ -192,8 +211,20 @@ function cgRadius(p, kind, vis, vmax, legacy) {
 // Border budget added around the fill (ring space + halo/stroke), so the
 // visible fill keeps the run-canvas sizes.
 function cgNodeSize(p, kind, vis, vmax, legacy) {
-  const unit = legacy ? 1 : vis.unitSize;
-  return cgRadius(p, kind, vis, vmax, legacy) + (p.seed ? 5 : 2.5) * unit;
+  return cgRadius(p, kind, vis, vmax, legacy) + (p.seed ? 5 : 2.5);
+}
+
+// Edge width ∝ edge weight over the VISIBLE edges' weight range, with its
+// own min/max + transformation (mirrors the node ranking). Graphs without
+// meaningful weights (all equal) render every edge at the minimum width.
+function cgEdgeWidth(w, wrange, vis) {
+  const lo = Math.max(0.1, Number(vis.edgeMin) || 0.1);
+  const hi = Math.max(lo, Number(vis.edgeMax) || lo);
+  if (!wrange || !(wrange.hi > wrange.lo)) return lo;
+  const v = w == null ? 1 : Number(w) || 0;
+  const t = Math.max(0, Math.min(1, (v - wrange.lo) / (wrange.hi - wrange.lo)));
+  const f = CG_CURVES[vis.edgeCurve] || CG_CURVES.linear;
+  return lo + (hi - lo) * f(t);
 }
 
 function cgTrunc(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 2) + "…" : s; }
@@ -216,7 +247,11 @@ const CG_FA2_DEFAULTS = {
   slowDown: 5,
   edgeWeightInfluence: 0,
 };
-const CG_VIS_DEFAULTS = { unitSize: 1, contrast: 0.1, palette: "ember" };
+const CG_VIS_DEFAULTS = {
+  minSize: 3, maxSize: 20, sizeCurve: "sqrt",
+  edgeMin: 0.8, edgeMax: 2.5, edgeCurve: "linear",
+  palette: "ember",
+};
 const CG_GF_DEFAULTS = { minDegree: 0, minEdgeW: 0, largestOnly: false };
 
 const CG_PREWARM_ITERS = 300; // one-shot sync FA2 before first paint (~0.3s)
@@ -297,18 +332,22 @@ function cgComponents(nodes, edges) {
   return { of, sizes };
 }
 
-// Whole-network statistics for the stats card. Diameter is exact BFS over
-// the largest component (fine for the target <1k-node scale; skipped above
-// 1500 nodes so the UI never stalls).
+// Whole-network statistics for the stats card. Diameter is exact all-sources
+// BFS up to 400 nodes; above that a pseudo-diameter (alternating
+// farthest-node sweeps — exact on trees, tight on real citation graphs) keeps
+// it O(edges). The exact version at 1500 nodes was the multi-second UI stall
+// whenever a filter changed.
 function cgComputeStats(active) {
   const n = active.nodes.length, m = active.edges.length;
   if (!n) return null;
   const comp = cgComponents(active.nodes, active.edges);
-  let largest = 0;
-  for (const [, size] of comp.sizes) largest = Math.max(largest, size);
+  let largest = 0, bestComp = -1;
+  for (const [cid, size] of comp.sizes) {
+    if (size > largest) { largest = size; bestComp = cid; }
+  }
 
   let diameter = null;
-  if (n >= 2 && n <= 1500 && largest >= 2) {
+  if (n >= 2 && largest >= 2) {
     const idx = {}, ids = [];
     active.nodes.forEach((p, i) => { idx[p.id] = i; ids.push(p.id); });
     const adj = Array.from({ length: n }, () => []);
@@ -316,25 +355,42 @@ function cgComputeStats(active) {
       adj[idx[e.source]].push(idx[e.target]);
       adj[idx[e.target]].push(idx[e.source]);
     }
-    // restrict BFS sources to the largest component
-    let bestComp = -1, bestSize = 0;
-    for (const [cid, size] of comp.sizes) if (size > bestSize) { bestComp = cid; bestSize = size; }
+    const inBest = (i) => comp.of[ids[i]] === bestComp;
     const dist = new Int32Array(n);
     const queue = new Int32Array(n);
-    diameter = 0;
-    for (let s = 0; s < n; s++) {
-      if (comp.of[ids[s]] !== bestComp) continue;
+    const bfs = (s) => {  // -> [farthest node, its distance]
       dist.fill(-1); dist[s] = 0;
-      let head = 0, tail = 0;
+      let head = 0, tail = 0, far = s, fd = 0;
       queue[tail++] = s;
-      let far = 0;
       while (head < tail) {
         const u = queue[head++];
         for (const v of adj[u]) {
-          if (dist[v] === -1) { dist[v] = dist[u] + 1; if (dist[v] > far) far = dist[v]; queue[tail++] = v; }
+          if (dist[v] === -1) {
+            dist[v] = dist[u] + 1;
+            if (dist[v] > fd) { fd = dist[v]; far = v; }
+            queue[tail++] = v;
+          }
         }
       }
-      if (far > diameter) diameter = far;
+      return [far, fd];
+    };
+    if (n <= 400) {
+      diameter = 0;
+      for (let s = 0; s < n; s++) {
+        if (!inBest(s)) continue;
+        const [, fd] = bfs(s);
+        if (fd > diameter) diameter = fd;
+      }
+    } else {
+      let s = 0;
+      while (s < n && !inBest(s)) s++;
+      diameter = 0;
+      for (let sweep = 0; sweep < 4 && s < n; sweep++) {
+        const [far, fd] = bfs(s);
+        if (fd <= diameter) break;
+        diameter = fd;
+        s = far;
+      }
     }
   }
   return {
@@ -362,7 +418,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     selected: null, hovered: null, anchor: null, connected: new Set(),
     top3: new Set(), labels: false, paperById: {}, posCache: {},
     activeData: { nodes: [], nodeSet: new Set(), edges: [] },
-    kind: "paper", legacy: false, vmax: 0, origHover: null,
+    kind: "paper", legacy: false, vmax: 0, wrange: { lo: 0, hi: 0 }, origHover: null,
     sizeK: 1, origZoomFn: null,
     dataKey: null, stopTimer: null, animRAF: 0, replayTimer: null,
     syncTimer: null,
@@ -389,6 +445,25 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const [palTick, setPalTick] = React.useState(0);
   st.fa2 = fa2; st.vis = vis; st.gf = gf; st.labels = showLabels;
 
+  // Filter edits hit the simulation only after a short pause — dragging the
+  // edge-weight slider fires dozens of onChange ticks, and rebuilding the
+  // active subgraph + stats + layout per tick froze the UI for seconds.
+  const [gfApplied, setGfApplied] = React.useState(() => ({ ...CG_GF_DEFAULTS }));
+  React.useEffect(() => {
+    const t = setTimeout(() => setGfApplied(gf), 220);
+    return () => clearTimeout(t);
+  }, [gf]);
+  // Structural filters are dataset-scoped (a min-edge-weight tuned to one
+  // graph's weight range is meaningless on another). Reset them the moment
+  // the dataset switches — during render, so the rebuild effect can never
+  // see the previous dataset's thresholds through the debounce window.
+  const [gfForKey, setGfForKey] = React.useState(dataKey);
+  if (gfForKey !== dataKey) {
+    setGfForKey(dataKey);
+    setGf({ ...CG_GF_DEFAULTS });
+    setGfApplied({ ...CG_GF_DEFAULTS });
+  }
+
   React.useEffect(() => {
     if (libs !== "loading") return;
     const onReady = () => setLibs(window.GraphLibs && window.GraphLibs.error ? "error" : "ready");
@@ -399,8 +474,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
 
   // ---- derived data ------------------------------------------------------
   const active = React.useMemo(
-    () => cgComputeActive(papers, edges, hiddenIds, gf),
-    [papers, edges, hiddenIds, gf]);
+    () => cgComputeActive(papers, edges, hiddenIds, gfApplied),
+    [papers, edges, hiddenIds, gfApplied]);
   st.activeData = active;
 
   const cdomain = React.useMemo(
@@ -414,7 +489,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const vmax = React.useMemo(() => {
     let v = 0;
     for (const p of active.nodes) {
-      const x = kind === "author" ? (Number(p.nPapers) || 0) : (Number(p.cites) || 0);
+      const x = Number(p.cites) || 0;
       if (x > v) v = x;
     }
     return v;
@@ -424,6 +499,23 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     st.vmax = vmax;
     if (!st.legacy) resizeNodes();  // renormalize what's already on canvas
   }, [vmax]);  // eslint-disable-line
+
+  // Weight range over the VISIBLE edges (same renormalize-on-filter rule as
+  // node sizes) — feeds the width mapping in the edge reducer.
+  const wrange = React.useMemo(() => {
+    let lo = Infinity, hi = 0;
+    for (const e of active.edges) {
+      const w = e.weight == null ? 1 : Number(e.weight) || 0;
+      if (w < lo) lo = w;
+      if (w > hi) hi = w;
+    }
+    return { lo: lo === Infinity ? 0 : lo, hi };
+  }, [active]);
+  st.wrange = wrange;
+  React.useEffect(() => {
+    st.wrange = wrange;
+    if (st.sigma) st.sigma.refresh();
+  }, [wrange]);  // eslint-disable-line
 
   const ranges = React.useMemo(() => {
     let maxW = 0, minW = Infinity, deg = {}, maxDeg = 0;
@@ -808,8 +900,12 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         const yc = cgRampColor(st.pal, st.cdomain, st.graph.getNodeAttribute(tgt, "_cval"));
         const touches = st.anchor && (src === st.anchor || tgt === st.anchor);
         const k = st.sizeK || 1;
-        if (touches) return { ...data, color: cgFade(yc, 0.85, st.pal.bgRgb), size: 1.6 * k, zIndex: 1 };
-        return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: 0.8 * k };
+        const bw = (st.legacy ? 0.8 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * k;
+        if (touches) {
+          return { ...data, color: cgFade(yc, 0.85, st.pal.bgRgb),
+                   size: Math.max(bw * 1.6, bw + 0.8 * k), zIndex: 1 };
+        }
+        return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: bw };
       },
     };
     if (createNodeBorderProgram) {
@@ -1043,7 +1139,10 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     setVis(next);
     st.vis = next;
     if (patch.palette != null) applyPalette();
-    if (patch.unitSize != null || patch.contrast != null) resizeNodes();
+    if (patch.minSize != null || patch.maxSize != null || patch.sizeCurve != null) resizeNodes();
+    if (patch.edgeMin != null || patch.edgeMax != null || patch.edgeCurve != null) {
+      if (st.sigma) st.sigma.refresh();  // widths live in the edge reducer
+    }
   };
   const applyGf = (patch) => setGf(g0 => ({ ...g0, ...patch }));
   const toggleLabels = (on) => {
@@ -1077,7 +1176,9 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     tip.firstChild.textContent = p.title;
     tip.lastChild.textContent = (st.kind === "author"
       ? [p.venue, p.hIndex != null ? `h-index ${p.hIndex}` : null,
-         `${p.nPapers || 0} papers`, (p.cites || 0).toLocaleString() + " cites"]
+         `${p.nPapers || 0} papers`,
+         (p.cites || 0).toLocaleString() + " cites here",
+         p.year ? `since ${p.year}` : null]
       : [p.authors, p.year, p.venue, (p.cites || 0).toLocaleString() + " cites"]
     ).filter(Boolean).join(" · ");
     tip.style.display = "block";
@@ -1213,7 +1314,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
             {sizeHint && (
               <span className="net-legend-item">
                 <span className="net-hint-txt">
-                  size ∝ {kind === "author" ? "papers" : "citations"}
+                  size ∝ {kind === "author" ? "citations in collection" : "citations"}
                 </span>
               </span>
             )}
@@ -1317,18 +1418,58 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
           </label>
 
           <div className="cg-pop-title cg-pop-sec">Appearance</div>
-          <label className="cg-pop-row">
+          <label className="cg-pop-row"
+                 title="Exact min / max node radius, like Gephi's ranking (1 → 100 is a real 100× difference). Set min = max for uniform nodes.">
             <span className="cg-pop-k">Node size</span>
-            <input type="range" min="0.4" max="2.2" step="0.05" value={vis.unitSize}
-                   onChange={e => applyVis({ unitSize: +e.target.value })} />
-            <span className="cg-pop-v">×{vis.unitSize.toFixed(2)}</span>
+            <span className="cg-pop-pair">
+              <input type="number" className="cg-pop-num" min="0.5" max="200" step="1"
+                     value={vis.minSize}
+                     onChange={e => applyVis({ minSize: e.target.value === "" ? "" : +e.target.value })} />
+              <span className="cg-pop-dash">–</span>
+              <input type="number" className="cg-pop-num" min="0.5" max="200" step="1"
+                     value={vis.maxSize}
+                     onChange={e => applyVis({ maxSize: e.target.value === "" ? "" : +e.target.value })} />
+            </span>
           </label>
-          <label className="cg-pop-row" title="0 = all nodes the same size · middle = size linear in citations · high = only the giants stand out">
-            <span className="cg-pop-k">Size contrast</span>
-            <input type="range" min="0" max="0.85" step="0.01" value={vis.contrast}
-                   onChange={e => applyVis({ contrast: +e.target.value })} />
-            <span className="cg-pop-v">{vis.contrast.toFixed(2)}</span>
+          <label className="cg-pop-row"
+                 title={"How " + (kind === "author" ? "in-collection citations" : "citations") + " map onto the size range — Gephi's spline presets. √ / ∛ / Log lift the long tail's small values; Squared / Cubed reserve size for the giants."}>
+            <span className="cg-pop-k">Size scale</span>
+            <select className="cg-pop-select" value={vis.sizeCurve}
+                    onChange={e => applyVis({ sizeCurve: e.target.value })}>
+              {CG_CURVE_NAMES.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+            <span className="cg-pop-v" />
           </label>
+          <label className="cg-pop-row"
+                 title={ranges.weighted
+                   ? "Edge width is proportional to edge weight, mapped into this min–max range."
+                   : "This graph has no varying edge weights — every edge renders at the minimum width."}>
+            <span className="cg-pop-k">Edge width</span>
+            <span className="cg-pop-pair">
+              <input type="number" className="cg-pop-num" min="0.1" max="20" step="0.1"
+                     value={vis.edgeMin}
+                     onChange={e => applyVis({ edgeMin: e.target.value === "" ? "" : +e.target.value })} />
+              <span className="cg-pop-dash">–</span>
+              <input type="number" className="cg-pop-num" min="0.1" max="20" step="0.1"
+                     value={vis.edgeMax}
+                     onChange={e => applyVis({ edgeMax: e.target.value === "" ? "" : +e.target.value })} />
+            </span>
+          </label>
+          {ranges.weighted && (
+            <label className="cg-pop-row"
+                   title="Transformation from edge weight to width — same presets as the node sizes.">
+              <span className="cg-pop-k">Width scale</span>
+              <select className="cg-pop-select" value={vis.edgeCurve}
+                      onChange={e => applyVis({ edgeCurve: e.target.value })}>
+                {CG_CURVE_NAMES.map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+              <span className="cg-pop-v" />
+            </label>
+          )}
           <label className="cg-pop-row">
             <span className="cg-pop-k">Palette</span>
             <select className="cg-pop-select" value={vis.palette}
