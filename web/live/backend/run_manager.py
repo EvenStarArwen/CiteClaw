@@ -815,8 +815,9 @@ class RunManager:
     # forwards records from its own run thread (see _LogBridge).
     scope_logs_to_thread = False
 
-    def start_run(self, config, owner: str | None = None) -> tuple[str, list[dict[str, Any]]]:
-        run_id = uuid.uuid4().hex[:12]
+    def start_run(self, config, owner: str | None = None,
+                  run_id: str | None = None) -> tuple[str, list[dict[str, Any]]]:
+        run_id = run_id or uuid.uuid4().hex[:12]
         steps_meta = _steps_meta_from_config(config)
         rs = RunState(run_id, config, steps_meta)
         rs.owner = owner
