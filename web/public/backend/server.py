@@ -57,10 +57,21 @@ _SCRUB_ENV = (
 )
 
 
+def _css_version() -> str:
+    try:
+        return str(int((live_server.STATIC_DIR / "app.css").stat().st_mtime))
+    except OSError:
+        return "0"
+
+
 def assemble_public_index() -> str:
     html = assemble_index()
     html = html.replace("window.__TWEAKS =",
                         "window.__PUBLIC__ = true;\nwindow.__TWEAKS =")
+    # Cache-bust the stylesheet per deploy — without it, browsers reuse a
+    # heuristically-cached app.css and users see stale styling after updates.
+    html = html.replace('href="/static/app.css"',
+                        f'href="/static/app.css?v={_css_version()}"')
     extras = PUBLIC_JSX / "public-extras.jsx"
     if extras.exists():
         block = "\n// === public-extras.jsx ===\n" + extras.read_text(encoding="utf-8")
@@ -149,6 +160,10 @@ class _Hardening(BaseHTTPMiddleware):
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
         if request.url.path.startswith("/api/"):
             resp.headers.setdefault("Cache-Control", "no-store")
+        elif request.url.path == "/" or request.url.path.startswith("/static/"):
+            # Always revalidate app HTML + assets (304s are cheap) so a
+            # deploy is visible on the next plain reload, no hard-refresh.
+            resp.headers.setdefault("Cache-Control", "no-cache")
         return resp
 
 
