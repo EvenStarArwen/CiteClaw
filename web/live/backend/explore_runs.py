@@ -44,16 +44,17 @@ _meta_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _gexf_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
-def _collection_files() -> list[Path]:
+def _collection_files(root: Path | None = None) -> list[Path]:
     """One data file per run dir; literature_collection.json wins over GEXF."""
-    if not RUNS_ROOT.is_dir():
+    base = root or RUNS_ROOT
+    if not base.is_dir():
         return []
     by_dir: dict[Path, Path] = {}
-    for jf in list(RUNS_ROOT.glob("*/literature_collection.json")) \
-            + list(RUNS_ROOT.glob("*/*/literature_collection.json")):
+    for jf in list(base.glob("*/literature_collection.json")) \
+            + list(base.glob("*/*/literature_collection.json")):
         by_dir[jf.parent] = jf
-    for gx in list(RUNS_ROOT.glob(f"*/{GEXF_NAME}")) \
-            + list(RUNS_ROOT.glob(f"*/*/{GEXF_NAME}")):
+    for gx in list(base.glob(f"*/{GEXF_NAME}")) \
+            + list(base.glob(f"*/*/{GEXF_NAME}")):
         by_dir.setdefault(gx.parent, gx)
     return list(by_dir.values())
 
@@ -174,7 +175,7 @@ def _gexf_payload(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _run_meta(jf: Path) -> dict[str, Any] | None:
+def _run_meta(jf: Path, root: Path | None = None) -> dict[str, Any] | None:
     try:
         mtime = jf.stat().st_mtime
     except OSError:
@@ -184,7 +185,7 @@ def _run_meta(jf: Path) -> dict[str, Any] | None:
     if cached and cached[0] == mtime:
         return cached[1]
     # jf arrives relative from the list scan but absolute from load_explore_run
-    rel = jf.parent.resolve().relative_to(RUNS_ROOT.resolve()).as_posix()
+    rel = jf.parent.resolve().relative_to((root or RUNS_ROOT).resolve()).as_posix()
     try:
         if jf.name == GEXF_NAME:
             payload = _gexf_payload(jf)
@@ -210,24 +211,24 @@ def _run_meta(jf: Path) -> dict[str, Any] | None:
     return meta
 
 
-def list_explore_runs() -> list[dict[str, Any]]:
+def list_explore_runs(root: Path | None = None) -> list[dict[str, Any]]:
     """All explorable runs, newest first."""
-    metas = [m for jf in _collection_files() if (m := _run_meta(jf)) is not None]
+    metas = [m for jf in _collection_files(root) if (m := _run_meta(jf, root)) is not None]
     metas.sort(key=lambda m: m["mtime"], reverse=True)
     return metas
 
 
-def _resolve_run_dir(rel_path: str) -> Path:
+def _resolve_run_dir(rel_path: str, root: Path | None = None) -> Path:
     """Map a client-supplied relative path back to a real run dir, refusing
     anything that escapes ``runs/``."""
-    root = RUNS_ROOT.resolve()
-    candidate = (RUNS_ROOT / rel_path).resolve()
-    if root != candidate and root not in candidate.parents:
+    base = (root or RUNS_ROOT).resolve()
+    candidate = ((root or RUNS_ROOT) / rel_path).resolve()
+    if base != candidate and base not in candidate.parents:
         raise ValueError("invalid run path")
     return candidate
 
 
-def _load_gexf_run(gx: Path) -> dict[str, Any]:
+def _load_gexf_run(gx: Path, root: Path | None = None) -> dict[str, Any]:
     payload = _gexf_payload(gx)
     raw = sorted(payload["papers"],
                  key=lambda p: (p["seed"], p["cites"]), reverse=True)
@@ -235,17 +236,17 @@ def _load_gexf_run(gx: Path) -> dict[str, Any]:
     papers = raw[:_MAX_PAPERS]
     kept = {p["id"] for p in papers}
     edges = [e for e in payload["edges"] if e["source"] in kept and e["target"] in kept]
-    meta = _run_meta(gx) or {}
+    meta = _run_meta(gx, root) or {}
     return {"papers": papers, "edges": edges, "meta": {**meta, "dropped": dropped}}
 
 
-def load_explore_run(rel_path: str) -> dict[str, Any]:
-    run_dir = _resolve_run_dir(rel_path)
+def load_explore_run(rel_path: str, root: Path | None = None) -> dict[str, Any]:
+    run_dir = _resolve_run_dir(rel_path, root)
     jf = run_dir / "literature_collection.json"
     if not jf.is_file():
         gx = run_dir / GEXF_NAME
         if gx.is_file():
-            return _load_gexf_run(gx)
+            return _load_gexf_run(gx, root)
         raise FileNotFoundError(rel_path)
     with open(jf, encoding="utf-8") as f:
         data = json.load(f)
@@ -293,7 +294,7 @@ def load_explore_run(rel_path: str) -> dict[str, Any]:
             seen.add(key)
             edges.append({"source": a, "target": b})
 
-    meta = _run_meta(jf) or {}
+    meta = _run_meta(jf, root) or {}
     return {
         "papers": papers,
         "edges": edges,
@@ -447,7 +448,7 @@ def _derive_collab(raw_papers: list[dict[str, Any]]) -> dict[str, Any]:
     return {"papers": authors, "edges": edges}
 
 
-def load_explore_collab(rel_path: str) -> dict[str, Any]:
+def load_explore_collab(rel_path: str, root: Path | None = None) -> dict[str, Any]:
     run_dir = _resolve_run_dir(rel_path)
     gm = run_dir / COLLAB_NAME
     if gm.is_file():

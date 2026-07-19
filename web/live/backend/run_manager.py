@@ -380,6 +380,9 @@ class RunState:
         self.cap_prompted = False
         self.cap_event = threading.Event()
         self.cap_decision: dict[str, Any] | None = None
+        # Multi-tenant deployments stamp the owning session id here; the
+        # single-user local server leaves it None.
+        self.owner: str | None = None
 
 
 class WebDashboard:
@@ -653,16 +656,23 @@ class _LogBridge(logging.Handler):
     the WebSocket.
     """
 
-    def __init__(self, mgr: "RunManager", rs: RunState):
+    def __init__(self, mgr: "RunManager", rs: RunState,
+                 only_thread: str | None = None):
         super().__init__(level=logging.DEBUG)
         self.mgr = mgr
         self.rs = rs
+        # Multi-tenant servers scope each bridge to its own run thread —
+        # the "citeclaw" logger is process-global, so without this filter
+        # concurrent runs would stream each other's log lines.
+        self.only_thread = only_thread
         self._window_start = 0.0
         self._window_count = 0
         self._dropped = 0
 
     def emit(self, record: logging.LogRecord) -> None:  # noqa: D102
         try:
+            if self.only_thread and record.threadName != self.only_thread:
+                return
             now = time.monotonic()
             if now - self._window_start > 2.0:
                 if self._dropped:
@@ -801,10 +811,15 @@ class RunManager:
             rs.subscribers.discard(q)
 
     # ---- lifecycle ----------------------------------------------------
-    def start_run(self, config) -> tuple[str, list[dict[str, Any]]]:
+    # Multi-tenant subclasses flip this so each run's log bridge only
+    # forwards records from its own run thread (see _LogBridge).
+    scope_logs_to_thread = False
+
+    def start_run(self, config, owner: str | None = None) -> tuple[str, list[dict[str, Any]]]:
         run_id = uuid.uuid4().hex[:12]
         steps_meta = _steps_meta_from_config(config)
         rs = RunState(run_id, config, steps_meta)
+        rs.owner = owner
         self.runs[run_id] = rs
         t = threading.Thread(target=self._run, args=(rs,), daemon=True, name=f"citeclaw-run-{run_id}")
         rs.thread = t
@@ -845,7 +860,9 @@ class RunManager:
         dash = WebDashboard(self, rs)
         cc_logger = logging.getLogger("citeclaw")
         prior_level = cc_logger.level
-        bridge = _LogBridge(self, rs)
+        bridge = _LogBridge(self, rs,
+                            only_thread=(threading.current_thread().name
+                                         if self.scope_logs_to_thread else None))
         cc_logger.addHandler(bridge)
         # let DEBUG records reach OUR handler; console handlers keep their
         # own (higher) levels, so the terminal stays quiet
@@ -914,6 +931,13 @@ class RunManager:
                 pass
         self.broadcast(rs, {"type": "done", "status": rs.status,
                             "summary": rs.summary, "error": rs.error})
+        try:
+            self.on_run_end(rs)
+        except Exception:  # noqa: BLE001 - bookkeeping must not mask run status
+            pass
+
+    def on_run_end(self, rs: RunState) -> None:
+        """Hook for subclasses (quota release, artifact sync). No-op here."""
 
 
 # process-wide singleton

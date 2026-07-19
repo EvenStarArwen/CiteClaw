@@ -41,7 +41,10 @@ _EMPTY_PAGE = {"total": 0, "offset": 0, "next": None, "items": []}
 
 
 def search_seeds(query: str, limit: int = 100, year: str = "",
-                 min_citations: int = 0, offset: int = 0) -> dict:
+                 min_citations: int = 0, offset: int = 0,
+                 api_key: str | None = None) -> dict:
+    """``api_key=None`` keeps the local behavior (env lookup); multi-tenant
+    servers pass each session's own key explicitly ("" forces keyless)."""
     query = (query or "").strip()
     if not query:
         return dict(_EMPTY_PAGE)
@@ -49,7 +52,7 @@ def search_seeds(query: str, limit: int = 100, year: str = "",
     if offset >= _S2_MAX_REACH:
         return {"total": 0, "offset": offset, "next": None, "items": []}
     limit = max(1, min(100, int(limit), _S2_MAX_REACH - offset))
-    key = _api_key()
+    key = _api_key() if api_key is None else api_key.strip()
     headers = {"x-api-key": key} if key else {}
     params = {"query": query, "limit": limit, "offset": offset, "fields": _FIELDS}
     # Native S2 search filters: year range ("2019-2025") and a citation floor.
