@@ -14,6 +14,7 @@ import threading
 import time
 import zlib
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -31,37 +32,48 @@ class MirrorStore:
         meta_path = self.root / "meta.json"
         if meta_path.exists():
             self.meta = json.loads(meta_path.read_text())
-        self._conns: dict[str, sqlite3.Connection] = {}
+        # shard name -> (connection | None, lock). A sqlite3 connection is
+        # NOT safe for concurrent statement execution across threads (it
+        # raises "bad parameter or other API misuse" under load), so every
+        # query runs under its shard's lock with the cursor fully consumed
+        # before release. Different shards still query in parallel.
+        self._conns: dict[str, tuple[sqlite3.Connection | None, threading.Lock | None]] = {}
         self._conn_lock = threading.Lock()
         self._adj_cache: OrderedDict[tuple[str, int], np.ndarray] = OrderedDict()
         self._adj_lock = threading.Lock()
 
     # ---- connections -----------------------------------------------------
 
-    def _conn(self, name: str) -> sqlite3.Connection | None:
-        conn = self._conns.get(name)
-        if conn is not None:
-            return conn
-        with self._conn_lock:
-            conn = self._conns.get(name)
-            if conn is not None:
-                return conn
-            path = self.root / f"{name}.db"
-            if not path.exists():
-                return None
-            conn = sqlite3.connect(
-                f"file:{path}?mode=ro&immutable=1", uri=True, check_same_thread=False,
-            )
-            self._conns[name] = conn
-            return conn
+    def _q(self, name: str, sql: str, params=()) -> list[tuple]:
+        pair = self._conns.get(name)
+        if pair is None:
+            with self._conn_lock:
+                pair = self._conns.get(name)
+                if pair is None:
+                    path = self.root / f"{name}.db"
+                    if path.exists():
+                        conn = sqlite3.connect(
+                            f"file:{path}?mode=ro&immutable=1",
+                            uri=True, check_same_thread=False,
+                        )
+                        pair = (conn, threading.Lock())
+                    else:
+                        pair = (None, None)  # negative-cache missing shards
+                    self._conns[name] = pair
+        conn, lock = pair
+        if conn is None:
+            return []
+        with lock:
+            return conn.execute(sql, params).fetchall()
 
     def close(self) -> None:
         with self._conn_lock:
-            for c in self._conns.values():
-                try:
-                    c.close()
-                except Exception:
-                    pass
+            for conn, _lock in self._conns.values():
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
             self._conns.clear()
 
     # ---- id resolution ---------------------------------------------------
@@ -73,53 +85,56 @@ class MirrorStore:
         kind, val = parsed
         if kind == "corpus":
             return int(val)
-        conn = self._conn(f"ids_{schema.id_shard(str(val)):02d}")
-        if conn is None:
-            return None
-        row = conn.execute(
-            "SELECT corpusid FROM idmap WHERE k = ?", (val,)
-        ).fetchone()
-        return row[0] if row else None
+        rows = self._q(f"ids_{schema.id_shard(str(val)):02d}",
+                       "SELECT corpusid FROM idmap WHERE k = ?", (val,))
+        return rows[0][0] if rows else None
 
     # ---- papers ----------------------------------------------------------
 
     def get_paper(self, corpusid: int) -> dict | None:
-        conn = self._conn(f"papers_{schema.paper_shard(corpusid):02d}")
-        if conn is None:
+        rows = self._q(f"papers_{schema.paper_shard(corpusid):02d}",
+                       "SELECT js FROM papers WHERE corpusid = ?", (corpusid,))
+        if not rows:
             return None
-        row = conn.execute(
-            "SELECT js FROM papers WHERE corpusid = ?", (corpusid,)
-        ).fetchone()
-        if not row:
-            return None
-        return jsonio.loads(zlib.decompress(row[0]))
+        return jsonio.loads(zlib.decompress(rows[0][0]))
 
     def get_papers(self, corpusids: list[int]) -> dict[int, dict]:
-        """Bulk fetch, grouped per shard. Missing ids are simply absent."""
+        """Bulk fetch, grouped per shard, shards queried concurrently.
+
+        The fan-out matters on a FUSE-mounted volume: a 1000-row page
+        touches ~all 64 shards, and cold page reads are network round
+        trips — parallel shards turn 64 sequential seek-chains into ~8
+        concurrent ones.
+        """
         by_shard: dict[int, list[int]] = {}
         for cid in corpusids:
             by_shard.setdefault(schema.paper_shard(cid), []).append(cid)
         out: dict[int, dict] = {}
-        for shard, cids in by_shard.items():
-            conn = self._conn(f"papers_{shard:02d}")
-            if conn is None:
-                continue
+
+        def fetch(shard: int, cids: list[int]) -> list[tuple[int, bytes]]:
+            rows: list[tuple[int, bytes]] = []
             for i in range(0, len(cids), 400):
                 chunk = cids[i: i + 400]
                 marks = ",".join("?" * len(chunk))
-                for cid, js in conn.execute(
+                rows.extend(self._q(
+                    f"papers_{shard:02d}",
                     f"SELECT corpusid, js FROM papers WHERE corpusid IN ({marks})", chunk,
-                ):
-                    out[cid] = jsonio.loads(zlib.decompress(js))
+                ))
+            return rows
+
+        if len(by_shard) <= 2:
+            results = [fetch(s, c) for s, c in by_shard.items()]
+        else:
+            with ThreadPoolExecutor(max_workers=min(16, len(by_shard))) as pool:
+                results = list(pool.map(lambda sc: fetch(*sc), by_shard.items()))
+        for rows in results:
+            for cid, js in rows:
+                out[cid] = jsonio.loads(zlib.decompress(js))
         return out
 
     def has_paper(self, corpusid: int) -> bool:
-        conn = self._conn(f"papers_{schema.paper_shard(corpusid):02d}")
-        if conn is None:
-            return False
-        return conn.execute(
-            "SELECT 1 FROM papers WHERE corpusid = ?", (corpusid,)
-        ).fetchone() is not None
+        return bool(self._q(f"papers_{schema.paper_shard(corpusid):02d}",
+                            "SELECT 1 FROM papers WHERE corpusid = ?", (corpusid,)))
 
     # ---- adjacency -------------------------------------------------------
 
@@ -149,14 +164,11 @@ class MirrorStore:
             if hit is not None:
                 self._adj_cache.move_to_end(cache_key)
                 return hit
-        conn = self._conn(f"graph_{schema.paper_shard(corpusid):02d}")
+        rows = self._q(f"graph_{schema.paper_shard(corpusid):02d}",
+                       f"SELECT adj FROM {table} WHERE corpusid = ?", (corpusid,))
         arr = np.empty(0, dtype=ADJ_DTYPE)
-        if conn is not None:
-            row = conn.execute(
-                f"SELECT adj FROM {table} WHERE corpusid = ?", (corpusid,)
-            ).fetchone()
-            if row:
-                arr = self._dedupe(np.frombuffer(row[0], dtype=ADJ_DTYPE))
+        if rows:
+            arr = self._dedupe(np.frombuffer(rows[0][0], dtype=ADJ_DTYPE))
         with self._adj_lock:
             self._adj_cache[cache_key] = arr
             while len(self._adj_cache) > _ADJ_CACHE_MAX:
@@ -166,24 +178,17 @@ class MirrorStore:
     # ---- authors ---------------------------------------------------------
 
     def get_author(self, authorid: int) -> dict | None:
-        conn = self._conn(f"authors_{schema.author_shard(authorid):02d}")
-        if conn is None:
-            return None
-        row = conn.execute(
-            "SELECT js FROM authors WHERE authorid = ?", (authorid,)
-        ).fetchone()
-        return jsonio.loads(zlib.decompress(row[0])) if row else None
+        rows = self._q(f"authors_{schema.author_shard(authorid):02d}",
+                       "SELECT js FROM authors WHERE authorid = ?", (authorid,))
+        return jsonio.loads(zlib.decompress(rows[0][0])) if rows else None
 
     def author_paper_ids(self, authorid: int) -> np.ndarray:
-        conn = self._conn(f"authors_{schema.author_shard(authorid):02d}")
-        if conn is None:
+        rows = self._q(f"authors_{schema.author_shard(authorid):02d}",
+                       "SELECT corpusids FROM author_papers WHERE authorid = ?",
+                       (authorid,))
+        if not rows:
             return np.empty(0, dtype="<i8")
-        row = conn.execute(
-            "SELECT corpusids FROM author_papers WHERE authorid = ?", (authorid,)
-        ).fetchone()
-        if not row:
-            return np.empty(0, dtype="<i8")
-        arr = np.frombuffer(row[0], dtype="<i8")
+        arr = np.frombuffer(rows[0][0], dtype="<i8")
         _, first_idx = np.unique(arr, return_index=True)
         return arr[np.sort(first_idx)] if len(first_idx) < len(arr) else arr
 

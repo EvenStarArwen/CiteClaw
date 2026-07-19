@@ -294,6 +294,34 @@ class TestServer:
         assert body["data"][0]["venue"] == "arXiv.org"
 
 
+class TestConcurrency:
+    def test_concurrent_mixed_load_all_200(self, store):
+        """Regression: a shared sqlite3 connection raced under concurrent
+        statements ('bad parameter or other API misuse' -> 500s)."""
+        import concurrent.futures as cf
+        app = create_app(store, api_keys={KEY})
+        client = TestClient(app, raise_server_exceptions=False)
+        h = {"x-api-key": KEY}
+
+        def hit(i):
+            kind = i % 3
+            if kind == 0:
+                return client.post("/graph/v1/paper/batch?fields=title,authors.name",
+                                   json={"ids": [SHA1, SHA2, SHA3, "CorpusId:101"]},
+                                   headers=h).status_code
+            if kind == 1:
+                return client.get(f"/graph/v1/paper/{SHA1}",
+                                  params={"fields": "title,citationCount"},
+                                  headers=h).status_code
+            return client.get(f"/graph/v1/paper/{SHA1}/citations",
+                              params={"fields": "citingPaper.paperId", "limit": 100},
+                              headers=h).status_code
+
+        with cf.ThreadPoolExecutor(max_workers=16) as pool:
+            codes = list(pool.map(hit, range(600)))
+        assert set(codes) == {200}, {c: codes.count(c) for c in set(codes)}
+
+
 class TestUpstreamFallback:
     def test_unknown_paper_proxied_and_memoized(self, store):
         fake = _FakeUpstream(payload={"paperId": "f" * 40, "title": "Fresh"})
