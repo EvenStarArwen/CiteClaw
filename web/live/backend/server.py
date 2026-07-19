@@ -300,20 +300,19 @@ async def create_run(req: Request) -> dict:
     model = (body.get("model") or _defaults["model"]).strip()
     effort = (body.get("reasoning_effort") or _defaults["reasoning_effort"]).strip()
 
-    # --- model guard: only gemini-3.1-flash-lite (+ alias) + minimal-ish ---
+    # --- model guard: any catalog model (efforts validated) ---
     if not models_catalog.is_supported(model, effort):
         raise HTTPException(status_code=400, detail=models_catalog.support_error(model, effort))
     resolved = models_catalog.resolve_model(model)
 
     # --- required keys ---
     presence = keys_store.key_presence()
-    if resolved.startswith("gemini-") and not presence["gemini_api_key"]:
+    need = models_catalog.required_key(resolved)
+    if need and not presence[need]:
+        provider = "Gemini" if need == "gemini_api_key" else "OpenAI"
         raise HTTPException(status_code=400,
-                            detail="Gemini API key not set. Open Settings (gear, top-right) and add it.")
-    if resolved.startswith("gpt") or resolved.startswith("o"):
-        if not presence["openai_api_key"]:
-            raise HTTPException(status_code=400,
-                                detail="OpenAI API key not set. Open Settings and add it.")
+                            detail=f"{provider} API key not set — the selected model needs it. "
+                                   "Open Settings (gear, top-right) and add it.")
 
     # --- translate + build Settings ---
     import uuid
@@ -324,8 +323,8 @@ async def create_run(req: Request) -> dict:
     run_dir.mkdir(parents=True, exist_ok=True)
     data_dir = str(run_dir / uuid.uuid4().hex[:12])
     try:
-        cfg_dict = build_config(body, data_dir=data_dir,
-                                screening_model=resolved, reasoning_effort=effort)
+        cfg_dict = build_config(body, data_dir=data_dir, screening_model=resolved,
+                                reasoning_effort=models_catalog.effort_for(resolved, effort))
     except TranslationError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -339,14 +338,15 @@ async def create_run(req: Request) -> dict:
             raise HTTPException(status_code=400, detail=(
                 f"An LLM filter overrides its model to '{m}' (effort '{e}'). "
                 + models_catalog.support_error(m, e)))
-        if m.startswith("gemini-") and not presence["gemini_api_key"]:
+        blk["model"] = models_catalog.resolve_model(m)
+        blk["reasoning_effort"] = models_catalog.effort_for(blk["model"], e)
+        blk_need = models_catalog.required_key(blk["model"])
+        if blk_need and not presence[blk_need]:
+            provider = "Gemini" if blk_need == "gemini_api_key" else "OpenAI"
             raise HTTPException(status_code=400,
-                                detail="An LLM filter uses a Gemini model but no Gemini API key is set. "
-                                       "Open Settings (gear, top-right) and add it.")
-        if (m.startswith("gpt") or m.startswith("o")) and not presence["openai_api_key"]:
-            raise HTTPException(status_code=400,
-                                detail="An LLM filter uses an OpenAI model but no OpenAI API key is set. "
-                                       "Open Settings and add it.")
+                                detail=f"An LLM filter uses a {provider} model but no "
+                                       f"{provider} API key is set. Open Settings "
+                                       "(gear, top-right) and add it.")
 
     try:
         settings = load_settings(None, overrides=cfg_dict)

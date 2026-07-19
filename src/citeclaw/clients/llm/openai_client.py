@@ -30,7 +30,18 @@ from citeclaw.models import BudgetExhaustedError
 
 log = logging.getLogger("citeclaw.llm.openai")
 
-_OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4")
+_OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _is_openai_reasoning_model(model: str) -> bool:
+    """OpenAI SaaS reasoning detection: o-series + the GPT-5 families.
+
+    ``*-chat*`` ids (e.g. ``gpt-5.6-chat-latest``) are conversational
+    aliases without the reasoning parameter — they take the plain path
+    (temperature pinned to 0 for deterministic screening).
+    """
+    m = (model or "").lower()
+    return m.startswith(_OPENAI_REASONING_PREFIXES) and "-chat" not in m
 
 # Three patterns alternated in one regex:
 #   1. ``<think>...</think>`` — legacy Qwen3 / DeepSeek-R1 leak shape.
@@ -277,9 +288,7 @@ class OpenAIClient:
         # presence of ``endpoint_base_url``; the legacy path by
         # ``config.llm_base_url``.
         self._is_custom = bool(endpoint_base_url) or bool(config.llm_base_url)
-        self._is_reasoning = (not self._is_custom) and any(
-            self._model.startswith(p) for p in _OPENAI_REASONING_PREFIXES
-        )
+        self._is_reasoning = (not self._is_custom) and _is_openai_reasoning_model(self._model)
         self._sdk = _build_openai_sdk(
             config,
             endpoint_base_url=endpoint_base_url,

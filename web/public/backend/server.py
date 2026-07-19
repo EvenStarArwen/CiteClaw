@@ -380,13 +380,13 @@ async def create_run(request: Request) -> dict:
     resolved = models_catalog.resolve_model(model)
 
     presence = tenants.key_presence(sess)
-    if resolved.startswith("gemini-") and not presence["gemini_api_key"]:
+    need = models_catalog.required_key(resolved)
+    if need and not presence[need]:
+        provider = "Gemini" if need == "gemini_api_key" else "OpenAI"
         raise HTTPException(status_code=400,
-                            detail="Gemini API key not set. Open Settings (gear, top-right) and add "
-                                   "your own key — this server never supplies one.")
-    if (resolved.startswith("gpt") or resolved.startswith("o")) and not presence["openai_api_key"]:
-        raise HTTPException(status_code=400,
-                            detail="OpenAI API key not set. Open Settings and add your own key.")
+                            detail=f"{provider} API key not set — the selected model needs it. "
+                                   "Open Settings (gear, top-right) and add your own key; "
+                                   "this server never supplies one.")
 
     quota_err = tenants.can_start_run(sess)
     if quota_err:
@@ -397,8 +397,8 @@ async def create_run(request: Request) -> dict:
     run_id = manager.new_run_id()
     data_dir = manager.prepare_run_dir(sid, run_id)
     try:
-        cfg_dict = build_config(body, data_dir=data_dir,
-                                screening_model=resolved, reasoning_effort=effort)
+        cfg_dict = build_config(body, data_dir=data_dir, screening_model=resolved,
+                                reasoning_effort=models_catalog.effort_for(resolved, effort))
     except TranslationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     _clamp_caps(cfg_dict)
@@ -415,12 +415,14 @@ async def create_run(request: Request) -> dict:
             raise HTTPException(status_code=400, detail=(
                 f"An LLM filter overrides its model to '{m}' (effort '{e}'). "
                 + models_catalog.support_error(m, e)))
-        if m.startswith("gemini-") and not presence["gemini_api_key"]:
+        blk["model"] = models_catalog.resolve_model(m)
+        blk["reasoning_effort"] = models_catalog.effort_for(blk["model"], e)
+        blk_need = models_catalog.required_key(blk["model"])
+        if blk_need and not presence[blk_need]:
+            provider = "Gemini" if blk_need == "gemini_api_key" else "OpenAI"
             raise HTTPException(status_code=400,
-                                detail="An LLM filter uses a Gemini model but no Gemini API key is set.")
-        if (m.startswith("gpt") or m.startswith("o")) and not presence["openai_api_key"]:
-            raise HTTPException(status_code=400,
-                                detail="An LLM filter uses an OpenAI model but no OpenAI API key is set.")
+                                detail=f"An LLM filter uses a {provider} model but no "
+                                       f"{provider} API key is set.")
 
     try:
         settings = load_settings(None, overrides=cfg_dict)

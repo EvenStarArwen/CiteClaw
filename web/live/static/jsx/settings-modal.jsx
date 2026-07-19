@@ -2,7 +2,7 @@
 // Settings — API keys + model picker with prices.
 // A small addition to the design (in its own cream style), opened from the
 // top-bar gear. Only gemini-3.1-flash-lite actually runs in this version;
-// other selections are allowed but the run reports "not supported yet".
+// every catalog model is runnable; the run endpoint enforces provider keys.
 
 function SettingsModal({ open, onClose, pipeline }) {
   const settings = useLive("settings");
@@ -167,8 +167,8 @@ function SettingsModal({ open, onClose, pipeline }) {
               </span>
               <span>
                 Your pipeline screens with LLMs ({llmCount} LLM filter{llmCount > 1 ? "s" : ""})
-                but no LLM API key is set — the run will refuse to start. Add a Gemini
-                key (this version runs Gemini 3.1 Flash-Lite). Saving is fine without it.
+                but no LLM API key is set — the run will refuse to start. Add the key
+                for your chosen model's provider (Gemini or OpenAI). Saving is fine without it.
               </span>
             </div>
           )}
@@ -180,7 +180,7 @@ function SettingsModal({ open, onClose, pipeline }) {
               <optgroup key={prov} label={prov === "gemini" ? "Google Gemini" : "OpenAI"}>
                 {(byProvider[prov] || []).map(m => (
                   <option key={m.id} value={m.id}>
-                    {m.label} — ${m.input}/${m.output} per 1M{m.supported ? "  ✓ supported" : ""}
+                    {m.label} — ${m.input}/${m.output} per 1M
                   </option>
                 ))}
               </optgroup>
@@ -196,8 +196,10 @@ function SettingsModal({ open, onClose, pipeline }) {
             <div style={T.note}>
               <span style={T.price}>${selMeta.input} in / ${selMeta.output} out</span> per 1M tokens.
               {selMeta.supported
-                ? " Supported in this version."
-                : " ⚠ Not supported yet — this first release only runs Gemini 3.1 Flash-Lite. Selecting this will report an error on Run."}
+                ? (selMeta.reasoning
+                    ? " Reasoning model — the effort below controls its thinking."
+                    : " Non-reasoning model — the effort setting is ignored for it.")
+                : " ⚠ Not in the supported catalog — selecting this will report an error on Run."}
             </div>
           )}
           <div style={T.note}>
