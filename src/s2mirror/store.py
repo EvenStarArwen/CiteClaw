@@ -43,11 +43,10 @@ class MirrorStore:
         self._adj_cache: OrderedDict[tuple[str, int], np.ndarray] = OrderedDict()
         self._adj_bytes = 0
         self._adj_lock = threading.Lock()
-        # (fields_key, corpusid) -> small projected dict. Serving a hot
-        # 1000-row page from here skips decompress + parse + project —
-        # the dominant CPU cost of edge hydration. Entries are treated as
-        # immutable by every consumer.
-        self._proj_cache: OrderedDict[tuple[str, int], dict] = OrderedDict()
+        # (fields_key, corpusid) -> pre-serialized projected JSON bytes.
+        # Serving a hot 1000-row page from here skips decompress + parse +
+        # project + re-serialize — the whole CPU cost of edge hydration.
+        self._proj_cache: OrderedDict[tuple[str, int], bytes] = OrderedDict()
         self._proj_lock = threading.Lock()
         # shared fan-out pool: creating a ThreadPoolExecutor per get_papers
         # call costs ~1ms + thread churn on the hottest path in the server.
@@ -187,15 +186,16 @@ class MirrorStore:
                     out[raw] = cid
         return out
 
-    def get_projected(self, corpusids: list[int], fields_key: str,
-                      wants: dict) -> dict[int, dict]:
-        """Field-projected bulk fetch with an LRU over (shape, corpusid).
+    def get_projected_bytes(self, corpusids: list[int], fields_key: str,
+                            wants: dict) -> dict[int, bytes]:
+        """Field-projected bulk fetch returning *pre-serialized JSON bytes*
+        with an LRU over (shape, corpusid).
 
-        Repeat hits (hot papers re-hydrated across pages/batches/users)
-        skip decompress + parse + project entirely. Returned dicts are
-        shared — callers must treat them as immutable.
+        Handlers splice these fragments straight into response bodies, so
+        repeat hits skip decompress + parse + project + re-serialize —
+        the whole CPU cost of hydrating a hot row.
         """
-        out: dict[int, dict] = {}
+        out: dict[int, bytes] = {}
         missing: list[int] = []
         with self._proj_lock:
             for cid in corpusids:
@@ -206,7 +206,7 @@ class MirrorStore:
                 else:
                     missing.append(cid)
         if missing:
-            fresh = {cid: schema.project(rec, wants)
+            fresh = {cid: jsonio.dumps(schema.project(rec, wants))
                      for cid, rec in self.get_papers(missing).items()}
             out.update(fresh)
             with self._proj_lock:

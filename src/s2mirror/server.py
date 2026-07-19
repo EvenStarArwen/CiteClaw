@@ -18,13 +18,15 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 
+from fastapi.responses import Response
+
 try:  # orjson: ~5-10x faster render for 1000-row pages (present in the image)
     from fastapi.responses import ORJSONResponse as JSONResponse
     import orjson  # noqa: F401 — probe: ORJSONResponse needs it at render time
 except ImportError:  # pragma: no cover - local test envs without orjson
     from fastapi.responses import JSONResponse
 
-from s2mirror import schema
+from s2mirror import jsonio, schema
 from s2mirror.store import CurrentStore, MirrorStore
 
 _EDGE_FIELDS = ("contexts", "intents", "isInfluential")
@@ -121,12 +123,31 @@ def create_app(
     api_keys: set[str] | frozenset[str] = frozenset(),
     upstream: Upstream | None = None,
 ) -> FastAPI:
+    def _warm_store() -> None:
+        """Open every shard DB and pull its btree root off the volume so a
+        fresh container's first real requests don't eat the cold-FUSE tax
+        (observed as multi-second p99s when the second container spins)."""
+        try:
+            s = store_source.get() if isinstance(store_source, CurrentStore) else store_source
+            if s is None:
+                return
+            fams = (("papers", schema.PAPER_SHARDS, "papers"),
+                    ("graph", schema.PAPER_SHARDS, "refs"),
+                    ("ids", schema.ID_SHARDS, "idmap"),
+                    ("authors", schema.AUTHOR_SHARDS, "authors"))
+            for fam, n, table in fams:
+                for i in range(n):
+                    s._q(f"{fam}_{i:02d}", f"SELECT 1 FROM {table} LIMIT 1")
+        except Exception:
+            pass
+
     @asynccontextmanager
     async def _lifespan(_app):
         # sync endpoints run in anyio's worker pool (default 40 threads) —
-        # sized below Modal's 64-concurrent inputs it silently queues.
+        # sized below Modal's concurrent-input admission it silently queues.
         from anyio import to_thread
-        to_thread.current_default_thread_limiter().total_tokens = 96
+        to_thread.current_default_thread_limiter().total_tokens = 144
+        threading.Thread(target=_warm_store, daemon=True).start()
         yield
 
     app = FastAPI(title="s2mirror", docs_url=None, redoc_url=None,
@@ -222,20 +243,18 @@ def create_app(
         resolved = [(raw, cid_map.get(str(raw))) for raw in ids]
         want_cids = [cid for _, cid in resolved if cid is not None]
         if _cacheable_shape(wants):
-            found: dict[int, dict] = store.get_projected(
-                want_cids, _fields_key(wants), wants)
-            project = False
+            frags = store.get_projected_bytes(want_cids, _fields_key(wants), wants)
         else:
-            found = store.get_papers(want_cids)
-            project = True
-        out: list[dict | None] = []
+            frags = {cid: jsonio.dumps(schema.project(rec, wants))
+                     for cid, rec in store.get_papers(want_cids).items()}
+        parts: list[bytes] = []
         missing: list[tuple[int, str]] = []
         for pos, (raw, cid) in enumerate(resolved):
-            rec = found.get(cid) if cid is not None else None
-            if rec is not None:
-                out.append(schema.project(rec, wants) if project else rec)
+            fb = frags.get(cid) if cid is not None else None
+            if fb is not None:
+                parts.append(fb)
             else:
-                out.append(None)
+                parts.append(b"null")
                 missing.append((pos, str(raw)))
         _bump("local", len(ids) - len(missing))
         if missing and upstream is not None and len(missing) <= 100:
@@ -246,10 +265,11 @@ def create_app(
             )
             if status == 200 and isinstance(payload, list):
                 for (pos, _raw), entry in zip(missing, payload):
-                    out[pos] = entry
+                    parts[pos] = jsonio.dumps(entry)
         elif missing:
             _bump("miss", len(missing))
-        return JSONResponse(out)
+        return Response(b"[" + b",".join(parts) + b"]",
+                        media_type="application/json")
 
     # ---- references / citations -----------------------------------------
 
@@ -268,26 +288,28 @@ def create_app(
         arr = store.adjacency(table, cid)
         total = len(arr)
         page = arr[offset: offset + limit]
-        proj = store.get_projected([int(r["other"]) for r in page],
-                                   _fields_key(wants), wants)
-        data = []
+        proj = store.get_projected_bytes([int(r["other"]) for r in page],
+                                         _fields_key(wants), wants)
+        inner_pre = b'"' + inner_key.encode() + b'":'
+        rows_b: list[bytes] = []
         for row in page:
-            inner = proj.get(int(row["other"])) or {"paperId": None}
-            entry: dict[str, Any] = {}
+            inner = proj.get(int(row["other"])) or b'{"paperId":null}'
+            pieces: list[bytes] = []
             if edge_fields:
                 influential, intents = schema.unpack_flags(int(row["flags"]))
                 if "isInfluential" in edge_fields:
-                    entry["isInfluential"] = influential
+                    pieces.append(b'"isInfluential":true' if influential
+                                  else b'"isInfluential":false')
                 if "intents" in edge_fields:
-                    entry["intents"] = intents
+                    pieces.append(b'"intents":' + jsonio.dumps(intents))
                 if "contexts" in edge_fields:
-                    entry["contexts"] = []
-            entry[inner_key] = inner
-            data.append(entry)
-        envelope: dict[str, Any] = {"offset": offset, "data": data}
+                    pieces.append(b'"contexts":[]')
+            pieces.append(inner_pre + inner)
+            rows_b.append(b"{" + b",".join(pieces) + b"}")
+        body = b'{"offset":%d,"data":[' % offset + b",".join(rows_b) + b"]"
         if offset + len(page) < total:
-            envelope["next"] = offset + len(page)
-        return JSONResponse(envelope)
+            body += b',"next":%d' % (offset + len(page))
+        return Response(body + b"}", media_type="application/json")
 
     @app.get("/graph/v1/paper/{paper_id:path}/references", dependencies=[Depends(_auth)])
     def references(paper_id: str, request: Request, fields: str | None = None,
@@ -358,11 +380,11 @@ def create_app(
         cids = store.author_paper_ids(aid)
         total = len(cids)
         page = [int(c) for c in cids[offset: offset + limit]]
-        proj = store.get_projected(page, _fields_key(wants), wants)
-        data = [proj[c] for c in page if c in proj]
-        envelope: dict[str, Any] = {"offset": offset, "data": data}
+        proj = store.get_projected_bytes(page, _fields_key(wants), wants)
+        rows_b = [proj[c] for c in page if c in proj]
+        body = b'{"offset":%d,"data":[' % offset + b",".join(rows_b) + b"]"
         if offset + len(page) < total:
-            envelope["next"] = offset + len(page)
-        return JSONResponse(envelope)
+            body += b',"next":%d' % (offset + len(page))
+        return Response(body + b"}", media_type="application/json")
 
     return app
