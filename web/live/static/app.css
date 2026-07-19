@@ -2059,6 +2059,10 @@ input[type="password"], input:not([type]) {
   padding: 5px 8px;
   box-sizing: border-box;
 }
+select {
+  padding: 5px 8px;
+  box-sizing: border-box;
+}
 
 /* ---------- App frame ---------- */
 .app {
@@ -4647,16 +4651,16 @@ select.gp-v { cursor: pointer; }
 
 /* ---------- E: Accepted papers (run mode right panel) ---------- */
 .accepted-controls {
-  padding: 0 12px 8px;
+  padding: 10px 12px;
   display: flex; gap: 6px; align-items: center;
 }
 .accepted-sort {
   flex: 1;
-  padding: 4px 8px;
+  padding: 6px 9px;
   background: var(--cc-paper);
   border: 1px solid var(--cc-rule-strong);
-  border-radius: 5px;
-  font-size: 11px; color: var(--cc-ink-1);
+  border-radius: 6px;
+  font-size: 11.5px; color: var(--cc-ink-1);
   outline: none;
 }
 
@@ -5686,8 +5690,8 @@ select.gp-v { cursor: pointer; }
   white-space: normal; word-break: break-word; overflow: visible; line-height: 1.5;
 }
 
-/* Breathing room between the accepted-list controls and the first card */
-.accepted-controls { padding-bottom: 10px; }
+/* Breathing room between the accepted-list controls and the first card
+   (top/bottom padding lives on the base .accepted-controls rule) */
 .accepted-scroll { padding-top: 6px; }
 
 /* ── Step-detail page: the step's internal ROADMAP ─────────────────────── */
