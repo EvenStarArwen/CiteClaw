@@ -8,7 +8,109 @@
 //   the accepted papers as cards; removing one returns it to the search list.
 // Both share SeedAbstractDetail — click a card to read the full abstract.
 
-const YEAR_PRESETS = ["Any", "2015-2025", "2019-2025", "2022-2025"];
+// ---- local filter helpers ---------------------------------------------
+// The loaded search results ARE the database: every filter below runs
+// client-side over them — no extra Semantic Scholar calls.
+
+// Parse a boolean keyword expression — same syntax as the pipeline's
+// keyword filters: & | ! ( ) and "quoted phrases". Returns an AST or
+// null when invalid/empty.
+function _kwParse(expr) {
+  const toks = [];
+  const re = /"([^"]*)"|([A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*)|([&|!()])|(\s+)|(.)/g;
+  let m;
+  while ((m = re.exec(expr)) !== null) {
+    if (m[4] != null) continue;
+    if (m[5] != null) return null;                        // stray char (e.g. *)
+    if (m[1] != null || m[2] != null) {
+      const v = (m[1] != null ? m[1] : m[2]).trim().toLowerCase();
+      if (!v) return null;                                // empty quotes
+      toks.push({ t: "term", v });
+    } else toks.push({ t: m[3] });
+  }
+  if (!toks.length) return null;
+  let i = 0;
+  const peek = () => toks[i];
+  const parseAtom = () => {
+    const tk = peek();
+    if (!tk) return null;
+    if (tk.t === "term") { i++; return tk; }
+    if (tk.t === "(") {
+      i++;
+      const n = parseOr();
+      if (!n || !peek() || peek().t !== ")") return null;
+      i++;
+      return n;
+    }
+    return null;
+  };
+  const parseNot = () => {
+    if (peek() && peek().t === "!") { i++; const c = parseNot(); return c ? { t: "not", c } : null; }
+    return parseAtom();
+  };
+  const parseAnd = () => {
+    let n = parseNot();
+    while (n && peek() && peek().t === "&") { i++; const r = parseNot(); n = r ? { t: "and", l: n, r } : null; }
+    return n;
+  };
+  const parseOr = () => {
+    let n = parseAnd();
+    while (n && peek() && peek().t === "|") { i++; const r = parseAnd(); n = r ? { t: "or", l: n, r } : null; }
+    return n;
+  };
+  const ast = parseOr();
+  return ast && i === toks.length ? ast : null;
+}
+function _kwEval(n, text) {
+  switch (n.t) {
+    case "term": return text.includes(n.v);
+    case "and":  return _kwEval(n.l, text) && _kwEval(n.r, text);
+    case "or":   return _kwEval(n.l, text) || _kwEval(n.r, text);
+    case "not":  return !_kwEval(n.c, text);
+    default:     return true;
+  }
+}
+
+// Dual-handle range slider (two overlaid native ranges; thumbs-only hit
+// areas). `log` compresses heavy-tailed domains (citation counts) so the
+// low end keeps resolution.
+function DualRange({ min, max, lo, hi, onChange, log, disabled }) {
+  const N = 400;
+  const flat = !(max > min);
+  const toVal = (pos) => {
+    if (flat) return min;
+    const t = pos / N;
+    if (log) {
+      const a = Math.log(min + 1), b = Math.log(max + 1);
+      return Math.max(min, Math.min(max, Math.round(Math.exp(a + t * (b - a)) - 1)));
+    }
+    return Math.round(min + t * (max - min));
+  };
+  const toPos = (val) => {
+    if (flat) return 0;
+    const v = Math.max(min, Math.min(max, val));
+    if (log) {
+      const a = Math.log(min + 1), b = Math.log(max + 1);
+      return Math.round(N * (Math.log(v + 1) - a) / (b - a));
+    }
+    return Math.round(N * (v - min) / (max - min));
+  };
+  const pLo = toPos(lo), pHi = toPos(hi);
+  return (
+    <div className={"dr" + (disabled || flat ? " is-off" : "")}>
+      <div className="dr-track" />
+      <div className="dr-fill" style={{ left: (100 * pLo / N) + "%", width: (100 * Math.max(0, pHi - pLo) / N) + "%" }} />
+      <input type="range" min={0} max={N} value={pLo} disabled={disabled || flat}
+        style={{ zIndex: pLo > N / 2 ? 5 : 3 }}
+        onChange={e => onChange([Math.min(toVal(+e.target.value), hi), hi])}
+        aria-label="lower bound" />
+      <input type="range" min={0} max={N} value={pHi} disabled={disabled || flat}
+        style={{ zIndex: 4 }}
+        onChange={e => onChange([lo, Math.max(toVal(+e.target.value), lo)])}
+        aria-label="upper bound" />
+    </div>
+  );
+}
 
 // Fetch an OpenAlex abstract fallback into the store for a paper with none.
 function _loadSeedAbstract(p) {
@@ -119,8 +221,13 @@ function BuildSeeds({ onSelectSeed }) {
   const [err, setErr] = React.useState(null);
   const [detailId, setDetailId] = React.useState(null);
   const [showFilters, setShowFilters] = React.useState(false);
-  const [year, setYear] = React.useState("Any");
-  const [minCites, setMinCites] = React.useState(0);
+  // Local filters over the LOADED results (no re-search): year + citation
+  // ranges (null = follow the data's min/max), venue substring, and a
+  // boolean keyword expression over title+abstract.
+  const [fYear, setFYear] = React.useState(null);     // [lo, hi] | null
+  const [fCites, setFCites] = React.useState(null);   // [lo, hi] | null
+  const [fVenue, setFVenue] = React.useState("");
+  const [fKw, setFKw] = React.useState("");
   // Pagination over S2's relevance search: total matches, the next page's
   // offset (null = exhausted), and how many results this query has fetched.
   const [page, setPage] = React.useState({ total: 0, next: null, fetched: 0 });
@@ -129,12 +236,42 @@ function BuildSeeds({ onSelectSeed }) {
   const acceptedCount = seeds.length - candidates.length;
   const detailPaper = detailId ? seeds.find(p => p.id === detailId) : null;
 
-  const runSearch = async (q, f) => {
+  // Slider bounds track whatever is currently loaded.
+  const bounds = React.useMemo(() => {
+    let yMin = Infinity, yMax = -Infinity, cMax = 0;
+    for (const p of candidates) {
+      if (p.year) { yMin = Math.min(yMin, p.year); yMax = Math.max(yMax, p.year); }
+      cMax = Math.max(cMax, p.cites || 0);
+    }
+    if (!isFinite(yMin)) { yMin = 2000; yMax = new Date().getFullYear(); }
+    return { yMin, yMax, cMax };
+  }, [seeds]);
+  const yr = fYear || [bounds.yMin, bounds.yMax];
+  const ct = fCites || [0, bounds.cMax];
+  const kwAst = React.useMemo(() => (fKw.trim() ? _kwParse(fKw.trim()) : null), [fKw]);
+  const kwInvalid = !!fKw.trim() && !kwAst;
+  const filtersActive = !!(fYear || fCites || fVenue.trim() || (kwAst && fKw.trim()));
+
+  const shown = React.useMemo(() => {
+    if (!filtersActive) return candidates;
+    const venue = fVenue.trim().toLowerCase();
+    return candidates.filter(p => {
+      if (fYear && ((p.year || 0) < fYear[0] || (p.year || 0) > fYear[1])) return false;
+      if (fCites) { const c = p.cites || 0; if (c < fCites[0] || c > fCites[1]) return false; }
+      if (venue && !(p.venue || "").toLowerCase().includes(venue)) return false;
+      if (kwAst && !_kwEval(kwAst, ((p.title || "") + " " + (p.abstract || "")).toLowerCase())) return false;
+      return true;
+    });
+  }, [candidates, fYear, fCites, fVenue, kwAst, filtersActive]);
+
+  const clearFilters = () => { setFYear(null); setFCites(null); setFVenue(""); setFKw(""); };
+
+  const runSearch = async (q) => {
     q = (q || "").trim();
     if (!q) return;
     setBusy(true); setErr(null);
     try {
-      const res = await searchSeeds(q, f || { year, minCites });
+      const res = await searchSeeds(q);
       const results = res.items || [];
       const starredMap = {};
       seeds.forEach(p => { if (p.starred) starredMap[p.id] = p; });
@@ -143,6 +280,8 @@ function BuildSeeds({ onSelectSeed }) {
       Object.values(starredMap).forEach(p => { if (!seen.has(p.id)) merged.push(p); });
       LIVE.set({ seeds: merged, searchQuery: q });
       setPage({ total: res.total || 0, next: res.next, fetched: results.length });
+      // fresh corpus → range filters snap back to the new data's extent
+      setFYear(null); setFCites(null);
     } catch (e) {
       setErr(e.message || "search failed");
     }
@@ -153,7 +292,7 @@ function BuildSeeds({ onSelectSeed }) {
     if (busy || page.next == null || !query.trim()) return;
     setBusy(true); setErr(null);
     try {
-      const res = await searchSeeds(query, { year, minCites }, page.next);
+      const res = await searchSeeds(query, null, page.next);
       const items = res.items || [];
       const cur = LIVE.get("seeds");
       const have = new Set(cur.map(p => p.id));
@@ -164,14 +303,6 @@ function BuildSeeds({ onSelectSeed }) {
       setErr(e.message || "search failed");
     }
     setBusy(false);
-  };
-
-  // Change a filter → re-run the search immediately (only if there's a query).
-  const applyFilter = (patch) => {
-    if (patch.year !== undefined) setYear(patch.year);
-    if (patch.minCites !== undefined) setMinCites(patch.minCites);
-    const next = { year, minCites, ...patch };
-    if (query.trim()) runSearch(query, next);
   };
 
   if (detailPaper) {
@@ -202,6 +333,7 @@ function BuildSeeds({ onSelectSeed }) {
           ? `Semantic Scholar matched ${page.total.toLocaleString()} papers — ${page.fetched} loaded so far`
           : undefined}>
           {busy && !candidates.length ? "…"
+            : filtersActive ? `${shown.length} of ${candidates.length} loaded`
             : page.total > page.fetched
               ? `${candidates.length} of ${page.total.toLocaleString()}`
               : candidates.length + " results"}
@@ -234,21 +366,47 @@ function BuildSeeds({ onSelectSeed }) {
 
       {showFilters && (
         <div className="seed-filters">
-          <label className="seed-filter-row">
+          <div className="seed-filter-note">
+            Filters apply to the {candidates.length.toLocaleString()} loaded result{candidates.length === 1 ? "" : "s"} — no new search.
+          </div>
+          <div className="seed-filter-row seed-filter-row-slider">
             <span className="seed-filter-k">Year</span>
-            <select value={year} onChange={e => applyFilter({ year: e.target.value })}>
-              {YEAR_PRESETS.map(y => <option key={y} value={y}>{y === "Any" ? "Any year" : y}</option>)}
-            </select>
-          </label>
+            <DualRange min={bounds.yMin} max={bounds.yMax} lo={yr[0]} hi={yr[1]}
+              disabled={!candidates.length}
+              onChange={([a, b]) => setFYear(a <= bounds.yMin && b >= bounds.yMax ? null : [a, b])} />
+            <span className="seed-filter-v">{yr[0]} – {yr[1]}</span>
+          </div>
+          <div className="seed-filter-row seed-filter-row-slider">
+            <span className="seed-filter-k">Citations</span>
+            <DualRange min={0} max={bounds.cMax} lo={ct[0]} hi={ct[1]} log
+              disabled={!candidates.length}
+              onChange={([a, b]) => setFCites(a <= 0 && b >= bounds.cMax ? null : [a, b])} />
+            <span className="seed-filter-v">{fmtK(ct[0])} – {fmtK(ct[1])}</span>
+          </div>
           <label className="seed-filter-row">
-            <span className="seed-filter-k">Min citations</span>
-            <input
-              type="number" min="0" step="10" value={minCites}
-              onChange={e => setMinCites(Math.max(0, +e.target.value || 0))}
-              onBlur={e => applyFilter({ minCites: Math.max(0, +e.target.value || 0) })}
-              onKeyDown={e => { if (e.key === "Enter") applyFilter({ minCites: Math.max(0, +e.target.value || 0) }); }}
-            />
+            <span className="seed-filter-k">Venue</span>
+            <input value={fVenue} placeholder="venue contains… e.g. NeurIPS"
+              onChange={e => setFVenue(e.target.value)} />
           </label>
+          <label className="seed-filter-row seed-filter-row-kw">
+            <span className="seed-filter-k">Title / abstract</span>
+            <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fKw}
+              placeholder={'("bayesian optimization" | BO) & !survey'}
+              onChange={e => setFKw(e.target.value)} />
+          </label>
+          {kwInvalid && (
+            <div className="seed-filter-bad">
+              Incomplete expression — words, "quoted phrases", &amp; | ! ( ). Ignored until valid.
+            </div>
+          )}
+          <div className="seed-filter-foot">
+            <span>{filtersActive ? `${shown.length.toLocaleString()} of ${candidates.length.toLocaleString()} match` : "no filters active"}</span>
+            {filtersActive && (
+              <button className="seed-filter-clear" onClick={clearFilters}>
+                <Icon name="x" size={10} /> clear
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -257,12 +415,17 @@ function BuildSeeds({ onSelectSeed }) {
         {candidates.length === 0 && !busy && (
           <div className="seeds-empty">
             {query.trim()
-              ? "No results. Try a different query or loosen the filters."
+              ? "No results. Try a different query."
               : "Search Semantic Scholar to find seed papers."}
           </div>
         )}
+        {candidates.length > 0 && shown.length === 0 && (
+          <div className="seeds-empty">
+            No loaded paper matches the local filters — loosen them or load more results.
+          </div>
+        )}
         <div className="seeds-list">
-          {candidates.map(p => (
+          {shown.map(p => (
             <SeedCard key={p.id} paper={p} mode="candidate" onOpen={setDetailId} onAction={acceptSeed} />
           ))}
         </div>
