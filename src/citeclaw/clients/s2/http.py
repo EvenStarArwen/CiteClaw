@@ -164,7 +164,9 @@ class S2Http:
             mirror_key = getattr(config, "s2_mirror_key", "") or ""
             if mirror_key:
                 mirror_headers["x-api-key"] = mirror_key
-            self._mirror_http = httpx.Client(timeout=60, headers=mirror_headers)
+            # 120s: a cold mirror container hydrating a 1000-row page of a
+            # mega-cited paper can exceed the real-API-tuned 60s budget.
+            self._mirror_http = httpx.Client(timeout=120, headers=mirror_headers)
 
     # ---- graph-base helpers ----------------------------------------------
 
