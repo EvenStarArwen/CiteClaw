@@ -2045,6 +2045,20 @@ html, body, #root {
 }
 button, input, select, textarea { font-family: inherit; color: inherit; }
 button { cursor: pointer; }
+/* Comfort baseline: no text box may hug its border. Element-level (lowest
+   specificity), so any component's own padding still wins — this only
+   catches fields nobody styled, which otherwise render with the UA's
+   cramped 1-2px default. */
+textarea {
+  padding: 7px 9px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+input[type="text"], input[type="search"], input[type="number"],
+input[type="password"], input:not([type]) {
+  padding: 5px 8px;
+  box-sizing: border-box;
+}
 
 /* ---------- App frame ---------- */
 .app {
@@ -4833,10 +4847,21 @@ select.gp-v { cursor: pointer; }
   font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-2);
   white-space: nowrap; min-width: 58px; text-align: right;
 }
-.seed-filter-row-kw { align-items: flex-start; }
-.seed-filter-kw { flex: 1 1 auto; width: auto !important; min-height: 30px; }
+/* Text filters: label above, full-width field below (forum-style), one
+   small grey hint under the group — nothing right-aligned, nothing
+   squeezed into a 128px box. */
+.seed-filter-field { display: flex; flex-direction: column; gap: 4px; }
+.seed-filter-field .seed-filter-k { font-size: 11px; font-weight: 550; color: var(--cc-ink-1); }
+.seed-filter-input,
+.seed-filter-kw {
+  width: 100% !important; box-sizing: border-box;
+  font-size: 11.5px;
+  border: 1px solid var(--cc-btn-border); border-radius: 5px;
+  background: var(--cc-paper); color: var(--cc-ink-1);
+}
+.seed-filter-kw { min-height: 32px; }
+.seed-filter-hint { font-size: 10px; color: var(--cc-ink-3); line-height: 1.45; }
 .seed-filter-note { font-size: 10px; color: var(--cc-ink-3); line-height: 1.4; }
-.seed-filter-bad { font-size: 10.5px; color: var(--cc-danger); line-height: 1.4; }
 .seed-filter-foot {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 10.5px; color: var(--cc-ink-3);
@@ -4849,9 +4874,18 @@ select.gp-v { cursor: pointer; }
 }
 .seed-filter-clear:hover { color: var(--cc-ink-1); background: var(--cc-hover-soft); }
 
-/* Dual-handle range slider: two overlaid native inputs, thumbs-only hits */
+/* Dual-handle range slider: ONE hairline + circles, nothing else. The
+   generic `.seed-filter-row input` box styling (border/128px/padding)
+   must never leak onto the range inputs — that rendered each slider as
+   stacked bordered boxes. */
 .dr { position: relative; height: 20px; min-width: 0; }
 .dr.is-off { opacity: 0.45; pointer-events: none; }
+.seed-filter-row .dr input[type="range"],
+.dr input[type="range"] {
+  border: none !important; box-shadow: none !important;
+  padding: 0 !important; width: 100% !important;
+  background: transparent !important; border-radius: 0;
+}
 .dr-track {
   position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
   height: 2px; border-radius: 2px; background: var(--cc-rule-strong);

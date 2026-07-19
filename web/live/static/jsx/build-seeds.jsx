@@ -71,6 +71,18 @@ function _kwEval(n, text) {
   }
 }
 
+// Field text → matcher fn. Valid expressions get the boolean treatment;
+// anything else (plain prose like "Nature Communications") falls back to a
+// case-insensitive substring — so both styles Just Work, no error states.
+function _kwMatcher(raw) {
+  const s = (raw || "").trim();
+  if (!s) return null;
+  const ast = _kwParse(s);
+  if (ast) return (text) => _kwEval(ast, text);
+  const plain = s.toLowerCase();
+  return (text) => text.includes(plain);
+}
+
 // Dual-handle range slider (two overlaid native ranges; thumbs-only hit
 // areas). `log` compresses heavy-tailed domains (citation counts) so the
 // low end keeps resolution.
@@ -227,7 +239,8 @@ function BuildSeeds({ onSelectSeed }) {
   const [fYear, setFYear] = React.useState(null);     // [lo, hi] | null
   const [fCites, setFCites] = React.useState(null);   // [lo, hi] | null
   const [fVenue, setFVenue] = React.useState("");
-  const [fKw, setFKw] = React.useState("");
+  const [fTitle, setFTitle] = React.useState("");
+  const [fAbs, setFAbs] = React.useState("");
   // Pagination over S2's relevance search: total matches, the next page's
   // offset (null = exhausted), and how many results this query has fetched.
   const [page, setPage] = React.useState({ total: 0, next: null, fetched: 0 });
@@ -248,23 +261,24 @@ function BuildSeeds({ onSelectSeed }) {
   }, [seeds]);
   const yr = fYear || [bounds.yMin, bounds.yMax];
   const ct = fCites || [0, bounds.cMax];
-  const kwAst = React.useMemo(() => (fKw.trim() ? _kwParse(fKw.trim()) : null), [fKw]);
-  const kwInvalid = !!fKw.trim() && !kwAst;
-  const filtersActive = !!(fYear || fCites || fVenue.trim() || (kwAst && fKw.trim()));
+  const mVenue = React.useMemo(() => _kwMatcher(fVenue), [fVenue]);
+  const mTitle = React.useMemo(() => _kwMatcher(fTitle), [fTitle]);
+  const mAbs = React.useMemo(() => _kwMatcher(fAbs), [fAbs]);
+  const filtersActive = !!(fYear || fCites || mVenue || mTitle || mAbs);
 
   const shown = React.useMemo(() => {
     if (!filtersActive) return candidates;
-    const venue = fVenue.trim().toLowerCase();
     return candidates.filter(p => {
       if (fYear && ((p.year || 0) < fYear[0] || (p.year || 0) > fYear[1])) return false;
       if (fCites) { const c = p.cites || 0; if (c < fCites[0] || c > fCites[1]) return false; }
-      if (venue && !(p.venue || "").toLowerCase().includes(venue)) return false;
-      if (kwAst && !_kwEval(kwAst, ((p.title || "") + " " + (p.abstract || "")).toLowerCase())) return false;
+      if (mVenue && !mVenue((p.venue || "").toLowerCase())) return false;
+      if (mTitle && !mTitle((p.title || "").toLowerCase())) return false;
+      if (mAbs && !mAbs((p.abstract || "").toLowerCase())) return false;
       return true;
     });
-  }, [candidates, fYear, fCites, fVenue, kwAst, filtersActive]);
+  }, [candidates, fYear, fCites, mVenue, mTitle, mAbs, filtersActive]);
 
-  const clearFilters = () => { setFYear(null); setFCites(null); setFVenue(""); setFKw(""); };
+  const clearFilters = () => { setFYear(null); setFCites(null); setFVenue(""); setFTitle(""); setFAbs(""); };
 
   const runSearch = async (q) => {
     q = (q || "").trim();
@@ -383,22 +397,27 @@ function BuildSeeds({ onSelectSeed }) {
               onChange={([a, b]) => setFCites(a <= 0 && b >= bounds.cMax ? null : [a, b])} />
             <span className="seed-filter-v">{fmtK(ct[0])} – {fmtK(ct[1])}</span>
           </div>
-          <label className="seed-filter-row">
+          <label className="seed-filter-field">
             <span className="seed-filter-k">Venue</span>
-            <input value={fVenue} placeholder="venue contains… e.g. NeurIPS"
+            <input className="seed-filter-input" value={fVenue}
+              placeholder={'"Nature" | "Science" | ICML'}
               onChange={e => setFVenue(e.target.value)} />
           </label>
-          <label className="seed-filter-row seed-filter-row-kw">
-            <span className="seed-filter-k">Title / abstract</span>
-            <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fKw}
-              placeholder={'("bayesian optimization" | BO) & !survey'}
-              onChange={e => setFKw(e.target.value)} />
+          <label className="seed-filter-field">
+            <span className="seed-filter-k">Title</span>
+            <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fTitle}
+              placeholder={'"bayesian optimization" & !survey'}
+              onChange={e => setFTitle(e.target.value)} />
           </label>
-          {kwInvalid && (
-            <div className="seed-filter-bad">
-              Incomplete expression — words, "quoted phrases", &amp; | ! ( ). Ignored until valid.
-            </div>
-          )}
+          <label className="seed-filter-field">
+            <span className="seed-filter-k">Abstract</span>
+            <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fAbs}
+              placeholder={'benchmark | "ablation study"'}
+              onChange={e => setFAbs(e.target.value)} />
+          </label>
+          <div className="seed-filter-hint">
+            Plain text or an expression — &amp; and · | or · ! not · ( ) · "quoted phrase".
+          </div>
           <div className="seed-filter-foot">
             <span>{filtersActive ? `${shown.length.toLocaleString()} of ${candidates.length.toLocaleString()} match` : "no filters active"}</span>
             {filtersActive && (
