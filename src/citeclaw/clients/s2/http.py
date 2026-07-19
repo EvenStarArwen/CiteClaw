@@ -58,6 +58,16 @@ def _is_retryable(exc: BaseException) -> bool:
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
 BATCH_URL = "https://api.semanticscholar.org/graph/v1/paper/batch"
 PAGE_SIZE = 100
+# A self-hosted s2mirror serves big pages for free — 10x fewer requests.
+MIRROR_PAGE_SIZE = 1000
+
+
+def _normalize_graph_base(url: str) -> str:
+    """Accept a mirror origin with or without the ``/graph/v1`` suffix."""
+    u = (url or "").strip().rstrip("/")
+    if not u:
+        return ""
+    return u if u.endswith("/graph/v1") else f"{u}/graph/v1"
 
 
 def _retry_message(rs, kind: str) -> None:
@@ -140,6 +150,39 @@ class S2Http:
             headers["x-api-key"] = config.s2_api_key
         self._http = httpx.Client(timeout=60, headers=headers)
 
+        # Optional self-hosted graph mirror (see src/s2mirror). Graph
+        # endpoints route to it un-throttled with its own bearer key;
+        # search stays on the real API (by design), and recommendations
+        # already address the real host via full URLs.
+        self._mirror_base = _normalize_graph_base(
+            getattr(config, "s2_mirror_url", "") or ""
+        )
+        self._page_size = MIRROR_PAGE_SIZE if self._mirror_base else PAGE_SIZE
+        self._mirror_http: httpx.Client | None = None
+        if self._mirror_base:
+            mirror_headers: dict[str, str] = {"Accept": "application/json"}
+            mirror_key = getattr(config, "s2_mirror_key", "") or ""
+            if mirror_key:
+                mirror_headers["x-api-key"] = mirror_key
+            self._mirror_http = httpx.Client(timeout=60, headers=mirror_headers)
+
+    # ---- graph-base helpers ----------------------------------------------
+
+    @property
+    def graph_base(self) -> str:
+        return self._mirror_base or BASE_URL
+
+    @property
+    def batch_url(self) -> str:
+        return f"{self.graph_base}/paper/batch"
+
+    @property
+    def author_batch_url(self) -> str:
+        return f"{self.graph_base}/author/batch"
+
+    def _is_mirror_url(self, url: str) -> bool:
+        return bool(self._mirror_base) and url.startswith(self._mirror_base)
+
     # ---- internal call machinery -----------------------------------------
 
     def _throttle(self) -> None:
@@ -183,14 +226,18 @@ class S2Http:
 
     def _execute_http(
         self, http_call: Callable[[], httpx.Response], req_type: str,
+        *, throttle: bool = True,
     ) -> Any:
         """Throttle + bill + run + raise_for_status + clear banner + parse JSON.
 
         Inner body shared by every retry-decorated method. ``http_call``
         is a zero-arg lambda wrapping the httpx verb so all three call
-        shapes (GET path, GET URL, POST) reach this helper.
+        shapes (GET path, GET URL, POST) reach this helper. Mirror
+        requests pass ``throttle=False`` — the rps cap protects the real
+        S2 API, not our own store.
         """
-        self._throttle()
+        if throttle:
+            self._throttle()
         self._budget.record_s2(req_type)
         resp = http_call()
         resp.raise_for_status()
@@ -223,37 +270,39 @@ class S2Http:
 
     # ---- retry-decorated inner verbs -------------------------------------
 
-    @_retry_decorator("request")
-    def _get_with_retries(
-        self, path: str, params: dict[str, Any] | None, req_type: str,
-    ) -> dict[str, Any]:
-        return self._execute_http(
-            lambda: self._http.get(f"{BASE_URL}{path}", params=params or {}),
-            req_type,
-        )
+    def _client_for(self, url: str) -> tuple[httpx.Client, bool]:
+        """Pick (client, is_mirror) for a full URL."""
+        if self._mirror_http is not None and self._is_mirror_url(url):
+            return self._mirror_http, True
+        return self._http, False
 
     @_retry_decorator("request")
     def _get_url_with_retries(
         self, url: str, params: dict[str, Any] | None, req_type: str,
     ) -> dict[str, Any]:
+        client, mirror = self._client_for(url)
         return self._execute_http(
-            lambda: self._http.get(url, params=params or {}),
-            req_type,
+            lambda: client.get(url, params=params or {}),
+            req_type, throttle=not mirror,
         )
 
     @_retry_decorator("batch")
     def _post_with_retries(
         self, url: str, params: dict[str, Any] | None, json_body: Any, req_type: str,
     ) -> Any:
+        client, mirror = self._client_for(url)
         return self._execute_http(
-            lambda: self._http.post(url, params=params or {}, json=json_body),
-            req_type,
+            lambda: client.post(url, params=params or {}, json=json_body),
+            req_type, throttle=not mirror,
         )
 
     # ---- public verbs ----------------------------------------------------
 
     def get(self, path: str, params: dict[str, Any] | None = None, *, req_type: str = "other") -> dict[str, Any]:
-        return self._wrap_call(self._get_with_retries, path, params, req_type)
+        # Search endpoints deliberately stay on the real API — mirroring
+        # relevance ranking isn't worth it and their volume is tiny.
+        base = BASE_URL if path.startswith("/paper/search") else self.graph_base
+        return self._wrap_call(self._get_url_with_retries, f"{base}{path}", params, req_type)
 
     def get_url(
         self, url: str, params: dict[str, Any] | None = None, *, req_type: str = "other",
@@ -291,10 +340,11 @@ class S2Http:
         req_type = "references" if edge == "references" else "citations"
         results: list[dict[str, Any]] = []
         offset = 0
+        page_size = self._page_size
         while True:
             data = self.get(
                 f"/paper/{paper_id}/{edge}",
-                params={"fields": fields, "limit": PAGE_SIZE, "offset": offset},
+                params={"fields": fields, "limit": page_size, "offset": offset},
                 req_type=req_type,
             )
             batch = data.get("data", [])
@@ -309,9 +359,11 @@ class S2Http:
                     pass
             if max_items is not None and len(results) >= max_items:
                 return results[:max_items]
-            if len(batch) < PAGE_SIZE:
+            if len(batch) < page_size:
                 break
         return results
 
     def close(self) -> None:
         self._http.close()
+        if self._mirror_http is not None:
+            self._mirror_http.close()

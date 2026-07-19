@@ -38,7 +38,7 @@ import httpx
 from citeclaw.cache import Cache
 from citeclaw.clients.s2.cache_layer import S2CacheLayer
 from citeclaw.clients.s2.converters import edge_to_record, paper_to_record
-from citeclaw.clients.s2.http import BATCH_URL, S2Http
+from citeclaw.clients.s2.http import S2Http
 from citeclaw.budget import BudgetTracker
 from citeclaw.config import Settings
 from citeclaw.models import PaperRecord, SemanticScholarAPIError
@@ -69,7 +69,6 @@ EDGE_IDS_AND_COUNTS = ",".join(["paperId", "year", "publicationDate", "citationC
 EDGE_META_FIELDS = "contexts,intents,isInfluential"
 EMBEDDING_FIELDS = "paperId,embedding.specter_v2"
 AUTHOR_FIELDS = "name,citationCount,hIndex,paperCount,affiliations"
-AUTHOR_BATCH_URL = "https://api.semanticscholar.org/graph/v1/author/batch"
 _MAX_AUTHOR_BATCH = 1000
 
 # Recommendations API lives outside ``/graph/v1`` so it must be addressed
@@ -785,7 +784,7 @@ class SemanticScholarClient:
             chunk = missing[i: i + _MAX_AUTHOR_BATCH]
             try:
                 batch_result = self._http.post(
-                    AUTHOR_BATCH_URL,
+                    self._http.author_batch_url,
                     params={"fields": AUTHOR_FIELDS},
                     json_body={"ids": chunk},
                     req_type="author_metadata",
@@ -871,7 +870,7 @@ class SemanticScholarClient:
             chunk = paper_ids[i: i + _MAX_BATCH]
             try:
                 batch_result = self._http.post(
-                    BATCH_URL, params={"fields": fields}, json_body={"ids": chunk},
+                    self._http.batch_url, params={"fields": fields}, json_body={"ids": chunk},
                 )
                 if isinstance(batch_result, list):
                     results.extend(batch_result)

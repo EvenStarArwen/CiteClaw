@@ -212,6 +212,10 @@ def ingest(release: str = "latest", subset: int = 0, skip_map: bool = False,
     ``--subset N`` limits to the first N files per dataset (smoke runs).
     ``--skip-map`` reuses existing partitions (reduce-only rerun).
     """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
     from s2mirror.mapper import DATASETS
     from s2mirror.reducer import REDUCERS
 
