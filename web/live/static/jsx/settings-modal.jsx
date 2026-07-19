@@ -143,8 +143,13 @@ function SettingsModal({ open, onClose, pipeline }) {
         <div style={T.body}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--cc-ink-2)" }}>API keys</div>
           <div style={T.note}>
-            Stored privately on your computer (<span className="cc-mono">.env.local</span>, git-ignored).
-            Never uploaded anywhere.
+            {window.__PUBLIC__ ? (
+              <>Stored encrypted in your private workspace on this server, used
+                only for your own runs, never logged or shared.</>
+            ) : (
+              <>Stored privately on your computer (<span className="cc-mono">.env.local</span>, git-ignored).
+                Never uploaded anywhere.</>
+            )}
           </div>
           {keyRow("gemini_api_key", "Gemini API key", keys.gemini_api_key, kGemini, setKGemini, "AIza…")}
           {keyRow("openai_api_key", "OpenAI API key", keys.openai_api_key, kOpenai, setKOpenai, "sk-…")}
