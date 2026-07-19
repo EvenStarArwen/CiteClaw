@@ -365,6 +365,17 @@ async def stop_run(run_id: str) -> dict:
     return {"status": "stopping"}
 
 
+@app.post("/api/run/{run_id}/cap")
+async def cap_decision(run_id: str, body: dict) -> dict:
+    """Answer the paper-cap modal: {action: 'stop'|'raise', max?: int}."""
+    action = str(body.get("action") or "stop")
+    new_max = body.get("max")
+    ok = manager.cap_decide(run_id, action, int(new_max) if new_max else None)
+    if not ok:
+        raise HTTPException(status_code=404, detail="run not found")
+    return {"ok": True}
+
+
 @app.get("/api/run/{run_id}/status")
 async def run_status(run_id: str) -> dict:
     rs = manager.get(run_id)

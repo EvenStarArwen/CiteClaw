@@ -144,6 +144,8 @@ def _step_road(s: dict[str, Any]) -> dict[str, Any]:
                     {"key": "enrich · abstracts", "label": "Enrich abstracts",
                      "hint": "S2 first, OpenAlex fallback"},
                     screen,
+                    {"key": "fetch accepted refs", "label": "Fetch survivors' references",
+                     "hint": "one batched call — their in-collection links appear in the graph right away"},
                 ]}
     if name == "ExpandBackward":
         return {"loop": True,
@@ -156,6 +158,8 @@ def _step_road(s: dict[str, Any]) -> dict[str, Any]:
                     {"key": "enrich · abstracts", "label": "Enrich abstracts",
                      "hint": "S2 first, OpenAlex fallback"},
                     screen,
+                    {"key": "fetch accepted refs", "label": "Fetch survivors' references",
+                     "hint": "one batched call — their in-collection links appear in the graph right away"},
                 ]}
     if name == "Parallel":
         n = len(s.get("branches") or [])
@@ -370,6 +374,12 @@ class RunState:
         # True while finalize_partial writes artifacts after a stop — the
         # dashboard stop checks must not fire again mid-finalize.
         self.finalizing = False
+        # Paper-cap gate: when the collection reaches max_papers_total the
+        # run thread blocks (≤30s) on cap_event waiting for the user's
+        # modal decision; cap_decision = {"action": "stop"|"raise", "max": N}.
+        self.cap_prompted = False
+        self.cap_event = threading.Event()
+        self.cap_decision: dict[str, Any] | None = None
 
 
 class WebDashboard:
@@ -509,6 +519,53 @@ class WebDashboard:
                 pass  # never let a stream hiccup crash the run
         self._live_snapshot(min_gap=1.0)
         self._maybe_stop()
+        self._check_cap()
+
+    def _check_cap(self) -> None:
+        """Hard paper cap: prompt the user the moment the limit is hit.
+
+        Broadcasts ``cap_reached`` (the UI shows a modal with a 30s
+        countdown), then BLOCKS the run thread until the user answers or
+        the deadline passes. "raise" bumps ``max_papers_total`` and
+        continues; "stop" or a timeout stops the run — finalize_partial
+        keeps everything found so far.
+        """
+        rs = self.rs
+        ctx = rs.ctx
+        if ctx is None or rs.finalizing or rs.cap_prompted:
+            return
+        cap = int(getattr(ctx.config, "max_papers_total", 0) or 0)
+        if cap <= 0 or len(ctx.collection) < cap:
+            return
+        rs.cap_prompted = True
+        rs.cap_event.clear()
+        rs.cap_decision = None
+        n = len(ctx.collection)
+        self.mgr.broadcast(rs, {"type": "cap_reached", "cap": cap,
+                                "accepted": n, "timeout_s": 30})
+        self._log("WARN", f"Paper cap reached ({n} ≥ {cap}) — run paused, waiting for your decision (30s)")
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline and not rs.stop_requested:
+            if rs.cap_event.wait(timeout=1.0):
+                break
+            self._emit(force=True)  # heartbeat while the run is held
+        self.mgr.broadcast(rs, {"type": "cap_resolved"})
+        decision = rs.cap_decision or {}
+        if decision.get("action") == "raise" and not rs.stop_requested:
+            try:
+                new_max = int(decision.get("max") or 0)
+            except (TypeError, ValueError):
+                new_max = 0
+            if new_max > len(ctx.collection):
+                ctx.config.max_papers_total = new_max
+                rs.cap_prompted = False  # re-arm at the new threshold
+                self._log("NOTE", f"Paper cap raised to {new_max} — continuing")
+                return
+            self._log("WARN", f"New cap {new_max} not above current count — stopping")
+        # explicit stop, timeout, or unusable raise value
+        self._log("WARN", "Stopping at the paper cap — finalizing current results")
+        rs.stop_requested = True  # backstop: swallowed raises still stop at the next hook
+        raise _StopRun()
 
     def set_retry_status(self, msg: str) -> None:
         msg = str(msg)
@@ -762,6 +819,16 @@ class RunManager:
         if not rs:
             return False
         rs.stop_requested = True
+        rs.cap_event.set()  # unblock a run held at the cap prompt
+        return True
+
+    def cap_decide(self, run_id: str, action: str, new_max: int | None) -> bool:
+        """Answer a pending cap prompt: action 'stop' or 'raise' (+ new_max)."""
+        rs = self.runs.get(run_id)
+        if not rs:
+            return False
+        rs.cap_decision = {"action": action, "max": new_max}
+        rs.cap_event.set()
         return True
 
     def _run(self, rs: RunState) -> None:

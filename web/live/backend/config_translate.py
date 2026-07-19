@@ -14,6 +14,7 @@ imports front-end code — the browser POSTs the plain JSON model.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .models_catalog import resolve_model
@@ -36,6 +37,66 @@ _COMPOSITE = {"Sequential", "Any", "Not", "Route", "Parallel"}
 
 class TranslationError(ValueError):
     """Raised when the design model can't be mapped to a valid config."""
+
+
+_EXPR_TOKEN = re.compile(
+    r'"([^"]*)"'                      # quoted phrase
+    r"|([A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*)"  # bare word
+    r"|([&|!()])"                     # operator
+    r"|(\s+)"                         # whitespace
+    r"|(.)"                           # anything else = error
+)
+
+
+def _compile_keyword_expression(expr: str) -> tuple[str, dict[str, str]]:
+    """Compile a direct keyword expression into the CLI's formula shape.
+
+    ``("large language model" | LLM) & "scientific discovery"`` becomes
+    ``("k1 | k2) & k3"`` plus ``{"k1": "large language model", ...}`` —
+    the named-formula form ``TitleKeywordFilter`` & friends execute. The
+    UI never shows the generated names. Wildcards are rejected loudly:
+    the keyword filters match plain substrings / whole words / prefixes.
+    """
+    parts: list[str] = []
+    names: dict[str, str] = {}   # lowercased term -> generated name
+    keywords: dict[str, str] = {}
+    for m in _EXPR_TOKEN.finditer(expr):
+        quoted, bare, op, ws, bad = m.groups()
+        if ws is not None:
+            continue
+        if bad is not None:
+            if bad == "*":
+                raise TranslationError(
+                    "Keyword expressions don't support * wildcards — terms match "
+                    "as substrings (or whole words / prefixes via the match mode)."
+                )
+            raise TranslationError(
+                f"Unexpected character {bad!r} in keyword expression — allowed: "
+                'words, "quoted phrases", & | ! and parentheses.'
+            )
+        if op is not None:
+            parts.append(op)
+            continue
+        term = quoted if quoted is not None else bare
+        if not term.strip():
+            raise TranslationError("Empty quotes in keyword expression — put a phrase between them.")
+        name = names.get(term.lower())
+        if name is None:
+            name = f"k{len(names) + 1}"
+            names[term.lower()] = name
+            keywords[name] = term
+        parts.append(name)
+    formula = " ".join(parts)
+    if not keywords:
+        raise TranslationError("Keyword expression has no terms — enter at least one keyword.")
+    try:
+        from citeclaw.screening.formula import BooleanFormula
+        BooleanFormula(formula)
+    except TranslationError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — surface the parser's message
+        raise TranslationError(f"Keyword expression is not valid: {exc}") from exc
+    return formula, keywords
 
 
 def _clean(d: dict[str, Any]) -> dict[str, Any]:
@@ -124,7 +185,12 @@ def _translate_filter(node: dict[str, Any]) -> dict[str, Any]:
         )
     elif kind in ("TitleKeywordFilter", "AbstractKeywordFilter", "VenueKeywordFilter"):
         out.update(_clean({"match": params.get("match")}))
-        if params.get("formula"):
+        expr = str(params.get("expression") or "").strip()
+        if expr:
+            # Direct expression, e.g. ("large language model" | LLM) & agent
+            out["formula"], out["keywords"] = _compile_keyword_expression(expr)
+        elif params.get("formula"):
+            # Legacy named form (older saved pipelines)
             out["formula"] = params["formula"]
             out["keywords"] = params.get("keywords") or {}
         elif params.get("keyword"):

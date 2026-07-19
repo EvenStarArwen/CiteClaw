@@ -83,8 +83,16 @@ def build_graph(ctx) -> dict[str, Any]:
             "cites": int(p.citation_count or 0),
         })
 
+    # Edge weight = Jaccard overlap of the two papers' reference lists
+    # (in-memory — the expansion steps batch-enrich references on accept),
+    # normalized to (0, 1] over this snapshot with a floor so zero-overlap
+    # edges stay visible. Gives the Explore panel a real weight range, so
+    # the min-weight filter and weight-mapped edge widths work on live and
+    # just-finished sessions, not only on loaded GraphML files.
+    ref_sets = {p.paper_id: set(p.references or []) for p in papers}
     seen: set[tuple[int, int]] = set()
     edges = []
+    raws: list[float] = []
     for p in papers:
         a = idx[p.paper_id]
         neighbors = list(p.references or []) + list(p.supporting_papers or [])
@@ -96,7 +104,19 @@ def build_graph(ctx) -> dict[str, Any]:
             if key in seen:
                 continue
             seen.add(key)
-            edges.append({"a": a, "b": b})
+            ra, rb = ref_sets.get(p.paper_id) or set(), ref_sets.get(ref) or set()
+            inter = len(ra & rb)
+            union = len(ra | rb)
+            raw = (inter / union) if union else 0.0
+            raws.append(raw)
+            edges.append({"a": a, "b": b, "w": raw})
+    max_raw = max(raws) if raws else 0.0
+    if max_raw > 0:
+        for e in edges:
+            e["w"] = round(0.15 + 0.85 * (e["w"] / max_raw), 4)
+    else:
+        for e in edges:
+            e["w"] = 1
     return {"nodes": nodes, "edges": edges}
 
 
@@ -106,9 +126,11 @@ def build_metrics(ctx) -> dict[str, Any]:
     accepted = len(ctx.collection)
     rej_counts = ctx.rejection_counts
     rejected = sum(rej_counts.values())
+    # Full list (the Rejections tab shows everything; Overview slices top-5
+    # client-side). Real runs produce ~a dozen distinct buckets at most.
     rej_reasons = [
         {"reason": r, "count": int(c)}
-        for r, c in rej_counts.most_common(6)
+        for r, c in rej_counts.most_common(40)
     ]
 
     s2_req = budget.s2_requests
