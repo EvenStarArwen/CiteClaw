@@ -380,6 +380,78 @@ class SemanticScholarClient:
             if e.get("citedPaper") and e["citedPaper"].get("paperId")
         ]
 
+    def enrich_references_batch(self, records: list) -> int:
+        """Fill in full reference id lists for *records*, batched.
+
+        One ``/paper/batch`` POST per 500 papers with
+        ``fields=references.paperId`` (the endpoint returns COMPLETE
+        lists — probed 2026-07: a 461-reference survey came back whole)
+        instead of one paginated GET per paper. Expansion steps call this
+        right after screening, so accepted papers carry their true
+        reference lists while the run is still going — the live graph
+        shows links BETWEEN accepted papers instead of per-seed stars,
+        and Finalize's per-paper fetch loop finds almost everything
+        already cached.
+
+        Cached entries use the bare ``{"citedPaper": {"paperId": ...}}``
+        shape without the rich edge-metadata fields — an already-supported
+        cache shape (``fetch_reference_edges`` returns empty contexts for
+        such entries and never re-fetches). Records whose references are
+        already cached get the cached ids merged in for free.
+
+        Merging keeps any pre-existing ids S2 doesn't list (the expansion
+        steps stamp a synthetic ref to the source paper). Failures leave
+        records untouched — Finalize's per-paper loop is the backstop.
+        Returns the number of papers fetched from the API.
+        """
+        def _merge(rec, ids: list[str]) -> None:
+            if not ids:
+                return
+            have = set(ids)
+            rec.references = list(ids) + [
+                r for r in (rec.references or []) if r not in have
+            ]
+
+        to_fetch: dict[str, Any] = {}
+        for rec in records:
+            pid = getattr(rec, "paper_id", None)
+            if not pid:
+                continue
+            cached_ids = self.cached_reference_ids(pid)
+            if cached_ids is None:
+                to_fetch[pid] = rec
+            else:
+                _merge(rec, cached_ids)
+        if not to_fetch:
+            return 0
+        try:
+            results = self._batch_fetch(
+                list(to_fetch), fields="references.paperId",
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("reference batch enrich failed for %d papers: %s",
+                        len(to_fetch), exc)
+            return 0
+        fetched = 0
+        for entry in results:
+            if not isinstance(entry, dict):
+                continue
+            pid = entry.get("paperId")
+            rec = to_fetch.get(pid)
+            if rec is None:
+                continue
+            ids = [
+                e["paperId"]
+                for e in (entry.get("references") or [])
+                if isinstance(e, dict) and e.get("paperId")
+            ]
+            self._cache.put_references(
+                pid, [{"citedPaper": {"paperId": r}} for r in ids],
+            )
+            _merge(rec, ids)
+            fetched += 1
+        return fetched
+
     # ------------------------------------------------------------------
     # Citations
     # ------------------------------------------------------------------

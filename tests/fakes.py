@@ -187,6 +187,20 @@ class FakeS2Client:
             return None
         return list(self._papers[paper_id].get("_ref_ids") or [])
 
+    def enrich_references_batch(self, records: list) -> int:
+        self._record_call("enrich_references_batch")
+        fetched = 0
+        for rec in records:
+            ids = self.cached_reference_ids(getattr(rec, "paper_id", "") or "")
+            if not ids:
+                continue
+            have = set(ids)
+            rec.references = list(ids) + [
+                r for r in (rec.references or []) if r not in have
+            ]
+            fetched += 1
+        return fetched
+
     # ------------------------------------------------------------------
     # Citations (forward edges)
     # ------------------------------------------------------------------

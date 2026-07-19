@@ -235,6 +235,16 @@ class ExpandBackward:
             fctx = FilterContext(ctx=ctx, source=source)
             passed, rejected = apply_block(cands, self.screener, fctx)
             record_rejections(rejected, fctx)
+            if passed:
+                # One batched call so survivors carry their real reference
+                # lists immediately — the live graph gets links between
+                # accepted papers, and Finalize skips the per-paper fetch.
+                dash.begin_phase("fetch accepted refs", total=None)
+                try:
+                    ctx.s2.enrich_references_batch(passed)
+                except Exception as exc:  # noqa: BLE001
+                    log.debug("backward: reference batch enrich failed: %s", exc)
+                dash.complete_phase()
             for p in passed:
                 p.llm_verdict = "accept"
                 ctx.collection[p.paper_id] = p

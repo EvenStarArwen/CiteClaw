@@ -88,4 +88,12 @@ class LoadSeeds:
             dash.paper_accepted(rec, saturation=saturation_for_paper(rec, ctx))
             dash.tick_inner(1)
         ctx.new_seed_ids = [r.paper_id for r in records]
+        if records:
+            # One batched call so seeds carry their reference lists from the
+            # start — seed↔seed links show in the graph immediately, and the
+            # RefSim source-refs fetch during expansion hits the cache.
+            try:
+                ctx.s2.enrich_references_batch(records)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("seed reference batch enrich failed: %s", exc)
         return StepResult(signal=records, in_count=len(signal), stats={"loaded": len(records)})

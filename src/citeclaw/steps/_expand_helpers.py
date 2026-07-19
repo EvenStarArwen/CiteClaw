@@ -228,6 +228,14 @@ def screen_expand_candidates(
     passed, rejected = apply_block(new_records, screener, fctx)
     record_rejections(rejected, fctx)
 
+    # 7a. One batched call so survivors carry their real reference lists
+    # immediately — live graph links + Finalize skips the per-paper fetch.
+    if passed:
+        try:
+            ctx.s2.enrich_references_batch(passed)
+        except Exception:  # noqa: BLE001 — Finalize's loop is the backstop
+            pass
+
     # 8. Survivors → collection + dashboard "accepted" hook.
     for p in passed:
         p.llm_verdict = "accept"
