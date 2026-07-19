@@ -70,6 +70,12 @@ function TopBar({ mode, setMode, running, runStatus, onRun, onStop, onReset, onO
         >
           <Icon name={theme === "dark" ? "sun" : "moon"} size={13} />
         </button>
+        {/* Public-deployment slot (downloads). public-extras.jsx declares the
+            component — function declarations hoist across the concatenated
+            babel script — and the local build renders nothing here. */}
+        {typeof PublicTopbarExtra !== "undefined" && window.__PUBLIC__
+          ? <PublicTopbarExtra />
+          : null}
         <button className="btn btn-ghost" onClick={onReset} title="Reset session">
           <Icon name="rotate-ccw" size={13} /> Reset
         </button>

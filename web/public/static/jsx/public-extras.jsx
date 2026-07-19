@@ -1,14 +1,15 @@
 /* eslint-disable */
 // Public-deployment extras, appended after app.jsx by the public server's
-// index assembly. Mounts its own React root so nothing in the shared app
-// needs forking:
-//   * floating "Results" chip (bottom-right) — the session's runs with
-//     per-artifact download links + one-zip bundle
+// index assembly. Declares PublicTopbarExtra — the top bar renders it in
+// its actions row (next to Reset / Run) via a typeof-guarded slot, so the
+// shared component needs no fork and the local build is untouched:
+//   * "Results" button + dropdown — the session's runs with per-artifact
+//     download links + one-zip bundle
 //   * scale-to-zero notice — while a run is active, warn that the server
 //     sleeps shortly after the tab closes (the /me poll doubles as the
 //     keep-alive while the tab stays open)
 
-function PublicRunsChip() {
+function PublicTopbarExtra() {
   const [open, setOpen] = React.useState(false);
   const [runs, setRuns] = React.useState([]);
   const [me, setMe] = React.useState(null);
@@ -70,17 +71,13 @@ function PublicRunsChip() {
   };
 
   return (
-    <div className="pubx-wrap">
-      {toastRun && (
-        <div className="pubx-toast">
-          <Icon name="alert-circle" size={12} />
-          <span>
-            Run in progress — <b>keep this tab open</b>. This server goes to
-            sleep about a minute after the last visitor leaves, which would
-            end the run (everything found so far is finalized + downloadable).
-          </span>
-        </div>
-      )}
+    <div className="pubx-tb">
+      <button className={"btn btn-ghost" + (open ? " is-on" : "")}
+              onClick={() => setOpen(v => !v)}
+              title="Download your run results">
+        <Icon name="download" size={13} /> Results
+        {running && <span className="pubx-dot" />}
+      </button>
       {open && (
         <div className="pubx-pop">
           <div className="pubx-pop-head">
@@ -112,13 +109,16 @@ function PublicRunsChip() {
           </div>
         </div>
       )}
-      <button className={"pubx-chip" + (running ? " is-running" : "")}
-              onClick={() => setOpen(v => !v)}
-              title="Download your run results">
-        <Icon name="download" size={12} />
-        <span>Results</span>
-        {running && <span className="pubx-dot" />}
-      </button>
+      {toastRun && (
+        <div className="pubx-toast">
+          <Icon name="alert-circle" size={12} />
+          <span>
+            Run in progress — <b>keep this tab open</b>. This server goes to
+            sleep about a minute after the last visitor leaves, which would
+            end the run (everything found so far is finalized + downloadable).
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -127,19 +127,13 @@ function PublicRunsChip() {
   if (!window.__PUBLIC__) return;
   const style = document.createElement("style");
   style.textContent = `
-    .pubx-wrap { position: fixed; right: 14px; bottom: 40px; z-index: 900;
-                 display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
-                 font-family: Inter, system-ui, sans-serif; }
-    .pubx-chip { display: inline-flex; align-items: center; gap: 6px;
-                 padding: 7px 12px; font: 600 12px Inter, sans-serif;
-                 color: var(--cc-ink-1, #1a1915); background: var(--cc-bg-0, #fff);
-                 border: 1px solid var(--cc-line-1, #d6d3cb); border-radius: 999px;
-                 cursor: pointer; box-shadow: 0 2px 10px rgba(20,18,12,0.08); }
-    .pubx-chip:hover { background: #f3f1ec; }
+    .pubx-tb { position: relative; display: flex; align-items: center;
+               font-family: Inter, system-ui, sans-serif; }
     .pubx-dot { width: 7px; height: 7px; border-radius: 50%; background: #2e7d43;
-                animation: pubx-pulse 1.6s ease-in-out infinite; }
+                margin-left: 5px; animation: pubx-pulse 1.6s ease-in-out infinite; }
     @keyframes pubx-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
-    .pubx-pop { width: 330px; max-height: 46vh; overflow-y: auto; background: var(--cc-bg-0, #fff);
+    .pubx-pop { position: absolute; top: calc(100% + 10px); right: 0; z-index: 900;
+                width: 330px; max-height: 56vh; overflow-y: auto; background: var(--cc-bg-0, #fff);
                 border: 1px solid var(--cc-line-1, #d6d3cb); border-radius: 12px;
                 box-shadow: 0 8px 28px rgba(20,18,12,0.13); padding: 12px 13px 10px; }
     .pubx-pop-head { display: flex; align-items: center; justify-content: space-between;
@@ -162,14 +156,12 @@ function PublicRunsChip() {
     .pubx-links { display: flex; flex-wrap: wrap; gap: 5px 10px; }
     .pubx-links a { font: 500 11px Inter, sans-serif; color: #3652a3; text-decoration: none; }
     .pubx-links a:hover { text-decoration: underline; }
-    .pubx-toast { display: flex; gap: 8px; align-items: flex-start; width: 330px;
+    .pubx-toast { position: fixed; top: 50px; right: 14px; z-index: 899;
+                  display: flex; gap: 8px; align-items: flex-start; width: 330px;
                   background: #fff8ec; border: 1px solid #e8d9b8; border-radius: 10px;
                   padding: 10px 12px; font-size: 11.5px; line-height: 1.5; color: #6b5722;
                   box-shadow: 0 4px 16px rgba(20,18,12,0.10); }
     .pubx-toast svg { flex: none; margin-top: 2px; }
   `;
   document.head.appendChild(style);
-  const div = document.createElement("div");
-  document.body.appendChild(div);
-  ReactDOM.createRoot(div).render(<PublicRunsChip />);
 })();
