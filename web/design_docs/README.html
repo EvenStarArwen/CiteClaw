@@ -1,0 +1,56 @@
+<!-- @dsCard group="Docs" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CiteClaw UI — start here</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  body { font-family: Inter, system-ui, sans-serif; background: #faf9f5; color: #1a1915;
+         margin: 0; padding: 28px; line-height: 1.55; }
+  .wrap { max-width: 760px; }
+  h1 { font-size: 17px; margin: 0 0 12px; }
+  h2 { font-size: 13.5px; margin: 20px 0 6px; }
+  p, li { font-size: 13px; color: #3d3a33; }
+  code { font: 11.5px "IBM Plex Mono", monospace; background: #efede8; padding: 1px 5px; border-radius: 4px; }
+  .rule { background: #fff8ec; border: 1px solid #e8d9b8; border-radius: 10px; padding: 12px 15px;
+          font-size: 13px; color: #6b5722; margin: 14px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CiteClaw UI — design polish project</h1>
+  <p>CiteClaw is a literature-discovery workspace: users assemble a screening
+  pipeline (Build), watch it stream papers into a live citation graph (Run),
+  and explore the finished collection (Explore). This project contains the
+  real production UI, captured from the running app.</p>
+
+  <div class="rule"><b>The one rule:</b> redesign anything visual — markup,
+  layout, structure, styling — but the frontend must keep speaking to the
+  current backend exactly as today. The full frozen API surface and the
+  affordances that must survive are in <code>docs/api-contract.md</code>.
+  Engineering re-wires approved designs and gates compatibility.</div>
+
+  <h2>What's here</h2>
+  <ul>
+    <li><b>Foundations</b> — the real design tokens (<code>--cc-*</code>) and type
+        scale, parsed from the production stylesheet.</li>
+    <li><b>Components</b> — live-captured markup per component, grouped by area
+        (Chrome / Build / Run / Graph / Explore / Overlays). Each renders
+        against <code>assets/app.css</code>, the actual stylesheet.</li>
+    <li><b>Screens</b> — full-page screenshots for composition context.</li>
+    <li><b>src/jsx/</b> — the actual React sources behind every component.</li>
+  </ul>
+
+  <h2>How to propose changes</h2>
+  <ul>
+    <li>Prefer editing <code>assets/app.css</code> (tokens first — they restyle the
+        whole app) and the component cards' markup in place.</li>
+    <li>The app ships the <code>data-palette="mono"</code> light variant; keep colors
+        going through tokens so the dark theme keeps working.</li>
+    <li>Structural redesigns are welcome — annotate what moved and why, so
+        re-wiring the React components is unambiguous.</li>
+  </ul>
+</div>
+</body>
+</html>
