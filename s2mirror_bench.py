@@ -91,6 +91,7 @@ class Bench:
     def __init__(self, base: str, key: str):
         self.http = _client(base, key)
         self.server_ms: dict[str, list[float]] = {}
+        self.errors: dict[str, list[int]] = {}
 
     def _track(self, op: str, resp) -> None:
         st = resp.headers.get("x-server-ms")
@@ -100,15 +101,19 @@ class Bench:
     def get(self, op, path, params):
         t0 = time.perf_counter()
         r = self.http.get(path, params=params)
-        r.raise_for_status()
-        self._track(op, r)
+        if r.status_code != 200:
+            self.errors.setdefault(op, []).append(r.status_code)
+        else:
+            self._track(op, r)
         return (time.perf_counter() - t0) * 1000
 
     def post(self, op, path, params, body):
         t0 = time.perf_counter()
         r = self.http.post(path, params=params, json=body)
-        r.raise_for_status()
-        self._track(op, r)
+        if r.status_code != 200:
+            self.errors.setdefault(op, []).append(r.status_code)
+        else:
+            self._track(op, r)
         return (time.perf_counter() - t0) * 1000
 
     # ---- fixed anchors ----------------------------------------------------
@@ -240,6 +245,10 @@ class Bench:
             srv = self.server_ms.get(op)
             if srv:
                 results[op]["srv_p50_ms"] = round(_pct(srv, 0.5), 1)
+                results[op]["srv_p90_ms"] = round(_pct(srv, 0.9), 1)
+            errs = self.errors.get(op)
+            if errs:
+                results[op]["errors"] = {str(c): errs.count(c) for c in set(errs)}
             print(f"{op:14s} {json.dumps(results[op])}", flush=True)
         return results
 

@@ -11,11 +11,18 @@ from __future__ import annotations
 import threading
 import time
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+
+try:  # orjson: ~5-10x faster render for 1000-row pages (present in the image)
+    from fastapi.responses import ORJSONResponse as JSONResponse
+    import orjson  # noqa: F401 — probe: ORJSONResponse needs it at render time
+except ImportError:  # pragma: no cover - local test envs without orjson
+    from fastapi.responses import JSONResponse
 
 from s2mirror import schema
 from s2mirror.store import CurrentStore, MirrorStore
@@ -100,7 +107,25 @@ def create_app(
     api_keys: set[str] | frozenset[str] = frozenset(),
     upstream: Upstream | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="s2mirror", docs_url=None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def _lifespan(_app):
+        # sync endpoints run in anyio's worker pool (default 40 threads) —
+        # sized below Modal's 64-concurrent inputs it silently queues.
+        from anyio import to_thread
+        to_thread.current_default_thread_limiter().total_tokens = 96
+        yield
+
+    app = FastAPI(title="s2mirror", docs_url=None, redoc_url=None,
+                  openapi_url=None, lifespan=_lifespan)
+    app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=1)
+
+    @app.middleware("http")
+    async def _server_timing(request: Request, call_next):
+        t0 = time.perf_counter()
+        response = await call_next(request)
+        response.headers["x-server-ms"] = f"{(time.perf_counter() - t0) * 1000:.1f}"
+        return response
+
     memo = _Memo(_UPSTREAM_MEMO_MAX)
     stats = {"local": 0, "upstream": 0, "miss": 0, "started": time.time()}
     stats_lock = threading.Lock()

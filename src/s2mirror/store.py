@@ -41,6 +41,9 @@ class MirrorStore:
         self._conn_lock = threading.Lock()
         self._adj_cache: OrderedDict[tuple[str, int], np.ndarray] = OrderedDict()
         self._adj_lock = threading.Lock()
+        # shared fan-out pool: creating a ThreadPoolExecutor per get_papers
+        # call costs ~1ms + thread churn on the hottest path in the server.
+        self._pool = ThreadPoolExecutor(max_workers=48, thread_name_prefix="shardfan")
 
     # ---- connections -----------------------------------------------------
 
@@ -67,6 +70,7 @@ class MirrorStore:
             return conn.execute(sql, params).fetchall()
 
     def close(self) -> None:
+        self._pool.shutdown(wait=False)
         with self._conn_lock:
             for conn, _lock in self._conns.values():
                 if conn is not None:
@@ -125,8 +129,7 @@ class MirrorStore:
         if len(by_shard) <= 2:
             results = [fetch(s, c) for s, c in by_shard.items()]
         else:
-            with ThreadPoolExecutor(max_workers=min(16, len(by_shard))) as pool:
-                results = list(pool.map(lambda sc: fetch(*sc), by_shard.items()))
+            results = list(self._pool.map(lambda sc: fetch(*sc), by_shard.items()))
         for rows in results:
             for cid, js in rows:
                 out[cid] = jsonio.loads(zlib.decompress(js))
