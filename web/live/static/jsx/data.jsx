@@ -58,16 +58,10 @@ const BLOCK_CATALOG = [
 // One fresh copy of the shared screener tree; `p` prefixes every node id so
 // each embedding is independent.
 function _sdlScreener(p) {
-  const KW = {
-    self_driving: "self-driving", self_driv: "self driving",
-    autonomous_lab: "autonomous", automated: "automated",
-    ai_scientist: "ai scientist", ai_scientist2: "ai-scientist",
-    co_scientist: "co-scientist", LLM: "large language model", LLM2: "LLM",
-    laboratory: "laborator", agent: "agent",
-  };
-  const FORMULA = "self_driving | self_driv | autonomous_lab | automated | ai_scientist | ai_scientist2 | co_scientist | LLM | LLM2 | laboratory | agent";
+  const ABS_EXPR = '"self-driving" | "self driving" | autonomous | automated | ' +
+    '"ai scientist" | "ai-scientist" | "co-scientist" | "large language model" | LLM | laborator | agent';
   const absKw = (id) => ({ id, kind: "AbstractKeywordFilter",
-    params: { match: "substring", formula: FORMULA, keywords: { ...KW } } });
+    params: { match: "substring", expression: ABS_EXPR } });
   const titleLlm = (id) => ({ id, kind: "LLMFilter",
     params: { scope: "title", formula: "q1",
       queries: { q1: "The paper is about self-driving / autonomous laboratories or AI scientists or AI agents for research / scientific discovery." },

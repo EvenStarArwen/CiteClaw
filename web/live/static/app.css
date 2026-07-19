@@ -4577,6 +4577,31 @@ select.gp-v { cursor: pointer; }
   gap: 0;
   border-top: 1px solid var(--cc-rule-soft);
 }
+.dash-bars-single { grid-template-columns: 1fr; }
+/* Cost tab key/value grid */
+.dash-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
+.dash-kv > div {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: var(--cc-ink-2);
+  border-bottom: 1px dotted var(--cc-rule-soft); padding-bottom: 4px;
+}
+.dash-kv b { font-family: var(--cc-font-mono); font-weight: 600; color: var(--cc-ink-1); }
+/* Logs tab: full-width rows, click to un-clamp long messages */
+.dash-logs {
+  border-top: 1px solid var(--cc-rule-soft);
+  padding: 8px 18px;
+  overflow-y: auto; min-height: 0; flex: 1 1 auto;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.dash-log-row {
+  display: grid; grid-template-columns: 58px 46px 1fr;
+  gap: 8px; align-items: baseline;
+  font-family: var(--cc-font-mono); font-size: 11px;
+  padding: 2px 4px; border-radius: 4px; cursor: pointer;
+}
+.dash-log-row:hover { background: var(--cc-hover-soft); }
+.dash-log-msg { color: var(--cc-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-log-msg.open { white-space: normal; word-break: break-word; color: var(--cc-ink-1); }
 .bars-col {
   padding: 12px 18px;
   display: flex; flex-direction: column; gap: 8px;
@@ -5368,9 +5393,10 @@ select.gp-v { cursor: pointer; }
 /* ── Route: IF / ELIF / ELSE branches in the filter tree ──────────────── */
 .ft-route { display: flex; flex-direction: column; gap: 5px; }
 .ft-route-head {
-  display: flex; align-items: baseline; gap: 7px;
-  cursor: pointer; padding: 1px 2px;
+  display: flex; align-items: center; gap: 7px;
+  cursor: pointer; padding: 2px 2px;
   min-width: 0;
+  position: relative;   /* hosts the route's hover actions on the IF row */
 }
 .ft-route-if {
   flex: 0 0 auto;
@@ -5379,13 +5405,25 @@ select.gp-v { cursor: pointer; }
   color: var(--cc-paper); background: #5c7a5a;
   padding: 2px 6px; border-radius: 3px;
 }
+/* The condition IS the information — normal-size, full-ink, never a
+   whisper. (User: "venue filters displayed in very small, light grey
+   texts, making it very easy to ignore them".) */
 .ft-route-pred {
-  font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-2);
+  font-size: 11.5px; font-weight: 550; color: var(--cc-ink-1);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
-.ft-route-head:hover .ft-route-pred { color: var(--cc-ink-1); }
-.ft-route-target { margin-left: 14px; display: flex; flex-direction: column; }
+.ft-route-head:hover .ft-route-pred { color: var(--cc-accent); }
+.ft-route-head:hover .ft-node-acts { display: inline-flex; }
+.ft-route-head .ft-node-acts { background: var(--cc-panel); }
+.ft-route-target { margin-left: 20px; display: flex; flex-direction: column; gap: 5px; }
 .ft-route-target > .ft-add-wrap { align-self: flex-start; }
+/* Flattened containers: the bare AND cascade + the chip-led route group */
+.ft-seq-plain { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ft-route-group {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 2px 0; min-width: 0;
+}
+.ft-route-group.is-selected .ft-route-if { box-shadow: 0 0 0 2px color-mix(in srgb, var(--cc-accent) 35%, transparent); }
 
 /* Route condition rows in the detail editor */
 .cfg-route-row {
@@ -5696,4 +5734,11 @@ select.gp-v { cursor: pointer; }
   font-family: inherit;
   font-size: 11.5px !important;
   line-height: 1.5;
+}
+/* Direct keyword-expression textarea: mono so quotes/operators read clearly */
+.cfg-expr-ta {
+  width: 100%;
+  font-family: var(--cc-font-mono) !important;
+  font-size: 11px !important;
+  min-height: 44px;
 }

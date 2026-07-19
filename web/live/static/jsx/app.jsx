@@ -301,7 +301,7 @@ function App() {
     if (res && res.ok) setMode("run");
     else setRunError((res && res.error) || "Could not start the run. Check your settings and try again.");
   };
-  const handlePause = () => { stopRun(); };
+  const handleStop = () => { stopRun(); };
   const handleReset = () => { stopRun(); };
 
   useEffect(() => {
@@ -320,8 +320,9 @@ function App() {
         mode={mode}
         setMode={setMode}
         running={running}
+        runStatus={runStatus}
         onRun={handleRun}
-        onPause={handlePause}
+        onStop={handleStop}
         onReset={handleReset}
         onOpenSettings={() => setSettingsOpen(true)}
         theme={theme}
@@ -481,6 +482,8 @@ function App() {
         onClose={() => setRunError(null)}
         onOpenSettings={() => { setRunError(null); setSettingsOpen(true); }}
       />
+
+      <CapDialog />
 
       <TweaksPanel
         visible={tweaksVisible}

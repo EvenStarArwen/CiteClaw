@@ -38,6 +38,9 @@ const LIVE = (function () {
     lastEventAt: 0,
     nowMs: Date.now(),
     runStartedAt: null,
+    // paper-cap modal: {cap, accepted, timeoutS, at} while the backend
+    // holds the run waiting for a decision; null otherwise
+    capPrompt: null,
     settings: { model: "gemini-3.1-flash-lite", effort: "minimal", maxPapers: 200, keys: {}, models: [], loaded: false },
     // explore mode — "live" mirrors the current session; a run path swaps in
     // an on-disk collection loaded through /api/explore/run; "upload" shows a
@@ -189,13 +192,17 @@ function _handleEvent(m) {
       const cur = LIVE.get("network");
       LIVE.set({ network: { nodes: m.graph.nodes, edges: m.graph.edges, version: (cur.version || 0) + 1 } });
     }
+  } else if (m.type === "cap_reached") {
+    LIVE.set({ capPrompt: { cap: m.cap, accepted: m.accepted, timeoutS: m.timeout_s || 30, at: Date.now() } });
+  } else if (m.type === "cap_resolved") {
+    LIVE.set({ capPrompt: null });
   } else if (m.type === "error") {
-    LIVE.set({ running: false, runStatus: "error", error: m.message, activity: null });
+    LIVE.set({ running: false, runStatus: "error", error: m.message, activity: null, capPrompt: null });
     _pushLog("ERR", m.message);
   } else if (m.type === "done") {
     const cur = LIVE.get("network");
     window.NETWORK = { nodes: cur.nodes, edges: cur.edges };
-    LIVE.set({ running: false, runStatus: m.status, activity: null,
+    LIVE.set({ running: false, runStatus: m.status, activity: null, capPrompt: null,
       network: { nodes: cur.nodes, edges: cur.edges, version: (cur.version || 0) + 1 } });
     _pushLog("DONE", "run " + m.status);
   }
@@ -226,7 +233,7 @@ async function startRun(pipeline, seeds) {
     progress: { steps: [], done: 0, total: 0, current: null, overallPct: 0 },
     network: { nodes: [], edges: [], version: netVer },
     metrics: LIVE.emptyMetrics(),
-    activity: null, lastEventAt: Date.now(), runStartedAt: Date.now(),
+    activity: null, lastEventAt: Date.now(), runStartedAt: Date.now(), capPrompt: null,
   });
   _startRunTicker();
   window.NETWORK = { nodes: [], edges: [] };
@@ -251,8 +258,27 @@ async function startRun(pipeline, seeds) {
 
 async function stopRun() {
   const id = LIVE.get("runId");
-  if (id) { try { await _api("/api/run/" + id + "/stop", { method: "POST" }); } catch (_) {} }
-  LIVE.set({ running: false });
+  if (!id || !LIVE.get("running")) { LIVE.set({ running: false }); return; }
+  if (LIVE.get("runStatus") === "stopping") return;   // already on its way
+  // Keep `running` true while the backend finalizes — the ticker keeps
+  // counting and the activity card narrates the artifact writes. The
+  // "done" event flips everything off.
+  LIVE.set({ runStatus: "stopping", capPrompt: null });
+  _pushLog("STEP", "Stop requested — finalizing current results…");
+  try { await _api("/api/run/" + id + "/stop", { method: "POST" }); } catch (_) {}
+}
+
+async function capDecide(action, newMax) {
+  const id = LIVE.get("runId");
+  LIVE.set({ capPrompt: null });
+  if (!id) return;
+  try {
+    await _api("/api/run/" + id + "/cap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newMax ? { action, max: newMax } : { action }),
+    });
+  } catch (_) {}
 }
 
 // ---- exploration mode ----
@@ -387,14 +413,14 @@ function exploreFromLive() {
   const edges = [];
   for (const e of net.edges || []) {
     const a = net.nodes[e.a], b = net.nodes[e.b];
-    if (a && b) edges.push({ source: a.paperId, target: b.paperId });
+    if (a && b) edges.push({ source: a.paperId, target: b.paperId, weight: e.w == null ? 1 : e.w });
   }
   return { papers, edges };
 }
 
 Object.assign(window, {
   LIVE, useLive, fmtK, fmtNum, fmtDur,
-  refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun,
+  refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun, capDecide,
   refreshExploreRuns, loadExploreRun, loadExploreCollab, exploreUseLiveSession,
   loadExploreUpload, exploreUseUpload, exploreFromLive,
 });

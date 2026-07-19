@@ -3,8 +3,8 @@
 // Claude-ish chrome: brand, mode segmented toggle (Build/Run),
 // lightweight meta counters, primary action on the right.
 
-function TopBar({ mode, setMode, running, onRun, onPause, onReset, onOpenSettings,
-                 theme, onToggleTheme, blocks, accepted, elapsed, runStatus, explorePapers }) {
+function TopBar({ mode, setMode, running, runStatus, onRun, onStop, onReset, onOpenSettings,
+                 theme, onToggleTheme, blocks, accepted, elapsed, explorePapers }) {
   return (
     <header className="topbar">
       <div className="tb-brand">
@@ -73,9 +73,14 @@ function TopBar({ mode, setMode, running, onRun, onPause, onReset, onOpenSetting
         <button className="btn btn-ghost" onClick={onReset} title="Reset session">
           <Icon name="rotate-ccw" size={13} /> Reset
         </button>
-        {running ? (
-          <button className="btn" onClick={onPause}>
-            <Icon name="pause" size={13} /> Pause
+        {running && runStatus === "stopping" ? (
+          <button className="btn" disabled title="Writing results for everything accepted so far">
+            <Icon name="loader" size={13} /> Finalizing…
+          </button>
+        ) : running ? (
+          <button className="btn" onClick={onStop}
+            title="Stop the run — finalize and keep everything found so far">
+            <Icon name="square" size={13} /> Stop
           </button>
         ) : (
           <button className="btn btn-primary" onClick={onRun}>

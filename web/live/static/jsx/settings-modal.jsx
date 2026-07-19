@@ -276,4 +276,64 @@ function RunErrorDialog({ error, onClose, onOpenSettings }) {
   );
 }
 
-Object.assign(window, { SettingsModal, RunErrorDialog });
+// Paper-cap dialog — the backend HOLDS the run while this is open (≤30s),
+// then stops on its own. "Continue" raises max_papers and resumes.
+function CapDialog() {
+  const prompt = useLive("capPrompt");
+  const nowMs = useLive("nowMs");
+  const [newMax, setNewMax] = React.useState("");
+  React.useEffect(() => {
+    if (prompt) setNewMax(String(prompt.cap * 2));
+  }, [prompt && prompt.at]);
+  if (!prompt) return null;
+
+  const left = Math.max(0, (prompt.timeoutS || 30) - Math.round((nowMs - prompt.at) / 1000));
+  const T = {
+    backdrop: { position: "fixed", inset: 0, background: "rgba(30,39,53,0.30)", zIndex: 240,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
+    card: { width: "min(460px, 96vw)", background: "var(--cc-panel)", overflow: "hidden",
+      border: "1px solid var(--cc-rule-strong)", borderRadius: 8, boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
+    head: { display: "flex", alignItems: "center", gap: 9,
+      padding: "14px 18px", borderBottom: "1px solid var(--cc-rule)", background: "var(--cc-chrome)" },
+    body: { padding: 18, fontSize: 13, color: "var(--cc-ink-1)", lineHeight: 1.55 },
+    foot: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8,
+      padding: "12px 18px", borderTop: "1px solid var(--cc-rule)" },
+  };
+  return (
+    <div style={T.backdrop}>
+      <div style={T.card} role="alertdialog" aria-modal="true">
+        <div style={T.head}>
+          <span style={{ color: "var(--cc-warn, #b58a2a)", display: "inline-flex" }}><Icon name="alert-octagon" size={16} /></span>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>Paper limit reached</span>
+          <span style={{ marginLeft: "auto", fontFamily: "var(--cc-font-mono)", fontSize: 12,
+            color: left <= 10 ? "var(--cc-danger)" : "var(--cc-ink-3)" }}>
+            auto-stop in {left}s
+          </span>
+        </div>
+        <div style={T.body}>
+          The collection hit your limit of <b>{prompt.cap.toLocaleString()}</b> papers
+          ({prompt.accepted.toLocaleString()} accepted). The run is <b>paused</b> — nothing
+          is being fetched while you decide.
+          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "var(--cc-ink-2)" }}>Raise the limit to</span>
+            <input value={newMax} onChange={e => setNewMax(e.target.value.replace(/[^0-9]/g, ""))}
+              style={{ width: 90, padding: "5px 8px", fontFamily: "var(--cc-font-mono)", fontSize: 13,
+                border: "1px solid var(--cc-rule-strong)", borderRadius: 5, background: "var(--cc-bg)" }} />
+            <span style={{ color: "var(--cc-ink-3)" }}>papers and keep going, or stop now.</span>
+          </div>
+        </div>
+        <div style={T.foot}>
+          <button className="btn btn-primary" onClick={() => capDecide("stop")}>
+            <Icon name="square" size={13} /> Stop &amp; finalize
+          </button>
+          <button className="btn" disabled={!Number(newMax) || Number(newMax) <= prompt.accepted}
+            onClick={() => capDecide("raise", Number(newMax))}>
+            <Icon name="play" size={13} /> Continue to {Number(newMax) ? Number(newMax).toLocaleString() : "…"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { SettingsModal, RunErrorDialog, CapDialog });

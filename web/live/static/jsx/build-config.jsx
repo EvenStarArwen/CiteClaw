@@ -39,9 +39,9 @@ function defaultParams(kind) {
     case "CitationFilter":        return { beta: 30 };
     case "SimilarityFilter":      return { threshold: 0.025, measures: [{ kind: "RefSim" }] };
     case "LLMFilter":             return { scope: "title_abstract", formula: "q1", queries: { q1: "" }, model: "", effort: "" };
-    case "TitleKeywordFilter":    return { match: "substring", formula: "k1", keywords: { k1: "" } };
-    case "AbstractKeywordFilter": return { match: "substring", formula: "k1", keywords: { k1: "" } };
-    case "VenueKeywordFilter":    return { match: "starts_with", formula: "k1", keywords: { k1: "Nature" } };
+    case "TitleKeywordFilter":    return { match: "substring", expression: "" };
+    case "AbstractKeywordFilter": return { match: "substring", expression: "" };
+    case "VenueKeywordFilter":    return { match: "starts_with", expression: '"Nature"' };
     default: return {};
   }
 }
@@ -407,6 +407,63 @@ function NamedDictEditor({ p, patch, field, noun, formulaInfo }) {
   );
 }
 
+// --- direct keyword expressions -------------------------------------------
+// Keyword filters take ONE boolean expression over literal terms — e.g.
+//   ("large language model" | LLM) & "scientific discovery"
+// The backend compiles it to the CLI's named formula+keywords shape.
+
+// Older nodes (and the shipped default pipeline) carry {formula, keywords};
+// render them as an equivalent expression so nothing breaks on upgrade.
+function exprFromLegacy(p) {
+  if (p.expression != null) return p.expression;
+  if (p.keyword) return '"' + p.keyword + '"';
+  if (!p.formula) return "";
+  const dict = p.keywords || {};
+  return String(p.formula).replace(/[A-Za-z_][A-Za-z0-9_]*/g, (nm) =>
+    dict[nm] != null ? '"' + dict[nm] + '"' : nm);
+}
+
+function checkKeywordExpression(expr) {
+  const errors = [], warnings = [];
+  const s = String(expr || "").trim();
+  if (!s) { errors.push("The expression is empty — enter at least one keyword."); return { errors, warnings }; }
+  if (s.includes("*"))
+    errors.push("Wildcards (*) aren’t supported — terms already match as substrings (or whole words / prefixes via the match mode).");
+  if ((s.match(/"/g) || []).length % 2)
+    errors.push("Unbalanced quotes — every opening \" needs a closing \".");
+  const blanked = s.replace(/"[^"]*"/g, "x");
+  let depth = 0, under = false;
+  for (const ch of blanked) {
+    if (ch === "(") depth++;
+    else if (ch === ")") { depth--; if (depth < 0) under = true; }
+  }
+  if (depth !== 0 || under) errors.push("Unbalanced parentheses.");
+  const leftover = blanked.replace(/[A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*/g, " ").replace(/[&|!()\s]/g, "");
+  if (leftover)
+    errors.push("Unexpected character" + (leftover.length > 1 ? "s" : "") + ": " +
+      [...new Set(leftover)].join(" ") + " — allowed: words, \"quoted phrases\", & | ! and parentheses.");
+  if (/[&|]\s*$/.test(blanked)) errors.push("The expression ends with a dangling operator.");
+  if (/^\s*[&|]/.test(blanked)) errors.push("The expression starts with an operator.");
+  return { errors, warnings };
+}
+
+function KeywordExpressionEditor({ p, patch }) {
+  const expr = exprFromLegacy(p);
+  const { errors, warnings } = checkKeywordExpression(expr);
+  return (
+    <>
+      <ConfigField label="Keywords" wide full
+        info={'One boolean expression over the literal terms to look for. Quote multi-word phrases; bare single words work as-is. Terms are case-insensitive and compared per the match mode. Example: ("large language model" | LLM) & "scientific discovery"'}
+        hint={'& and · | or · ! not · ( ) group · "…" phrase — no * wildcards'}>
+        <textarea className="cfg-kv-ta cfg-expr-ta" rows={2} value={expr}
+          placeholder={'("large language model" | LLM) & "scientific discovery"'}
+          onChange={e => patch({ expression: e.target.value, formula: undefined, keywords: undefined, keyword: undefined })} />
+      </ConfigField>
+      <ValidationNotes errors={errors} warnings={warnings} />
+    </>
+  );
+}
+
 const MEASURE_INFO = {
   RefSim: "Jaccard overlap between this paper's reference list and the anchor paper's. No parameters.",
   CitSim: "Jaccard overlap between the sets of papers that cite each one. “Cited at least” lets any paper with that many citations pass outright.",
@@ -616,7 +673,7 @@ function RouteSlot({ onPick }) {
   );
 }
 
-function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemove, onMove, onAddToRoute, canUp, canDown }) {
+function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemove, onMove, onAddToRoute, canUp, canDown, plain }) {
   const [adding, setAdding] = React.useState(false);
   const addBtnRef = React.useRef(null);
   const isComposite = COMPOSITE_KINDS.includes(node.kind);
@@ -635,41 +692,36 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
     );
   }
 
-  // ── Route: labelled IF / ELIF / ELSE branches, each with its own subtree.
-  // Clicking the head (or a condition label) opens the conditions editor in
-  // the detail panel; the branch subtrees are edited right here in the tree.
+  // ── Route: the IF / ELIF / ELSE chips ARE the structure — no extra
+  // "Route" header level. Conditions render prominently next to the chips
+  // (click one to edit); each branch's filters list directly below with
+  // their AND implied. The route's own hover actions live on the IF row.
   if (node.kind === "Route") {
     const routes = node.routes || [];
     const passProps = { depth: depth + 1, selectedId, onSelect, onAddChild, onRemove, onMove, onAddToRoute };
-    const slot = (label, sub, slotId) => (
+    const slot = (label, sub, slotId, acts) => (
       <div className="ft-route" key={slotId}>
         <div className="ft-route-head" onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
-          title="Click to edit this Route's conditions">
+          title="First matching condition decides the branch — click to edit the conditions">
           <span className="ft-route-if">{label.word}</span>
           <span className="ft-route-pred">{label.pred}</span>
+          {acts}
         </div>
         <div className="ft-route-target">
           {sub
-            ? <FilterTreeNode node={sub} {...passProps} />
+            ? <FilterTreeNode node={sub} {...passProps} plain={sub.kind === "Sequential"} />
             : <RouteSlot onPick={(n) => onAddToRoute(node.id, slotId, n)} />}
         </div>
       </div>
     );
     return (
-      <div className={"ft-comp ft-comp-route" + (selected ? " is-selected" : "")}>
-        <div className="ft-comp-head" onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
-          title="if / elif / else dispatch — first matching condition decides the branch. Click to edit the conditions.">
-          <span className="ft-comp-kind">Route</span>
-          <span className="ft-comp-meta"><span className="ft-comp-meta-txt">
-            first match wins · {routes.length} condition{routes.length === 1 ? "" : "s"} + else
-          </span></span>
-          <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
-        </div>
-        <div className="ft-comp-body">
-          {routes.map((r, i) => slot(
-            { word: i === 0 ? "IF" : "ELIF", pred: predicateSummary(r.if) }, r.pass_to, r.id))}
-          {slot({ word: "ELSE", pred: "everything else" }, node.else, "__else")}
-        </div>
+      <div className={"ft-route-group" + (selected ? " is-selected" : "")}>
+        {routes.map((r, i) => slot(
+          { word: i === 0 ? "IF" : "ELIF", pred: predicateSummary(r.if) }, r.pass_to, r.id,
+          i === 0
+            ? <FilterNodeActs node={node} canUp={canUp} canDown={canDown} onMove={onMove} onRemove={onRemove} />
+            : null))}
+        {slot({ word: "ELSE", pred: "everything else" }, node.else, "__else", null)}
       </div>
     );
   }
@@ -678,6 +730,43 @@ function FilterTreeNode({ node, depth, selectedId, onSelect, onAddChild, onRemov
     ? (node.layer ? [node.layer] : [])
     : (node.children || []);
   const kidsMovable = node.kind !== "Not" && kids.length > 1;
+
+  // ── Trivial Sequential wrappers (the root cascade and Route branch
+  // bodies) render as a bare list — AND-in-order is implied, so a
+  // "MATCH ALL" header level only added noise.
+  if (node.kind === "Sequential" && (plain || depth === 0)) {
+    return (
+      <div className="ft-seq-plain">
+        {kids.map((c, i) => (
+          <FilterTreeNode
+            key={c.id}
+            node={c} depth={depth + 1}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            onAddChild={onAddChild}
+            onRemove={onRemove}
+            onMove={onMove}
+            onAddToRoute={onAddToRoute}
+            canUp={kidsMovable && i > 0}
+            canDown={kidsMovable && i < kids.length - 1}
+          />
+        ))}
+        <div className="ft-add-wrap">
+          <button ref={addBtnRef} className="ft-add" onClick={(e) => { e.stopPropagation(); setAdding(true); }}>
+            <Icon name="plus" size={11} /> Add filter
+          </button>
+          {adding && (
+            <AddFilterPopover
+              allowComposite
+              anchorRef={addBtnRef}
+              onPick={(n) => onAddChild(node.id, n)}
+              onClose={() => setAdding(false)}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={"ft-comp ft-comp-" + node.kind.toLowerCase() + (selected ? " is-selected" : "")}>
@@ -738,7 +827,8 @@ function filterSummary(n) {
     return `${vals.length} conditions · "${vals[0]}" …`;
   };
   const keywordText = (p) => {
-    if (!p.keywords) return p.formula || "";
+    if (p.expression != null) return p.expression;
+    if (!p.keywords) return p.formula || p.keyword || "";
     const vals = Object.values(p.keywords).filter(Boolean);
     if (vals.length === 0) return p.formula || "";
     return vals.join(" · ");
@@ -1027,8 +1117,7 @@ function FilterParams({ node, onPatch, onPatchNode }) {
               <option value="starts_with">starts with</option>
             </select>
           </ConfigField>
-          <NamedDictEditor p={p} patch={(obj) => onPatch({ ...p, ...obj })} field="keywords" noun="keyword"
-            formulaInfo="Boolean expression over the named keywords below." />
+          <KeywordExpressionEditor p={p} patch={(obj) => onPatch({ ...p, ...obj })} />
         </>
       );
     default:
