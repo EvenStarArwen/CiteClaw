@@ -199,6 +199,9 @@ async def join(request: Request) -> Response:
     if code_hash is None:
         raise HTTPException(status_code=403, detail="Invalid or disabled invite code.")
     sid = auth.create_session(code_hash)
+    # Persist eagerly: with a 1-minute scaledown a fresh session must reach
+    # the volume before the container can die, or the cookie orphans.
+    await asyncio.to_thread(cache_sync.sync_now)
     resp = JSONResponse({"ok": True})
     resp.set_cookie(auth.COOKIE_NAME, auth.make_cookie(sid), **auth.cookie_kwargs())
     return resp
@@ -257,6 +260,7 @@ async def post_settings(request: Request) -> dict:
     body = await request.json()
     tenants.update_keys(sess, body)
     tenants.update_settings(sess, body)
+    await asyncio.to_thread(cache_sync.sync_now)  # keys must survive scaledown
     s = tenants.get_settings(sess)
     return {
         "keys": tenants.key_presence(sess),

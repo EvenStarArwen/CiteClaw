@@ -30,6 +30,26 @@ _lock = threading.Lock()
 
 _secret: str | None = None
 
+# Modal volumes are snapshot-mounted: codes minted from the admin CLI (a
+# separate container) stay invisible here until a reload. The Modal layer
+# sets this to Volume.reload; local runs leave it None.
+RELOAD_HOOK = None
+_last_reload = 0.0
+
+
+def _maybe_reload() -> None:
+    global _last_reload
+    if RELOAD_HOOK is None:
+        return
+    now = time.time()
+    if now - _last_reload < 3.0:
+        return
+    _last_reload = now
+    try:
+        RELOAD_HOOK()
+    except Exception as e:  # noqa: BLE001 - reload fails while files are open
+        print(f"[citeclaw-public] volume reload skipped: {e}")
+
 
 def get_secret() -> str:
     """Session-signing secret from the environment (Modal Secret in prod).
@@ -109,6 +129,7 @@ def disable_code(hash_prefix: str) -> int:
 
 def check_code(code: str) -> str | None:
     """Return the code's hash when valid + enabled, else None."""
+    _maybe_reload()
     h = _hash_code(code or "")
     with _lock:
         data = _read_invites()
