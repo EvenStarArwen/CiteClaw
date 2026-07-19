@@ -22,7 +22,8 @@ import numpy as np
 from s2mirror import jsonio, schema
 from s2mirror.reducer import ADJ_DTYPE
 
-_ADJ_CACHE_MAX = 2048
+_ADJ_CACHE_MAX_BYTES = 256 << 20   # mega-paper blobs are ~1.6 MB each
+_PROJ_CACHE_MAX = 400_000          # projected rows are ~150-400 B each
 
 
 class MirrorStore:
@@ -40,7 +41,14 @@ class MirrorStore:
         self._conns: dict[str, tuple[sqlite3.Connection | None, threading.Lock | None]] = {}
         self._conn_lock = threading.Lock()
         self._adj_cache: OrderedDict[tuple[str, int], np.ndarray] = OrderedDict()
+        self._adj_bytes = 0
         self._adj_lock = threading.Lock()
+        # (fields_key, corpusid) -> small projected dict. Serving a hot
+        # 1000-row page from here skips decompress + parse + project —
+        # the dominant CPU cost of edge hydration. Entries are treated as
+        # immutable by every consumer.
+        self._proj_cache: OrderedDict[tuple[str, int], dict] = OrderedDict()
+        self._proj_lock = threading.Lock()
         # shared fan-out pool: creating a ThreadPoolExecutor per get_papers
         # call costs ~1ms + thread churn on the hottest path in the server.
         self._pool = ThreadPoolExecutor(max_workers=48, thread_name_prefix="shardfan")
@@ -115,7 +123,7 @@ class MirrorStore:
             by_shard.setdefault(schema.paper_shard(cid), []).append(cid)
         out: dict[int, dict] = {}
 
-        def fetch(shard: int, cids: list[int]) -> list[tuple[int, bytes]]:
+        def fetch(shard: int, cids: list[int]) -> list[tuple[int, dict]]:
             rows: list[tuple[int, bytes]] = []
             for i in range(0, len(cids), 400):
                 chunk = cids[i: i + 400]
@@ -124,15 +132,88 @@ class MirrorStore:
                     f"papers_{shard:02d}",
                     f"SELECT corpusid, js FROM papers WHERE corpusid IN ({marks})", chunk,
                 ))
-            return rows
+            # decode in the worker: zlib releases the GIL, and spreading the
+            # orjson parses across shard threads keeps a 500-record batch off
+            # a single core (~0.8 ms/record serial otherwise).
+            return [(cid, jsonio.loads(zlib.decompress(js))) for cid, js in rows]
 
         if len(by_shard) <= 2:
             results = [fetch(s, c) for s, c in by_shard.items()]
         else:
             results = list(self._pool.map(lambda sc: fetch(*sc), by_shard.items()))
         for rows in results:
-            for cid, js in rows:
-                out[cid] = jsonio.loads(zlib.decompress(js))
+            out.update(rows)
+        return out
+
+    def resolve_many(self, raw_ids: list[str]) -> dict[str, int | None]:
+        """Bulk id resolution: one IN query per ids shard instead of one
+        point query per id. Unparseable ids map to None."""
+        out: dict[str, int | None] = {}
+        by_shard: dict[int, list[str]] = {}
+        key_for: dict[str, list[str]] = {}
+        for raw in raw_ids:
+            if raw in out or raw in key_for:
+                continue
+            parsed = schema.parse_paper_id(raw)
+            if parsed is None:
+                out[raw] = None
+            elif parsed[0] == "corpus":
+                out[raw] = int(parsed[1])
+            else:
+                key = str(parsed[1])
+                key_for.setdefault(key, []).append(raw)
+                by_shard.setdefault(schema.id_shard(key), []).append(key)
+
+        def lookup(shard: int, keys: list[str]) -> list[tuple[str, int]]:
+            rows: list[tuple[str, int]] = []
+            for i in range(0, len(keys), 400):
+                chunk = keys[i: i + 400]
+                marks = ",".join("?" * len(chunk))
+                rows.extend(self._q(
+                    f"ids_{shard:02d}",
+                    f"SELECT k, corpusid FROM idmap WHERE k IN ({marks})", chunk,
+                ))
+            return rows
+
+        if by_shard:
+            if len(by_shard) <= 2:
+                results = [lookup(s, k) for s, k in by_shard.items()]
+            else:
+                results = list(self._pool.map(lambda sk: lookup(*sk), by_shard.items()))
+            found = {k: cid for rows in results for k, cid in rows}
+            for key, raws in key_for.items():
+                cid = found.get(key)
+                for raw in raws:
+                    out[raw] = cid
+        return out
+
+    def get_projected(self, corpusids: list[int], fields_key: str,
+                      wants: dict) -> dict[int, dict]:
+        """Field-projected bulk fetch with an LRU over (shape, corpusid).
+
+        Repeat hits (hot papers re-hydrated across pages/batches/users)
+        skip decompress + parse + project entirely. Returned dicts are
+        shared — callers must treat them as immutable.
+        """
+        out: dict[int, dict] = {}
+        missing: list[int] = []
+        with self._proj_lock:
+            for cid in corpusids:
+                hit = self._proj_cache.get((fields_key, cid))
+                if hit is not None:
+                    self._proj_cache.move_to_end((fields_key, cid))
+                    out[cid] = hit
+                else:
+                    missing.append(cid)
+        if missing:
+            fresh = {cid: schema.project(rec, wants)
+                     for cid, rec in self.get_papers(missing).items()}
+            out.update(fresh)
+            with self._proj_lock:
+                for cid, d in fresh.items():
+                    self._proj_cache[(fields_key, cid)] = d
+                while len(self._proj_cache) > _PROJ_CACHE_MAX:
+                    self._proj_cache.popitem(last=False)
         return out
 
     def has_paper(self, corpusid: int) -> bool:
@@ -173,9 +254,12 @@ class MirrorStore:
         if rows:
             arr = self._dedupe(np.frombuffer(rows[0][0], dtype=ADJ_DTYPE))
         with self._adj_lock:
+            if cache_key not in self._adj_cache:
+                self._adj_bytes += arr.nbytes
             self._adj_cache[cache_key] = arr
-            while len(self._adj_cache) > _ADJ_CACHE_MAX:
-                self._adj_cache.popitem(last=False)
+            while self._adj_bytes > _ADJ_CACHE_MAX_BYTES and self._adj_cache:
+                _, old = self._adj_cache.popitem(last=False)
+                self._adj_bytes -= old.nbytes
         return arr
 
     # ---- authors ---------------------------------------------------------

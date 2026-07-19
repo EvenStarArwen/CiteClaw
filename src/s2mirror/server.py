@@ -83,6 +83,20 @@ class _Memo:
                 self._d.popitem(last=False)
 
 
+def _fields_key(wants: dict) -> str:
+    """Canonical cache key for a parsed fields spec."""
+    return ",".join(
+        f"{k}:{'*' if v is None else '+'.join(sorted(v))}" for k in sorted(wants)
+        for v in (wants[k],)
+    )
+
+
+def _cacheable_shape(wants: dict) -> bool:
+    """Small projections are worth caching; full records (with abstracts)
+    would blow the entry budget for little repeat value."""
+    return "abstract" not in wants and len(wants) <= 6
+
+
 def _split_edge_fields(fields: str | None, inner_key: str) -> tuple[set[str], dict]:
     """Split a references/citations ``fields`` param into
     (edge-level fields, inner-paper parsed wants)."""
@@ -204,14 +218,22 @@ def create_app(
             return _proxy("POST", "/graph/v1/paper/batch", params={"fields": fields},
                           json_body={"ids": ids})
         store = _store()
-        resolved = [(raw, store.resolve(str(raw))) for raw in ids]
-        found = store.get_papers([cid for _, cid in resolved if cid is not None])
+        cid_map = store.resolve_many([str(raw) for raw in ids])
+        resolved = [(raw, cid_map.get(str(raw))) for raw in ids]
+        want_cids = [cid for _, cid in resolved if cid is not None]
+        if _cacheable_shape(wants):
+            found: dict[int, dict] = store.get_projected(
+                want_cids, _fields_key(wants), wants)
+            project = False
+        else:
+            found = store.get_papers(want_cids)
+            project = True
         out: list[dict | None] = []
         missing: list[tuple[int, str]] = []
         for pos, (raw, cid) in enumerate(resolved):
             rec = found.get(cid) if cid is not None else None
             if rec is not None:
-                out.append(schema.project(rec, wants))
+                out.append(schema.project(rec, wants) if project else rec)
             else:
                 out.append(None)
                 missing.append((pos, str(raw)))
@@ -246,11 +268,11 @@ def create_app(
         arr = store.adjacency(table, cid)
         total = len(arr)
         page = arr[offset: offset + limit]
-        recs = store.get_papers([int(r["other"]) for r in page])
+        proj = store.get_projected([int(r["other"]) for r in page],
+                                   _fields_key(wants), wants)
         data = []
         for row in page:
-            rec = recs.get(int(row["other"]))
-            inner = schema.project(rec, wants) if rec is not None else {"paperId": None}
+            inner = proj.get(int(row["other"])) or {"paperId": None}
             entry: dict[str, Any] = {}
             if edge_fields:
                 influential, intents = schema.unpack_flags(int(row["flags"]))
@@ -336,8 +358,8 @@ def create_app(
         cids = store.author_paper_ids(aid)
         total = len(cids)
         page = [int(c) for c in cids[offset: offset + limit]]
-        recs = store.get_papers(page)
-        data = [schema.project(recs[c], wants) for c in page if c in recs]
+        proj = store.get_projected(page, _fields_key(wants), wants)
+        data = [proj[c] for c in page if c in proj]
         envelope: dict[str, Any] = {"offset": offset, "data": data}
         if offset + len(page) < total:
             envelope["next"] = offset + len(page)

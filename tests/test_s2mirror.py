@@ -161,6 +161,13 @@ class TestStore:
         assert store.resolve("nope") is None
         assert store.resolve("DOI:10.9999/none") is None
 
+    def test_resolve_many_matches_resolve(self, store):
+        raws = [SHA1, SHA1_ALIAS, "DOI:10.1000/XYZ", "ARXIV:2005.11687",
+                "CorpusId:303", "nope", "DOI:10.9999/none", SHA1]
+        many = store.resolve_many(raws)
+        for r in raws:
+            assert many[r] == store.resolve(r), r
+
     def test_paper_record_shape(self, store):
         rec = store.get_paper(101)
         assert rec["paperId"] == SHA1
@@ -285,6 +292,17 @@ class TestServer:
         assert body[0]["authorId"] == "7001"
         assert body[1]["affiliations"] == []
         assert body[2] is None
+
+    def test_projection_cache_stable_across_shapes(self, client):
+        """Same request twice -> identical body (cache hit); a different
+        fields shape must not be polluted by the cached projection."""
+        p = f"/graph/v1/paper/{SHA3}/references"
+        a1 = _get(client, p, fields="citedPaper.paperId,citedPaper.title").json()
+        a2 = _get(client, p, fields="citedPaper.paperId,citedPaper.title").json()
+        assert a1 == a2
+        b = _get(client, p, fields="citedPaper.paperId,citedPaper.year").json()
+        inner = b["data"][0]["citedPaper"]
+        assert "title" not in inner and "year" in inner
 
     def test_author_papers(self, client):
         r = _get(client, "/graph/v1/author/7001/papers",
