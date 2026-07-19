@@ -69,14 +69,22 @@ def _load_edges(parts_root: Path, kind: str, shard: int) -> np.ndarray:
 
 
 def _grouped_adjacency(arr: np.ndarray):
-    """Yield (key, packed_adj_bytes) for a raw edge array."""
+    """Yield (key, packed_adj_bytes) for a raw edge array.
+
+    Deduplicates (key, other) pairs — the S2AG citations dump ships most
+    edges in two dump files, so raw partitions carry ~2x rows.
+    """
     if len(arr) == 0:
         return
     order = np.lexsort((-arr["other"], arr["key"]))
     key_s = arr["key"][order]
-    adj = np.empty(len(arr), dtype=ADJ_DTYPE)
-    adj["other"] = arr["other"][order]
-    adj["flags"] = arr["flags"][order]
+    other_s = arr["other"][order]
+    keep = np.ones(len(arr), dtype=bool)
+    keep[1:] = (key_s[1:] != key_s[:-1]) | (other_s[1:] != other_s[:-1])
+    key_s = key_s[keep]
+    adj = np.empty(int(keep.sum()), dtype=ADJ_DTYPE)
+    adj["other"] = other_s[keep]
+    adj["flags"] = arr["flags"][order][keep]
     keys, starts = np.unique(key_s, return_index=True)
     bounds = np.append(starts, len(key_s))
     for i, k in enumerate(keys):
@@ -198,6 +206,9 @@ def reduce_authors(parts_root: Path, shard: int, out_path: Path, scratch: Path) 
         n_pairs = len(arr)
         order = np.lexsort((-arr["b"], arr["a"]))
         a_s, b_s = arr["a"][order], arr["b"][order]
+        keep = np.ones(len(a_s), dtype=bool)
+        keep[1:] = (a_s[1:] != a_s[:-1]) | (b_s[1:] != b_s[:-1])
+        a_s, b_s = a_s[keep], b_s[keep]
         keys, starts = np.unique(a_s, return_index=True)
         bounds = np.append(starts, len(a_s))
         rows = (

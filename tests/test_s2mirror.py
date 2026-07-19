@@ -93,6 +93,10 @@ CITATIONS = [
     # dangling target: no papers-dataset row for 999
     {"citingcorpusid": 202, "citedcorpusid": 999, "isinfluential": False,
      "intents": None, "contexts": None},
+    # the S2AG dump materializes most edges twice (two shard families) —
+    # exact twin of the 303->101 edge; the reducer must collapse it
+    {"citingcorpusid": 303, "citedcorpusid": 101, "isinfluential": False,
+     "intents": None, "contexts": None},
 ]
 
 PAPER_IDS = [
@@ -151,6 +155,8 @@ class TestStore:
         assert store.resolve("DOI:10.1000/xyz") == 101   # case-normalized
         assert store.resolve("DOI:10.1000/XYZ") == 101
         assert store.resolve("ARXIV:2005.11687") == 202
+        # DataCite arXiv DOI normalizes to the arXiv id
+        assert store.resolve("DOI:10.48550/arXiv.2005.11687") == 202
         assert store.resolve("CorpusId:303") == 303
         assert store.resolve("nope") is None
         assert store.resolve("DOI:10.9999/none") is None
@@ -169,12 +175,20 @@ class TestStore:
 
     def test_adjacency(self, store):
         citers = store.adjacency("citers", 101)
+        # the duplicated 303->101 edge collapses to one entry
         assert [int(r["other"]) for r in citers] == [303, 202]  # newest-first
         infl, intents = schema.unpack_flags(int(citers[1]["flags"]))
         assert infl is True and intents == ["methodology"]
         refs = store.adjacency("refs", 303)
         assert sorted(int(r["other"]) for r in refs) == [101, 202]
         assert len(store.adjacency("refs", 101)) == 0
+
+    def test_read_time_dedupe_of_legacy_blobs(self, store):
+        import numpy as np
+        from s2mirror.reducer import ADJ_DTYPE
+        legacy = np.array([(7, 0), (5, 1), (7, 0), (3, 0), (5, 1)], dtype=ADJ_DTYPE)
+        clean = store._dedupe(legacy)
+        assert [int(r["other"]) for r in clean] == [7, 5, 3]  # order preserved
 
     def test_authors(self, store):
         a = store.get_author(7001)

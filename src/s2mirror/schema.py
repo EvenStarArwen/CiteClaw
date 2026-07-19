@@ -124,7 +124,12 @@ def parse_paper_id(raw: str) -> tuple[str, str | int] | None:
             return None
     mapped = _LOOKUP_PREFIX.get(p)
     if mapped:
-        return ("key", f"{mapped}:{rest.lower()}")
+        key = f"{mapped}:{rest.lower()}"
+        # DataCite arXiv DOIs (10.48550/arXiv.<id>) aren't in the S2AG
+        # externalids DOI column — normalize them to the arXiv id, which is.
+        if mapped == "doi" and key.startswith("doi:10.48550/arxiv."):
+            key = "arxiv:" + key[len("doi:10.48550/arxiv."):]
+        return ("key", key)
     return None
 
 

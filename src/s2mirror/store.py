@@ -123,8 +123,26 @@ class MirrorStore:
 
     # ---- adjacency -------------------------------------------------------
 
+    @staticmethod
+    def _dedupe(arr: np.ndarray) -> np.ndarray:
+        """Order-preserving first-occurrence dedupe on ``other``.
+
+        The S2AG citations dump materializes most edges in two dump
+        files (two shard families), so blobs built before the reducer
+        grew its own dedupe carry ~2x rows. Cheap belt-and-suspenders
+        at read time keeps every store version correct.
+        """
+        if len(arr) < 2:
+            return arr
+        _, first_idx = np.unique(arr["other"], return_index=True)
+        if len(first_idx) == len(arr):
+            return arr
+        mask = np.zeros(len(arr), dtype=bool)
+        mask[first_idx] = True
+        return arr[mask]
+
     def adjacency(self, table: str, corpusid: int) -> np.ndarray:
-        """Full (other, flags) array for refs/citers; empty when none."""
+        """Deduped (other, flags) array for refs/citers; empty when none."""
         cache_key = (table, corpusid)
         with self._adj_lock:
             hit = self._adj_cache.get(cache_key)
@@ -138,7 +156,7 @@ class MirrorStore:
                 f"SELECT adj FROM {table} WHERE corpusid = ?", (corpusid,)
             ).fetchone()
             if row:
-                arr = np.frombuffer(row[0], dtype=ADJ_DTYPE)
+                arr = self._dedupe(np.frombuffer(row[0], dtype=ADJ_DTYPE))
         with self._adj_lock:
             self._adj_cache[cache_key] = arr
             while len(self._adj_cache) > _ADJ_CACHE_MAX:
@@ -163,7 +181,11 @@ class MirrorStore:
         row = conn.execute(
             "SELECT corpusids FROM author_papers WHERE authorid = ?", (authorid,)
         ).fetchone()
-        return np.frombuffer(row[0], dtype="<i8") if row else np.empty(0, dtype="<i8")
+        if not row:
+            return np.empty(0, dtype="<i8")
+        arr = np.frombuffer(row[0], dtype="<i8")
+        _, first_idx = np.unique(arr, return_index=True)
+        return arr[np.sort(first_idx)] if len(first_idx) < len(arr) else arr
 
 
 class CurrentStore:

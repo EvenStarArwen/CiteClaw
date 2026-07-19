@@ -32,6 +32,10 @@ import modal
 
 APP_NAME = os.environ.get("CITECLAW_WEB_APP_NAME", "citeclaw-web")
 SCALEDOWN = int(os.environ.get("CITECLAW_WEB_SCALEDOWN", "60"))
+S2_MIRROR_URL = os.environ.get(
+    "CITECLAW_WEB_S2_MIRROR_URL",
+    "https://cola-lab--citeclaw-s2-mirror-serve.modal.run",
+)
 
 app = modal.App(APP_NAME)
 vol = modal.Volume.from_name(f"{APP_NAME}-data", create_if_missing=True)
@@ -69,7 +73,13 @@ image = (
 @app.function(
     image=image,
     volumes={"/data": vol},
-    secrets=[modal.Secret.from_name("citeclaw-web")],
+    secrets=[
+        modal.Secret.from_name("citeclaw-web"),
+        # Self-hosted S2 graph mirror (MIRROR_KEYS): all tenants' graph
+        # traffic bypasses the 1 rps S2 cap; search still uses each
+        # tenant's own S2 key. See modal_s2_mirror.py.
+        modal.Secret.from_name("citeclaw-s2-mirror"),
+    ],
     cpu=2.0,
     memory=2048,
     scaledown_window=SCALEDOWN,
@@ -83,6 +93,13 @@ image = (
 def serve():
     # `web` is a PEP 420 namespace package — /root/app on PYTHONPATH makes
     # web.live / web.public importable without an __init__.py.
+    # Ambient mirror env is intentional: _SCRUB_ENV leaves these alone, and
+    # env-beats-overrides gives every tenant the mirror automatically.
+    mirror_keys = os.environ.get("MIRROR_KEYS", "")
+    if mirror_keys:
+        os.environ.setdefault("CITECLAW_S2_MIRROR_URL", S2_MIRROR_URL)
+        os.environ.setdefault("CITECLAW_S2_MIRROR_KEY",
+                              mirror_keys.split(",")[0].strip())
     from web.public.backend import auth, cache_sync, server
 
     cache_sync.VOLUME_COMMIT = vol.commit
