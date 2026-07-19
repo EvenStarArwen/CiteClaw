@@ -57,6 +57,10 @@ image = (
         "OPENALEX_EMAIL": "m.huang.gla@outlook.com",
     })
     .add_local_dir("src/citeclaw", "/root/app/src/citeclaw", ignore=_IGNORE)
+    # citeclaw.clients.pdf imports pdfclaw.parsers at module load; pdfclaw's
+    # heavy deps (pymupdf, playwright) are function-local, so source alone is
+    # enough — public v1 never exercises the PDF paths anyway.
+    .add_local_dir("src/pdfclaw", "/root/app/src/pdfclaw", ignore=_IGNORE)
     .add_local_dir("web/live", "/root/app/web/live", ignore=_IGNORE)
     .add_local_dir("web/public", "/root/app/web/public", ignore=_IGNORE)
 )
