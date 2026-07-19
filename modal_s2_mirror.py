@@ -133,7 +133,7 @@ def finalize(release: str, meta: dict, drop_parts: bool = True) -> dict:
     cpu=4, memory=16384, timeout=3600, scaledown_window=600,
     max_containers=2,
 )
-@modal.concurrent(max_inputs=128, target_inputs=64)
+@modal.concurrent(max_inputs=128, target_inputs=100)
 @modal.asgi_app()
 def serve():
     from s2mirror.server import Upstream, create_app

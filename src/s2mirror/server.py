@@ -93,12 +93,6 @@ def _fields_key(wants: dict) -> str:
     )
 
 
-def _cacheable_shape(wants: dict) -> bool:
-    """Small projections are worth caching; full records (with abstracts)
-    would blow the entry budget for little repeat value."""
-    return "abstract" not in wants and len(wants) <= 6
-
-
 def _split_edge_fields(fields: str | None, inner_key: str) -> tuple[set[str], dict]:
     """Split a references/citations ``fields`` param into
     (edge-level fields, inner-paper parsed wants)."""
@@ -242,11 +236,7 @@ def create_app(
         cid_map = store.resolve_many([str(raw) for raw in ids])
         resolved = [(raw, cid_map.get(str(raw))) for raw in ids]
         want_cids = [cid for _, cid in resolved if cid is not None]
-        if _cacheable_shape(wants):
-            frags = store.get_projected_bytes(want_cids, _fields_key(wants), wants)
-        else:
-            frags = {cid: jsonio.dumps(schema.project(rec, wants))
-                     for cid, rec in store.get_papers(want_cids).items()}
+        frags = store.get_projected_bytes(want_cids, _fields_key(wants), wants)
         parts: list[bytes] = []
         missing: list[tuple[int, str]] = []
         for pos, (raw, cid) in enumerate(resolved):

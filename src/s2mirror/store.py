@@ -23,7 +23,7 @@ from s2mirror import jsonio, schema
 from s2mirror.reducer import ADJ_DTYPE
 
 _ADJ_CACHE_MAX_BYTES = 256 << 20   # mega-paper blobs are ~1.6 MB each
-_PROJ_CACHE_MAX = 400_000          # projected rows are ~150-400 B each
+_PROJ_CACHE_MAX_BYTES = 384 << 20  # edge rows ~200 B, full records ~1.5 KB
 
 
 class MirrorStore:
@@ -47,6 +47,7 @@ class MirrorStore:
         # Serving a hot 1000-row page from here skips decompress + parse +
         # project + re-serialize — the whole CPU cost of edge hydration.
         self._proj_cache: OrderedDict[tuple[str, int], bytes] = OrderedDict()
+        self._proj_bytes = 0
         self._proj_lock = threading.Lock()
         # shared fan-out pool: creating a ThreadPoolExecutor per get_papers
         # call costs ~1ms + thread churn on the hottest path in the server.
@@ -211,9 +212,13 @@ class MirrorStore:
             out.update(fresh)
             with self._proj_lock:
                 for cid, d in fresh.items():
-                    self._proj_cache[(fields_key, cid)] = d
-                while len(self._proj_cache) > _PROJ_CACHE_MAX:
-                    self._proj_cache.popitem(last=False)
+                    key = (fields_key, cid)
+                    if key not in self._proj_cache:
+                        self._proj_bytes += len(d)
+                    self._proj_cache[key] = d
+                while self._proj_bytes > _PROJ_CACHE_MAX_BYTES and self._proj_cache:
+                    _, old = self._proj_cache.popitem(last=False)
+                    self._proj_bytes -= len(old)
         return out
 
     def has_paper(self, corpusid: int) -> bool:
