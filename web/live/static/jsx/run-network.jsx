@@ -1,10 +1,11 @@
 /* eslint-disable */
 // Section C (Run mode) — live network visualization.
 // Same engine as the Exploration page (shared CiteGraph: graphology +
-// ForceAtlas2 worker + sigma — the design's f5 reference stack), kept to the
-// run look: dot grid, year-ramp nodes, plum seed halo, no on-graph labels,
-// legacy (log-cites) radii. New papers stream in incrementally with the grow
-// animation while the FA2 worker keeps untangling off the main thread.
+// ForceAtlas2 worker + sigma — the design's f5 reference stack) with the same
+// parametric sizing, so the label toggle + graph-settings popover (node size /
+// curve, edge width, palette, filters) work here exactly like on Explore.
+// New papers stream in incrementally with the grow animation while the FA2
+// worker keeps untangling off the main thread.
 // Hover shows title · authors · year · venue · cites.
 
 function RunNetwork({ selectedPaperId, onSelectPaper, onHoverPaper, theme }) {
@@ -34,7 +35,7 @@ function RunNetwork({ selectedPaperId, onSelectPaper, onHoverPaper, theme }) {
         onHover={onHoverPaper}
         theme={theme}
         labels={false}
-        sizing="legacy"
+        tools={{ labels: true, layoutOptions: true }}
         legendSeed="always"
         emptyHint={running
           ? "Waiting for the first accepted papers…"
