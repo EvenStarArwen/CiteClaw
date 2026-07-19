@@ -22,6 +22,7 @@ from citeclaw.steps.parallel import Parallel
 from citeclaw.steps.rerank import Rerank
 from citeclaw.steps.rescreen import ReScreen
 from citeclaw.steps.shape_log import ShapeLog
+from tests.fakes import make_paper
 
 
 # ---------------------------------------------------------------------------
@@ -451,6 +452,43 @@ class TestFinalize:
         # Graph and collab graph should NOT exist because len(collection) < 2.
         assert not (data_dir / "citation_network.graphml").exists()
         assert not (data_dir / "collaboration_network.graphml").exists()
+
+    def test_synthetic_refs_still_get_real_reference_lists(self, ctx):
+        # Expansion steps stamp only the source id into references — a
+        # non-empty list must NOT exempt a paper from reference enrichment
+        # (the old `not p.references` predicate did, leaving the citation
+        # network as disconnected per-seed stars).
+        ctx.s2.add(make_paper("SRC", references=[]))
+        ctx.s2.add(make_paper("C1", references=["C2", "EXT"]))
+        ctx.s2.add(make_paper("C2", references=["EXT2"]))
+        ctx.collection = {
+            "SRC": PaperRecord(paper_id="SRC", title="Seed", year=2020, citation_count=5),
+            # forward-accepted: synthetic ref = the source only
+            "C1": PaperRecord(paper_id="C1", title="C1", year=2021, citation_count=3,
+                              references=["SRC"]),
+            "C2": PaperRecord(paper_id="C2", title="C2", year=2022, citation_count=2,
+                              references=["SRC"]),
+            # unknown to S2: fetch path runs, stub returns nothing,
+            # the synthetic ref must survive
+            "U": PaperRecord(paper_id="U", title="U", year=2022, citation_count=1,
+                             references=["SRC"]),
+        }
+        ctx.iteration = 1
+        Finalize().run([], ctx)
+
+        c1, c2, u = ctx.collection["C1"], ctx.collection["C2"], ctx.collection["U"]
+        assert set(c1.references) == {"C2", "EXT", "SRC"}
+        assert set(c2.references) == {"EXT2", "SRC"}
+        assert u.references == ["SRC"]
+        # C1/C2/SRC resolved via the free cached path; only U hit fetch.
+        assert ctx.s2.calls.get("fetch_reference_ids", 0) == 1
+        # The C1 → C2 link now shows up as a real edge in the citation graph.
+        import igraph
+
+        g = igraph.Graph.Read_GraphML(str(ctx.config.data_dir / "citation_network.graphml"))
+        ids = g.vs["paper_id"]
+        eid = g.get_eid(ids.index("C1"), ids.index("C2"), directed=False, error=False)
+        assert eid != -1
 
 
 # ---------------------------------------------------------------------------

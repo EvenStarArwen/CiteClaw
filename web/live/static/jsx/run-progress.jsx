@@ -80,8 +80,11 @@ function _liveStageKey(stages, activity) {
   return stages.some(st => st.key === "__screen") ? "__screen" : null;
 }
 
-// One roadmap node.
-function RoadNode({ index, label, hint, filters, state, liveBar }) {
+// One roadmap node. `laneBar` is the node's own outer bar (source papers
+// k/n for a Parallel branch sub-step) — kept visible after the lane
+// finishes, so every branch card carries its progress; `liveBar` is the
+// inner phase bar and only shows while the node is the live one.
+function RoadNode({ index, label, hint, filters, state, liveBar, laneBar }) {
   return (
     <div className={"road-node is-" + state}>
       <span className="road-dot">
@@ -95,8 +98,9 @@ function RoadNode({ index, label, hint, filters, state, liveBar }) {
             {filters.map((f, i) => <div key={i} className="road-filter">{f}</div>)}
           </div>
         )}
-        {state === "active" && liveBar && <div className="road-live"><ActivityBar bar={liveBar} /></div>}
-        {state === "active" && !liveBar && (
+        {laneBar && <div className="road-live"><ActivityBar bar={laneBar} /></div>}
+        {state === "active" && liveBar && <div className="road-live"><ActivityBar bar={liveBar} inner={!!laneBar} /></div>}
+        {state === "active" && !liveBar && !laneBar && (
           <div className="road-live"><div className="prog-bar-track"><div className="prog-bar-fill act-bar-indet" /></div></div>
         )}
       </div>
@@ -118,6 +122,7 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
   const stages = road.stages || [];
   const liveIdx = liveKey ? stages.findIndex(st => st.key === liveKey) : -1;
   const lane = isActive && activity ? activity.lane : null;
+  const lanes = (isActive && activity && activity.lanes) || {};
 
   const stageState = (st, i) => {
     if (s.status === "done") return "done";
@@ -180,10 +185,13 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
                 <div key={i} className="road-lane">
                   <div className="road-lane-head">Branch {i + 1}</div>
                   {b.map((node, j) => {
-                    const nodeActive = !!(lane && lane === node.key);
+                    const li = lanes[node.key];
+                    const nodeActive = !!((li && li.state === "run") || (lane && lane === node.key));
+                    const nodeDone = s.status === "done" || !!(li && li.state === "done");
                     return (
                       <RoadNode key={j} index={j + 1} label={node.label} hint={node.hint}
-                        state={s.status === "done" ? "done" : nodeActive ? "active" : "pending"}
+                        state={nodeActive ? "active" : nodeDone ? "done" : "pending"}
+                        laneBar={li ? li.outer : null}
                         liveBar={nodeActive && activity ? activity.inner : null} />
                     );
                   })}

@@ -201,16 +201,41 @@ class Finalize:
         dash = ctx.dashboard
         dash.note_candidates_seen(len(ctx.collection))
 
-        # Enrich missing refs/abstracts
-        no_refs = [p for p in ctx.collection.values() if not p.references]
-        if no_refs:
-            dash.begin_phase("enrich missing references", total=max(1, len(no_refs)))
-            for p in no_refs:
+        # Enrich references for the whole collection. Expansion steps only
+        # stamp a synthetic ref (the source paper id) onto accepted papers,
+        # so "p.references is non-empty" does NOT mean the real reference
+        # list was ever fetched — judging by cache presence is the correct
+        # test. Without this, accepted papers have no edges between each
+        # other and the citation network degrades into per-seed stars.
+        #
+        # Two passes: (1) free merge of already-cached reference lists into
+        # p.references; (2) API fetch for papers never fetched, with a
+        # per-paper progress tick so the dashboard can show fetches-to-go.
+        def _merge_refs(p: PaperRecord, fetched: list[str]) -> None:
+            if not fetched:
+                return
+            have = set(fetched)
+            # fetched ids first, then any synthetic/screening-era entries
+            # not present in S2's list (keeps edges S2 doesn't know about).
+            p.references = list(fetched) + [
+                r for r in (p.references or []) if r not in have
+            ]
+
+        need_fetch: list[PaperRecord] = []
+        for p in ctx.collection.values():
+            cached_ids = ctx.s2.cached_reference_ids(p.paper_id)
+            if cached_ids is None:
+                need_fetch.append(p)
+            else:
+                _merge_refs(p, cached_ids)
+        if need_fetch:
+            dash.begin_phase("enrich missing references", total=len(need_fetch))
+            for p in need_fetch:
                 try:
-                    p.references = ctx.s2.fetch_reference_ids(p.paper_id)
+                    _merge_refs(p, ctx.s2.fetch_reference_ids(p.paper_id))
                 except Exception as exc:  # noqa: BLE001
-                    # Per-paper enrich failure leaves the paper with
-                    # no references — non-fatal (graphml export still
+                    # Per-paper enrich failure leaves the paper with only
+                    # its synthetic refs — non-fatal (graphml export still
                     # writes the node, just without out-edges). DEBUG-
                     # log so postmortem can correlate orphan nodes.
                     log.debug("Finalize: fetch_reference_ids(%s) failed: %s",

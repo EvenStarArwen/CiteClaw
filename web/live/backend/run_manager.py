@@ -216,7 +216,8 @@ def _step_road(s: dict[str, Any]) -> dict[str, Any]:
     if name == "Finalize":
         return {"loop": False, "blurb": "Writes every artifact of the run.",
                 "stages": [
-                    {"key": "enrich missing references", "label": "Enrich missing references", "hint": "for complete graph edges"},
+                    {"key": "enrich missing references", "label": "Fetch reference lists",
+                     "hint": "one S2 fetch per accepted paper without cached references — reveals the links between accepted papers"},
                     {"key": "enrich missing abstracts", "label": "Enrich missing abstracts", "hint": ""},
                     {"key": "build output", "label": "Build the output collection", "hint": ""},
                     {"key": "write JSON", "label": "Write literature_collection.json", "hint": ""},
@@ -362,6 +363,13 @@ class RunState:
         # Set when the core announces an early stop (budget / paper cap) so
         # skipped steps can carry the actual reason.
         self.stop_note: str | None = None
+        # Paper ids already streamed live by WebDashboard.paper_accepted —
+        # the runner re-announces the same papers at step end (collection
+        # diff), which must not duplicate rows in the accepted list.
+        self.announced: set[str] = set()
+        # True while finalize_partial writes artifacts after a stop — the
+        # dashboard stop checks must not fire again mid-finalize.
+        self.finalizing = False
 
 
 class WebDashboard:
@@ -383,8 +391,23 @@ class WebDashboard:
         self._retry: str | None = None
         self._seen = 0
         self._lane: str | None = None   # last "branch i/n · Step" phase seen
+        # Per-lane state for Parallel steps: lane key -> {outer, state}.
+        # The current lane's outer bar is stamped on every emit, so each
+        # branch card in the step-detail page keeps its own source-papers
+        # bar (live while running, frozen once the branch moves on).
+        self._lanes: dict[str, dict[str, Any]] = {}
         self._last_emit = 0.0
+        self._last_snap = 0.0
         self._last_retry_logged: str | None = None
+
+    def _maybe_stop(self) -> None:
+        # Mid-step pause: steps drive these dashboard hooks from the run
+        # thread between sources / acceptances, so raising here interrupts
+        # even an hour-long step at a safe point. Never fires during the
+        # post-stop finalize_partial (rs.finalizing), and only from
+        # main-thread call sites — tick_inner may run on LLM worker threads.
+        if self.rs.stop_requested and not self.rs.finalizing:
+            raise _StopRun()
 
     # -- DashboardLike protocol ----------------------------------------
     def attach(self, ctx) -> None:
@@ -399,6 +422,7 @@ class WebDashboard:
         self._retry = None
         self._seen = 0
         self._lane = None
+        self._lanes = {}
         self._emit(force=True)
 
     def end_step(self, *, candidates: int | None = None) -> None:
@@ -406,6 +430,7 @@ class WebDashboard:
         self._inner = None
         self._retry = None
         self._lane = None
+        self._lanes = {}
         self._emit(force=True)
 
     def enable_outer_bar(self, total: int, *, description: str = "source papers") -> None:
@@ -416,6 +441,8 @@ class WebDashboard:
         if self._outer:
             self._outer["done"] += n
         self._emit()
+        self._live_snapshot()
+        self._maybe_stop()
 
     def begin_phase(self, description: str, total) -> None:
         d = str(description)
@@ -423,11 +450,23 @@ class WebDashboard:
         # which then overwrites the phase with its own — latch the lane so the
         # step-detail page can highlight which branch is live throughout.
         if d.startswith("branch "):
+            if self._lane and self._lane in self._lanes:
+                prev = self._lanes[self._lane]
+                prev["state"] = "done"
+                # Stamp the finishing lane's final bar here — its last
+                # advance_outer may have been throttled out of _emit.
+                if self._outer:
+                    prev["outer"] = dict(self._outer)
             self._lane = d
+            self._lanes[d] = {"outer": None, "state": "run"}
+            # The previous sub-step's outer bar must not bleed into the new
+            # lane — the incoming sub-step enables its own.
+            self._outer = None
         self._inner = {"desc": d,
                        "total": int(total) if total else None, "done": 0}
         self._emit(force=True)
         self._log("PHASE", d + (f" · {int(total):,} items" if total else ""))
+        self._maybe_stop()
 
     def retotal_phase(self, total) -> None:
         if self._inner:
@@ -438,6 +477,11 @@ class WebDashboard:
         if self._inner:
             self._inner["done"] += n
         self._emit()
+        # Long single phases (e.g. Finalize's per-paper reference fetch)
+        # mutate the collection's edge data without adding papers — refresh
+        # the graph/metrics on the same throttle so the network visibly
+        # densifies instead of jumping at step end.
+        self._live_snapshot()
 
     def complete_phase(self) -> None:
         if self._inner and self._inner.get("total"):
@@ -448,7 +492,23 @@ class WebDashboard:
         self._seen += n
         self._emit()
 
-    def paper_accepted(self, paper, *, saturation=None) -> None: ...
+    def paper_accepted(self, paper, *, saturation=None) -> None:
+        # Steps announce every acceptance the moment it happens — stream it
+        # so the accepted list and the network grow per source paper instead
+        # of one giant flush when the (possibly Parallel) step returns.
+        pid = getattr(paper, "paper_id", None)
+        ctx = self.rs.ctx
+        if pid and ctx is not None:
+            self.rs.announced.add(pid)
+            try:
+                self.mgr.broadcast(self.rs, {
+                    "type": "paper_added",
+                    "paper": paper_dict(paper, seed_ids=ctx.seed_ids),
+                })
+            except Exception:
+                pass  # never let a stream hiccup crash the run
+        self._live_snapshot(min_gap=1.0)
+        self._maybe_stop()
 
     def set_retry_status(self, msg: str) -> None:
         msg = str(msg)
@@ -487,13 +547,44 @@ class WebDashboard:
         if not force and now - self._last_emit < 0.25:
             return
         self._last_emit = now
+        # Keep the current lane's outer bar in step — sub-steps drive
+        # enable_outer_bar/advance_outer on the shared slot, and this stamp
+        # is what lets a finished branch keep its frozen bar afterwards.
+        if self._lane and self._lane in self._lanes:
+            self._lanes[self._lane]["outer"] = dict(self._outer) if self._outer else None
         self.mgr.broadcast(self.rs, {"type": "activity", "activity": {
             "outer": dict(self._outer) if self._outer else None,
             "inner": dict(self._inner) if self._inner else None,
             "retry": self._retry,
             "seen": self._seen,
             "lane": self._lane,
+            "lanes": {
+                k: {"outer": dict(v["outer"]) if v.get("outer") else None,
+                    "state": v.get("state", "run")}
+                for k, v in self._lanes.items()
+            } if self._lanes else None,
         }})
+
+    def _live_snapshot(self, min_gap: float = 2.5) -> None:
+        """Throttled mid-step metrics + graph broadcast.
+
+        The event sink only snapshots at top-level step boundaries; this is
+        the mid-step channel driven by dashboard traffic (acceptances, outer
+        advances, inner ticks) so a long step — especially a Parallel block —
+        streams instead of going dark.
+        """
+        now = time.monotonic()
+        if now - self._last_snap < min_gap:
+            return
+        self._last_snap = now
+        ctx = self.rs.ctx
+        if ctx is None:
+            return
+        try:
+            self.mgr.broadcast(self.rs, {"type": "metrics", "metrics": build_metrics(ctx)})
+            self.mgr.broadcast(self.rs, {"type": "graph", "graph": build_graph(ctx)})
+        except Exception:
+            pass  # never let a snapshot error crash the run
 
 
 class _LogBridge(logging.Handler):
@@ -568,7 +659,10 @@ class WebFanoutSink:
     def paper_added(self, paper_id: str, source: str) -> None:
         ctx = self.rs.ctx
         p = ctx.collection.get(paper_id) if ctx else None
-        if p is not None:
+        # Skip papers WebDashboard.paper_accepted already streamed mid-step —
+        # this runner-side event is the step-end collection diff, which
+        # re-announces every acceptance.
+        if p is not None and paper_id not in self.rs.announced:
             self.mgr.broadcast(self.rs, {
                 "type": "paper_added",
                 "paper": paper_dict(p, seed_ids=ctx.seed_ids),
@@ -699,12 +793,14 @@ class RunManager:
                 run_pipeline(ctx, event_sink=sink, dashboard=dash)
                 rs.status = "done"
             except _StopRun:
+                rs.finalizing = True
                 try:
                     finalize_partial(ctx)
                 except Exception:
                     pass
                 rs.status = "stopped"
             except BaseException as e:  # noqa: BLE001 - surface any run error to UI
+                rs.finalizing = True
                 try:
                     finalize_partial(ctx)
                 except Exception:

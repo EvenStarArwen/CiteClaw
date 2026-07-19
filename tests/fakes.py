@@ -182,6 +182,11 @@ class FakeS2Client:
     def has_cached_references(self, paper_id: str) -> bool:
         return paper_id in self._papers
 
+    def cached_reference_ids(self, paper_id: str) -> list[str] | None:
+        if paper_id not in self._papers:
+            return None
+        return list(self._papers[paper_id].get("_ref_ids") or [])
+
     # ------------------------------------------------------------------
     # Citations (forward edges)
     # ------------------------------------------------------------------

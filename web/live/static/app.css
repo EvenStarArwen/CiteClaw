@@ -5649,6 +5649,9 @@ select.gp-v { cursor: pointer; }
   white-space: normal; word-break: break-word;
 }
 .road-live { margin-top: 5px; }
+/* A finished branch keeps its frozen source-papers bar — calm, green, done. */
+.road-node.is-done .road-live { opacity: 0.8; }
+.road-node.is-done .road-live .prog-bar-fill { background: var(--cc-positive, #2e7d32); }
 
 /* Expanded log line: its own block — time + tag header, then the full
    message in a padded panel at full width. */
