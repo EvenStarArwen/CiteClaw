@@ -442,7 +442,12 @@ function resolveStepView(node, pipeline) {
   if (node.syncOf && node.synced !== false) {
     const origin = findStep(pipeline, node.syncOf);
     if (origin) {
-      out = { ...node, config: origin.config, screener: origin.screener,
+      // If the origin's own filters are linked elsewhere, follow that link
+      // too — a synced copy must see the live filters, not the snapshot.
+      const fo = (origin.fsyncOf && origin.fsynced !== false)
+        ? findStep(pipeline, origin.fsyncOf) : null;
+      out = { ...node, config: origin.config,
+              screener: fo ? fo.screener : origin.screener,
               _syncLocal: origin.localId, _syncName: origin.name };
     }
   }
