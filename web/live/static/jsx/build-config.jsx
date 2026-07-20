@@ -330,6 +330,15 @@ function ValidationNotes({ errors, warnings }) {
   );
 }
 
+// Grow a textarea to fit its content — used as a ref (mount) + onInput handler,
+// so multi-line prompts/expressions are never clipped with no bottom padding.
+// (function declaration → hoisted, so build-seeds.jsx can use it too.)
+function autoGrowTextarea(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = el.scrollHeight + "px";
+}
+
 // One editable name→value row. The NAME is editable (identifier-safe chars only)
 // and commits on blur/Enter; a rename to an empty or duplicate name reverts.
 // Query prompts get a TEXTAREA (drag the lower-right corner to grow it) —
@@ -353,7 +362,8 @@ function KVRow({ name, value, siblings, noun, onRename, onValue, onRemove }) {
         title="Rename this identifier — reference it in the formula" />
       {multiline ? (
         <textarea className="cfg-kv-v cfg-kv-ta" rows={2} value={value}
-          placeholder="yes/no question about the paper… (drag the corner to enlarge)"
+          ref={autoGrowTextarea} onInput={e => autoGrowTextarea(e.target)}
+          placeholder="yes/no question about the paper…"
           onChange={e => onValue(name, e.target.value)} />
       ) : (
         <input className="cfg-kv-v" value={value}
@@ -471,6 +481,7 @@ function KeywordExpressionEditor({ p, patch }) {
         info={'One boolean expression over the literal terms to look for. Quote multi-word phrases; bare single words work as-is. Combine with AND / OR / NOT and parentheses. A trailing * is a prefix wildcard: agent* matches agent / agents / agentic. Terms are case-insensitive and compared per the match mode. Example: (discover* OR "large language model*") AND agent*'}
         hint={'AND · OR · NOT · ( ) · "phrase" · term* = prefix wildcard'}>
         <textarea className="cfg-kv-ta cfg-expr-ta" rows={2} value={expr}
+          ref={autoGrowTextarea} onInput={e => autoGrowTextarea(e.target)}
           placeholder={'(discover* OR "large language model*") AND agent*'}
           onChange={e => patch({ expression: e.target.value, formula: undefined, keywords: undefined, keyword: undefined })} />
       </ConfigField>

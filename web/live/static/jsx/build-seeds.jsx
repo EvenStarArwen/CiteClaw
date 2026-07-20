@@ -418,12 +418,14 @@ function BuildSeeds({ onSelectSeed }) {
           <label className="seed-filter-field">
             <span className="seed-filter-k">Title</span>
             <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fTitle}
+              ref={autoGrowTextarea} onInput={e => autoGrowTextarea(e.target)}
               placeholder={'"bayesian optimization" AND NOT survey'}
               onChange={e => setFTitle(e.target.value)} />
           </label>
           <label className="seed-filter-field">
             <span className="seed-filter-k">Abstract</span>
             <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fAbs}
+              ref={autoGrowTextarea} onInput={e => autoGrowTextarea(e.target)}
               placeholder={'benchmark OR "ablation study"'}
               onChange={e => setFAbs(e.target.value)} />
           </label>
