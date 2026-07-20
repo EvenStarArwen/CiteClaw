@@ -10,14 +10,66 @@ full ordered event log so a browser that connects mid-run replays cleanly.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 import threading
 import time
 import uuid
 from collections import deque
+from pathlib import Path
 from typing import Any
 
 from .snapshots import build_graph, build_metrics, paper_dict
+
+# Keys whose values are secrets — redacted before the config is written to a
+# downloadable file. ``*_env`` keys hold env-var NAMES (e.g. api_key_env), not
+# the secrets themselves, so they are kept.
+_SECRET_KEY_RE = re.compile(r"(api_key|secret|token|password)$", re.I)
+
+
+def _scrub_secrets(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            ks = str(k)
+            if ks.endswith("_env"):
+                out[k] = v
+            elif _SECRET_KEY_RE.search(ks) and isinstance(v, str) and v:
+                out[k] = "***redacted***"
+            else:
+                out[k] = _scrub_secrets(v)
+        return out
+    if isinstance(obj, list):
+        return [_scrub_secrets(x) for x in obj]
+    return obj
+
+
+def _dump_run_config(config: Any, path: Path) -> None:
+    """Write the exact (secret-scrubbed) config a run used → pipeline_config.json."""
+    try:
+        data = config.model_dump(mode="json")  # pydantic Settings
+    except Exception:  # noqa: BLE001 - fall back to a best-effort dict
+        try:
+            data = dict(config)
+        except Exception:
+            return
+    try:
+        path.write_text(json.dumps(_scrub_secrets(data), indent=2, default=str) + "\n",
+                        encoding="utf-8")
+    except Exception:  # noqa: BLE001 - a config dump must never break a run
+        pass
+
+
+class _ThreadLogFilter(logging.Filter):
+    """Keep only this run thread's records (multi-tenant per-run file logs)."""
+
+    def __init__(self, thread_name: str) -> None:
+        super().__init__()
+        self._tn = thread_name
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D102
+        return record.threadName == self._tn
 
 # CiteClaw step name -> (design kind, friendly label, localId prefix)
 _STEP_META = {
@@ -986,6 +1038,24 @@ class RunManager:
         # own (higher) levels, so the terminal stays quiet
         if prior_level == logging.NOTSET or prior_level > logging.DEBUG:
             cc_logger.setLevel(logging.DEBUG)
+        # Per-run file log + the exact config used, written into the run dir so
+        # the downloadable bundle is self-contained (the pipeline itself only
+        # writes its result artifacts). Thread-scoped on multi-tenant servers so
+        # one tenant's file never picks up another's lines.
+        run_log_handler = None
+        try:
+            data_dir = Path(str(rs.config.data_dir))
+            data_dir.mkdir(parents=True, exist_ok=True)
+            _dump_run_config(rs.config, data_dir / "pipeline_config.json")
+            run_log_handler = logging.FileHandler(data_dir / "citeclaw.log", encoding="utf-8")
+            run_log_handler.setLevel(logging.DEBUG)
+            run_log_handler.setFormatter(
+                logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s"))
+            if self.scope_logs_to_thread:
+                run_log_handler.addFilter(_ThreadLogFilter(threading.current_thread().name))
+            cc_logger.addHandler(run_log_handler)
+        except Exception:  # noqa: BLE001 - artifacts are best-effort; never block a run
+            run_log_handler = None
         s2 = cache = None
         try:
             ctx, s2, cache = build_context(rs.config)
@@ -1021,6 +1091,12 @@ class RunManager:
         finally:
             try:
                 cc_logger.removeHandler(bridge)
+                if run_log_handler is not None:
+                    try:
+                        run_log_handler.flush()
+                        run_log_handler.close()
+                    finally:
+                        cc_logger.removeHandler(run_log_handler)
                 cc_logger.setLevel(prior_level)
             except Exception:
                 pass
