@@ -14,6 +14,10 @@ Grammar (tightest-binding first)::
     unary  := '!' unary | atom
     atom   := NAME | '(' expr ')'
 
+The operators ``& | !`` may equivalently be written as the words
+``and`` / ``or`` / ``not`` (any case) — e.g. ``(q_ml or q_stats) and not
+q_survey`` — which is how the Web UI presents them.
+
 Example::
 
     f = BooleanFormula("(q_ml | q_stats) & !q_survey")
@@ -39,9 +43,16 @@ class FormulaError(Exception):
 # Tokenizer
 # ---------------------------------------------------------------------------
 
+# ``and`` / ``or`` / ``not`` (any case) are accepted as word synonyms for
+# ``& | !`` so the Web UI can present database-style operators. They are
+# matched *before* NAME and only as standalone words (the ``(?!\w)`` guard),
+# so an identifier like ``android`` or ``q_or_1`` is still a NAME.
+_WORD_OPS = {"and": "&", "or": "|", "not": "!"}
+
 _TOKEN_RE = re.compile(
     r"\s*(?:"
-    r"(?P<NAME>[A-Za-z_]\w*)"
+    r"(?P<WOP>(?i:and|or|not)(?!\w))"
+    r"|(?P<NAME>[A-Za-z_]\w*)"
     r"|(?P<OP>[&|!()])"
     r")\s*"
 )
@@ -51,8 +62,9 @@ def tokenize(expr: str) -> list[tuple[str, str]]:
     """Split a formula into ``[(kind, value), ...]`` tokens.
 
     ``kind`` is ``"NAME"`` for an identifier or ``"OP"`` for one of
-    ``& | ! ( )``. Whitespace is skipped. Anything else raises
-    :class:`FormulaError`.
+    ``& | ! ( )``. The words ``and`` / ``or`` / ``not`` (any case) are
+    normalised to the ``& | !`` operators. Whitespace is skipped.
+    Anything else raises :class:`FormulaError`.
     """
     tokens: list[tuple[str, str]] = []
     pos = 0
@@ -65,7 +77,9 @@ def tokenize(expr: str) -> list[tuple[str, str]]:
             raise FormulaError(
                 f"Unexpected character at position {pos}: '{expr[pos:]}'"
             )
-        if m.group("NAME"):
+        if m.group("WOP"):
+            tokens.append(("OP", _WORD_OPS[m.group("WOP").lower()]))
+        elif m.group("NAME"):
             tokens.append(("NAME", m.group("NAME")))
         else:
             tokens.append(("OP", m.group("OP")))
@@ -144,7 +158,8 @@ class _Parser:
 
 
 class BooleanFormula:
-    """Parsed Boolean formula. Operators: ``&`` AND, ``|`` OR, ``!`` NOT.
+    """Parsed Boolean formula. Operators: ``&`` AND, ``|`` OR, ``!`` NOT
+    (equivalently spelled ``and`` / ``or`` / ``not``, any case).
 
     Construction parses the expression once; later
     :meth:`evaluate` and :meth:`query_names` calls walk the cached AST.
