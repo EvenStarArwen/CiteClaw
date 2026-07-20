@@ -358,64 +358,208 @@ function PipelineBlock({ node, selected, onClick, style, index }) {
   );
 }
 
-function PipelineEdge() {
+// Vertical connector between steps (down-arrow).
+function VEdge() {
   return (
-    <div className="pipe-edge">
-      <svg viewBox="0 0 40 14" preserveAspectRatio="none">
-        <line x1="0" y1="7" x2="32" y2="7"
-              stroke="var(--cc-ink-2)" strokeWidth="1.25"
-              strokeLinecap="round"/>
-        <path d="M 32 3 L 38 7 L 32 11 Z" fill="var(--cc-ink-2)" />
+    <div className="pipe-vedge" aria-hidden="true">
+      <svg viewBox="0 0 14 34" preserveAspectRatio="none">
+        <line x1="7" y1="0" x2="7" y2="26" stroke="var(--cc-ink-2)" strokeWidth="1.25" strokeLinecap="round" />
+        <path d="M 3 26 L 7 32 L 11 26 Z" fill="var(--cc-ink-2)" />
       </svg>
     </div>
   );
 }
 
-const PIPELINE_STYLES = [
-  { value: "specimen", label: "Specimen" },
-  { value: "catalog",  label: "Catalog"  },
-  { value: "bookmark", label: "Bookmark" },
-  { value: "rail",     label: "Rail"     },
-  { value: "monogram", label: "Monogram" },
-  { value: "ticket",   label: "Ticket"   },
-  { value: "badge",    label: "Badge"    },
-  { value: "stamp",    label: "Stamp"    },
-  { value: "ledger",   label: "Ledger"   },
-  { value: "ribbon",   label: "Ribbon"   },
-  { value: "minimal",  label: "Minimal"  },
-  { value: "blueprint",label: "Blueprint"},
-  { value: "numbered", label: "Numbered" },
-  { value: "chip",     label: "Chip"     },
+// ── Pipeline data model + helpers (shared with app.jsx / build-step-config) ──
+// A pipeline is a serial list of "rows". A row is either a regular step node
+// ({id, kind, name, localId, config, screener}) or a parallel node
+// ({id, kind:"parallel", branches:[node,...]}) whose branches run concurrently.
+let __sid = 100;
+const STEP_META = {
+  seed:   { name: "Seed set",          prefix: "SED" },
+  fwd:    { name: "Forward screener",  prefix: "FWD" },
+  bwd:    { name: "Backward screener", prefix: "BWD" },
+  rerank: { name: "Diversified rerank", prefix: "RRK" },
+  rsc:    { name: "Rescreener",        prefix: "RSC" },
+};
+// Kinds offered by the "add" pickers (seed is always first; sink is auto).
+const ADDABLE_STEPS = [
+  { kind: "fwd",    label: "Forward screener",  desc: "follow citations",  icon: "arrow-right" },
+  { kind: "bwd",    label: "Backward screener", desc: "walk references",   icon: "arrow-left" },
+  { kind: "rerank", label: "Diversified rerank", desc: "MMR top-K",        icon: "sliders-horizontal" },
+  { kind: "rsc",    label: "Rescreener",        desc: "LLM re-filter",     icon: "filter" },
 ];
 
-function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle, setBlockStyle }) {
+function newStep(kind) {
+  const m = STEP_META[kind] || { name: kind, prefix: "STP" };
+  const n = ++__sid;
+  const localId = m.prefix + "-" + String(n).padStart(2, "0");
+  const node = { id: "n" + n, kind, name: m.name, localId, config: {}, screener: null };
+  if (kind === "fwd")         node.config = { depth: 2, maxChildren: 200 };
+  else if (kind === "bwd")    node.config = { depth: 2, maxChildren: 100 };
+  else if (kind === "rerank") node.config = { lambda: 0.4, targetN: 500 };
+  else if (kind === "seed")   node.config = { query: "", years: "2019-2025", maxSeeds: 42 };
+  return node;
+}
+function newParallel(branches) { return { id: "par" + (++__sid), kind: "parallel", branches }; }
+
+function findStep(pipeline, id) {
+  for (const row of pipeline) {
+    if (row.id === id) return row;
+    if (row.kind === "parallel")
+      for (const b of (row.branches || [])) if (b.id === id) return b;
+  }
+  return null;
+}
+function mapStep(pipeline, id, fn) {
+  return pipeline.map(row => {
+    if (row.id === id) return fn(row);
+    if (row.kind === "parallel")
+      return { ...row, branches: (row.branches || []).map(b => b.id === id ? fn(b) : b) };
+    return row;
+  });
+}
+function removeStep(pipeline, id) {
+  const out = [];
+  for (const row of pipeline) {
+    if (row.id === id) continue;
+    if (row.kind === "parallel") {
+      const branches = (row.branches || []).filter(b => b.id !== id);
+      if (branches.length === 0) continue;              // drop empty parallel
+      if (branches.length === 1) { out.push(branches[0]); continue; }  // collapse to serial
+      out.push({ ...row, branches });
+      continue;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+// Popover that lists the addable step kinds, anchored to its trigger button.
+function StepPicker({ onPick, onClose, anchorRef }) {
+  const [pos, setPos] = React.useState(null);
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  React.useLayoutEffect(() => {
+    const compute = () => {
+      const el = anchorRef?.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const popW = 240, popH = 230, margin = 8;
+      let top = r.bottom + 4;
+      if (top + popH > window.innerHeight - margin) top = Math.max(margin, r.top - 4 - popH);
+      let left = r.left;
+      if (left + popW > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - popW - margin);
+      setPos({ top, left });
+    };
+    compute();
+    window.addEventListener("scroll", compute, true);
+    window.addEventListener("resize", compute);
+    return () => { window.removeEventListener("scroll", compute, true); window.removeEventListener("resize", compute); };
+  }, [anchorRef]);
   return (
-    <section className="pane pane-top">
-      <div className="pipe">
-        <div className="pipe-header">
-          <div className="pipe-toolbar">
-            <button className="btn-icon btn"><Icon name="minus" size={11}/></button>
-            <span className="pipe-zoom">100%</span>
-            <button className="btn-icon btn"><Icon name="plus" size={11}/></button>
-            <button className="btn-icon btn" title="Fit"><Icon name="maximize-2" size={11}/></button>
-          </div>
-        </div>
-        <div className="pipe-canvas">
-          <div className="pipe-inner">
-          <div className="pipe-row">
-            {pipeline.map((n, i) => (
-              <React.Fragment key={n.id}>
-                {i > 0 && <PipelineEdge />}
-                <PipelineBlock
-                  node={n}
-                  index={i}
-                  selected={selectedId === n.id}
-                  onClick={() => setSelectedId(n.id)}
-                  style={blockStyle}
-                />
-              </React.Fragment>
+    <>
+      <div className="ft-pop-scrim" onClick={onClose} />
+      <div className="ft-pop ft-pop-fixed" style={pos ? { top: pos.top, left: pos.left, width: 240 } : { visibility: "hidden" }}>
+        <div className="ft-pop-group">
+          <div className="ft-pop-label">Add a step</div>
+          <div className="ft-pop-list">
+            {ADDABLE_STEPS.map(s => (
+              <button key={s.kind} className="ft-pop-item" onClick={() => { onPick(s.kind); onClose(); }}>
+                <span className="ft-pop-name"><Icon name={s.icon} size={11} /> {s.label}</span>
+                <span className="ft-pop-desc">{s.desc}</span>
+              </button>
             ))}
           </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// A button that opens the StepPicker and calls onPick(kind).
+function StepAddButton({ onPick, label, className }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  return (
+    <>
+      <button ref={ref} className={"pipe-add " + (className || "")} onClick={() => setOpen(true)}>
+        <Icon name="plus" size={12} /> {label}
+      </button>
+      {open && <StepPicker anchorRef={ref} onPick={onPick} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function ParallelRow({ row, selectedId, onSelect, style, onAddBranch }) {
+  return (
+    <div className="pipe-parallel">
+      <span className="pipe-parallel-tag">parallel</span>
+      <div className="pipe-parallel-branches">
+        {(row.branches || []).map(b => (
+          <div key={b.id} className="pipe-branch">
+            <PipelineBlock
+              node={b} index={0}
+              selected={selectedId === b.id}
+              onClick={() => onSelect(b.id)}
+              style={style}
+            />
+          </div>
+        ))}
+        <div className="pipe-branch pipe-branch-add">
+          <StepAddButton label="branch" className="pipe-add-branch" onPick={(k) => onAddBranch(row.id, k)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle,
+                         onAddSerial, onWrapParallel, onAddBranch }) {
+  const last = pipeline[pipeline.length - 1];
+  const canWrap = last && last.kind !== "parallel" && last.kind !== "seed";
+  return (
+    <section className="pane pane-top">
+      <div className="pipe pipe-vert">
+        <div className="pipe-header pipe-header-vert">
+          <span className="pipe-vtitle">Pipeline</span>
+          <span className="pipe-vhint">{pipeline.length} step{pipeline.length === 1 ? "" : "s"} · click a step to configure</span>
+        </div>
+        <div className="pipe-canvas">
+          <div className="pipe-inner pipe-inner-vert">
+            <div className="pipe-col">
+              {pipeline.map((row, i) => (
+                <React.Fragment key={row.id}>
+                  {i > 0 && <VEdge />}
+                  {row.kind === "parallel" ? (
+                    <ParallelRow
+                      row={row} selectedId={selectedId} onSelect={setSelectedId}
+                      style={blockStyle} onAddBranch={onAddBranch}
+                    />
+                  ) : (
+                    <div className="pipe-node-line">
+                      <PipelineBlock
+                        node={row} index={i}
+                        selected={selectedId === row.id}
+                        onClick={() => setSelectedId(row.id)}
+                        style={blockStyle}
+                      />
+                      {i === pipeline.length - 1 && canWrap && (
+                        <StepAddButton
+                          label="parallel" className="pipe-add-side"
+                          onPick={(k) => onWrapParallel(k)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
+              <VEdge />
+              <StepAddButton label="Add step" className="pipe-add-serial" onPick={onAddSerial} />
+            </div>
           </div>
         </div>
       </div>
@@ -423,4 +567,7 @@ function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle, setBlo
   );
 }
 
-Object.assign(window, { BuildPipeline, PipelineBlock });
+Object.assign(window, {
+  BuildPipeline, PipelineBlock,
+  newStep, newParallel, findStep, mapStep, removeStep,
+});

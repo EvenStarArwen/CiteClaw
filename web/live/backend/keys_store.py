@@ -49,9 +49,20 @@ def _write_env_file(values: dict[str, str]) -> None:
 
 
 def load_into_environ() -> None:
-    """Load ``.env.local`` values into ``os.environ`` (existing env wins)."""
+    """Load ``.env.local`` values into ``os.environ``.
+
+    Keys the WebUI manages (``FIELD_ENV`` — the ones the Settings panel
+    writes) are **authoritative**: the saved value always wins, so a stale
+    or invalid ``S2_API_KEY`` left in the ambient shell environment can't
+    silently shadow the key the user actually saved (which manifested as a
+    keyless 429 even though ``key_presence()`` reported the key as set).
+    Any other var only fills in when unset (explicit env still wins).
+    """
+    managed = set(FIELD_ENV.values())
     for k, v in _read_env_file().items():
-        if v and not os.environ.get(k):
+        if not v:
+            continue
+        if k in managed or not os.environ.get(k):
             os.environ[k] = v
 
 

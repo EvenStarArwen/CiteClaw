@@ -18,9 +18,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import keys_store, models_catalog
+from .abstracts import fetch_abstract
 from .config_translate import TranslationError, build_config
 from .run_manager import manager
-from .s2_seeds import search_seeds
+from .s2_seeds import S2SearchError, search_seeds
 from .snapshots import build_graph, build_metrics
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -40,7 +41,7 @@ ASSEMBLY_ORDER = [
     "build-seeds.jsx",
     "build-pipeline.jsx",
     "build-config.jsx",
-    "build-blocks.jsx",
+    "build-step-config.jsx",
     "run-progress.jsx",
     "run-network.jsx",
     "run-dashboard.jsx",
@@ -103,7 +104,8 @@ def assemble_index() -> str:
 
 # in-memory default model/effort (the Settings modal's picker); the run POST
 # always carries its own, so this is just what the picker preloads.
-_defaults = {"model": models_catalog.SUPPORTED_MODEL, "reasoning_effort": models_catalog.DEFAULT_EFFORT}
+_defaults = {"model": models_catalog.SUPPORTED_MODEL, "reasoning_effort": models_catalog.DEFAULT_EFFORT,
+             "max_papers": 200}
 
 
 @asynccontextmanager
@@ -133,6 +135,7 @@ async def get_settings() -> dict:
         "keys": keys_store.key_presence(),
         "model": _defaults["model"],
         "reasoning_effort": _defaults["reasoning_effort"],
+        "max_papers": _defaults["max_papers"],
         "supported_model": models_catalog.SUPPORTED_MODEL,
     }
 
@@ -145,10 +148,16 @@ async def post_settings(req: Request) -> dict:
         _defaults["model"] = str(body["model"]).strip()
     if body.get("reasoning_effort"):
         _defaults["reasoning_effort"] = str(body["reasoning_effort"]).strip()
+    if body.get("max_papers") is not None:
+        try:
+            _defaults["max_papers"] = max(1, min(5000, int(body["max_papers"])))
+        except (TypeError, ValueError):
+            pass
     return {
         "keys": keys_store.key_presence(),
         "model": _defaults["model"],
         "reasoning_effort": _defaults["reasoning_effort"],
+        "max_papers": _defaults["max_papers"],
     }
 
 
@@ -162,8 +171,26 @@ async def seeds_search(q: str = "", limit: int = 20) -> JSONResponse:
     try:
         results = await asyncio.to_thread(search_seeds, q, limit)
         return JSONResponse(results)
+    except S2SearchError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Semantic Scholar search failed: {e}")
+
+
+@app.post("/api/seeds/abstract")
+async def seeds_abstract(req: Request) -> JSONResponse:
+    body = await req.json()
+    try:
+        result = await asyncio.to_thread(
+            fetch_abstract,
+            str(body.get("paper_id") or ""),
+            body.get("externalIds") or {},
+            str(body.get("title") or ""),
+            body.get("year"),
+        )
+        return JSONResponse(result)
+    except Exception:  # noqa: BLE001 - fallback is best-effort; never 500 the UI
+        return JSONResponse({"abstract": "", "source": None})
 
 
 @app.post("/api/run")
