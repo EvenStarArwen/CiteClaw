@@ -5904,6 +5904,17 @@ select.gp-v { cursor: pointer; }
 .road-node.is-done .road-live { opacity: 0.8; }
 .road-node.is-done .road-live .prog-bar-fill { background: var(--cc-positive, #2e7d32); }
 
+/* Screening-cascade nodes (the individual filters a candidate flows through)
+   and the terminal "add to collection" node carry a rounded-square marker so
+   they read as a distinct band within the step's pipeline — no indentation. */
+.road-node.is-screen .road-dot,
+.road-node.is-terminal .road-dot { border-radius: 6px; }
+.road-node.is-screen.is-pending .road-dot {
+  color: var(--cc-accent);
+  border-color: color-mix(in srgb, var(--cc-accent) 40%, var(--cc-rule-strong));
+}
+.road-node.is-terminal .road-label { color: var(--cc-ink-2); }
+
 /* Expanded log line: its own block — time + tag header, then the full
    message in a padded panel at full width. */
 .prog-log-open {

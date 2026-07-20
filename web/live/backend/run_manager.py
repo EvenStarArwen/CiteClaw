@@ -57,63 +57,95 @@ def _brief_hint(s: dict[str, Any]) -> str:
     return ""
 
 
-def _filter_chain(block: dict[str, Any] | None) -> list[str]:
-    """Compact one-line-per-layer description of a screener cascade."""
+def _filter_label(b: dict[str, Any]) -> str:
+    """Compact human label for one filter block (recurses into composites)."""
+    t = b.get("type")
+    if t == "YearFilter":
+        return f"Year {b.get('min', '…')}–{b.get('max', '…')}"
+    if t == "CitationFilter":
+        return f"Citation β={b.get('beta', '…')}"
+    if t == "AbstractKeywordFilter":
+        return "Abstract keywords"
+    if t == "TitleKeywordFilter":
+        return "Title keywords"
+    if t == "VenueKeywordFilter":
+        return "Venue keywords"
+    if t == "SimilarityFilter":
+        return f"Similarity ≥ {b.get('threshold', '…')}"
+    if t == "LLMFilter":
+        return f"LLM ({b.get('scope', 'title_abstract')})"
+    if t == "Sequential":
+        return " → ".join(_filter_label(x) for x in b.get("layers", []))
+    if t == "Any":
+        return "any of: " + " | ".join(_filter_label(x) for x in b.get("layers", []))
+    if t == "Not":
+        return "not " + _filter_label(b.get("layer") or {})
+    return str(t or "?")
+
+
+def _filter_hint(b: dict[str, Any]) -> str:
+    """One phrase on what a single filter actually does — for the roadmap."""
+    t = b.get("type")
+    if t == "YearFilter":
+        return f"keep papers published {b.get('min', '…')}–{b.get('max', '…')}"
+    if t == "CitationFilter":
+        return (f"drop papers under-cited for their age "
+                f"(β={b.get('beta', '…')} citations/year baseline)")
+    if t == "AbstractKeywordFilter":
+        return "boolean keyword expression matched against the abstract — no LLM"
+    if t == "TitleKeywordFilter":
+        return "boolean keyword expression matched against the title — no LLM"
+    if t == "VenueKeywordFilter":
+        return "boolean keyword expression matched against the venue — no LLM"
+    if t == "SimilarityFilter":
+        return "reference / citation / embedding overlap with the source paper"
+    if t == "LLMFilter":
+        scope = str(b.get("scope", "title_abstract")).replace("_", " + ")
+        return f"an LLM reads each paper's {scope} and votes keep / drop"
+    if t in ("Sequential", "Any"):
+        return "a group of sub-filters (see the composite label)"
+    if t == "Not":
+        return "passes exactly the papers the inner filter would reject"
+    if t == "Route":
+        return "routes each paper to a different sub-filter by venue / citations / year"
+    return ""
+
+
+def _filter_nodes(block: dict[str, Any] | None) -> list[dict[str, str]]:
+    """One roadmap node per top-level screener layer.
+
+    Matches how the runtime reports progress: a Sequential screener runs
+    ``begin_phase`` once per direct layer (named ``<screener>.layerN``), so
+    one node per top-level layer keeps the live highlight aligned with the
+    filter actually running. Composite layers (Any / Route / nested
+    Sequential) collapse to a single node described by their label.
+    """
     if not block:
         return []
+    layers = (block.get("layers") if block.get("type") == "Sequential" else [block]) or []
+    return [{"label": _filter_label(b), "hint": _filter_hint(b)} for b in layers]
 
-    def label(b: dict[str, Any]) -> str:
-        t = b.get("type")
-        if t == "YearFilter":
-            return f"Year {b.get('min', '…')}–{b.get('max', '…')}"
-        if t == "CitationFilter":
-            return f"Citation β={b.get('beta', '…')}"
-        if t == "AbstractKeywordFilter":
-            return "Abstract keywords"
-        if t == "TitleKeywordFilter":
-            return "Title keywords"
-        if t == "VenueKeywordFilter":
-            return "Venue keywords"
-        if t == "SimilarityFilter":
-            return f"Similarity ≥ {b.get('threshold', '…')}"
-        if t == "LLMFilter":
-            return f"LLM ({b.get('scope', 'title_abstract')})"
-        if t == "Sequential":
-            return " → ".join(label(x) for x in b.get("layers", []))
-        if t == "Any":
-            return "any of: " + " | ".join(label(x) for x in b.get("layers", []))
-        if t == "Not":
-            return "not " + label(b.get("layer") or {})
-        return str(t or "?")
 
-    lines: list[str] = []
+def _screen_stages(s: dict[str, Any]) -> list[dict[str, Any]]:
+    """The screening cascade as individual roadmap nodes (filter A → B → C).
 
-    def walk_top(b: dict[str, Any]) -> None:
-        t = b.get("type")
-        if t == "Sequential":
-            for x in b.get("layers", []):
-                walk_top(x)
-        elif t == "Route":
-            lines.append("Route · first matching condition decides the branch:")
-            for r in b.get("routes", []):
-                if "default" in r:
-                    lines.append("· else → " + label(r["default"]))
-                    continue
-                cond = r.get("if") or {}
-                if "VenueIn" in cond:
-                    c = "venue ∋ " + " / ".join(cond["VenueIn"])
-                elif "CitAtLeast" in cond:
-                    c = f"citations ≥ {cond['CitAtLeast']}"
-                elif "YearAtLeast" in cond:
-                    c = f"year ≥ {cond['YearAtLeast']}"
-                else:
-                    c = str(cond)
-                lines.append(f"· {c} → " + label(r.get("pass_to") or {}))
-        else:
-            lines.append(label(b))
+    ``screenIdx`` is the layer's position in the cascade; the front end reads
+    the trailing ``.layerN`` of the live phase to light up the exact filter.
+    """
+    nodes = _filter_nodes(s.get("screener"))
+    if not nodes:
+        return [{"key": "__screen", "screen": True, "screenIdx": 0,
+                 "label": "Screen candidates",
+                 "hint": "no screener configured — every candidate passes"}]
+    return [{"key": "__screen", "screen": True, "screenIdx": i,
+             "label": f"Filter {i + 1} · {n['label']}", "hint": n["hint"]}
+            for i, n in enumerate(nodes)]
 
-    walk_top(block)
-    return lines
+
+def _add_stage(what: str) -> dict[str, Any]:
+    """Terminal roadmap node — where survivors leave the step (input → output)."""
+    return {"key": "__add", "terminal": True, "label": f"Add {what} to the collection",
+            "hint": "accepted papers join the running collection and stream into the graph"}
 
 
 def _step_road(s: dict[str, Any]) -> dict[str, Any]:
@@ -125,41 +157,42 @@ def _step_road(s: dict[str, Any]) -> dict[str, Any]:
     the inner bar carries the individual FILTER names.
     """
     name = s.get("step")
-    screen = {
-        "key": "__screen", "label": "Screen candidates",
-        "hint": "each batch runs the filter cascade below; the live bar shows the filter being applied",
-        "filters": _filter_chain(s.get("screener")),
-    }
     if name == "ExpandForward":
         cap = s.get("max_citations", 100)
         return {"loop": True,
-                "blurb": "The stages below repeat for every source paper in the signal.",
+                "blurb": "For every source paper in the signal: pull its citing papers, "
+                         "enrich them, run them through the screening cascade, and add the "
+                         "survivors to the collection.",
                 "stages": [
                     {"key": "fetch citers", "label": "Fetch citing papers",
                      "hint": f"up to {cap} per source, page by page from Semantic Scholar"},
                     {"key": "fetch source refs", "label": "Fetch the source's references",
                      "hint": "needed for reference-overlap similarity"},
                     {"key": "enrich · batch", "label": "Enrich metadata",
-                     "hint": "bulk-fill missing fields"},
+                     "hint": "bulk-fill missing fields (venue, year, citations, authors)"},
                     {"key": "enrich · abstracts", "label": "Enrich abstracts",
-                     "hint": "S2 first, OpenAlex fallback"},
-                    screen,
+                     "hint": "S2 first, OpenAlex fallback — needed before any text screening"},
+                    *_screen_stages(s),
                     {"key": "fetch accepted refs", "label": "Fetch survivors' references",
                      "hint": "one batched call — their in-collection links appear in the graph right away"},
+                    _add_stage("survivors"),
                 ]}
     if name == "ExpandBackward":
         return {"loop": True,
-                "blurb": "The stages below repeat for every source paper — every reference is walked (no cap).",
+                "blurb": "For every source paper in the signal: walk every reference it cites "
+                         "(no cap), enrich them, screen them, and add the survivors to the "
+                         "collection.",
                 "stages": [
                     {"key": "fetch refs", "label": "Fetch references",
                      "hint": "all of them, page by page"},
                     {"key": "s2: resolve", "label": "Resolve OpenAlex fallback DOIs",
                      "hint": "only when S2 has no reference list for a source"},
                     {"key": "enrich · abstracts", "label": "Enrich abstracts",
-                     "hint": "S2 first, OpenAlex fallback"},
-                    screen,
+                     "hint": "S2 first, OpenAlex fallback — needed before any text screening"},
+                    *_screen_stages(s),
                     {"key": "fetch accepted refs", "label": "Fetch survivors' references",
                      "hint": "one batched call — their in-collection links appear in the graph right away"},
+                    _add_stage("survivors"),
                 ]}
     if name == "Parallel":
         n = len(s.get("branches") or [])
@@ -195,12 +228,14 @@ def _step_road(s: dict[str, Any]) -> dict[str, Any]:
                 "stages": [
                     {"key": "search", "label": "LLM-designed Semantic Scholar search",
                      "hint": f"up to {it} query rounds"},
-                    screen,
+                    *_screen_stages(s),
+                    _add_stage("survivors"),
                 ]}
     if name == "ReScreen":
         return {"loop": False,
-                "blurb": "Re-applies the screener to the whole collection (seeds exempt); failures are removed.",
-                "stages": [screen]}
+                "blurb": "Re-applies the screener to the whole collection (seeds exempt); "
+                         "papers that now fail any filter are removed.",
+                "stages": _screen_stages(s)}
     if name == "ResolveSeeds":
         return {"loop": False, "blurb": "Resolves title-only seeds to Semantic Scholar records.",
                 "stages": [{"key": "resolve seed titles", "label": "Resolve seed titles",

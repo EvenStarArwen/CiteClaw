@@ -80,15 +80,33 @@ function _liveStageKey(stages, activity) {
   return stages.some(st => st.key === "__screen") ? "__screen" : null;
 }
 
+// Which filter in the screening cascade is live. A flat Sequential screener
+// names its layers "<screener>.layerN", so the trailing index of the live
+// phase description points straight at the filter node currently running.
+function _liveScreenIdx(stages, activity) {
+  const nodes = stages.filter(st => st.screen);
+  if (!nodes.length) return 0;
+  const desc = activity && activity.inner && activity.inner.desc;
+  const m = desc && /layer(\d+)\b/i.exec(desc);
+  if (m) {
+    const n = +m[1];
+    if (nodes.some(x => x.screenIdx === n)) return n;
+  }
+  return nodes[0].screenIdx;
+}
+
 // One roadmap node. `laneBar` is the node's own outer bar (source papers
 // k/n for a Parallel branch sub-step) — kept visible after the lane
 // finishes, so every branch card carries its progress; `liveBar` is the
 // inner phase bar and only shows while the node is the live one.
-function RoadNode({ index, label, hint, filters, state, liveBar, laneBar }) {
+function RoadNode({ index, label, hint, filters, state, liveBar, laneBar, screen, terminal }) {
+  const cls = "road-node is-" + state
+    + (screen ? " is-screen" : "") + (terminal ? " is-terminal" : "");
   return (
-    <div className={"road-node is-" + state}>
+    <div className={cls}>
       <span className="road-dot">
-        {state === "done" ? "✓" : state === "active" ? "" : index}
+        {state === "done" ? "✓" : state === "active" ? ""
+          : terminal ? "▸" : screen ? "≣" : index}
       </span>
       <div className="road-body">
         <span className="road-label">{label}</span>
@@ -118,9 +136,17 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
 
   const road = s.road || { stages: [], loop: false, blurb: "" };
   const isActive = s.status === "active";
-  const liveKey = isActive ? _liveStageKey(road.stages || [], activity) : null;
   const stages = road.stages || [];
-  const liveIdx = liveKey ? stages.findIndex(st => st.key === liveKey) : -1;
+  const liveKey = isActive ? _liveStageKey(stages, activity) : null;
+  // The live stage index — for screening, resolve the exact filter node in the
+  // cascade rather than the first "__screen" match.
+  const liveIdx = (() => {
+    if (!isActive || liveKey == null) return -1;
+    if (liveKey !== "__screen") return stages.findIndex(st => st.key === liveKey);
+    const sIdx = _liveScreenIdx(stages, activity);
+    const at = stages.findIndex(st => st.screen && st.screenIdx === sIdx);
+    return at >= 0 ? at : stages.findIndex(st => st.screen);
+  })();
   const lane = isActive && activity ? activity.lane : null;
   const lanes = (isActive && activity && activity.lanes) || {};
 
@@ -128,11 +154,17 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
     if (s.status === "done") return "done";
     if (s.status === "skipped" || s.status === "idle") return "pending";
     if (s.status === "error") return i < liveIdx ? "done" : i === liveIdx ? "error" : "pending";
-    if (!isActive) return "pending";
-    if (liveIdx < 0) return "pending";
+    if (!isActive || liveIdx < 0) return "pending";
     if (i === liveIdx) return "active";
-    // looping steps revisit stages per source paper — only the current one
-    // is meaningful; linear steps genuinely progress top to bottom.
+    // Within the screening cascade the filters run top-to-bottom for the
+    // current paper, so show that progression even though the whole step
+    // loops over source papers.
+    const activeStage = stages[liveIdx];
+    if (st.screen && activeStage && activeStage.screen) {
+      return i < liveIdx ? "done" : "pending";
+    }
+    // Other looping stages revisit per source paper — only the current one is
+    // meaningful; linear steps genuinely progress top to bottom.
     if (road.loop) return "pending";
     return i < liveIdx ? "done" : "pending";
   };
@@ -204,8 +236,9 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
                 Stages{road.loop ? <span className="road-loop-chip">↻ per source paper</span> : null}
               </div>
               {stages.map((st, i) => (
-                <RoadNode key={st.key} index={i + 1} label={st.label} hint={st.hint}
-                  filters={st.filters} state={stageState(st, i)}
+                <RoadNode key={i} index={i + 1} label={st.label} hint={st.hint}
+                  filters={st.filters} screen={st.screen} terminal={st.terminal}
+                  state={stageState(st, i)}
                   liveBar={i === liveIdx && activity ? activity.inner : null} />
               ))}
             </div>
