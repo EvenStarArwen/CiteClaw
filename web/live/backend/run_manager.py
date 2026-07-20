@@ -310,14 +310,43 @@ class StepProgress:
             self.steps[i]["pct"] = 100
             self.steps[i]["sub"] = f"{in_c:,} in · {out_c:,} pass · +{delta:,}"
 
-    def finish(self, status: str, note: str | None) -> None:
+    def note_stopping(self) -> None:
+        """Mark the currently active step as winding down after a stop
+        request, so the sidebar agrees with the topbar's 'Finalizing'."""
+        for s in self.steps:
+            if s["status"] == "active":
+                s["sub"] = "stop requested — finishing current stage…"
+
+    def begin_finalizing(self) -> None:
+        """Light up the Finalize row while ``finalize_partial`` writes the
+        artifacts of a stopped/errored run."""
+        for s in reversed(self.steps):
+            if s["cwName"] == "Finalize" and s["status"] != "done":
+                s["status"] = "active"
+                s["sub"] = "writing partial artifacts…"
+                break
+
+    def finish(self, status: str, note: str | None, *, finalized: bool = False) -> None:
         """Resolve every unfinished step when the run ends.
 
         Steps the pipeline never reached (paper/budget cap hit, user stop,
         error) are marked ``skipped`` with the reason, so the list never
         shows "pending" steps after a Finalize — which read as if the run
-        had silently jumped over them.
+        had silently jumped over them. When ``finalized`` is True the
+        Finalize row is marked done instead of skipped — ``finalize_partial``
+        really did write the artifacts, and calling that 'skipped' while the
+        topbar said 'Finalizing' confused everyone.
         """
+        if finalized:
+            for s in reversed(self.steps):
+                if s["cwName"] == "Finalize":
+                    if s["status"] != "done":
+                        s["status"] = "done"
+                        s["pct"] = 100
+                        s["sub"] = ("partial — artifacts written after stop"
+                                    if status == "stopped"
+                                    else "partial — artifacts written despite the error")
+                    break
         for s in self.steps:
             if s["status"] == "active":
                 s["status"] = "error" if status == "error" else "skipped"
@@ -836,6 +865,11 @@ class RunManager:
             return False
         rs.stop_requested = True
         rs.cap_event.set()  # unblock a run held at the cap prompt
+        try:
+            rs.progress.note_stopping()
+            self.broadcast(rs, {"type": "progress", "progress": rs.progress.snapshot()})
+        except Exception:
+            pass
         return True
 
     def cap_decide(self, run_id: str, action: str, new_max: int | None) -> bool:
@@ -879,6 +913,8 @@ class RunManager:
                 rs.status = "done"
             except _StopRun:
                 rs.finalizing = True
+                rs.progress.begin_finalizing()
+                self.broadcast(rs, {"type": "progress", "progress": rs.progress.snapshot()})
                 try:
                     finalize_partial(ctx)
                 except Exception:
@@ -886,6 +922,8 @@ class RunManager:
                 rs.status = "stopped"
             except BaseException as e:  # noqa: BLE001 - surface any run error to UI
                 rs.finalizing = True
+                rs.progress.begin_finalizing()
+                self.broadcast(rs, {"type": "progress", "progress": rs.progress.snapshot()})
                 try:
                     finalize_partial(ctx)
                 except Exception:
@@ -913,7 +951,7 @@ class RunManager:
         # Resolve unreached steps (skipped/interrupted, with the reason) so
         # the list never ends with "pending" rows after Finalize already ran.
         try:
-            rs.progress.finish(rs.status, rs.stop_note)
+            rs.progress.finish(rs.status, rs.stop_note, finalized=rs.finalizing)
             self.broadcast(rs, {"type": "progress", "progress": rs.progress.snapshot()})
         except Exception:
             pass
