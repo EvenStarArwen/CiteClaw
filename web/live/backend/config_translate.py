@@ -27,10 +27,22 @@ _ATOM_TYPES = {
     "CitationFilter",
     "LLMFilter",
     "SimilarityFilter",
+    # One scope-selectable "Keyword" filter (new) + the three scope-specific
+    # kinds older saved pipelines use; all resolve to the core classes below.
+    "KeywordFilter",
     "TitleKeywordFilter",
     "AbstractKeywordFilter",
     "VenueKeywordFilter",
 }
+# ``KeywordFilter``'s ``scope`` -> the concrete core class it compiles to.
+_KEYWORD_SCOPE_TYPE = {
+    "title": "TitleKeywordFilter",
+    "abstract": "AbstractKeywordFilter",
+    "venue": "VenueKeywordFilter",
+}
+_KEYWORD_KINDS = {"KeywordFilter", *_KEYWORD_SCOPE_TYPE.values()}
+# ``and`` / ``or`` / ``not`` (any case) -> the core formula glyphs.
+_WORD_OP_GLYPH = {"and": "&", "or": "|", "not": "!"}
 _MEASURE_TYPES = {"RefSim", "CitSim", "SemanticSim"}
 _COMPOSITE = {"Sequential", "Any", "Not", "Route", "Parallel"}
 
@@ -40,44 +52,49 @@ class TranslationError(ValueError):
 
 
 _EXPR_TOKEN = re.compile(
-    r'"([^"]*)"'                      # quoted phrase
-    r"|([A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*)"  # bare word
-    r"|([&|!()])"                     # operator
-    r"|(\s+)"                         # whitespace
-    r"|(.)"                           # anything else = error
+    r'"([^"]*)"(\*?)'                            # 1=quoted phrase, 2=optional trailing *
+    r"|(?i:(and|or|not))(?![\w-])"               # 3=word operator (AND/OR/NOT, any case)
+    r"|([A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*\*?)"    # 4=bare word (optional trailing * wildcard)
+    r"|([&|!()])"                                # 5=glyph operator
+    r"|(\s+)"                                    # 6=whitespace
+    r"|(.)"                                      # 7=anything else = error
 )
 
 
 def _compile_keyword_expression(expr: str) -> tuple[str, dict[str, str]]:
     """Compile a direct keyword expression into the CLI's formula shape.
 
-    ``("large language model" | LLM) & "scientific discovery"`` becomes
-    ``("k1 | k2) & k3"`` plus ``{"k1": "large language model", ...}`` —
+    ``("large language model*" OR LLM) AND agent*`` becomes
+    ``("k1 | k2) & k3"`` plus ``{"k1": "large language model*", ...}`` —
     the named-formula form ``TitleKeywordFilter`` & friends execute. The
-    UI never shows the generated names. Wildcards are rejected loudly:
-    the keyword filters match plain substrings / whole words / prefixes.
+    UI never shows the generated names. ``AND`` / ``OR`` / ``NOT`` (any
+    case) and ``& | !`` are both accepted; a trailing ``*`` on a term is a
+    word-prefix wildcard passed through to the core matcher.
     """
     parts: list[str] = []
     names: dict[str, str] = {}   # lowercased term -> generated name
     keywords: dict[str, str] = {}
     for m in _EXPR_TOKEN.finditer(expr):
-        quoted, bare, op, ws, bad = m.groups()
+        quoted, qstar, wop, bare, op, ws, bad = m.groups()
         if ws is not None:
             continue
         if bad is not None:
             if bad == "*":
                 raise TranslationError(
-                    "Keyword expressions don't support * wildcards — terms match "
-                    "as substrings (or whole words / prefixes via the match mode)."
+                    "A '*' wildcard must be attached to the end of a term "
+                    '(e.g. discover* or "large language model*"), not stand alone.'
                 )
             raise TranslationError(
                 f"Unexpected character {bad!r} in keyword expression — allowed: "
-                'words, "quoted phrases", & | ! and parentheses.'
+                'words, "quoted phrases", AND / OR / NOT and parentheses.'
             )
+        if wop is not None:
+            parts.append(_WORD_OP_GLYPH[wop.lower()])
+            continue
         if op is not None:
             parts.append(op)
             continue
-        term = quoted if quoted is not None else bare
+        term = (quoted + qstar) if quoted is not None else bare
         if not term.strip():
             raise TranslationError("Empty quotes in keyword expression — put a phrase between them.")
         name = names.get(term.lower())
@@ -169,6 +186,35 @@ def _translate_filter(node: dict[str, Any]) -> dict[str, Any]:
     if kind not in _ATOM_TYPES:
         raise TranslationError(f"Unknown filter kind: {kind!r}")
 
+    if kind in _KEYWORD_KINDS:
+        # One "Keyword" filter with a scope selector (new) or the three
+        # scope-specific kinds (older pipelines) -> the same core classes.
+        if kind == "KeywordFilter":
+            scope = str(params.get("scope") or "abstract").strip().lower()
+            core = _KEYWORD_SCOPE_TYPE.get(scope)
+            if core is None:
+                raise TranslationError(
+                    f"Keyword filter has an unknown scope {scope!r} — "
+                    "use title, abstract or venue."
+                )
+        else:
+            core = kind
+        kw_out: dict[str, Any] = {"type": core}
+        kw_out.update(_clean({"match": params.get("match")}))
+        expr = str(params.get("expression") or "").strip()
+        if expr:
+            # Direct expression, e.g. (discover* OR "large language model*") AND agent*
+            kw_out["formula"], kw_out["keywords"] = _compile_keyword_expression(expr)
+        elif params.get("formula"):
+            # Legacy named form (older saved pipelines)
+            kw_out["formula"] = params["formula"]
+            kw_out["keywords"] = params.get("keywords") or {}
+        elif params.get("keyword"):
+            kw_out["keyword"] = params["keyword"]
+        if params.get("case_sensitive") is not None:
+            kw_out["case_sensitive"] = bool(params["case_sensitive"])
+        return kw_out
+
     out: dict[str, Any] = {"type": kind}
 
     if kind == "YearFilter":
@@ -185,20 +231,6 @@ def _translate_filter(node: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         )
-    elif kind in ("TitleKeywordFilter", "AbstractKeywordFilter", "VenueKeywordFilter"):
-        out.update(_clean({"match": params.get("match")}))
-        expr = str(params.get("expression") or "").strip()
-        if expr:
-            # Direct expression, e.g. ("large language model" | LLM) & agent
-            out["formula"], out["keywords"] = _compile_keyword_expression(expr)
-        elif params.get("formula"):
-            # Legacy named form (older saved pipelines)
-            out["formula"] = params["formula"]
-            out["keywords"] = params.get("keywords") or {}
-        elif params.get("keyword"):
-            out["keyword"] = params["keyword"]
-        if params.get("case_sensitive") is not None:
-            out["case_sensitive"] = bool(params["case_sensitive"])
     elif kind == "SimilarityFilter":
         out.update(_clean({"threshold": params.get("threshold"), "on_no_data": params.get("on_no_data")}))
         measures = params.get("measures") or []
