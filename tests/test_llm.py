@@ -781,6 +781,24 @@ class TestDispatchBatch:
         out = dispatch_batch(self._papers(3), lf, ctx)
         assert all(out.values())
 
+    def test_blank_prompt_fails_closed(self, ctx):
+        """A blank criterion must reject all (fail CLOSED), not accept all.
+
+        Regression for the WebUI "LLM screener rejects nothing" bug: an
+        empty ``Criterion: ""`` is treated as "matches everything" by real
+        providers, silently passing every paper. The stub here says
+        match=true for anything, so an all-False result proves the guard
+        fires before the client is ever called."""
+        lf = LLMFilter(scope="title", prompt="   ")
+        out = dispatch_batch(self._papers(3), lf, ctx)
+        assert out == {"p0": False, "p1": False, "p2": False}
+
+    def test_blank_formula_query_fails_closed(self, ctx):
+        """Formula mode with an empty query value also fails closed."""
+        lf = LLMFilter(scope="title", formula="q1", queries={"q1": ""})
+        out = dispatch_batch(self._papers(3), lf, ctx)
+        assert out == {"p0": False, "p1": False, "p2": False}
+
     def test_batching_respects_batch_size(self, ctx, monkeypatch):
         """With batch_size=2 and 5 papers, the runner should dispatch 3 batches
         (2+2+1). Each batch goes through _run_one_batch exactly once."""

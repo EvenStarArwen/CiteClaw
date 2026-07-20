@@ -206,12 +206,33 @@ def _translate_filter(node: dict[str, Any]) -> dict[str, Any]:
     elif kind == "LLMFilter":
         out.update(_clean({"scope": params.get("scope")}))
         if params.get("formula"):
+            queries = params.get("queries") or {}
             out["formula"] = params["formula"]
-            out["queries"] = params.get("queries") or {}
-        elif params.get("prompt"):
+            out["queries"] = queries
+            # A blank query makes the model screen on an empty criterion,
+            # which several providers (Gemini included) treat as "matches
+            # everything" — silently passing every paper. Refuse it here so
+            # the run never starts with a no-op screener.
+            try:
+                from citeclaw.screening.formula import BooleanFormula
+                referenced = BooleanFormula(str(params["formula"])).query_names()
+            except Exception:  # noqa: BLE001 — malformed formula surfaces elsewhere
+                referenced = set(queries.keys())
+            blank = sorted(n for n in referenced if not str(queries.get(n) or "").strip())
+            if blank:
+                raise TranslationError(
+                    "An LLM filter has no criterion — its "
+                    + ("query is empty" if len(blank) == 1 else "queries are empty")
+                    + f" ({', '.join(blank)}). Open the filter and fill in the yes/no "
+                    "question the model should answer, or remove the filter."
+                )
+        elif str(params.get("prompt") or "").strip():
             out["prompt"] = params["prompt"]
         else:
-            raise TranslationError("LLMFilter needs a prompt or a formula+queries")
+            raise TranslationError(
+                "An LLM filter has no criterion — fill in its prompt (the yes/no "
+                "question the model answers about each paper), or remove the filter."
+            )
         # Per-filter model/effort overrides — the CLI's per-block ``model:`` /
         # ``reasoning_effort:``, so different filters can screen with different
         # models. Aliases resolve to the GA id here; the run endpoint validates

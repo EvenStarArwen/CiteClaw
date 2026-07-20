@@ -333,6 +333,27 @@ function App() {
         }
       }
     }
+    // A blank LLM criterion silently passes every paper — the model treats an
+    // empty "Criterion" as matching everything, so the screener becomes a
+    // no-op. Block the run and point at the offending filter.
+    let blankLlm = null;
+    forEachLlmFilter(pipelineResolved, (f, step) => {
+      if (blankLlm) return;
+      const p = f.params || {};
+      let missing;
+      if (p.formula != null && String(p.formula).trim() !== "") {
+        const refs = String(p.formula).match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+        const q = p.queries || {};
+        missing = refs.some(r => !String(q[r] || "").trim());
+      } else {
+        missing = !String(p.prompt || "").trim();
+      }
+      if (missing) blankLlm = (step && step.localId) || "an LLM filter";
+    });
+    if (blankLlm) {
+      setRunError(`An LLM filter in ${blankLlm} has no criterion yet — open it and fill in the yes/no question the model should answer about each paper. An empty criterion makes the model accept every paper (the screener does nothing).`);
+      return;
+    }
     const res = await startRun(pipelineResolved, LIVE.getState().seeds);
     if (res && res.ok) setMode("run");
     else setRunError((res && res.error) || "Could not start the run. Check your settings and try again.");

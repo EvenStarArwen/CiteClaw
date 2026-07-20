@@ -60,3 +60,46 @@ class TestKeywordExpression:
         out = _translate_filter(node)
         assert out["formula"] == "a | b"
         assert out["keywords"] == {"a": "x", "b": "y"}
+
+
+class TestLLMBlankCriterion:
+    """A blank LLM criterion silently passes every paper (the model treats an
+    empty 'Criterion' as matching everything). Translation must refuse it."""
+
+    def test_formula_with_empty_query_rejected(self):
+        node = {"kind": "LLMFilter",
+                "params": {"scope": "title", "formula": "q1", "queries": {"q1": ""}}}
+        with pytest.raises(TranslationError, match="no criterion"):
+            _translate_filter(node)
+
+    def test_formula_with_whitespace_query_rejected(self):
+        node = {"kind": "LLMFilter",
+                "params": {"scope": "title", "formula": "q1", "queries": {"q1": "   "}}}
+        with pytest.raises(TranslationError, match="no criterion"):
+            _translate_filter(node)
+
+    def test_formula_missing_referenced_query_rejected(self):
+        # formula references q1 but queries only defines q2 (q1 blank/absent)
+        node = {"kind": "LLMFilter",
+                "params": {"scope": "title", "formula": "q1 | q2",
+                           "queries": {"q1": "is relevant", "q2": ""}}}
+        with pytest.raises(TranslationError, match="no criterion"):
+            _translate_filter(node)
+
+    def test_blank_prompt_rejected(self):
+        node = {"kind": "LLMFilter", "params": {"scope": "title", "prompt": "   "}}
+        with pytest.raises(TranslationError, match="no criterion"):
+            _translate_filter(node)
+
+    def test_filled_query_ok(self):
+        node = {"kind": "LLMFilter",
+                "params": {"scope": "title", "formula": "q1", "queries": {"q1": "is relevant"}}}
+        out = _translate_filter(node)
+        assert out["type"] == "LLMFilter"
+        assert out["formula"] == "q1"
+        assert out["queries"] == {"q1": "is relevant"}
+
+    def test_filled_prompt_ok(self):
+        node = {"kind": "LLMFilter", "params": {"scope": "title", "prompt": "is relevant"}}
+        out = _translate_filter(node)
+        assert out["prompt"] == "is relevant"

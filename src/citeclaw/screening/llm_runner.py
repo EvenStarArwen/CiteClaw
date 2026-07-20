@@ -120,6 +120,20 @@ def _format_exc(exc: BaseException) -> str:
 
 
 def _run_one_batch(client, llm_filter: "LLMFilter", contents: list[str], ids: list[str]) -> dict[str, bool]:
+    # A blank criterion is a misconfiguration, NOT "match anything": several
+    # providers (Gemini among them) treat an empty ``Criterion: ""`` as
+    # vacuously satisfied and return match=true for every item, silently
+    # turning the screener into a no-op that passes the whole batch. Fail
+    # CLOSED instead — reject all, spend no tokens, and log loudly so the
+    # empty query surfaces. Config-time validation (config_translate + the
+    # WebUI run gate) normally catches this first; this is the last line.
+    if not (llm_filter.prompt or "").strip():
+        log.warning(
+            "LLMFilter %r has a blank criterion — rejecting all %d papers "
+            "instead of screening (fill in the query/prompt).",
+            llm_filter.name, len(ids),
+        )
+        return {pid: False for pid in ids}
     label = "Venues" if llm_filter.scope == "venue" else "Items"
     system = _VENUE_SYSTEM if llm_filter.scope == "venue" else _SYSTEM
     block = "\n".join(f"{i}. {c}" for i, c in enumerate(contents, 1))
