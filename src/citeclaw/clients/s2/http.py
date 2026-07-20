@@ -12,7 +12,9 @@ machinery they share.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 import httpx
@@ -60,6 +62,11 @@ BATCH_URL = "https://api.semanticscholar.org/graph/v1/paper/batch"
 PAGE_SIZE = 100
 # A self-hosted s2mirror serves big pages for free — 10x fewer requests.
 MIRROR_PAGE_SIZE = 1000
+# Pages kept in flight while walking a mirror-backed list. Per-request
+# latency to the mirror is transport-dominated (~180 ms edge RTT vs ~15 ms
+# server time), so overlapping requests hides the RTT — the assembled
+# result is byte-identical to the sequential walk.
+MIRROR_PAGE_WINDOW = 4
 
 
 def _normalize_graph_base(url: str) -> str:
@@ -143,6 +150,7 @@ class S2Http:
         self._min_interval = 1.0 / config.s2_rps
         self._last_request_time = 0.0
         self._consecutive_failures = 0
+        self._fail_lock = threading.Lock()
         self._max_consecutive_failures = max(0, config.s2_max_consecutive_failures)
 
         headers: dict[str, str] = {"Accept": "application/json"}
@@ -204,7 +212,8 @@ class S2Http:
             pass
 
     def _record_success(self) -> None:
-        self._consecutive_failures = 0
+        with self._fail_lock:
+            self._consecutive_failures = 0
 
     def _record_failure(self, exc: BaseException) -> None:
         """Bump the consecutive-failure counter; raise outage if exceeded.
@@ -215,10 +224,12 @@ class S2Http:
         escape the retry guard (rare; would mean the predicate said
         "don't retry") count too.
         """
-        self._consecutive_failures += 1
+        with self._fail_lock:
+            self._consecutive_failures += 1
+            failures = self._consecutive_failures
         if (
             self._max_consecutive_failures
-            and self._consecutive_failures >= self._max_consecutive_failures
+            and failures >= self._max_consecutive_failures
         ):
             raise S2OutageError(
                 f"S2 API hit max retries on {self._consecutive_failures} "
@@ -340,6 +351,11 @@ class S2Http:
         can drive an inner progress bar without knowing pagination.
         """
         req_type = "references" if edge == "references" else "citations"
+        if self._mirror_base and self._mirror_http is not None:
+            return self._paginate_windowed(
+                paper_id, edge, fields=fields, max_items=max_items,
+                progress_cb=progress_cb, req_type=req_type,
+            )
         results: list[dict[str, Any]] = []
         offset = 0
         page_size = self._page_size
@@ -363,6 +379,72 @@ class S2Http:
                 return results[:max_items]
             if len(batch) < page_size:
                 break
+        return results
+
+    def _paginate_windowed(
+        self,
+        paper_id: str,
+        edge: str,
+        *,
+        fields: str,
+        max_items: int | None,
+        progress_cb: Any,
+        req_type: str,
+    ) -> list[dict[str, Any]]:
+        """Mirror-only pagination with ``MIRROR_PAGE_WINDOW`` pages in flight.
+
+        Pages are launched ahead but ASSEMBLED strictly in offset order and
+        the walk stops at the first short page, so the returned list (and the
+        ``progress_cb`` call sequence) is identical to the sequential loop —
+        only the wall-clock changes, since the per-page transport latency
+        overlaps instead of accumulating.
+        """
+        page = self._page_size
+        url = f"{self.graph_base}/paper/{paper_id}/{edge}"
+
+        def fetch(offset: int) -> list[dict[str, Any]]:
+            data = self._wrap_call(
+                self._get_url_with_retries, url,
+                {"fields": fields, "limit": page, "offset": offset}, req_type,
+            )
+            return data.get("data", []) if isinstance(data, dict) else []
+
+        results: list[dict[str, Any]] = []
+        inflight: dict[int, Any] = {}
+        with ThreadPoolExecutor(max_workers=MIRROR_PAGE_WINDOW) as pool:
+            next_launch = 0
+            stop_launching = False
+
+            def maybe_launch() -> None:
+                nonlocal next_launch
+                while (not stop_launching and len(inflight) < MIRROR_PAGE_WINDOW
+                       and (max_items is None or next_launch < max_items)):
+                    inflight[next_launch] = pool.submit(fetch, next_launch)
+                    next_launch += page
+
+            maybe_launch()
+            offset = 0
+            while offset in inflight:
+                batch = inflight.pop(offset).result()
+                if batch:
+                    results.extend(batch)
+                    if progress_cb is not None:
+                        try:
+                            progress_cb(len(batch))
+                        except Exception:
+                            pass
+                if max_items is not None and len(results) >= max_items:
+                    stop_launching = True
+                    for f in inflight.values():
+                        f.cancel()
+                    return results[:max_items]
+                if len(batch) < page:
+                    stop_launching = True
+                    for f in inflight.values():
+                        f.cancel()
+                    return results
+                offset += page
+                maybe_launch()
         return results
 
     def close(self) -> None:

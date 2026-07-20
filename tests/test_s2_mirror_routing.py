@@ -118,6 +118,40 @@ def test_recommendations_full_url_stays_real(http):
     assert seen[0].url.host == "api.semanticscholar.org"
 
 
+def _edge_pages_transport(total):
+    def handler(request: httpx.Request) -> httpx.Response:
+        offset = int(request.url.params.get("offset", 0))
+        limit = int(request.url.params.get("limit", 100))
+        items = [{"citingPaper": {"paperId": f"p{i}"}}
+                 for i in range(offset, min(offset + limit, total))]
+        return httpx.Response(200, json={"offset": offset, "data": items})
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_windowed_pagination_matches_sequential_output(http):
+    http._mirror_http = _edge_pages_transport(2350)
+    calls = []
+    out = http.paginate("abc", "citations", fields="citingPaper.paperId",
+                        progress_cb=calls.append)
+    assert [e["citingPaper"]["paperId"] for e in out] == [f"p{i}" for i in range(2350)]
+    assert calls == [1000, 1000, 350]  # same order + sizes as the serial walk
+
+
+def test_windowed_pagination_max_items(http):
+    http._mirror_http = _edge_pages_transport(5000)
+    out = http.paginate("abc", "citations", fields="citingPaper.paperId",
+                        max_items=1500)
+    assert [e["citingPaper"]["paperId"] for e in out] == [f"p{i}" for i in range(1500)]
+
+
+def test_windowed_pagination_empty(http):
+    http._mirror_http = _edge_pages_transport(0)
+    calls = []
+    out = http.paginate("abc", "citations", fields="citingPaper.paperId",
+                        progress_cb=calls.append)
+    assert out == [] and calls == []
+
+
 def test_mirror_key_forbidden_in_yaml():
     from citeclaw.config import _normalize_yaml
     with pytest.raises(ValueError):
