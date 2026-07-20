@@ -254,6 +254,10 @@ def _step_road(s: dict[str, Any]) -> dict[str, Any]:
                 "key": f"branch {i}/{n} · {x.get('step')}",
                 "label": _STEP_META.get(x.get("step"), ("", x.get("step") or "Step", ""))[1],
                 "hint": _brief_hint(x),
+                # each branch sub-step carries its OWN full roadmap, so the
+                # detail page drills into e.g. a Forward screener's fetch →
+                # enrich → filter cascade → add, not just one bar.
+                "road": _step_road(x),
             } for x in b])
         return {"loop": False,
                 "blurb": "Each branch receives the same input; branches run one after "

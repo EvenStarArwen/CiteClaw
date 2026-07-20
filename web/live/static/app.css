@@ -5943,6 +5943,19 @@ select.gp-v { cursor: pointer; }
 }
 .road-node.is-terminal .road-label { color: var(--cc-ink-2); }
 
+/* A Parallel branch sub-step expands into its own full roadmap. The nested
+   stage list sits under the sub-step header set off by a light rail — a genuine
+   hierarchy (sub-step → its stages), not the flat indentation we removed. */
+.road-branch-step { margin-bottom: 2px; }
+.road-nested {
+  margin: 2px 0 8px 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--cc-rule);
+}
+.road-nested .road { margin-top: 4px; }
+.road-nested .road-node { padding: 4px 0; }
+.road-nested .road-label { font-size: 11.5px; }
+
 /* Expanded log line: its own block — time + tag header, then the full
    message in a padded panel at full width. */
 .prog-log-open {

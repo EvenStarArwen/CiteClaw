@@ -95,6 +95,17 @@ function _liveScreenIdx(stages, activity) {
   return nodes[0].screenIdx;
 }
 
+// The live inner-bar desc during screening is the filter's raw runtime name
+// (e.g. "_anon.layer0"); the node label already names the filter, so show a
+// clean caption instead of leaking the internal identifier.
+function _cleanInnerBar(st, inner) {
+  if (!inner) return null;
+  if (st && st.screen && /(^|[._])layer\d+\b/i.test(String(inner.desc || ""))) {
+    return { ...inner, desc: "applying this filter" };
+  }
+  return inner;
+}
+
 // One roadmap node. `laneBar` is the node's own outer bar (source papers
 // k/n for a Parallel branch sub-step) — kept visible after the lane
 // finishes, so every branch card carries its progress; `liveBar` is the
@@ -126,17 +137,13 @@ function RoadNode({ index, label, hint, filters, state, liveBar, laneBar, screen
   );
 }
 
-// Full-page detail for one pipeline step: header, live bars, and the ROADMAP.
-function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBack }) {
-  React.useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onBack(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onBack]);
-
-  const road = s.road || { stages: [], loop: false, blurb: "" };
-  const isActive = s.status === "active";
-  const stages = road.stages || [];
+// Renders a roadmap: the stages of a step — OR of a Parallel branch sub-step —
+// as a vertical sub-pipeline with the live stage highlighted. `status` is the
+// owning step/sub-step status; `activity` is the global live activity.
+function StageList({ road, status, activity, showTitle }) {
+  const stages = (road && road.stages) || [];
+  if (!stages.length) return null;
+  const isActive = status === "active";
   const liveKey = isActive ? _liveStageKey(stages, activity) : null;
   // The live stage index — for screening, resolve the exact filter node in the
   // cascade rather than the first "__screen" match.
@@ -147,28 +154,51 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
     const at = stages.findIndex(st => st.screen && st.screenIdx === sIdx);
     return at >= 0 ? at : stages.findIndex(st => st.screen);
   })();
-  const lane = isActive && activity ? activity.lane : null;
-  const lanes = (isActive && activity && activity.lanes) || {};
-
   const stageState = (st, i) => {
-    if (s.status === "done") return "done";
-    if (s.status === "skipped" || s.status === "idle") return "pending";
-    if (s.status === "error") return i < liveIdx ? "done" : i === liveIdx ? "error" : "pending";
+    if (status === "done") return "done";
+    if (status === "skipped" || status === "idle" || status === "pending") return "pending";
+    if (status === "error") return i < liveIdx ? "done" : i === liveIdx ? "error" : "pending";
     if (!isActive || liveIdx < 0) return "pending";
     if (i === liveIdx) return "active";
     // Within the screening cascade the filters run top-to-bottom for the
-    // current paper, so show that progression even though the whole step
-    // loops over source papers.
+    // current paper, so show that progression even though the step loops.
     const activeStage = stages[liveIdx];
-    if (st.screen && activeStage && activeStage.screen) {
-      return i < liveIdx ? "done" : "pending";
-    }
+    if (st.screen && activeStage && activeStage.screen) return i < liveIdx ? "done" : "pending";
     // Other looping stages revisit per source paper — only the current one is
     // meaningful; linear steps genuinely progress top to bottom.
     if (road.loop) return "pending";
     return i < liveIdx ? "done" : "pending";
   };
+  return (
+    <div className="road">
+      {showTitle && (
+        <div className="road-title">
+          Stages{road.loop ? <span className="road-loop-chip">↻ per source paper</span> : null}
+        </div>
+      )}
+      {stages.map((st, i) => (
+        <RoadNode key={i} index={i + 1} label={st.label} hint={st.hint}
+          filters={st.filters} screen={st.screen} terminal={st.terminal}
+          state={stageState(st, i)}
+          liveBar={i === liveIdx ? _cleanInnerBar(st, activity && activity.inner) : null} />
+      ))}
+    </div>
+  );
+}
 
+// Full-page detail for one pipeline step: header, live bars, and the ROADMAP.
+function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBack }) {
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onBack(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onBack]);
+
+  const road = s.road || { stages: [], loop: false, blurb: "" };
+  const stages = road.stages || [];
+  const isActive = s.status === "active";
+  const lane = isActive && activity ? activity.lane : null;
+  const lanes = (isActive && activity && activity.lanes) || {};
   const statusChip = { idle: "pending", active: "running", done: "done", skipped: "skipped", error: "failed" };
 
   return (
@@ -220,28 +250,27 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
                     const li = lanes[node.key];
                     const nodeActive = !!((li && li.state === "run") || (lane && lane === node.key));
                     const nodeDone = s.status === "done" || !!(li && li.state === "done");
+                    const nodeStatus = nodeActive ? "active" : nodeDone ? "done" : "pending";
+                    const hasRoad = node.road && node.road.stages && node.road.stages.length > 0;
                     return (
-                      <RoadNode key={j} index={j + 1} label={node.label} hint={node.hint}
-                        state={nodeActive ? "active" : nodeDone ? "done" : "pending"}
-                        laneBar={li ? li.outer : null}
-                        liveBar={nodeActive && activity ? activity.inner : null} />
+                      <div key={j} className="road-branch-step">
+                        <RoadNode index={j + 1} label={node.label} hint={node.hint}
+                          state={nodeStatus}
+                          laneBar={li ? li.outer : null}
+                          liveBar={hasRoad ? null : (nodeActive && activity ? activity.inner : null)} />
+                        {hasRoad && (
+                          <div className="road-nested">
+                            <StageList road={node.road} status={nodeStatus} activity={activity} showTitle={false} />
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
               ))}
             </div>
           ) : stages.length > 0 ? (
-            <div className="road">
-              <div className="road-title">
-                Stages{road.loop ? <span className="road-loop-chip">↻ per source paper</span> : null}
-              </div>
-              {stages.map((st, i) => (
-                <RoadNode key={i} index={i + 1} label={st.label} hint={st.hint}
-                  filters={st.filters} screen={st.screen} terminal={st.terminal}
-                  state={stageState(st, i)}
-                  liveBar={i === liveIdx && activity ? activity.inner : null} />
-              ))}
-            </div>
+            <StageList road={road} status={s.status} activity={activity} showTitle={true} />
           ) : (
             <div className="sd-step-blurb">No internal stages for this step.</div>
           )}
