@@ -285,3 +285,57 @@ class TestRecordRejections:
         searched_signals field too."""
         assert ctx.rejection_ledger == {}
         assert ctx.searched_signals == set()
+
+
+class TestRejectionDetails:
+    """``ctx.rejection_details`` — the display buffer behind the WebUI's
+    "Rejected" tab: the human reason string + minimal paper metadata."""
+
+    def test_captures_reason_and_display_fields(self, ctx):
+        p = PaperRecord(
+            paper_id="p1", title="Attention Is All You Need", year=2017,
+            venue="NeurIPS", citation_count=120000, depth=2, source="forward",
+            authors=[{"name": "Ashish Vaswani"}, {"name": "Noam Shazeer"},
+                     {"name": "Niki Parmar"}],
+        )
+        record_rejections([(p, FilterOutcome(False, "cit 3 < 15 (β=15)", "citation"))],
+                          _fctx(ctx))
+        d = ctx.rejection_details["p1"]
+        assert d["reason"] == "cit 3 < 15 (β=15)"
+        assert d["category"] == "citation"
+        assert d["title"] == "Attention Is All You Need"
+        assert d["authors"] == "Ashish Vaswani et al."   # first + "et al." past two
+        assert d["year"] == 2017 and d["venue"] == "NeurIPS"
+        assert d["cites"] == 120000 and d["depth"] == 2 and d["source"] == "forward"
+        assert d["id"] == "p1"
+
+    def test_first_rejection_wins(self, ctx):
+        """The stage that actually filtered a paper out keeps the reason —
+        a later re-encounter must not overwrite it (ledger still accrues)."""
+        p = PaperRecord(paper_id="p1", title="T")
+        record_rejections([(p, FilterOutcome(False, "year too low", "year"))], _fctx(ctx))
+        record_rejections([(p, FilterOutcome(False, "off topic", "llm_topic"))], _fctx(ctx))
+        assert ctx.rejection_details["p1"]["reason"] == "year too low"
+        assert ctx.rejection_details["p1"]["category"] == "year"
+        # ledger still records both stages
+        assert ctx.rejection_ledger["p1"] == ["year", "llm_topic"]
+
+    def test_blank_category_becomes_unknown(self, ctx):
+        p = PaperRecord(paper_id="p1", title="T")
+        record_rejections([(p, FilterOutcome(False, "why", ""))], _fctx(ctx))
+        assert ctx.rejection_details["p1"]["category"] == "unknown"
+
+    def test_capped_but_counts_stay_exact(self, ctx, monkeypatch):
+        """Past the cap, detail stops growing but rejected/counts still
+        track every paper — totals must stay exact."""
+        import citeclaw.filters.runner as runner_mod
+        monkeypatch.setattr(runner_mod, "MAX_REJECTION_DETAILS", 2)
+        ps = _papers("p1", "p2", "p3", "p4")
+        record_rejections([(p, FilterOutcome(False, "r", "year")) for p in ps], _fctx(ctx))
+        assert len(ctx.rejection_details) == 2                 # detail capped
+        assert set(ctx.rejection_details) == {"p1", "p2"}      # first-in kept
+        assert len(ctx.rejected) == 4                          # every id tracked
+        assert ctx.rejection_counts["year"] == 4               # every event counted
+
+    def test_starts_empty(self, ctx):
+        assert ctx.rejection_details == {}

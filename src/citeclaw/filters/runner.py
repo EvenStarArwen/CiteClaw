@@ -30,6 +30,22 @@ log = logging.getLogger("citeclaw.filters.runner")
 
 RejectionList = list[tuple[PaperRecord, FilterOutcome]]
 
+# Cap on how many unique rejected papers keep display detail in
+# ``ctx.rejection_details``. ``rejection_counts`` / ``ctx.rejected`` still
+# track every rejection past the cap, so totals stay exact; only the
+# browsable per-paper detail (for the WebUI's "Rejected" tab) is bounded.
+MAX_REJECTION_DETAILS = 20_000
+
+
+def _short_authors(authors: Any) -> str:
+    """First author (+ "et al." past two) — matches the accepted-row shape."""
+    names = [a.get("name", "") for a in (authors or []) if a.get("name")]
+    if not names:
+        return ""
+    if len(names) <= 2:
+        return " & ".join(names)
+    return f"{names[0]} et al."
+
 
 def _is_llm_layer(block: Any) -> bool:
     """True iff ``block`` is an LLMFilter (or a Not_-wrapped one).
@@ -269,12 +285,30 @@ def record_rejections(
 
     Updates ``ctx.rejected`` (set of all rejected paper ids),
     ``ctx.rejection_counts`` (Counter by category for the dashboard),
-    and ``ctx.rejection_ledger`` (per-paper category list so HITL can
-    sample by reason).
+    ``ctx.rejection_ledger`` (per-paper category list so HITL can
+    sample by reason), and ``ctx.rejection_details`` (bounded, first-win
+    display detail — title + human reason — for inspection UIs).
     """
     ctx = fctx.ctx
+    details = ctx.rejection_details
     for paper, outcome in rejected:
         ctx.rejected.add(paper.paper_id)
         key = outcome.category or "unknown"
         ctx.rejection_counts[key] += 1
         ctx.rejection_ledger.setdefault(paper.paper_id, []).append(key)
+        # First rejection wins (the stage that actually filtered it out);
+        # keep the human reason string, not just the bucket. Capped so a
+        # run that rejects tens of thousands can't grow this without bound.
+        if paper.paper_id not in details and len(details) < MAX_REJECTION_DETAILS:
+            details[paper.paper_id] = {
+                "id": paper.paper_id,
+                "title": paper.title or paper.paper_id,
+                "authors": _short_authors(paper.authors),
+                "year": paper.year or 0,
+                "venue": paper.venue or "",
+                "cites": int(paper.citation_count or 0),
+                "depth": int(paper.depth or 0),
+                "source": paper.source or "",
+                "reason": outcome.reason or "",
+                "category": key,
+            }

@@ -92,6 +92,15 @@ class Context:
     # category strings if a paper was rejected at multiple stages.
     rejection_ledger: dict[str, list[str]] = field(default_factory=dict)
 
+    # Human-readable rejection detail for inspection UIs (the WebUI's
+    # "Rejected" sidebar tab): paper id -> a small display dict
+    # ``{id,title,authors,year,venue,cites,depth,source,reason,category}``.
+    # First rejection wins per paper (the stage that actually filtered it
+    # out) and capture is capped at ``MAX_REJECTION_DETAILS`` unique papers
+    # to bound memory on long runs — ``rejection_counts`` / ``rejected``
+    # still track every rejection past the cap, so totals stay exact.
+    rejection_details: dict[str, dict] = field(default_factory=dict)
+
     # Per-LLM-filter screening trace. ``papers_screened_by_filter`` lists
     # which paper_ids each LLM filter actually saw (regardless of
     # outcome) — needed by ``HumanInTheLoop`` so per-filter agreement
