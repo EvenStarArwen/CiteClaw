@@ -5840,3 +5840,11 @@ select.gp-v { cursor: pointer; }
   font-size: 11px !important;
   min-height: 44px;
 }
+
+/* ---- builder undo + whole-pipeline filter clipboard ---- */
+.btn.is-off, .ph-btn.is-off { opacity: 0.45; cursor: not-allowed; }
+.pipe-undo {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; align-self: center;
+}
+.cfg-filt-actions { margin-left: auto; display: inline-flex; gap: 4px; }

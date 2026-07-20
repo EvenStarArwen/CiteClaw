@@ -29,6 +29,10 @@ function PublicTopbarExtra() {
     return () => clearInterval(t);
   }, []);
 
+  // know about downloadable runs before the popover ever opens — the
+  // Results button stays greyed until there is actually something to get
+  React.useEffect(() => { loadRuns(); }, [loadRuns, me && me.active_run]);  // eslint-disable-line
+
   React.useEffect(() => {
     if (!open) return;
     loadRuns();
@@ -48,6 +52,11 @@ function PublicTopbarExtra() {
   }, [me && me.active_run]);  // eslint-disable-line
 
   const running = !!(me && me.active_run);
+  const hasResults = runs.some(r => r.artifacts && Object.values(r.artifacts).some(Boolean));
+  const enabled = hasResults || running;
+  const btnTitle = enabled
+    ? "Download your run results"
+    : "No results yet — run a pipeline first. Downloads appear here as soon as a run finalizes.";
   const label = (r) => {
     const bits = [];
     if (r.papers != null) bits.push(`${r.papers} papers`);
@@ -72,9 +81,9 @@ function PublicTopbarExtra() {
 
   return (
     <div className="pubx-tb">
-      <button className={"btn btn-ghost" + (open ? " is-on" : "")}
-              onClick={() => setOpen(v => !v)}
-              title="Download your run results">
+      <button className={"btn btn-ghost" + (open ? " is-on" : "") + (enabled ? "" : " pubx-off")}
+              onClick={() => { if (enabled) setOpen(v => !v); }}
+              aria-disabled={!enabled} title={btnTitle}>
         <Icon name="download" size={13} /> Results
         {running && <span className="pubx-dot" />}
       </button>
@@ -129,6 +138,7 @@ function PublicTopbarExtra() {
   style.textContent = `
     .pubx-tb { position: relative; display: flex; align-items: center;
                font-family: Inter, system-ui, sans-serif; }
+    .pubx-off { opacity: 0.45; cursor: not-allowed; }
     .pubx-dot { width: 7px; height: 7px; border-radius: 50%; background: #2e7d43;
                 margin-left: 5px; animation: pubx-pulse 1.6s ease-in-out infinite; }
     @keyframes pubx-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }

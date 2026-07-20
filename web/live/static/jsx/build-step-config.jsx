@@ -8,7 +8,7 @@
 // Reuses the tree helpers + FilterTree / FilterParams / BlockParams defined in
 // build-config.jsx (all files are concatenated into one script).
 
-function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRemove, onDuplicate, onPatchStep }) {
+function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRemove, onDuplicate, onPatchStep, canUndo, onUndo }) {
   const [selFilterId, setSelFilterId] = React.useState(null);
 
   React.useEffect(() => { setSelFilterId(null); }, [node ? node.id : null]);
@@ -18,8 +18,12 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
   // this step, which then configures independently.
   const origin = node && node.syncOf ? findStep(pipeline || [], node.syncOf) : null;
   const isSynced = !!(node && node.syncOf && node.synced !== false && origin);
-  const view = isSynced ? resolveStepView(node, pipeline) : node;
+  // Filters-only link ("adopt & sync" from the filter clipboard).
+  const forigin = node && node.fsyncOf ? findStep(pipeline || [], node.fsyncOf) : null;
+  const isFsynced = !isSynced && !!(node && node.fsyncOf && node.fsynced !== false && forigin);
+  const view = node ? resolveStepView(node, pipeline || []) : node;
   const deps = node ? syncDependents(pipeline || [], node.id) : [];
+  const fdeps = node ? fsyncDependents(pipeline || [], node.id) : [];
   const unsync = () => {
     const src = resolveStepView(node, pipeline);
     onPatchStep({
@@ -29,6 +33,40 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
     });
   };
   const resync = () => onPatchStep({ synced: true });
+  const funsync = () => {
+    const src = resolveStepView(node, pipeline);
+    onPatchStep({
+      fsynced: false,
+      screener: src.screener ? cloneFilterNode(src.screener) : null,
+    });
+  };
+  const frelink = () => onPatchStep({ fsynced: true });
+
+  // Whole-pipeline clipboard actions. The copy remembers its ROOT source
+  // step so "adopt & sync" never chains link-to-link.
+  const clipMeta = getFilterClipMeta();
+  const wholeClip = !!(getFilterClip() && clipMeta && clipMeta.whole);
+  const copyAllFilters = () => {
+    const rootId = (node.syncOf && node.synced !== false) ? node.syncOf
+      : (node.fsyncOf && node.fsynced !== false) ? node.fsyncOf : node.id;
+    const rootStep = findStep(pipeline || [], rootId) || node;
+    copyFilterToClip(view.screener, {
+      whole: true, stepId: rootId,
+      local: rootStep.localId, name: rootStep.name,
+    });
+  };
+  const replaceAllFilters = () => {
+    onPatchStep({ fsyncOf: null, fsynced: null,
+                  screener: cloneFilterNode(getFilterClip()) });
+    setSelFilterId(null);
+  };
+  const adoptLinkedFilters = () => {
+    if (!clipMeta || clipMeta.stepId === node.id) return;
+    if (!findStep(pipeline || [], clipMeta.stepId)) { replaceAllFilters(); return; }
+    onPatchStep({ fsyncOf: clipMeta.stepId, fsynced: true,
+                  screener: cloneFilterNode(getFilterClip()) });
+    setSelFilterId(null);
+  };
 
   const selNode = view && view.screener ? findNode(view.screener, selFilterId) : null;
   // Leaves open the filter detail; so does Route (its conditions editor).
@@ -87,7 +125,7 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
 
   // --- FILTER DETAIL (full-panel config for one leaf filter) ---
   // Synced copies never drill in: their filters belong to the origin.
-  if (selFilter && !isSynced) {
+  if (selFilter && !isSynced && !isFsynced) {
     return (
       <aside className="panel panel-right">
         <div className="ph">
@@ -110,6 +148,13 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
             </div>
           </div>
           <div className="seed-detail-foot">
+            <button className={"btn btn-ghost" + (canUndo ? "" : " is-off")}
+              style={{ flex: "1 1 auto", justifyContent: "center" }}
+              aria-disabled={!canUndo}
+              onClick={() => canUndo && onUndo && onUndo()}
+              title={canUndo ? "Undo the last change (⌘Z / Ctrl+Z)" : "Nothing to undo yet"}>
+              <Icon name="undo-2" size={12} /> Undo
+            </button>
             <button className="btn btn-ghost" style={{ flex: "1 1 auto", justifyContent: "center" }}
               onClick={() => removeFilter(selFilter.id)}>
               <Icon name="trash-2" size={12} /> Remove filter
@@ -196,10 +241,69 @@ function BuildStepConfig({ node, pipeline, onPatchConfig, onUpdateScreener, onRe
               <div className="cfg-section-head">
                 Filter pipeline
                 <span className="cfg-section-hint">
-                  {isSynced ? "locked · synced to " + origin.localId : "click a filter to configure"}
+                  {isSynced ? "locked · synced to " + origin.localId
+                    : isFsynced ? "filters linked to " + forigin.localId
+                    : "click a filter to configure"}
                 </span>
+                {!isSynced && (
+                  <span className="cfg-filt-actions">
+                    {view.screener && (
+                      <button className="ph-btn" onClick={copyAllFilters}
+                        title={"Copy this step's whole filter pipeline — paste it into another step via its ‹Paste filters› / ‹Adopt & sync› buttons"}>
+                        <Icon name="copy" size={12} />
+                      </button>
+                    )}
+                    {wholeClip && !isFsynced && (
+                      <button className="ph-btn" onClick={replaceAllFilters}
+                        title={"Paste filters — replace this step's filter pipeline with the copy from " + clipMeta.local + " (one-time copy; later edits don't follow)"}>
+                        <Icon name="clipboard-paste" size={12} />
+                      </button>
+                    )}
+                    {wholeClip && !isFsynced && clipMeta.stepId !== node.id && (
+                      <button className="ph-btn" onClick={adoptLinkedFilters}
+                        title={"Adopt & sync — this step's filters follow " + clipMeta.local + " from now on (only the filters; step parameters stay this step's own). Unlink any time below."}>
+                        <Icon name="link-2" size={12} />
+                      </button>
+                    )}
+                  </span>
+                )}
               </div>
-              <div className="cfg-tree-wrap">
+              {isFsynced && (
+                <div className="cfg-note cfg-sync-note">
+                  <Icon name="link-2" size={13} />
+                  <span>
+                    <strong>Filters linked to {forigin.name} · {forigin.localId}.</strong>{" "}
+                    This step always screens with {forigin.localId}'s filter
+                    pipeline (its own step parameters still apply). Edit the
+                    filters on {forigin.localId}, or unlink to edit them here.
+                  </span>
+                  <button className="cfg-sync-btn" onClick={funsync}
+                    title="Keep a snapshot of the current filters and make them editable on this step">
+                    Unlink
+                  </button>
+                </div>
+              )}
+              {!isFsynced && !isSynced && node.fsyncOf && forigin && (
+                <div className="cfg-note cfg-sync-note is-off">
+                  <Icon name="unlink" size={13} />
+                  <span>Filters were adopted from {forigin.localId}, now independent.</span>
+                  <button className="cfg-sync-btn" onClick={frelink}
+                    title={"Follow " + forigin.localId + "'s filters again — this step's own filter edits are discarded"}>
+                    Re-link
+                  </button>
+                </div>
+              )}
+              {fdeps.length > 0 && (
+                <div className="cfg-note cfg-sync-note">
+                  <Icon name="link-2" size={13} />
+                  <span>
+                    <strong>{fdeps.map(d => d.localId).join(", ")}</strong>
+                    {fdeps.length === 1 ? " adopts" : " adopt"} this step's
+                    filters — filter edits here apply there too.
+                  </span>
+                </div>
+              )}
+              <div className={"cfg-tree-wrap" + (isFsynced ? " cfg-locked" : "")}>
                 <FilterTree
                   screener={view.screener}
                   selectedId={selFilterId}

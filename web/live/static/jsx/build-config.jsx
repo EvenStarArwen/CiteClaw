@@ -161,8 +161,15 @@ function predicateSummary(p) {
 // screener, paste in any other (the "copy mask / paste mask" pattern). The
 // clip is snapshotted at copy time, so later edits to the source don't follow.
 let FILTER_CLIP = null;
-function copyFilterToClip(node) { FILTER_CLIP = JSON.parse(JSON.stringify(node)); }
+// Whole-pipeline copies also remember their source step so "adopt & stay in
+// sync" can link to it; granular (single-filter) copies leave this null.
+let FILTER_CLIP_META = null;
+function copyFilterToClip(node, meta) {
+  FILTER_CLIP = JSON.parse(JSON.stringify(node));
+  FILTER_CLIP_META = meta || null;
+}
 function getFilterClip() { return FILTER_CLIP; }
+function getFilterClipMeta() { return FILTER_CLIP_META; }
 // Short label + summary for the paste entry (leaf → its catalog label,
 // composite → its plain-English label + leaf count).
 function clipLabel(n) {

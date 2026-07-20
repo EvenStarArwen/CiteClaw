@@ -95,9 +95,45 @@ function App() {
   const [runError, setRunError] = useState(null);
   useEffect(() => { refreshSettings(); }, []);
 
-  // Pipeline state (Build mode)
-  const [pipeline, setPipeline] = useState(window.INITIAL_PIPELINE);
+  // Pipeline state (Build mode) — every mutation snapshots the previous
+  // model onto an undo stack (Cmd/Ctrl+Z or the ↺ buttons pop it; browsers
+  // give the canvas no native undo, so we provide one).
+  const [pipeline, setPipelineRaw] = useState(window.INITIAL_PIPELINE);
+  const undoStack = React.useRef([]);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const setPipeline = React.useCallback((updater) => {
+    setPipelineRaw(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (next !== prev) {
+        undoStack.current.push(prev);
+        if (undoStack.current.length > 80) undoStack.current.shift();
+        setUndoDepth(undoStack.current.length);
+      }
+      return next;
+    });
+  }, []);
+  const undoPipeline = React.useCallback(() => {
+    const prev = undoStack.current.pop();
+    setUndoDepth(undoStack.current.length);
+    if (prev !== undefined) setPipelineRaw(prev);
+  }, []);
   const [selectedId, setSelectedId] = useState("n2");  // round-1 Forward selected by default
+
+  // Cmd/Ctrl+Z anywhere in Build mode (outside text fields, where the
+  // browser's own undo should keep working).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== "z") return;
+      if (mode !== "build") return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" ||
+                t.tagName === "SELECT" || t.isContentEditable)) return;
+      e.preventDefault();
+      undoPipeline();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, undoPipeline]);
 
   // Run-mode paper selection (shared by network + accepted list)
   const [runSelectedPaperId, setRunSelectedPaperId] = useState(null);
@@ -361,6 +397,8 @@ function App() {
               onAppendAfter={appendAfter}
               onAppendParallel={appendParallel}
               onAddBranch={addBranch}
+              canUndo={undoDepth > 0}
+              onUndo={undoPipeline}
             />
           </div>
           <BuildStepConfig
@@ -371,6 +409,8 @@ function App() {
             onRemove={removeSelected}
             onDuplicate={duplicateSelected}
             onPatchStep={patchSelectedStep}
+            canUndo={undoDepth > 0}
+            onUndo={undoPipeline}
           />
         </>
       ) : mode === "run" ? (

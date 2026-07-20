@@ -432,13 +432,28 @@ function allSteps(seq) {
   return out;
 }
 // Read-through view: a synced duplicate renders and runs with its origin's
-// config/screener. Independent steps come back unchanged.
+// config/screener; a filters-linked step (fsyncOf — "adopt & sync" from the
+// filter clipboard) reads through only its SCREENER. Independent steps come
+// back unchanged. Both links always point at a root origin, never at another
+// linked step, so a single hop resolves everything.
 function resolveStepView(node, pipeline) {
-  if (!node || !node.syncOf || node.synced === false) return node;
-  const origin = findStep(pipeline, node.syncOf);
-  if (!origin) return node;
-  return { ...node, config: origin.config, screener: origin.screener,
-           _syncLocal: origin.localId, _syncName: origin.name };
+  if (!node) return node;
+  let out = node;
+  if (node.syncOf && node.synced !== false) {
+    const origin = findStep(pipeline, node.syncOf);
+    if (origin) {
+      out = { ...node, config: origin.config, screener: origin.screener,
+              _syncLocal: origin.localId, _syncName: origin.name };
+    }
+  }
+  if (out.fsyncOf && out.fsynced !== false) {
+    const fo = findStep(pipeline, out.fsyncOf);
+    if (fo) {
+      out = { ...out, screener: fo.screener,
+              _fsyncLocal: fo.localId, _fsyncName: fo.name };
+    }
+  }
+  return out;
 }
 // New linked duplicate of `origin` (root-resolved). The stored
 // config/screener are only a fallback snapshot for unsync / origin loss.
@@ -459,29 +474,42 @@ function newSyncedStep(origin, pipeline) {
 function syncDependents(pipeline, originId) {
   return allSteps(pipeline).filter(s => s.syncOf === originId && s.synced !== false);
 }
+// Steps whose FILTERS are linked to `originId` (adopt & sync).
+function fsyncDependents(pipeline, originId) {
+  return allSteps(pipeline).filter(s => s.fsyncOf === originId && s.fsynced !== false);
+}
 // Serialize-time resolution: bake every synced duplicate's origin state in
 // and strip the sync fields — the run backend never needs to know.
 function materializePipeline(pipeline) {
   const walkSeq = (s) => (s || []).map(el => {
     if (el.kind === "parallel") return { ...el, branches: (el.branches || []).map(walkSeq) };
-    const { syncOf, synced, _syncLocal, _syncName, ...clean } = resolveStepView(el, pipeline);
+    const { syncOf, synced, _syncLocal, _syncName,
+            fsyncOf, fsynced, _fsyncLocal, _fsyncName, ...clean } = resolveStepView(el, pipeline);
     return clean;
   });
   return walkSeq(pipeline);
 }
 // Before deleting a step, turn every copy linked to it independent, frozen
 // at the origin's final state (already-unsynced copies just lose the link).
+// Applies to whole-step links (syncOf) and filters-only links (fsyncOf).
 function unlinkDependents(pipeline, originId) {
   const origin = findStep(pipeline, originId);
+  const src = origin ? resolveStepView(origin, pipeline) : null;
   const walkSeq = (s) => (s || []).map(el => {
     if (el.kind === "parallel") return { ...el, branches: (el.branches || []).map(walkSeq) };
-    if (el.syncOf !== originId) return el;
-    const { syncOf, synced, ...rest } = el;
-    if (el.synced === false || !origin) return rest;
-    const src = resolveStepView(origin, pipeline);
-    return { ...rest,
-      config: JSON.parse(JSON.stringify(src.config || {})),
-      screener: src.screener ? cloneFilterNode(src.screener) : null };
+    let out = el;
+    if (out.syncOf === originId) {
+      const { syncOf, synced, ...rest } = out;
+      out = (out.synced === false || !src) ? rest : { ...rest,
+        config: JSON.parse(JSON.stringify(src.config || {})),
+        screener: src.screener ? cloneFilterNode(src.screener) : null };
+    }
+    if (out.fsyncOf === originId) {
+      const { fsyncOf, fsynced, ...rest } = out;
+      out = (el.fsynced === false || !src) ? rest : { ...rest,
+        screener: src.screener ? cloneFilterNode(src.screener) : null };
+    }
+    return out;
   });
   return walkSeq(pipeline);
 }
@@ -902,7 +930,8 @@ function SeqView({ seq, ctx, depth }) {
 }
 
 function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle,
-                         onAppendAfter, onAppendParallel, onAddBranch }) {
+                         onAppendAfter, onAppendParallel, onAddBranch,
+                         canUndo, onUndo }) {
   const ctx = {
     pipeline,
     selectedId,
@@ -924,6 +953,13 @@ function BuildPipeline({ pipeline, selectedId, setSelectedId, blockStyle,
         <div className="pipe-header pipe-header-vert">
           <span className="pipe-vtitle">Pipeline</span>
           <span className="pipe-vhint">{n} step{n === 1 ? "" : "s"} · click a step to configure</span>
+          <button className={"ph-btn pipe-undo" + (canUndo ? "" : " is-off")}
+            onClick={() => canUndo && onUndo && onUndo()}
+            aria-disabled={!canUndo}
+            title={canUndo ? "Undo the last pipeline change (⌘Z / Ctrl+Z)"
+                           : "Nothing to undo yet"}>
+            <Icon name="undo-2" size={13} /> Undo
+          </button>
         </div>
         <div className="pipe-canvas">
           <div className="pipe-inner pipe-inner-vert">
