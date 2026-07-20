@@ -254,6 +254,31 @@ const CG_VIS_DEFAULTS = {
 };
 const CG_GF_DEFAULTS = { minDegree: 0, minEdgeW: 0, largestOnly: false };
 
+// Appearance + force-layout settings persist across BOTH the Run and Explore
+// pages. Each page mounts its own CiteGraph, so without a shared store the
+// graph-settings popover reset to defaults every time you switched pages.
+// One module-level object is the single source of truth; localStorage makes
+// the choice survive a reload too. Structural filters (gf: min degree / edge
+// weight / largest component) are deliberately NOT shared — they are tuned to
+// one dataset's ranges and reset on every dataset switch.
+const CG_PREFS_KEY = "citeclaw.graphPrefs.v1";
+function cgLoadPrefs() {
+  const out = { fa2: { ...CG_FA2_DEFAULTS }, vis: { ...CG_VIS_DEFAULTS }, labels: null };
+  try {
+    const raw = JSON.parse(localStorage.getItem(CG_PREFS_KEY) || "{}");
+    if (raw && typeof raw === "object") {
+      if (raw.fa2 && typeof raw.fa2 === "object") Object.assign(out.fa2, raw.fa2);
+      if (raw.vis && typeof raw.vis === "object") Object.assign(out.vis, raw.vis);
+      if (typeof raw.labels === "boolean") out.labels = raw.labels;
+    }
+  } catch (_) {}
+  return out;
+}
+const CG_PREFS = cgLoadPrefs();
+function cgSavePrefs() {
+  try { localStorage.setItem(CG_PREFS_KEY, JSON.stringify(CG_PREFS)); } catch (_) {}
+}
+
 const CG_PREWARM_ITERS = 300; // one-shot sync FA2 before first paint (~0.3s)
 const CG_SETTLE_MS = 6500;    // fast-stepping worker window for a fresh dataset
 const CG_EDIT_MS = 1800;      // fast re-flow after filter edits
@@ -437,10 +462,13 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const [layoutOn, setLayoutOn] = React.useState(false);
   const [replaying, setReplaying] = React.useState(false);
   const [optsOpen, setOptsOpen] = React.useState(false);
-  const [fa2, setFa2] = React.useState({ ...CG_FA2_DEFAULTS });
-  const [vis, setVis] = React.useState({ ...CG_VIS_DEFAULTS });
+  // fa2 / vis / showLabels seed from the shared cross-page prefs (see CG_PREFS);
+  // gf stays per-dataset.
+  const [fa2, setFa2] = React.useState(() => ({ ...CG_PREFS.fa2 }));
+  const [vis, setVis] = React.useState(() => ({ ...CG_PREFS.vis }));
   const [gf, setGf] = React.useState({ ...CG_GF_DEFAULTS });
-  const [showLabels, setShowLabels] = React.useState(!!labels);
+  const [showLabels, setShowLabels] = React.useState(
+    () => (typeof CG_PREFS.labels === "boolean" ? CG_PREFS.labels : !!labels));
   const [stats, setStats] = React.useState(null);
   const [palTick, setPalTick] = React.useState(0);
   st.fa2 = fa2; st.vis = vis; st.gf = gf; st.labels = showLabels;
@@ -1127,6 +1155,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     const next = { ...st.fa2, ...patch };
     setFa2(next);
     st.fa2 = next;
+    CG_PREFS.fa2 = next; cgSavePrefs();  // share force-layout choice across pages
     if (patch.adjustSizes !== undefined) applySizeReference(patch.adjustSizes);
     // separating a settled dense core needs a real settle window; the sweep
     // at layout-stop then removes any residual collisions
@@ -1138,6 +1167,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     const next = { ...st.vis, ...patch };
     setVis(next);
     st.vis = next;
+    CG_PREFS.vis = next; cgSavePrefs();  // share appearance choice across pages
     if (patch.palette != null) applyPalette();
     if (patch.minSize != null || patch.maxSize != null || patch.sizeCurve != null) resizeNodes();
     if (patch.edgeMin != null || patch.edgeMax != null || patch.edgeCurve != null) {
@@ -1148,6 +1178,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const toggleLabels = (on) => {
     setShowLabels(on);
     st.labels = on;
+    CG_PREFS.labels = on; cgSavePrefs();  // share label toggle across pages
     if (st.sigma) {
       st.sigma.setSetting("labelRenderedSizeThreshold", on ? 7 : 10000);
       try {
