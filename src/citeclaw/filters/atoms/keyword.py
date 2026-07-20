@@ -47,6 +47,11 @@ Knobs:
                                             "venue starts with Nature /
                                             Science / Cell".
 
+A trailing ``*`` on any term is a **word-prefix wildcard**, independent
+of ``match``: ``discover*`` matches ``discovery`` / ``discovered``
+(regex ``\\bdiscover``) but not ``rediscover``. Works on quoted phrases
+too — ``"large language model*"`` matches ``... models``.
+
 Missing / empty fields are treated as the empty string. A required
 keyword (e.g. ``ml``) won't match against an empty field, but a negation
 (e.g. ``!survey``) will pass — same semantics as evaluating the formula
@@ -155,14 +160,24 @@ class _KeywordFilterBase:
         raise NotImplementedError
 
     def _match_one(self, kw: str, text: str) -> bool:
-        """True iff ``kw`` matches ``text`` under the configured ``match`` mode."""
+        """True iff ``kw`` matches ``text`` under the configured ``match`` mode.
+
+        A single trailing ``*`` makes the term a **word-prefix wildcard**:
+        ``agent*`` matches ``agent`` / ``agents`` / ``agentic`` (regex
+        ``\\bagent``) regardless of ``match``, so a wildcard term and a
+        plain term can coexist in one formula. Works on quoted phrases
+        too. A ``*`` anywhere other than the very end is a literal char.
+        """
         if not text:
             return False
+        flags = 0 if self.case_sensitive else re.IGNORECASE
+        if len(kw) > 1 and kw.endswith("*"):
+            stem = kw[:-1]
+            return re.search(rf"\b{re.escape(stem)}", text, flags) is not None
         if self.match == "substring":
             if self.case_sensitive:
                 return kw in text
             return kw.lower() in text.lower()
-        flags = 0 if self.case_sensitive else re.IGNORECASE
         if self.match == "starts_with":
             # ``re.match`` is anchored at the start of the string; the
             # trailing ``\b`` forbids matches like Cell -> Cellulose.
