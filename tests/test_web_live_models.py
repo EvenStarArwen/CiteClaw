@@ -31,6 +31,28 @@ class TestCatalogGate:
         assert mc.is_supported("stub", "minimal")
 
 
+class TestIsCatalogModel:
+    """``is_catalog_model`` — used to coerce a stale/unsupported stored model
+    (a legacy 'stub' session) back to a real one so screening never silently
+    runs on the accept-all stub."""
+
+    def test_real_models_and_alias(self):
+        assert mc.is_catalog_model("gemini-3.1-flash-lite")
+        assert mc.is_catalog_model("gemini-3.1-flash-lite-preview")  # alias
+        assert mc.is_catalog_model("gpt-5.6-sol")
+
+    def test_stub_is_not_a_catalog_model_even_when_allowed(self, monkeypatch):
+        # is_supported("stub") flips with the env gate, but a stub is NEVER a
+        # real catalog model — coercion must always evict it.
+        monkeypatch.setenv("CITECLAW_WEBUI_ALLOW_STUB", "1")
+        assert mc.is_supported("stub", "minimal")
+        assert not mc.is_catalog_model("stub")
+
+    def test_empty_and_unknown_not_catalog(self):
+        assert not mc.is_catalog_model("")
+        assert not mc.is_catalog_model("made-up-model")
+
+
 class TestRequiredKey:
     def test_provider_mapping(self):
         assert mc.required_key("gemini-3.5-flash") == "gemini_api_key"

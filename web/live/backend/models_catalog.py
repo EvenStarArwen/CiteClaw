@@ -101,6 +101,17 @@ def is_supported(model: str, effort: str) -> bool:
     return m in _BY_ID and e in _ALLOWED_EFFORTS
 
 
+def is_catalog_model(model: str) -> bool:
+    """True iff ``model`` (alias-resolved) is a real catalog entry.
+
+    Deliberately excludes the ``stub`` (a test double that accepts every
+    paper) and any unknown id. Callers coerce a stale/unsupported stored
+    screening model back to :data:`SUPPORTED_MODEL` with this, so a session
+    can never get stuck on — or silently screen with — the accept-all stub.
+    """
+    return resolve_model(model) in _BY_ID
+
+
 def required_key(model: str) -> str | None:
     """Settings-key field this model needs (None for stub/unknown)."""
     m = resolve_model(model)

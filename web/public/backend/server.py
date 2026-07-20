@@ -253,6 +253,15 @@ def _require(request: Request) -> dict:
     return sess
 
 
+def _effective_model(stored: str | None) -> str:
+    """A real catalog model to screen with. Empty OR unsupported (e.g. a
+    legacy 'stub' session persisted in the volume, from when key-free demos
+    were enabled) coerces to the default so screening always runs on a real
+    LLM — never the accept-all stub that silently passes every paper."""
+    m = (stored or "").strip()
+    return m if models_catalog.is_catalog_model(m) else models_catalog.SUPPORTED_MODEL
+
+
 # --------------------------------------------------------------- settings
 
 @app.get("/api/settings")
@@ -261,7 +270,7 @@ async def get_settings(request: Request) -> dict:
     s = tenants.get_settings(sess)
     return {
         "keys": tenants.key_presence(sess),
-        "model": s["model"] or models_catalog.SUPPORTED_MODEL,
+        "model": _effective_model(s["model"]),
         "reasoning_effort": s["reasoning_effort"] or models_catalog.DEFAULT_EFFORT,
         "max_papers": s["max_papers"],
         "supported_model": models_catalog.SUPPORTED_MODEL,
@@ -279,7 +288,7 @@ async def post_settings(request: Request) -> dict:
     s = tenants.get_settings(sess)
     return {
         "keys": tenants.key_presence(sess),
-        "model": s["model"] or models_catalog.SUPPORTED_MODEL,
+        "model": _effective_model(s["model"]),
         "reasoning_effort": s["reasoning_effort"] or models_catalog.DEFAULT_EFFORT,
         "max_papers": s["max_papers"],
     }
@@ -386,7 +395,9 @@ async def create_run(request: Request) -> dict:
     sid = sess["sid"]
     body = await request.json()
     stored = tenants.get_settings(sess)
-    model = (body.get("model") or stored["model"] or models_catalog.SUPPORTED_MODEL).strip()
+    # Coerce empty / unsupported (legacy 'stub') to a real model — a snowball
+    # run must never screen with the accept-all stub.
+    model = _effective_model(body.get("model") or stored["model"])
     effort = (body.get("reasoning_effort") or stored["reasoning_effort"]
               or models_catalog.DEFAULT_EFFORT).strip()
 

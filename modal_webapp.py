@@ -55,9 +55,12 @@ image = (
     .env({
         "PYTHONPATH": "/root/app:/root/app/src",
         "CITECLAW_PUBLIC_DATA": "/data",
-        # beta conveniences: deterministic stub model for key-free demos,
-        # OpenAlex polite-pool contact for the abstract fallback
-        "CITECLAW_WEBUI_ALLOW_STUB": "1",
+        # NOTE: the deterministic stub model is deliberately NOT enabled here.
+        # The stub accepts every paper (it's a test double), so a real snowball
+        # run screened by it silently returns garbage that looks like results —
+        # a footgun for a public research tool. Production requires a real model
+        # + the tenant's own API key. (OpenAlex polite-pool contact for the
+        # abstract fallback.)
         "OPENALEX_EMAIL": "m.huang.gla@outlook.com",
     })
     .add_local_dir("src/citeclaw", "/root/app/src/citeclaw", ignore=_IGNORE)
