@@ -120,6 +120,73 @@ def build_graph(ctx) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+_REJ_SORTS = ("recent", "category", "year", "cites")
+
+
+def _safe_items(d: dict) -> list:
+    """Snapshot a dict the pipeline worker may be mutating concurrently.
+
+    The Run endpoints read live ``ctx`` state off the event loop while the
+    worker thread appends to it; a bare ``list(d.items())`` can hit
+    "dictionary changed size during iteration". Retry a few times, then
+    degrade to empty — the sidebar polls, so a rare transient miss refills
+    on the next tick rather than 500-ing.
+    """
+    for _ in range(4):
+        try:
+            return list(d.items())
+        except RuntimeError:
+            continue
+    return []
+
+
+def build_rejected_page(ctx, *, offset: int = 0, limit: int = 25,
+                        sort: str = "recent") -> dict[str, Any]:
+    """One page of rejected papers for the Run sidebar's "Rejected" tab.
+
+    Reads ``ctx.rejection_details`` (bounded first-win display dicts, each
+    carrying the human ``reason`` + ``category``). Papers that ultimately
+    landed in ``ctx.collection`` — rejected by one Parallel branch but
+    accepted by another — are hidden so the tab shows genuine exclusions.
+
+    ``total`` is the number of browsable rejected rows; ``capped`` is true
+    once the detail buffer filled (``rejection_counts`` still counts every
+    rejection past that, so the dashboard totals stay exact).
+    """
+    from citeclaw.filters.runner import MAX_REJECTION_DETAILS
+
+    limit = max(1, min(int(limit or 25), 200))
+    offset = max(0, int(offset or 0))
+    sort = sort if sort in _REJ_SORTS else "recent"
+
+    collection = ctx.collection
+    detail_items = _safe_items(ctx.rejection_details)
+    rows = [d for pid, d in detail_items if pid not in collection]
+
+    # rejection_details preserves insertion (= rejection) order; "recent"
+    # is newest-first. The metric sorts are stable on top of that order.
+    if sort == "recent":
+        rows.reverse()
+    elif sort == "year":
+        rows = sorted(rows, key=lambda d: d.get("year") or 0, reverse=True)
+    elif sort == "cites":
+        rows = sorted(rows, key=lambda d: d.get("cites") or 0, reverse=True)
+    elif sort == "category":
+        rows = sorted(rows, key=lambda d: (d.get("category") or "",
+                                           -(d.get("cites") or 0)))
+
+    total = len(rows)
+    page = rows[offset:offset + limit]
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "sort": sort,
+        "capped": len(ctx.rejection_details) >= MAX_REJECTION_DETAILS,
+        "items": page,
+    }
+
+
 def build_metrics(ctx) -> dict[str, Any]:
     """Dashboard metrics + rejection/cost bar-lists from ctx + budget."""
     budget = ctx.budget

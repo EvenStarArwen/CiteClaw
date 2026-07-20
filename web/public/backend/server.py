@@ -40,7 +40,7 @@ from web.live.backend.explore_runs import (
 )
 from web.live.backend.s2_seeds import S2SearchError, search_seeds
 from web.live.backend.server import _iter_llm_blocks, assemble_index
-from web.live.backend.snapshots import build_graph, build_metrics
+from web.live.backend.snapshots import build_graph, build_metrics, build_rejected_page
 
 from . import auth, cache_sync, limits, paths, runs_fs, tenants
 from .manager import CapacityError, manager
@@ -497,6 +497,19 @@ async def run_graph(request: Request, run_id: str) -> dict:
     if rs.ctx is None:
         return {"nodes": [], "edges": []}
     return build_graph(rs.ctx)
+
+
+@app.get("/api/run/{run_id}/rejected")
+async def run_rejected(request: Request, run_id: str, offset: int = 0,
+                       limit: int = 25, sort: str = "recent") -> dict:
+    sess = _require(request)
+    rs = manager.get_owned(run_id, sess["sid"])
+    if not rs:
+        raise HTTPException(status_code=404, detail="run not found")
+    if rs.ctx is None:
+        return {"total": 0, "offset": 0, "limit": limit, "sort": sort,
+                "capped": False, "items": []}
+    return build_rejected_page(rs.ctx, offset=offset, limit=limit, sort=sort)
 
 
 @app.websocket("/api/run/{run_id}/stream")
