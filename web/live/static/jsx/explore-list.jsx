@@ -97,7 +97,9 @@ function xpFilterPredicate(f, kind) {
   };
 }
 function xpFilterCount(f, kind) {
-  const base = (f.minCites ? 1 : 0) + (f.maxCites ? 1 : 0) + (f.kw && f.kw.trim() ? 1 : 0);
+  // kw is its own search box now (see the find-box), so it no longer counts
+  // toward the Filters badge.
+  const base = (f.minCites ? 1 : 0) + (f.maxCites ? 1 : 0);
   if (kind === "author") return base;
   return base + (f.yearMin ? 1 : 0) + (f.yearMax ? 1 : 0) + (f.seedsOnly ? 1 : 0);
 }
@@ -171,6 +173,22 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
         </span>
       </div>
 
+      <div className="list-find">
+        <Icon name="search" size={13} className="list-find-ic" />
+        <input type="text" className="list-find-input" spellCheck="false"
+          placeholder={author ? "Find an author…" : "Find a paper…"}
+          title={author
+            ? "Search author name or affiliation. Supports AND OR NOT and ( )."
+            : "Search title + abstract. Supports AND OR NOT ( ) and \"quoted phrases\" — e.g. (graph OR network) AND NOT survey"}
+          value={filters.kw} onChange={e => patchF({ kw: e.target.value })} />
+        {filters.kw && (
+          <button className="list-find-x" onClick={() => patchF({ kw: "" })}
+            aria-label="Clear search" title="Clear search">
+            <Icon name="x" size={12} />
+          </button>
+        )}
+      </div>
+
       <div className="xp-controls">
         <select
           className="accepted-sort"
@@ -231,7 +249,7 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
           <Icon name={showFilters ? "chevron-up" : "chevron-down"} size={11} />
         </button>
         {nFilters > 0 && (
-          <button className="ph-btn" onClick={() => setFilters({ ...XP_EMPTY_FILTERS })}
+          <button className="ph-btn" onClick={() => setFilters({ ...XP_EMPTY_FILTERS, kw: filters.kw })}
                   title="Clear filters">
             <Icon name="x" size={11} />
           </button>
@@ -239,16 +257,6 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
       </div>
       {showFilters && (
         <div className="seed-filters">
-          <label className="seed-filter-row xp-filter-kw">
-            <span className="seed-filter-k">{author ? "Name match" : "Keywords"}</span>
-            <input type="text" spellCheck="false"
-                   placeholder={author ? "name or affiliation" : 'e.g. (deep | neural) & !survey'}
-                   title={author
-                     ? "Match author name or affiliation. Supports & | ! and parentheses."
-                     : "Match title + abstract. Supports & | ! ( ) and \"quoted phrases\", e.g. (graph | network) & !survey"}
-                   value={filters.kw}
-                   onChange={e => patchF({ kw: e.target.value })} />
-          </label>
           {!author && (
             <>
               <label className="seed-filter-row">
