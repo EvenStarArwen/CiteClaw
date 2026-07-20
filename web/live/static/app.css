@@ -4668,6 +4668,34 @@ select.gp-v { cursor: pointer; }
   outline: none;
 }
 
+/* Shared list find-box — a plain "is my paper here?" lookup over a paper list.
+   Used by the Run sidebar (over Accepted / Rejected) and the Explore panel.
+   In Run it is list-only; in Explore it also drives the graph, exactly like
+   the facet filters there. */
+.list-find {
+  margin: 6px 12px 0;
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 9px;
+  background: var(--cc-paper);
+  border: 1px solid var(--cc-rule-strong);
+  border-radius: 6px;
+}
+.list-find:focus-within { border-color: var(--cc-accent); }
+.list-find-ic { color: var(--cc-ink-faint); flex: 0 0 auto; }
+.list-find-input {
+  flex: 1; min-width: 0;
+  padding: 7px 0;
+  background: none; border: none; outline: none;
+  font-size: 11.5px; color: var(--cc-ink-1);
+}
+.list-find-input::placeholder { color: var(--cc-ink-faint); }
+.list-find-x {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px; border: none; background: none; cursor: pointer;
+  color: var(--cc-ink-3); border-radius: 4px;
+}
+.list-find-x:hover { background: var(--cc-hover-soft); color: var(--cc-ink-1); }
+
 .accepted-scroll {
   flex: 1; min-height: 0;
   overflow-y: auto;

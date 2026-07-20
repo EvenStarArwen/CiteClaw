@@ -34,6 +34,16 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
   // Object of the currently-selected rejected paper, cached at click time so
   // its detail card survives pagination (the row may scroll off rej.items).
   const [pickedRej, setPickedRej] = React.useState(null);
+  // One find-box over the visible list (both tabs). "Is my paper here?" —
+  // list-only, never touches the graph. Accepted filters client-side; rejected
+  // is server-paginated, so it searches the whole buffer via a ?q= param.
+  const [query, setQuery] = React.useState("");
+  const [debouncedQ, setDebouncedQ] = React.useState("");
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+  React.useEffect(() => { setPage(0); }, [debouncedQ]);
 
   const selected = selectedPaperId;
   const setSelected = (id) => onSelectPaper && onSelectPaper(id);
@@ -63,6 +73,15 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
     return copy;
   }, [sort, all]);
 
+  // Accepted find — over title + authors, client-side (the full list is in
+  // memory). Rejected search happens server-side (see the fetch below).
+  const filteredAccepted = React.useMemo(() => {
+    const q = debouncedQ.toLowerCase();
+    if (!q) return sortedAccepted;
+    return sortedAccepted.filter(p =>
+      (`${p.title || ""} ${p.authors || ""}`).toLowerCase().includes(q));
+  }, [sortedAccepted, debouncedQ]);
+
   // Rejected — server-side page, re-fetched on navigation and polled while
   // the run is live (each poll re-reads LIVE.running so it stops on its own).
   React.useEffect(() => {
@@ -71,7 +90,7 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
     const load = async (showLoading) => {
       if (showLoading) setRej(r => ({ ...r, loading: true }));
       try {
-        const d = await fetchRejected(runId, { offset: page * pageSize, limit: pageSize, sort });
+        const d = await fetchRejected(runId, { offset: page * pageSize, limit: pageSize, sort, q: debouncedQ });
         if (!alive) return;
         setRej({ items: d.items || [], total: d.total || 0, capped: !!d.capped, loading: false, error: null });
       } catch (e) {
@@ -82,13 +101,13 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
     };
     load(true);
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [tab, runId, page, pageSize, sort, running]);
+  }, [tab, runId, page, pageSize, sort, running, debouncedQ]);
 
-  const total = tab === "accepted" ? sortedAccepted.length : rej.total;
+  const total = tab === "accepted" ? filteredAccepted.length : rej.total;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const curPage = Math.min(page, pageCount - 1);
   const items = tab === "accepted"
-    ? sortedAccepted.slice(curPage * pageSize, curPage * pageSize + pageSize)
+    ? filteredAccepted.slice(curPage * pageSize, curPage * pageSize + pageSize)
     : rej.items;
 
   const scrollRef = React.useRef(null);
@@ -125,7 +144,8 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
         <span className="ph-title">{tab === "accepted" ? "Accepted" : "Rejected"}</span>
         <span className="ph-count">
           <span style={{ color: "var(--cc-ink-1)", fontWeight: 600 }}>{total.toLocaleString()}</span>
-          <span>{tab === "rejected" && rej.capped ? " (first 20k)" : " total"}</span>
+          <span>{debouncedQ ? " matching"
+            : tab === "rejected" && rej.capped ? " (first 20k)" : " total"}</span>
         </span>
       </div>
 
@@ -140,6 +160,20 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
           onClick={() => switchTab("rejected")}>
           Rejected <span className="acc-tab-n">{rejBadge.toLocaleString()}</span>
         </button>
+      </div>
+
+      <div className="list-find">
+        <Icon name="search" size={13} className="list-find-ic" />
+        <input type="text" className="list-find-input" spellCheck="false"
+          placeholder={tab === "accepted" ? "Find an accepted paper…" : "Find a rejected paper…"}
+          title="Search this list by title or author — does not change the graph"
+          value={query} onChange={e => setQuery(e.target.value)} />
+        {query && (
+          <button className="list-find-x" onClick={() => setQuery("")}
+            aria-label="Clear search" title="Clear search">
+            <Icon name="x" size={12} />
+          </button>
+        )}
       </div>
 
       <div className="accepted-controls">
@@ -158,9 +192,16 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
             No papers yet. Accepted papers stream in here as the run progresses.
           </div>
         )}
+        {tab === "accepted" && all.length > 0 && total === 0 && debouncedQ && (
+          <div className="seeds-counter" style={{ color: "var(--cc-ink-3)" }}>
+            No accepted paper matches “{debouncedQ}”.
+          </div>
+        )}
         {tab === "rejected" && rej.total === 0 && !rej.loading && !rej.error && (
           <div className="seeds-counter" style={{ color: "var(--cc-ink-3)" }}>
-            No rejected papers yet. Papers filtered out by your screeners appear here with the reason.
+            {debouncedQ
+              ? `No rejected paper matches “${debouncedQ}”.`
+              : "No rejected papers yet. Papers filtered out by your screeners appear here with the reason."}
           </div>
         )}
         {tab === "rejected" && rej.error && (

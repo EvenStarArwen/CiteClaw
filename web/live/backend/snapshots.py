@@ -141,7 +141,7 @@ def _safe_items(d: dict) -> list:
 
 
 def build_rejected_page(ctx, *, offset: int = 0, limit: int = 25,
-                        sort: str = "recent") -> dict[str, Any]:
+                        sort: str = "recent", q: str = "") -> dict[str, Any]:
     """One page of rejected papers for the Run sidebar's "Rejected" tab.
 
     Reads ``ctx.rejection_details`` (bounded first-win display dicts, each
@@ -149,7 +149,9 @@ def build_rejected_page(ctx, *, offset: int = 0, limit: int = 25,
     landed in ``ctx.collection`` — rejected by one Parallel branch but
     accepted by another — are hidden so the tab shows genuine exclusions.
 
-    ``total`` is the number of browsable rejected rows; ``capped`` is true
+    ``q`` is a free-text find over title + authors (server-side, so the whole
+    rejection buffer is searchable — not just the page in view). ``total`` is
+    the number of browsable rejected rows after that filter; ``capped`` is true
     once the detail buffer filled (``rejection_counts`` still counts every
     rejection past that, so the dashboard totals stay exact).
     """
@@ -162,6 +164,11 @@ def build_rejected_page(ctx, *, offset: int = 0, limit: int = 25,
     collection = ctx.collection
     detail_items = _safe_items(ctx.rejection_details)
     rows = [d for pid, d in detail_items if pid not in collection]
+
+    needle = str(q or "").strip().lower()
+    if needle:
+        rows = [d for d in rows
+                if needle in (f"{d.get('title') or ''} {d.get('authors') or ''}".lower())]
 
     # rejection_details preserves insertion (= rejection) order; "recent"
     # is newest-first. The metric sorts are stable on top of that order.

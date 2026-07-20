@@ -315,6 +315,7 @@ async function fetchRejected(runId, opts) {
     limit: String(o.limit || 25),
     sort: o.sort || "recent",
   });
+  if (o.q && o.q.trim()) params.set("q", o.q.trim());
   return _api("/api/run/" + runId + "/rejected?" + params.toString());
 }
 

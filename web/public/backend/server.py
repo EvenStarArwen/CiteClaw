@@ -531,7 +531,7 @@ async def run_graph(request: Request, run_id: str) -> dict:
 
 @app.get("/api/run/{run_id}/rejected")
 async def run_rejected(request: Request, run_id: str, offset: int = 0,
-                       limit: int = 25, sort: str = "recent") -> dict:
+                       limit: int = 25, sort: str = "recent", q: str = "") -> dict:
     sess = _require(request)
     rs = manager.get_owned(run_id, sess["sid"])
     if not rs:
@@ -539,7 +539,7 @@ async def run_rejected(request: Request, run_id: str, offset: int = 0,
     if rs.ctx is None:
         return {"total": 0, "offset": 0, "limit": limit, "sort": sort,
                 "capped": False, "items": []}
-    return build_rejected_page(rs.ctx, offset=offset, limit=limit, sort=sort)
+    return build_rejected_page(rs.ctx, offset=offset, limit=limit, sort=sort, q=q)
 
 
 @app.websocket("/api/run/{run_id}/stream")
