@@ -281,6 +281,20 @@ async function capDecide(action, newMax) {
   } catch (_) {}
 }
 
+// Fetch one page of rejected papers (+ reasons) for the Run sidebar's
+// Rejected tab. Server-side paginated: the browser only ever holds the
+// page being viewed, so a run that rejects tens of thousands of papers
+// keeps the page responsive. Returns {total, offset, limit, sort, capped, items}.
+async function fetchRejected(runId, opts) {
+  const o = opts || {};
+  const params = new URLSearchParams({
+    offset: String(o.offset || 0),
+    limit: String(o.limit || 25),
+    sort: o.sort || "recent",
+  });
+  return _api("/api/run/" + runId + "/rejected?" + params.toString());
+}
+
 // ---- exploration mode ----
 function _patchExplore(patch) {
   LIVE.set({ explore: Object.assign({}, LIVE.get("explore"), patch) });
@@ -421,6 +435,7 @@ function exploreFromLive() {
 Object.assign(window, {
   LIVE, useLive, fmtK, fmtNum, fmtDur,
   refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun, capDecide,
+  fetchRejected,
   refreshExploreRuns, loadExploreRun, loadExploreCollab, exploreUseLiveSession,
   loadExploreUpload, exploreUseUpload, exploreFromLive,
 });

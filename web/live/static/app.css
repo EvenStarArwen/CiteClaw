@@ -4752,6 +4752,108 @@ select.gp-v { cursor: pointer; }
   animation: accFresh 1800ms ease-out;
 }
 
+/* ---------- Accepted / Rejected tabs (Run sidebar) ---------- */
+/* Same idiom as .dash-tab (transparent → hover-deep active) so it reads in
+   both the light and mono skins, but stretched to two equal segments. */
+.acc-tabs { display: flex; gap: 3px; padding: 8px 12px 2px; }
+.acc-tab {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 8px;
+  font-size: 11.5px; font-weight: 500;
+  color: var(--cc-ink-3);
+  background: transparent; border: none; border-radius: 5px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.acc-tab:hover:not(.is-active) { color: var(--cc-ink-1); background: var(--cc-hover-soft); }
+.acc-tab.is-active { color: var(--cc-ink-1); font-weight: 600; background: var(--cc-hover-deep); }
+.acc-tab-n {
+  font-family: var(--cc-font-mono); font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cc-ink-3);
+  padding: 0 5px; border-radius: 999px;
+  background: var(--cc-hover-soft);
+}
+.acc-tab.is-active .acc-tab-n { color: var(--cc-ink-2); background: var(--cc-paper); }
+
+.accepted-pagesize {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  background: var(--cc-paper);
+  border: 1px solid var(--cc-rule-strong);
+  border-radius: 6px;
+  font-size: 11.5px; color: var(--cc-ink-1);
+  outline: none;
+}
+
+/* Pagination controls live in the .acc-foot row, opposite the stream dot. */
+.acc-pager { display: inline-flex; align-items: center; gap: 5px; }
+.acc-page-btn {
+  width: 22px; height: 20px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--cc-rule);
+  border-radius: 4px; color: var(--cc-ink-2); cursor: pointer;
+}
+.acc-page-btn:hover:not(:disabled) {
+  background: var(--cc-hover-soft); color: var(--cc-ink-1); border-color: var(--cc-rule-strong);
+}
+.acc-page-btn:disabled { opacity: 0.4; cursor: default; }
+.acc-page-info { font-variant-numeric: tabular-nums; color: var(--cc-ink-3); }
+
+/* ---------- Rejected rows (reuse the .acc-item grid) ---------- */
+.acc-reject-mark {
+  grid-row: 1 / 3; align-self: start;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-top: 1px;
+  border-radius: 999px;
+  color: var(--cc-danger);
+  background: rgba(139, 90, 90, 0.11);
+}
+.acc-cat {
+  align-self: start;
+  font-family: var(--cc-font-mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.03em;
+  color: var(--cc-danger);
+  padding: 2px 6px 1px;
+  background: rgba(139, 90, 90, 0.11);
+  border-radius: 3px;
+  white-space: nowrap;
+  max-width: 118px; overflow: hidden; text-overflow: ellipsis;
+}
+.acc-reason {
+  font-family: var(--cc-font-mono); font-size: 10px;
+  line-height: 1.4;
+  color: var(--cc-ink-2);
+  background: var(--cc-hover-soft);
+  border: 1px solid var(--cc-rule-soft);
+  border-radius: 4px;
+  padding: 4px 7px;
+  margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* Rejected detail card (reuses .acc-detail scaffold) */
+.acc-detail-tag.is-reject { color: var(--cc-danger); }
+.acc-detail-reject {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 0; margin: 2px 0 4px;
+  border-top: 1px solid var(--cc-rule-soft);
+  border-bottom: 1px solid var(--cc-rule-soft);
+}
+.acc-detail-catrow { display: flex; }
+.acc-detail-reason {
+  font-family: var(--cc-font-mono); font-size: 11px; line-height: 1.5;
+  color: var(--cc-ink-1);
+  background: var(--cc-hover-soft);
+  border-radius: 5px; padding: 7px 9px;
+}
+/* Mono hover needs the explicit tone — the var-based hover is near-invisible
+   on white cards (matches the existing mono .acc-item:hover). */
+:root[data-palette="mono"] .acc-tab:hover:not(.is-active),
+:root[data-palette="mono"] .acc-page-btn:hover:not(:disabled) { background: #eceae5; }
+
 /* ==========================================================================
    SEED CARD — star-to-accept button + full-panel abstract detail
    The star toggles accept; clicking the card body opens the abstract. Both

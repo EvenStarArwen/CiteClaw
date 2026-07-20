@@ -1,16 +1,47 @@
 /* eslint-disable */
-// Section E (Run mode) — Accepted papers (live stream).
-// Sources from the live store; newest first; freshly-arrived paper flashes.
+// Section E (Run mode) — Accepted / Rejected papers sidebar.
+// Two tabs over one paginated list:
+//   • Accepted — the live stream (client-side paginated; newest flashes in).
+//   • Rejected — server-side paginated (/api/run/:id/rejected), each row
+//     carrying the human reason it was filtered out. Server-side so a run
+//     that rejects tens of thousands stays snappy: the browser only ever
+//     holds the page in view, and the detail buffer lives on the server.
+// Tunable page size (10 / 25 / 50) applies to both tabs.
+
+const ACC_SORTS = [
+  ["recent", "Recently accepted"], ["score", "Highest score"],
+  ["year", "Newest year"], ["cites", "Most cited"],
+];
+const REJ_SORTS = [
+  ["recent", "Recently rejected"], ["category", "By filter / reason"],
+  ["year", "Newest year"], ["cites", "Most cited"],
+];
+const PAGE_SIZES = [10, 25, 50];
 
 function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail }) {
   const all = useLive("accepted");
   const lastAddedId = useLive("lastAddedId");
   const running = useLive("running");
-  const [sort, setSort] = React.useState("recent");
-  const [freshIds, setFreshIds] = React.useState(() => new Set());
+  const runId = useLive("runId");
+  const metrics = useLive("metrics");
 
-  const selected = selectedPaperId ?? (all[0] && all[0].id);
+  const [tab, setTab] = React.useState("accepted");
+  const [sort, setSort] = React.useState("recent");
+  const [pageSize, setPageSize] = React.useState(25);
+  const [page, setPage] = React.useState(0);
+  const [freshIds, setFreshIds] = React.useState(() => new Set());
+  const [rej, setRej] = React.useState({ items: [], total: 0, capped: false, loading: false, error: null });
+  // Object of the currently-selected rejected paper, cached at click time so
+  // its detail card survives pagination (the row may scroll off rej.items).
+  const [pickedRej, setPickedRej] = React.useState(null);
+
+  const selected = selectedPaperId;
   const setSelected = (id) => onSelectPaper && onSelectPaper(id);
+
+  // Reset paging whenever the view definition changes.
+  const switchTab = (t) => { if (t === tab) return; setTab(t); setSort("recent"); setPage(0); };
+  const changeSort = (s) => { setSort(s); setPage(0); };
+  const changeSize = (n) => { setPageSize(n); setPage(0); };
 
   // flash the most-recently accepted paper as it streams in
   React.useEffect(() => {
@@ -22,14 +53,43 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
     return () => clearTimeout(t);
   }, [lastAddedId]);
 
-  const sorted = React.useMemo(() => {
+  // Accepted — client-side sort over the live store.
+  const sortedAccepted = React.useMemo(() => {
     const copy = [...all];
     if (sort === "recent") copy.sort((a, b) => b.addedAt - a.addedAt);
     else if (sort === "score") copy.sort((a, b) => b.score - a.score);
     else if (sort === "year") copy.sort((a, b) => b.year - a.year);
     else if (sort === "cites") copy.sort((a, b) => b.cites - a.cites);
-    return copy.slice(0, 50);
+    return copy;
   }, [sort, all]);
+
+  // Rejected — server-side page, re-fetched on navigation and polled while
+  // the run is live (each poll re-reads LIVE.running so it stops on its own).
+  React.useEffect(() => {
+    if (tab !== "rejected" || !runId) return;
+    let alive = true, timer = null;
+    const load = async (showLoading) => {
+      if (showLoading) setRej(r => ({ ...r, loading: true }));
+      try {
+        const d = await fetchRejected(runId, { offset: page * pageSize, limit: pageSize, sort });
+        if (!alive) return;
+        setRej({ items: d.items || [], total: d.total || 0, capped: !!d.capped, loading: false, error: null });
+      } catch (e) {
+        if (!alive) return;
+        setRej(r => ({ ...r, loading: false, error: (e && e.message) || "failed to load" }));
+      }
+      if (alive && LIVE.get("running")) timer = setTimeout(() => load(false), 2500);
+    };
+    load(true);
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [tab, runId, page, pageSize, sort, running]);
+
+  const total = tab === "accepted" ? sortedAccepted.length : rej.total;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const curPage = Math.min(page, pageCount - 1);
+  const items = tab === "accepted"
+    ? sortedAccepted.slice(curPage * pageSize, curPage * pageSize + pageSize)
+    : rej.items;
 
   const scrollRef = React.useRef(null);
   React.useEffect(() => {
@@ -42,40 +102,74 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
     if (eTop < c.scrollTop || eBot > c.scrollTop + c.clientHeight) {
       c.scrollTo({ top: eTop - 40, behavior: "smooth" });
     }
-  }, [selectedPaperId]);
+  }, [selectedPaperId, tab, curPage]);
 
   const detailPaper = detailOpen && selectedPaperId
-    ? all.find(p => p.id === selectedPaperId)
+    ? (all.find(p => p.id === selectedPaperId)
+       || (pickedRej && pickedRej.id === selectedPaperId ? pickedRej : null)
+       || rej.items.find(p => p.id === selectedPaperId)
+       || null)
     : null;
+  const isRej = !!(detailPaper && detailPaper.category != null);
+
+  const sortOpts = tab === "accepted" ? ACC_SORTS : REJ_SORTS;
+  const rangeLo = total === 0 ? 0 : curPage * pageSize + 1;
+  const rangeHi = Math.min(total, curPage * pageSize + pageSize);
+  const rejBadge = metrics ? (metrics.rejected || 0) : 0;
+
+  const pick = (p, rejected) => { setSelected(p.id); setPickedRej(rejected ? p : null); };
 
   return (
     <aside className="panel panel-right">
       <div className="ph">
-        <span className="ph-title">Accepted</span>
+        <span className="ph-title">{tab === "accepted" ? "Accepted" : "Rejected"}</span>
         <span className="ph-count">
-          <span style={{ color: "var(--cc-ink-1)", fontWeight: 600 }}>{all.length.toLocaleString()}</span>
-          <span> total · showing {Math.min(50, all.length)}</span>
+          <span style={{ color: "var(--cc-ink-1)", fontWeight: 600 }}>{total.toLocaleString()}</span>
+          <span>{tab === "rejected" && rej.capped ? " (first 20k)" : " total"}</span>
         </span>
       </div>
 
+      <div className="acc-tabs" role="tablist">
+        <button role="tab" aria-selected={tab === "accepted"}
+          className={"acc-tab" + (tab === "accepted" ? " is-active" : "")}
+          onClick={() => switchTab("accepted")}>
+          Accepted <span className="acc-tab-n">{all.length.toLocaleString()}</span>
+        </button>
+        <button role="tab" aria-selected={tab === "rejected"}
+          className={"acc-tab" + (tab === "rejected" ? " is-active" : "")}
+          onClick={() => switchTab("rejected")}>
+          Rejected <span className="acc-tab-n">{rejBadge.toLocaleString()}</span>
+        </button>
+      </div>
+
       <div className="accepted-controls">
-        <select className="accepted-sort" value={sort} onChange={e => setSort(e.target.value)}>
-          <option value="recent">Recently accepted</option>
-          <option value="score">Highest score</option>
-          <option value="year">Newest year</option>
-          <option value="cites">Most cited</option>
+        <select className="accepted-sort" value={sort} onChange={e => changeSort(e.target.value)}>
+          {sortOpts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <button className="ph-btn" title="Export"><Icon name="download" size={13} /></button>
-        <button className="ph-btn" title="Filter"><Icon name="filter" size={13} /></button>
+        <select className="accepted-pagesize" value={pageSize}
+          onChange={e => changeSize(Number(e.target.value))} title="Papers per page">
+          {PAGE_SIZES.map(n => <option key={n} value={n}>{n} / page</option>)}
+        </select>
       </div>
 
       <div className="accepted-scroll" ref={scrollRef}>
-        {all.length === 0 && (
+        {tab === "accepted" && all.length === 0 && (
           <div className="seeds-counter" style={{ color: "var(--cc-ink-3)" }}>
             No papers yet. Accepted papers stream in here as the run progresses.
           </div>
         )}
-        {sorted.map(p => (
+        {tab === "rejected" && rej.total === 0 && !rej.loading && !rej.error && (
+          <div className="seeds-counter" style={{ color: "var(--cc-ink-3)" }}>
+            No rejected papers yet. Papers filtered out by your screeners appear here with the reason.
+          </div>
+        )}
+        {tab === "rejected" && rej.error && (
+          <div className="seeds-counter" style={{ color: "var(--cc-danger)" }}>
+            Couldn’t load rejected papers: {rej.error}
+          </div>
+        )}
+
+        {tab === "accepted" && items.map(p => (
           <div
             key={p.id}
             data-paper-id={p.id}
@@ -84,7 +178,7 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
               (selected === p.id ? " is-selected" : "") +
               (freshIds.has(p.id) ? " is-fresh" : "")
             }
-            onClick={() => setSelected(p.id)}
+            onClick={() => pick(p, false)}
           >
             <span className="acc-score">{(p.score || 0).toFixed(2)}</span>
             <div className="acc-title">{p.title}</div>
@@ -100,6 +194,29 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
             </div>
           </div>
         ))}
+
+        {tab === "rejected" && items.map(p => (
+          <div
+            key={p.id}
+            data-paper-id={p.id}
+            className={"acc-item is-reject" + (selected === p.id ? " is-selected" : "")}
+            onClick={() => pick(p, true)}
+          >
+            <span className="acc-reject-mark" title="Rejected"><Icon name="x" size={12} /></span>
+            <div className="acc-title">{p.title}</div>
+            <span className="acc-cat" title={p.category}>{fmtReason(p.category)}</span>
+            <div className="acc-meta" style={{ gridColumn: "2 / 4" }}>
+              <span>{p.authors || "—"}</span>
+              <span className="acc-meta-sep">·</span>
+              <span>{p.year || "—"}</span>
+              <span className="acc-meta-sep">·</span>
+              <span>{(p.cites || 0).toLocaleString()} cites</span>
+            </div>
+            {p.reason && (
+              <div className="acc-reason" style={{ gridColumn: "2 / 4" }} title={p.reason}>{p.reason}</div>
+            )}
+          </div>
+        ))}
       </div>
 
       <div className="acc-foot">
@@ -107,26 +224,51 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
           <span className={"sb-dot " + (running ? "sb-dot-run" : "sb-dot-idle")} />
           {running ? "Streaming" : "Complete"}
         </span>
-        <span>{Math.min(50, all.length)} of {all.length.toLocaleString()}</span>
+        <div className="acc-pager">
+          <button className="acc-page-btn" disabled={curPage <= 0}
+            onClick={() => setPage(p => Math.max(0, p - 1))} title="Previous page" aria-label="Previous page">
+            <Icon name="chevron-left" size={14} />
+          </button>
+          <span className="acc-page-info">
+            {total === 0 ? "0" : `${rangeLo.toLocaleString()}–${rangeHi.toLocaleString()}`} of {total.toLocaleString()}
+          </span>
+          <button className="acc-page-btn" disabled={curPage >= pageCount - 1}
+            onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} title="Next page" aria-label="Next page">
+            <Icon name="chevron-right" size={14} />
+          </button>
+        </div>
       </div>
 
       {detailPaper && (
         <div className="acc-detail">
           <div className="acc-detail-head">
-            <span className="acc-detail-tag">Selected</span>
+            <span className={"acc-detail-tag" + (isRej ? " is-reject" : "")}>{isRej ? "Rejected" : "Selected"}</span>
             <button className="ph-btn" onClick={onCloseDetail} title="Close">
               <Icon name="x" size={14} />
             </button>
           </div>
           <div className="acc-detail-title">{detailPaper.title}</div>
           <div className="acc-detail-meta">
-            {detailPaper.authors} · {detailPaper.year} · {detailPaper.venue}
+            {(detailPaper.authors || "—")} · {detailPaper.year || "—"} · {detailPaper.venue || "—"}
           </div>
-          <div className="acc-detail-grid">
-            <div>
-              <div className="acc-detail-k">Score</div>
-              <div className="acc-detail-v">{(detailPaper.score || 0).toFixed(3)}</div>
+
+          {isRej && (
+            <div className="acc-detail-reject">
+              <div className="acc-detail-k">Rejected by</div>
+              <div className="acc-detail-catrow">
+                <span className="acc-cat" title={detailPaper.category}>{fmtReason(detailPaper.category)}</span>
+              </div>
+              {detailPaper.reason && <div className="acc-detail-reason">{detailPaper.reason}</div>}
             </div>
+          )}
+
+          <div className="acc-detail-grid">
+            {!isRej && (
+              <div>
+                <div className="acc-detail-k">Score</div>
+                <div className="acc-detail-v">{(detailPaper.score || 0).toFixed(3)}</div>
+              </div>
+            )}
             <div>
               <div className="acc-detail-k">Cites</div>
               <div className="acc-detail-v">{(detailPaper.cites || 0).toLocaleString()}</div>
