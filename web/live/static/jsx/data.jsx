@@ -1,23 +1,22 @@
 /* eslint-disable */
 // Sample domain data for the CiteClaw WebUI prototype.
 
+// Six landmark AI-scientist / self-driving-lab papers, all starred so the
+// default pipeline can run out of the box. `id` is the real Semantic Scholar
+// paperId (only starred seeds are submitted, keyed on it).
 const SEED_PAPERS = [
-  { id: "s1", title: "GraphCast: learning skillful medium-range global weather forecasting",
-    authors: "Lam et al.", year: 2023, venue: "Science", cites: 1893, starred: true },
-  { id: "s2", title: "Accurate medium-range global weather forecasting with 3D neural networks",
-    authors: "Bi et al.", year: 2023, venue: "Nature", cites: 2471, starred: true },
-  { id: "s3", title: "FourCastNet: a global data-driven high-resolution weather model",
-    authors: "Pathak et al.", year: 2022, venue: "arXiv", cites: 1204, starred: true },
-  { id: "s4", title: "ClimaX: a foundation model for weather and climate",
-    authors: "Nguyen et al.", year: 2023, venue: "ICML", cites: 642, starred: false },
-  { id: "s5", title: "Aurora: a foundation model of the atmosphere",
-    authors: "Bodnar et al.", year: 2024, venue: "arXiv", cites: 189, starred: false },
-  { id: "s6", title: "Neural general circulation models for weather and climate",
-    authors: "Kochkov et al.", year: 2024, venue: "Nature", cites: 274, starred: false },
-  { id: "s7", title: "GenCast: diffusion-based ensemble forecasting for medium-range weather",
-    authors: "Price et al.", year: 2024, venue: "Nature", cites: 208, starred: false },
-  { id: "s8", title: "Deep learning for twelve-hour precipitation nowcasting",
-    authors: "Andrychowicz et al.", year: 2023, venue: "arXiv", cites: 331, starred: false },
+  { id: "6fe3779fe5f2e9402abdd08ad8db41a0f13a99eb", title: "Autonomous chemical research with large language models",
+    authors: "Boiko et al.", year: 2023, venue: "Nature", cites: 1094, starred: true },
+  { id: "390c607723e9767a9a873ded3bc1f66808215e8e", title: "Accelerating scientific discovery with Co-Scientist",
+    authors: "Gottweis et al.", year: 2025, venue: "Nature", cites: 359, starred: true },
+  { id: "ddaac3c134274b3f40f8bcbad705d80b00af3198", title: "A multi-agent system for automating scientific discovery",
+    authors: "Ghareeb et al.", year: 2026, venue: "Nature", cites: 52, starred: true },
+  { id: "8b8854e236ad0504672670d9ae643d6418ce4685", title: "An AI system to help scientists write expert-level empirical software",
+    authors: "Aygün et al.", year: 2025, venue: "arXiv", cites: 39, starred: true },
+  { id: "7e55d8701785818776323b4147cb13354c820469", title: "PaperQA: Retrieval-Augmented Generative Agent for Scientific Research",
+    authors: "Lála et al.", year: 2023, venue: "arXiv", cites: 196, starred: true },
+  { id: "9e57dda195973c4b6c81386b1cc44595ecfd4697", title: "AutoSurvey: Large Language Models Can Automatically Write Surveys",
+    authors: "Wang et al.", year: 2024, venue: "NeurIPS", cites: 126, starred: true },
 ];
 
 const BLOCK_CATALOG = [
@@ -37,47 +36,40 @@ const BLOCK_CATALOG = [
   ]},
 ];
 
-// The default pipeline: the self-driving-labs / AI-scientist snowball
-// config, translated from its original YAML. One screener ("venue_gate")
-// routes every paper by venue family — top journals skip the citation bar,
-// preprints face a high one (β=30), everything else a moderate one (β=10) —
-// then all branches apply the same abstract-keyword prefilter + title LLM.
+// The default pipeline: an AI-scientist / self-driving-labs snowball over the
+// six seed papers above. Forward + backward snowball across three rounds; the
+// shared screener is a simple sequence — a 2023–2026 year window, a citation
+// bar (β=30, scaled by age, applied to the current year too), an abstract
+// keyword prefilter, then a title LLM screen and an abstract LLM screen.
 // The screener is embedded per expansion step (fresh ids per copy); the
 // repeated forward/backward/rerank steps in rounds 2–3 are LINKED copies of
 // the round-1 originals, so editing one screener updates the whole pipeline.
-//
-// Differences from the original YAML, on purpose:
-//  · ExpandBySearch is omitted (the CLI agent is a placeholder for now —
-//    the step is still selectable from the add-step menu).
-//  · Cluster+Rerank({cluster: X}) pairs are collapsed into diversified
-//    reranks with INLINE louvain (functionally equivalent here; only the
-//    exported cluster_<name> graph attributes are lost).
-//  · VenuePreset is approximated with VenueIn substrings.
-//  · The unused "agent" keyword is included in the abstract formula.
+// ExpandBySearch is omitted (the CLI agent is a placeholder for now — the step
+// is still selectable from the add-step menu); Cluster+Rerank pairs are
+// collapsed into diversified reranks with inline louvain.
 
 // One fresh copy of the shared screener tree; `p` prefixes every node id so
 // each embedding is independent.
 function _sdlScreener(p) {
-  const ABS_EXPR = '"self-driving" | "self driving" | autonomous | automated | ' +
-    '"ai scientist" | "ai-scientist" | "co-scientist" | "large language model" | LLM | laborator | agent';
-  const absKw = (id) => ({ id, kind: "AbstractKeywordFilter",
-    params: { match: "substring", expression: ABS_EXPR } });
-  const titleLlm = (id) => ({ id, kind: "LLMFilter",
-    params: { scope: "title", formula: "q1",
-      queries: { q1: "The paper is about self-driving / autonomous laboratories or AI scientists or AI agents for research / scientific discovery." },
-      model: "", effort: "" } });
-  const cit = (id, beta) => ({ id, kind: "CitationFilter", params: { beta, exemption_years: -1 } });
-  const seq = (id, children) => ({ id, kind: "Sequential", children });
-  return seq(p + "root", [
-    { id: p + "gate", kind: "Route",
-      routes: [
-        { id: p + "gr1", if: { kind: "VenueIn", values: ["Nature", "Science", "Cell"] },
-          pass_to: seq(p + "b1", [absKw(p + "b1k"), titleLlm(p + "b1l")]) },
-        { id: p + "gr2", if: { kind: "VenueIn", values: ["rxiv", "SSRN", "Research Square", "preprint"] },
-          pass_to: seq(p + "b2", [cit(p + "b2c", 30), absKw(p + "b2k"), titleLlm(p + "b2l")]) },
-      ],
-      else: seq(p + "b3", [cit(p + "b3c", 10), absKw(p + "b3k"), titleLlm(p + "b3l")]) },
-  ]);
+  const ABS_EXPR =
+    "(discover* OR scientist* OR scientific OR self-driving OR research OR lab* OR " +
+    "autonomous OR automat* OR design* OR reasoning) AND " +
+    '(agent* OR "large language model*" OR LLM OR AI OR "artificial intelligence")';
+  const TITLE_PROMPT =
+    "The paper is about self-driving / autonomous laboratories or AI scientists or " +
+    "AI agents for automating/aiding scientific research / scientific discovery.";
+  const ABS_PROMPT =
+    "The paper introduces a new self-driving / autonomous laboratory or AI scientist " +
+    "system or AI agentic system for automating/aiding scientific research / scientific discovery.";
+  return {
+    id: p + "root", kind: "Sequential", children: [
+      { id: p + "yr",  kind: "YearFilter",     params: { min: 2023, max: 2026 } },
+      { id: p + "cit", kind: "CitationFilter", params: { beta: 30, exemption_years: -1, curve: "linear" } },
+      { id: p + "kw",  kind: "KeywordFilter",  params: { scope: "abstract", match: "whole_word", expression: ABS_EXPR } },
+      { id: p + "tl",  kind: "LLMFilter",      params: { scope: "title",          formula: "q1", queries: { q1: TITLE_PROMPT }, model: "", effort: "" } },
+      { id: p + "al",  kind: "LLMFilter",      params: { scope: "title_abstract", formula: "q1", queries: { q1: ABS_PROMPT },   model: "", effort: "" } },
+    ],
+  };
 }
 
 const INITIAL_PIPELINE = [
