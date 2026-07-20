@@ -22,12 +22,32 @@ from . import paths
 ARTIFACTS = {
     "collection": "literature_collection.json",
     "bib": "literature_collection.bib",
+    "rejections": "rejections.json",
     "citation": "citation_network.graphml",
     "collab": "collaboration_network.graphml",
     "state": "run_state.json",
+    "config": "pipeline_config.json",
+    "log": "citeclaw.log",
 }
 # what the zip bundles (cache.db is a shared symlink — never shipped)
 _ZIP_NAMES = tuple(ARTIFACTS.values()) + ("shape_summary.txt",)
+
+# README bundled into the zip so an offline recipient knows what each file is.
+_README = """CiteClaw run bundle — {rid}
+
+  literature_collection.json     Accepted papers (full metadata + scores).
+  literature_collection.bib      The same accepted papers, as BibTeX.
+  rejections.json                Every rejected paper, with the filter/category
+                                 and the human reason it was screened out.
+  citation_network.graphml       Citation graph (open in Gephi or the Explore tab).
+  collaboration_network.graphml  Author co-authorship graph.
+  run_state.json                 Run summary + counts.
+  pipeline_config.json           The exact pipeline config used (API keys redacted).
+  citeclaw.log                   Full DEBUG log of the run.
+  shape_summary.txt              Per-step paper-count summary.
+
+Files a given run did not produce are simply omitted from this archive.
+"""
 
 
 def artifact_path(sid: str, rid: str, key: str) -> Path | None:
@@ -51,6 +71,7 @@ def make_zip(sid: str, rid: str) -> bytes | None:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for f in files:
             z.write(f, arcname=f"citeclaw_{rid}/{f.name}")
+        z.writestr(f"citeclaw_{rid}/README.txt", _README.format(rid=rid))
     return buf.getvalue()
 
 

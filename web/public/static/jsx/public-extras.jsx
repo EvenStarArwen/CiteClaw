@@ -66,8 +66,9 @@ function PublicTopbarExtra() {
   const arts = (r) => {
     const a = r.artifacts || {};
     const items = [
-      ["collection", "JSON"], ["bib", "BibTeX"],
+      ["collection", "JSON"], ["bib", "BibTeX"], ["rejections", "Rejected"],
       ["citation", "Graph"], ["collab", "Authors"],
+      ["config", "Config"], ["log", "Log"],
     ].filter(([k]) => a[k]);
     return (
       <span className="pubx-links">
