@@ -3,7 +3,7 @@
 // Claude-ish chrome: brand, mode segmented toggle (Build/Run),
 // lightweight meta counters, primary action on the right.
 
-function TopBar({ mode, setMode, running, runStatus, onRun, onStop, onReset, onOpenSettings,
+function TopBar({ mode, setMode, running, runStatus, onRun, onStop, onPause, onResume, onReset, onOpenSettings,
                  theme, onToggleTheme, blocks, accepted, elapsed, explorePapers }) {
   return (
     <header className="topbar">
@@ -84,10 +84,22 @@ function TopBar({ mode, setMode, running, runStatus, onRun, onStop, onReset, onO
             <Icon name="loader" size={13} /> Finalizing…
           </button>
         ) : running ? (
-          <button className="btn" onClick={onStop}
-            title="Stop the run — finalize and keep everything found so far">
-            <Icon name="square" size={13} /> Stop
-          </button>
+          <>
+            {runStatus === "paused" ? (
+              <button className="btn btn-primary" onClick={onResume} title="Resume the run">
+                <Icon name="play" size={13} /> Resume
+              </button>
+            ) : (
+              <button className="btn" onClick={onPause}
+                title="Pause the run at the next checkpoint — Resume to continue, Stop still ends it">
+                <Icon name="pause" size={13} /> Pause
+              </button>
+            )}
+            <button className="btn" onClick={onStop}
+              title="Stop the run — finalize and keep everything found so far">
+              <Icon name="square" size={13} /> Stop
+            </button>
+          </>
         ) : (
           <button className="btn btn-primary" onClick={onRun}>
             <Icon name="play" size={13} /> Run pipeline

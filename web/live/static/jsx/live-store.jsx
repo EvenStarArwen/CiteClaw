@@ -26,7 +26,7 @@ const LIVE = (function () {
     network: { nodes: [], edges: [], version: 0 },
     metrics: _emptyMetrics(),
     running: false,
-    runStatus: "idle",       // idle | starting | running | done | error | stopped
+    runStatus: "idle",       // idle | starting | running | paused | done | error | stopped
     runId: null,
     error: null,
     logs: [],
@@ -268,6 +268,29 @@ async function stopRun() {
   try { await _api("/api/run/" + id + "/stop", { method: "POST" }); } catch (_) {}
 }
 
+// Pause holds the run at its next safe checkpoint (Stop still ends it). Both
+// are optimistic: the client flips runStatus immediately (like "stopping"),
+// the backend gate catches up within a paper or two.
+async function pauseRun() {
+  const id = LIVE.get("runId");
+  if (!id || !LIVE.get("running")) return;
+  const st = LIVE.get("runStatus");
+  if (st === "stopping" || st === "paused") return;
+  LIVE.set({ runStatus: "paused" });
+  _pushLog("STEP", "Run paused — click Resume to continue (Stop still ends it).");
+  try { await _api("/api/run/" + id + "/pause", { method: "POST" }); }
+  catch (_) { LIVE.set({ runStatus: "running" }); }   // revert if the server refused
+}
+
+async function resumeRun() {
+  const id = LIVE.get("runId");
+  if (!id || !LIVE.get("running")) return;
+  if (LIVE.get("runStatus") !== "paused") return;
+  LIVE.set({ runStatus: "running" });
+  _pushLog("STEP", "Run resumed.");
+  try { await _api("/api/run/" + id + "/resume", { method: "POST" }); } catch (_) {}
+}
+
 async function capDecide(action, newMax) {
   const id = LIVE.get("runId");
   LIVE.set({ capPrompt: null });
@@ -434,7 +457,7 @@ function exploreFromLive() {
 
 Object.assign(window, {
   LIVE, useLive, fmtK, fmtNum, fmtDur,
-  refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun, capDecide,
+  refreshSettings, saveSettings, searchSeeds, fetchSeedAbstract, startRun, stopRun, pauseRun, resumeRun, capDecide,
   fetchRejected,
   refreshExploreRuns, loadExploreRun, loadExploreCollab, exploreUseLiveSession,
   loadExploreUpload, exploreUseUpload, exploreFromLive,

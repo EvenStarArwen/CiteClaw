@@ -409,9 +409,28 @@ class RunState:
         self.cap_prompted = False
         self.cap_event = threading.Event()
         self.cap_decision: dict[str, Any] | None = None
+        # Pause gate: when paused the run thread blocks at the same hook sites
+        # the stop check uses, staying responsive to Stop. pause_wake is
+        # signalled on resume (or stop) to release the wait promptly.
+        self.paused = False
+        self.pause_wake = threading.Event()
         # Multi-tenant deployments stamp the owning session id here; the
         # single-user local server leaves it None.
         self.owner: str | None = None
+
+
+def _honor_pause(rs, heartbeat) -> None:
+    """Block the run thread while ``rs.paused``, staying responsive to Stop.
+
+    Mirrors the paper-cap gate: waits on ``pause_wake`` (signalled by resume
+    or stop) and sends a keepalive ``heartbeat()`` each second it stays held.
+    Never raises — the caller re-checks ``stop_requested`` afterwards and
+    raises ``_StopRun`` itself. Skipped once ``finalizing`` is set so a
+    stop-then-finalize is never blocked at the pause gate.
+    """
+    while rs.paused and not rs.stop_requested and not rs.finalizing:
+        if not rs.pause_wake.wait(timeout=1.0):
+            heartbeat()
 
 
 class WebDashboard:
@@ -443,13 +462,17 @@ class WebDashboard:
         self._last_retry_logged: str | None = None
 
     def _maybe_stop(self) -> None:
-        # Mid-step pause: steps drive these dashboard hooks from the run
-        # thread between sources / acceptances, so raising here interrupts
-        # even an hour-long step at a safe point. Never fires during the
-        # post-stop finalize_partial (rs.finalizing), and only from
-        # main-thread call sites — tick_inner may run on LLM worker threads.
+        # Mid-step stop/pause: steps drive these dashboard hooks from the run
+        # thread between sources / acceptances, so acting here interrupts even
+        # an hour-long step at a safe point. Never fires during the post-stop
+        # finalize_partial (rs.finalizing), and only from main-thread call
+        # sites — tick_inner may run on LLM worker threads.
         if self.rs.stop_requested and not self.rs.finalizing:
             raise _StopRun()
+        if self.rs.paused and not self.rs.finalizing:
+            _honor_pause(self.rs, lambda: self._emit(force=True))
+            if self.rs.stop_requested and not self.rs.finalizing:
+                raise _StopRun()
 
     # -- DashboardLike protocol ----------------------------------------
     def attach(self, ctx) -> None:
@@ -745,6 +768,10 @@ class WebFanoutSink:
     def _check_stop(self) -> None:
         if self.rs.stop_requested:
             raise _StopRun()
+        if self.rs.paused and not self.rs.finalizing:
+            _honor_pause(self.rs, lambda: self._snapshot(force=True))
+            if self.rs.stop_requested:
+                raise _StopRun()
 
     def step_start(self, idx: int, name: str, description: str) -> None:
         self._check_stop()
@@ -864,7 +891,8 @@ class RunManager:
         if not rs:
             return False
         rs.stop_requested = True
-        rs.cap_event.set()  # unblock a run held at the cap prompt
+        rs.cap_event.set()   # unblock a run held at the cap prompt
+        rs.pause_wake.set()  # unblock a run held at the pause gate
         try:
             rs.progress.note_stopping()
             self.broadcast(rs, {"type": "progress", "progress": rs.progress.snapshot()})
@@ -879,6 +907,26 @@ class RunManager:
             return False
         rs.cap_decision = {"action": action, "max": new_max}
         rs.cap_event.set()
+        return True
+
+    def pause_run(self, run_id: str) -> bool:
+        """Hold the run at the next safe hook (staying responsive to Stop)."""
+        rs = self.runs.get(run_id)
+        if not rs:
+            return False
+        if rs.status not in ("running", "starting") or rs.stop_requested:
+            return False
+        rs.paused = True
+        rs.pause_wake.clear()
+        return True
+
+    def resume_run(self, run_id: str) -> bool:
+        """Release a paused run."""
+        rs = self.runs.get(run_id)
+        if not rs:
+            return False
+        rs.paused = False
+        rs.pause_wake.set()
         return True
 
     def _run(self, rs: RunState) -> None:

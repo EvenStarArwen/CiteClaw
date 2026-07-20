@@ -359,6 +359,8 @@ function App() {
     else setRunError((res && res.error) || "Could not start the run. Check your settings and try again.");
   };
   const handleStop = () => { stopRun(); };
+  const handlePause = () => { pauseRun(); };
+  const handleResume = () => { resumeRun(); };
   const handleReset = () => { stopRun(); };
 
   useEffect(() => {
@@ -380,6 +382,8 @@ function App() {
         runStatus={runStatus}
         onRun={handleRun}
         onStop={handleStop}
+        onPause={handlePause}
+        onResume={handleResume}
         onReset={handleReset}
         onOpenSettings={() => setSettingsOpen(true)}
         theme={theme}
@@ -387,7 +391,6 @@ function App() {
         blocks={countSteps(pipeline)}
         accepted={liveMetrics.accepted}
         elapsed={fmtDur(liveMetrics.elapsedSec)}
-        runStatus={runStatus}
         explorePapers={exploreData.papers.length}
       />
 

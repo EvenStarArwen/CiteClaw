@@ -472,6 +472,25 @@ async def stop_run(request: Request, run_id: str) -> dict:
     return {"status": "stopping"}
 
 
+@app.post("/api/run/{run_id}/pause")
+async def pause_run(request: Request, run_id: str) -> dict:
+    sess = _require(request)
+    if manager.get_owned(run_id, sess["sid"]) is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    if not manager.pause_run(run_id):
+        raise HTTPException(status_code=409, detail="run not pausable")
+    return {"status": "paused"}
+
+
+@app.post("/api/run/{run_id}/resume")
+async def resume_run(request: Request, run_id: str) -> dict:
+    sess = _require(request)
+    if manager.get_owned(run_id, sess["sid"]) is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    manager.resume_run(run_id)
+    return {"status": "running"}
+
+
 @app.post("/api/run/{run_id}/cap")
 async def cap_decision(request: Request, run_id: str, body: dict) -> dict:
     sess = _require(request)
