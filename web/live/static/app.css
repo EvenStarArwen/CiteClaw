@@ -4168,22 +4168,6 @@ select.gp-v { cursor: pointer; }
 }
 .prog-substep .prog-bar-track { margin-top: 0; }
 
-.prog-summary {
-  margin: 10px 12px;
-  padding: 10px 12px;
-  background: var(--cc-panel);
-  border: 1px solid var(--cc-rule);
-  border-radius: 6px;
-}
-.prog-summary-row {
-  display: flex; justify-content: space-between; align-items: baseline;
-  padding: 3px 0;
-  font-size: 11px;
-}
-.prog-summary-row + .prog-summary-row { border-top: 1px solid var(--cc-rule-soft); padding-top: 6px; margin-top: 3px; }
-.prog-summary-lbl { color: var(--cc-ink-2); }
-.prog-summary-val { font-family: var(--cc-font-mono); color: var(--cc-ink-1); font-weight: 600; font-variant-numeric: tabular-nums; }
-
 /* Live log tail */
 .prog-log {
   margin: 14px 12px 14px;
@@ -5718,13 +5702,22 @@ select.gp-v { cursor: pointer; }
 .act-retry .lc { flex: 0 0 auto; margin-top: 1px; animation: act-spin 1.6s linear infinite; }
 @keyframes act-spin { to { transform: rotate(360deg); } }
 .act-bar { display: flex; flex-direction: column; gap: 3px; }
-.act-bar-inner { padding-left: 10px; }
+/* Sub-progress bar (the phase inside the current step): flush-left with the
+   outer bar — no indentation. The nesting reads from a leading ↳ connector on
+   the label and a lighter, thinner track, so the two bars sit as a clean
+   primary/secondary pair instead of a stair-stepped indent. */
+.act-bar-inner { padding-left: 0; margin-top: 1px; }
 .act-bar-row {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
   font-size: 10.5px; color: var(--cc-ink-2);
 }
 .act-bar-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.act-bar-inner .act-bar-desc { color: var(--cc-ink-3); }
+.act-bar-inner .act-bar-desc { color: var(--cc-ink-3); display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.act-bar-inner .act-bar-desc::before {
+  content: "\21B3"; flex: 0 0 auto; color: var(--cc-ink-faint);
+  font-weight: 600; font-size: 11px; line-height: 1;
+}
+.act-bar-inner .prog-bar-track { height: 2px; opacity: 0.72; }
 .act-bar-n {
   font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-1);
   font-variant-numeric: tabular-nums; white-space: nowrap;

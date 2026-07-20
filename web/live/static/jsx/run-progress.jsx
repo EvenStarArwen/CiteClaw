@@ -303,21 +303,6 @@ function RunProgress() {
           </div>
         )}
 
-        <div className="prog-summary">
-          <div className="prog-summary-row">
-            <span className="prog-summary-lbl">Overall</span>
-            <span className="prog-summary-val">{progress.overallPct || 0}%</span>
-          </div>
-          <div className="prog-summary-row">
-            <span className="prog-summary-lbl">Current</span>
-            <span className="prog-summary-val">{progress.current || "—"}</span>
-          </div>
-          <div className="prog-summary-row">
-            <span className="prog-summary-lbl">Steps</span>
-            <span className="prog-summary-val">{progress.done || 0} / {progress.total || 0}</span>
-          </div>
-        </div>
-
         <div className="prog-log">
           <div className="prog-log-head">
             <span>Live log</span>
