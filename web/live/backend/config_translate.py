@@ -180,6 +180,8 @@ def _translate_filter(node: dict[str, Any]) -> dict[str, Any]:
                     "beta": params.get("beta"),
                     "exemption_years": params.get("exemption_years"),
                     "reference_year": params.get("reference_year"),
+                    "curve": params.get("curve"),
+                    "exp_base": params.get("exp_base"),
                 }
             )
         )

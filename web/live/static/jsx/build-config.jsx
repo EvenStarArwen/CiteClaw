@@ -36,7 +36,7 @@ const nextFid = () => "f" + (++__fid);
 function defaultParams(kind) {
   switch (kind) {
     case "YearFilter":            return { min: 2019, max: 2025 };
-    case "CitationFilter":        return { beta: 30 };
+    case "CitationFilter":        return { beta: 30, exemption_years: -1 };
     case "SimilarityFilter":      return { threshold: 0.025, measures: [{ kind: "RefSim" }] };
     case "LLMFilter":             return { scope: "title_abstract", formula: "q1", queries: { q1: "" }, model: "", effort: "" };
     case "TitleKeywordFilter":    return { match: "substring", expression: "" };
@@ -847,7 +847,11 @@ function filterSummary(n) {
   switch (n.kind) {
     case "Route":                 return `first match wins · ${(n.routes || []).length} condition${(n.routes || []).length === 1 ? "" : "s"} + else`;
     case "YearFilter":            return `${p.min ?? "…"} – ${p.max ?? "…"}`;
-    case "CitationFilter":        return `β = ${p.beta ?? "…"} cites/yr of age`;
+    case "CitationFilter": {
+      const cv = p.curve && p.curve !== "linear" ? ` · ${p.curve}` : "";
+      const gr = (p.exemption_years ?? 0) >= 0 ? ` · ${new Date().getFullYear()} exempt` : "";
+      return `β = ${p.beta ?? "…"} cites/yr of age${cv}${gr}`;
+    }
     case "SimilarityFilter":      return `similarity ≥ ${p.threshold ?? ""} · ${(p.measures || []).length} measures`;
     case "LLMFilter":             return `${scopeLabel[p.scope] || p.scope} · ${queryText(p)}${p.model ? ` · ${p.model}` : ""}`;
     case "TitleKeywordFilter":    return `Title ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
@@ -1003,18 +1007,52 @@ function FilterParams({ node, onPatch, onPatchNode }) {
           </ConfigField>
         </>
       );
-    case "CitationFilter":
+    case "CitationFilter": {
+      const graceOn = (p.exemption_years ?? 0) >= 0;
+      const curve = p.curve || "linear";
+      const base = p.exp_base ?? 2;
+      const ageExpr = `max(1, ${NOW_YEAR} - year)`;
+      const fExpr =
+        curve === "sqrt" ? `sqrt(${ageExpr})` :
+        curve === "log" ? `log2(1 + ${ageExpr})` :
+        curve === "exp" ? `${base}^(${ageExpr} - 1)` : ageExpr;
       return (
         <>
-          <ConfigField label="β" hint="min cites per year of age"
-            info="Minimum citations required per year since publication — NOT an absolute count. A paper passes when its citation count ≥ β × max(1, age in years), so young papers clear a lower bar than old ones.">
+          <ConfigField label="β" hint="min cites at age 1 year"
+            info="The citation bar at age one year — NOT an absolute count. A paper passes when its citation count ≥ β × f(age), where f is the curve below (every curve requires exactly β at age 1).">
             <input type="number" step="5" value={p.beta} onChange={e => set("beta", +e.target.value)} />
           </ConfigField>
-          <ConfigField label="Formula" wide hint="cites ≥ β · max(1, age)">
-            <input disabled value={`cites >= ${p.beta ?? "β"} * max(1, ${NOW_YEAR} - year)`} />
+          <ConfigField label="Curve"
+            info="How the bar grows with paper age. linear grows proportionally (β per year); sqrt and log grow slower, so older papers face a gentler bar; exp compounds, demanding much more of older papers.">
+            <select value={curve} onChange={e => set("curve", e.target.value)}>
+              <option value="linear">linear — β · age</option>
+              <option value="sqrt">sqrt — β · √age</option>
+              <option value="log">log — β · log₂(1+age)</option>
+              <option value="exp">exp — β · b^(age−1)</option>
+            </select>
+          </ConfigField>
+          {curve === "exp" && (
+            <ConfigField label="Exp base b" hint="bar multiplier per extra year"
+              info="Each additional year of age multiplies the citation bar by this factor. Must be greater than 1.">
+              <input type="number" step="0.1" min="1.1" value={base}
+                onChange={e => set("exp_base", +e.target.value)} />
+            </ConfigField>
+          )}
+          <ConfigField label="New papers"
+            info={`ON: papers published in ${NOW_YEAR} skip this filter entirely — brand-new work has few or no citations yet, so without the exemption almost all of it is rejected. OFF: current-year papers must clear the age-1 bar (β citations) like everyone else.`}>
+            <select value={graceOn ? "exempt" : "strict"}
+              onChange={e => set("exemption_years", e.target.value === "exempt" ? 0 : -1)}>
+              <option value="strict">apply filter to {NOW_YEAR} papers</option>
+              <option value="exempt">exempt {NOW_YEAR} papers (auto-pass)</option>
+            </select>
+          </ConfigField>
+          <ConfigField label="Formula" wide hint={graceOn ? `${NOW_YEAR} papers pass unconditionally` : "cites ≥ β · f(age)"}>
+            <input disabled value={(graceOn ? `year >= ${NOW_YEAR} ? pass : ` : "") +
+              `cites >= ${p.beta ?? "β"} * ${fExpr}`} />
           </ConfigField>
         </>
       );
+    }
     case "SimilarityFilter": {
       const measures = p.measures || [];
       const setKind = (i, kind) => set("measures", measures.map((m, j) => j === i ? measureDefaults(kind) : m));

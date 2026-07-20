@@ -66,7 +66,7 @@ function _sdlScreener(p) {
     params: { scope: "title", formula: "q1",
       queries: { q1: "The paper is about self-driving / autonomous laboratories or AI scientists or AI agents for research / scientific discovery." },
       model: "", effort: "" } });
-  const cit = (id, beta) => ({ id, kind: "CitationFilter", params: { beta } });
+  const cit = (id, beta) => ({ id, kind: "CitationFilter", params: { beta, exemption_years: -1 } });
   const seq = (id, children) => ({ id, kind: "Sequential", children });
   return seq(p + "root", [
     { id: p + "gate", kind: "Route",

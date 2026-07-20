@@ -158,6 +158,40 @@ class TestCitationFilter:
         p_fail = PaperRecord(paper_id="p", year=2020, citation_count=59)
         assert not f.check(p_fail, _fctx(ctx)).passed
 
+    def test_curve_sqrt(self, ctx):
+        """age 9, β=10 → threshold 10·√9 = 30."""
+        f = CitationFilter(beta=10, curve="sqrt", reference_year=2029)
+        assert f.check(PaperRecord(paper_id="p", year=2020, citation_count=30), _fctx(ctx)).passed
+        assert not f.check(PaperRecord(paper_id="p", year=2020, citation_count=29), _fctx(ctx)).passed
+
+    def test_curve_log(self, ctx):
+        """age 7, β=10 → threshold 10·log2(8) = 30."""
+        f = CitationFilter(beta=10, curve="log", reference_year=2027)
+        assert f.check(PaperRecord(paper_id="p", year=2020, citation_count=30), _fctx(ctx)).passed
+        assert not f.check(PaperRecord(paper_id="p", year=2020, citation_count=29), _fctx(ctx)).passed
+
+    def test_curve_exp(self, ctx):
+        """age 4, β=10, base 2 → threshold 10·2³ = 80."""
+        f = CitationFilter(beta=10, curve="exp", exp_base=2.0, reference_year=2024)
+        assert f.check(PaperRecord(paper_id="p", year=2020, citation_count=80), _fctx(ctx)).passed
+        assert not f.check(PaperRecord(paper_id="p", year=2020, citation_count=79), _fctx(ctx)).passed
+
+    def test_all_curves_agree_at_age_one(self, ctx):
+        """Every curve is normalized to f(1)=1, so β is the age-1 bar."""
+        for curve in ("linear", "sqrt", "log", "exp"):
+            f = CitationFilter(beta=10, curve=curve, exemption_years=-1,
+                               reference_year=2026)
+            ok = PaperRecord(paper_id="p", year=2025, citation_count=10)
+            assert f.check(ok, _fctx(ctx)).passed, curve
+            low = PaperRecord(paper_id="p", year=2025, citation_count=9)
+            assert not f.check(low, _fctx(ctx)).passed, curve
+
+    def test_bad_curve_params_raise(self, ctx):
+        with pytest.raises(ValueError):
+            CitationFilter(curve="cubic")
+        with pytest.raises(ValueError):
+            CitationFilter(curve="exp", exp_base=1.0)
+
 
 # ---------------------------------------------------------------------------
 # LLMFilter (stub dispatch path)
