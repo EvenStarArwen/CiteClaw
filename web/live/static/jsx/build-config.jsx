@@ -11,9 +11,7 @@ const LEAF_KINDS = [
   { kind: "CitationFilter",        label: "Citation",          desc: "min cites scaled by age" },
   { kind: "SimilarityFilter",      label: "Similarity",        desc: "Ref / Cit / Semantic" },
   { kind: "LLMFilter",             label: "LLM",               desc: "batched screening" },
-  { kind: "TitleKeywordFilter",    label: "Title keyword",     desc: "string / boolean over title" },
-  { kind: "AbstractKeywordFilter", label: "Abstract keyword",  desc: "same DSL, abstract" },
-  { kind: "VenueKeywordFilter",    label: "Venue keyword",     desc: "same DSL, venue" },
+  { kind: "KeywordFilter",         label: "Keyword",           desc: "words in title / abstract / venue" },
 ];
 const COMPOSITE_OPTS = [
   { kind: "Sequential", label: "Match ALL", desc: "AND · every child must pass" },
@@ -28,7 +26,7 @@ const COMPOSITE_LABEL = { Sequential: "Match ALL", Any: "Match ANY", Not: "Exclu
 const COMPOSITE_META  = { Sequential: "AND · all must pass", Any: "OR · one is enough", Not: "invert the child", Route: "if / elif / else", Parallel: "union of branches" };
 // Compact pill labels for the long keyword-filter kinds — full names blew up
 // the row and squeezed the summary down to useless fragments.
-const LEAF_PILL = { TitleKeywordFilter: "Title kw", AbstractKeywordFilter: "Abs kw", VenueKeywordFilter: "Venue kw" };
+const LEAF_PILL = { KeywordFilter: "Keyword", TitleKeywordFilter: "Title kw", AbstractKeywordFilter: "Abs kw", VenueKeywordFilter: "Venue kw" };
 
 // --- tree helpers ---------------------------------------------------------
 let __fid = 1000;
@@ -39,9 +37,11 @@ function defaultParams(kind) {
     case "CitationFilter":        return { beta: 30, exemption_years: -1 };
     case "SimilarityFilter":      return { threshold: 0.025, measures: [{ kind: "RefSim" }] };
     case "LLMFilter":             return { scope: "title_abstract", formula: "q1", queries: { q1: "" }, model: "", effort: "" };
-    case "TitleKeywordFilter":    return { match: "substring", expression: "" };
-    case "AbstractKeywordFilter": return { match: "substring", expression: "" };
-    case "VenueKeywordFilter":    return { match: "starts_with", expression: '"Nature"' };
+    case "KeywordFilter":         return { scope: "abstract", match: "substring", expression: "" };
+    // Legacy scope-specific kinds — still rendered/translated for older pipelines.
+    case "TitleKeywordFilter":    return { scope: "title", match: "substring", expression: "" };
+    case "AbstractKeywordFilter": return { scope: "abstract", match: "substring", expression: "" };
+    case "VenueKeywordFilter":    return { scope: "venue", match: "starts_with", expression: '"Nature"' };
     default: return {};
   }
 }
@@ -292,9 +292,11 @@ function NumStepper({ value, onChange, lo, hi, step }) {
 
 // --- named-formula consistency (keyword / query editors) -----------------
 // Identifiers referenced by a boolean formula (everything that isn't & | ! ( )).
+// AND / OR / NOT (any case) are operator words, not query/keyword names.
+const _RESERVED_OPS = new Set(["and", "or", "not"]);
 function _formulaTokens(formula) {
   const m = String(formula || "").match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
-  return Array.from(new Set(m));
+  return Array.from(new Set(m.filter(t => !_RESERVED_OPS.has(t.toLowerCase()))));
 }
 // Cross-check a name→value dict against the formula that references the names.
 // errors block a legal config; warnings just advise. Phrasing is user-facing.
@@ -389,7 +391,7 @@ function NamedDictEditor({ p, patch, field, noun, formulaInfo }) {
   return (
     <>
       <ConfigField label="Formula" wide info={formulaInfo}
-        hint="Operators: & (and) · | (or) · ! (not) · ( )">
+        hint="Operators: AND · OR · NOT · ( )">
         <input value={p.formula || ""} onChange={e => patch({ formula: e.target.value })}
           placeholder={names[0] || (noun === "query" ? "q1" : "k1")} />
       </ConfigField>
@@ -434,21 +436,27 @@ function checkKeywordExpression(expr) {
   const errors = [], warnings = [];
   const s = String(expr || "").trim();
   if (!s) { errors.push("The expression is empty — enter at least one keyword."); return { errors, warnings }; }
-  if (s.includes("*"))
-    errors.push("Wildcards (*) aren’t supported — terms already match as substrings (or whole words / prefixes via the match mode).");
   if ((s.match(/"/g) || []).length % 2)
     errors.push("Unbalanced quotes — every opening \" needs a closing \".");
-  const blanked = s.replace(/"[^"]*"/g, "x");
+  // Blank out quoted phrases (with an optional trailing * wildcard) first.
+  const blanked = s.replace(/"[^"]*"\*?/g, "x");
   let depth = 0, under = false;
   for (const ch of blanked) {
     if (ch === "(") depth++;
     else if (ch === ")") { depth--; if (depth < 0) under = true; }
   }
   if (depth !== 0 || under) errors.push("Unbalanced parentheses.");
-  const leftover = blanked.replace(/[A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*/g, " ").replace(/[&|!()\s]/g, "");
-  if (leftover)
-    errors.push("Unexpected character" + (leftover.length > 1 ? "s" : "") + ": " +
-      [...new Set(leftover)].join(" ") + " — allowed: words, \"quoted phrases\", & | ! and parentheses.");
+  // Strip words (each with an optional trailing * wildcard) + operators; the
+  // words AND/OR/NOT fall under the word pattern, so only stray chars remain.
+  const leftover = blanked
+    .replace(/[A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*\*?/g, " ")
+    .replace(/[&|!()\s]/g, "");
+  if (leftover.includes("*"))
+    errors.push("A “*” wildcard must be attached to the end of a term (e.g. discover*), not stand alone.");
+  const other = leftover.replace(/\*/g, "");
+  if (other)
+    errors.push("Unexpected character" + (other.length > 1 ? "s" : "") + ": " +
+      [...new Set(other)].join(" ") + " — allowed: words, \"quoted phrases\", AND / OR / NOT and parentheses.");
   if (/[&|]\s*$/.test(blanked)) errors.push("The expression ends with a dangling operator.");
   if (/^\s*[&|]/.test(blanked)) errors.push("The expression starts with an operator.");
   return { errors, warnings };
@@ -460,10 +468,10 @@ function KeywordExpressionEditor({ p, patch }) {
   return (
     <>
       <ConfigField label="Keywords" wide full
-        info={'One boolean expression over the literal terms to look for. Quote multi-word phrases; bare single words work as-is. Terms are case-insensitive and compared per the match mode. Example: ("large language model" | LLM) & "scientific discovery"'}
-        hint={'& and · | or · ! not · ( ) group · "…" phrase — no * wildcards'}>
+        info={'One boolean expression over the literal terms to look for. Quote multi-word phrases; bare single words work as-is. Combine with AND / OR / NOT and parentheses. A trailing * is a prefix wildcard: agent* matches agent / agents / agentic. Terms are case-insensitive and compared per the match mode. Example: (discover* OR "large language model*") AND agent*'}
+        hint={'AND · OR · NOT · ( ) · "phrase" · term* = prefix wildcard'}>
         <textarea className="cfg-kv-ta cfg-expr-ta" rows={2} value={expr}
-          placeholder={'("large language model" | LLM) & "scientific discovery"'}
+          placeholder={'(discover* OR "large language model*") AND agent*'}
           onChange={e => patch({ expression: e.target.value, formula: undefined, keywords: undefined, keyword: undefined })} />
       </ConfigField>
       <ValidationNotes errors={errors} warnings={warnings} />
@@ -861,6 +869,10 @@ function filterSummary(n) {
     }
     case "SimilarityFilter":      return `similarity ≥ ${p.threshold ?? ""} · ${(p.measures || []).length} measures`;
     case "LLMFilter":             return `${scopeLabel[p.scope] || p.scope} · ${queryText(p)}${p.model ? ` · ${p.model}` : ""}`;
+    case "KeywordFilter": {
+      const sc = { title: "Title", abstract: "Abstract", venue: "Venue" }[p.scope] || "Abstract";
+      return `${sc} ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
+    }
     case "TitleKeywordFilter":    return `Title ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
     case "AbstractKeywordFilter": return `Abstract ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
     case "VenueKeywordFilter":    return `Venue ${matchLabel[p.match] || p.match} ${keywordText(p)}`;
@@ -1148,6 +1160,26 @@ function FilterParams({ node, onPatch, onPatchNode }) {
           </ConfigField>
           <NamedDictEditor p={p} patch={(obj) => onPatch({ ...p, ...obj })} field="queries" noun="query"
             formulaInfo="Boolean expression over the named questions below." />
+        </>
+      );
+    case "KeywordFilter":
+      return (
+        <>
+          <ConfigField label="Scope" info="Which field the keywords are matched against — the title, the abstract, or the venue.">
+            <select value={p.scope || "abstract"} onChange={e => set("scope", e.target.value)}>
+              <option value="title">Title</option>
+              <option value="abstract">Abstract</option>
+              <option value="venue">Venue</option>
+            </select>
+          </ConfigField>
+          <ConfigField label="Match" info="How each literal string is compared to the text: as a substring (anywhere), a whole word, or a prefix (starts-with).">
+            <select value={p.match} onChange={e => set("match", e.target.value)}>
+              <option value="substring">substring</option>
+              <option value="whole_word">whole word</option>
+              <option value="starts_with">starts with</option>
+            </select>
+          </ConfigField>
+          <KeywordExpressionEditor p={p} patch={(obj) => onPatch({ ...p, ...obj })} />
         </>
       );
     case "TitleKeywordFilter":

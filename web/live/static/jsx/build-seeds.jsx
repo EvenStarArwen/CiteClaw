@@ -13,20 +13,25 @@
 // client-side over them — no extra Semantic Scholar calls.
 
 // Parse a boolean keyword expression — same syntax as the pipeline's
-// keyword filters: & | ! ( ) and "quoted phrases". Returns an AST or
-// null when invalid/empty.
+// keyword filters: AND OR NOT ( ) "quoted phrases" (& | ! also accepted)
+// and trailing-* prefix wildcards. Returns an AST or null when invalid/empty.
 function _kwParse(expr) {
   const toks = [];
-  const re = /"([^"]*)"|([A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*)|([&|!()])|(\s+)|(.)/g;
+  const re = /"([^"]*)"(\*?)|(and|or|not)(?![\w-])|([A-Za-z0-9_À-￿][A-Za-z0-9_À-￿-]*\*?)|([&|!()])|(\s+)|(.)/gi;
   let m;
   while ((m = re.exec(expr)) !== null) {
-    if (m[4] != null) continue;
-    if (m[5] != null) return null;                        // stray char (e.g. *)
-    if (m[1] != null || m[2] != null) {
-      const v = (m[1] != null ? m[1] : m[2]).trim().toLowerCase();
-      if (!v) return null;                                // empty quotes
-      toks.push({ t: "term", v });
-    } else toks.push({ t: m[3] });
+    if (m[6] != null) continue;                           // whitespace
+    if (m[7] != null) return null;                        // stray char (e.g. a lone *)
+    if (m[3] != null) {                                   // AND / OR / NOT word -> operator
+      const g = m[3].toLowerCase();
+      toks.push({ t: g === "and" ? "&" : g === "or" ? "|" : "!" });
+      continue;
+    }
+    if (m[5] != null) { toks.push({ t: m[5] }); continue; }   // glyph operator
+    const raw = m[1] != null ? (m[1] + (m[2] || "")) : m[4];   // quoted (+*) or bare word
+    const v = (raw || "").trim().toLowerCase();
+    if (!v) return null;                                  // empty quotes
+    toks.push({ t: "term", v });
   }
   if (!toks.length) return null;
   let i = 0;
@@ -63,7 +68,14 @@ function _kwParse(expr) {
 }
 function _kwEval(n, text) {
   switch (n.t) {
-    case "term": return text.includes(n.v);
+    case "term": {
+      const v = n.v;
+      if (v.length > 1 && v.endsWith("*")) {
+        const stem = v.slice(0, -1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp("\\b" + stem, "i").test(text);
+      }
+      return text.includes(v);
+    }
     case "and":  return _kwEval(n.l, text) && _kwEval(n.r, text);
     case "or":   return _kwEval(n.l, text) || _kwEval(n.r, text);
     case "not":  return !_kwEval(n.c, text);
@@ -406,17 +418,17 @@ function BuildSeeds({ onSelectSeed }) {
           <label className="seed-filter-field">
             <span className="seed-filter-k">Title</span>
             <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fTitle}
-              placeholder={'"bayesian optimization" & !survey'}
+              placeholder={'"bayesian optimization" AND NOT survey'}
               onChange={e => setFTitle(e.target.value)} />
           </label>
           <label className="seed-filter-field">
             <span className="seed-filter-k">Abstract</span>
             <textarea className="cfg-expr-ta seed-filter-kw" rows={1} value={fAbs}
-              placeholder={'benchmark | "ablation study"'}
+              placeholder={'benchmark OR "ablation study"'}
               onChange={e => setFAbs(e.target.value)} />
           </label>
           <div className="seed-filter-hint">
-            Plain text or an expression — &amp; and · | or · ! not · ( ) · "quoted phrase".
+            Plain text or an expression — AND · OR · NOT · ( ) · "quoted phrase" · term*.
           </div>
           <div className="seed-filter-foot">
             <span>{filtersActive ? `${shown.length.toLocaleString()} of ${candidates.length.toLocaleString()} match` : "no filters active"}</span>

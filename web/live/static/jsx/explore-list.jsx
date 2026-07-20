@@ -11,27 +11,30 @@ const XP_LIST_CAP = 400;
 const XP_EMPTY_FILTERS = { yearMin: "", yearMax: "", minCites: "", maxCites: "", seedsOnly: false, kw: "" };
 
 // Keyword formula, same DSL as the search pipeline's keyword filters:
-// bare words / "quoted phrases" combined with & | ! and parentheses, e.g.
-//   (transformer | attention) & !survey
-// Case-insensitive substring match. Anything that doesn't parse falls back
-// to matching the raw text as one plain phrase.
+// bare words / "quoted phrases" combined with AND OR NOT and parentheses
+// (& | ! also accepted), e.g. (transformer OR attention) AND NOT survey.
+// A trailing * is a prefix wildcard. Case-insensitive. Anything that
+// doesn't parse falls back to matching the raw text as one plain phrase.
 function xpCompileQuery(q) {
   const src = String(q || "").trim();
   if (!src) return null;
   const toks = src.match(/\(|\)|&|\||!|"[^"]*"|[^\s()&|!]+/g) || [];
   let i = 0;
+  const isOr = (x) => x === "|" || (typeof x === "string" && x.toLowerCase() === "or");
+  const isAnd = (x) => x === "&" || (typeof x === "string" && x.toLowerCase() === "and");
+  const isNot = (x) => x === "!" || (typeof x === "string" && x.toLowerCase() === "not");
   const parseOr = () => {
     let l = parseAnd();
-    while (toks[i] === "|") { i++; const a = l, b = parseAnd(); l = t => a(t) || b(t); }
+    while (isOr(toks[i])) { i++; const a = l, b = parseAnd(); l = t => a(t) || b(t); }
     return l;
   };
   const parseAnd = () => {
     let l = parseNot();
-    while (toks[i] === "&") { i++; const a = l, b = parseNot(); l = t => a(t) && b(t); }
+    while (isAnd(toks[i])) { i++; const a = l, b = parseNot(); l = t => a(t) && b(t); }
     return l;
   };
   const parseNot = () => {
-    if (toks[i] === "!") { i++; const inner = parseNot(); return t => !inner(t); }
+    if (isNot(toks[i])) { i++; const inner = parseNot(); return t => !inner(t); }
     return parseAtom();
   };
   const parseAtom = () => {
@@ -43,10 +46,15 @@ function xpCompileQuery(q) {
       i++;
       return e;
     }
-    if (tok == null || tok === ")" || tok === "&" || tok === "|") throw 0;
+    if (tok == null || tok === ")" || isAnd(tok) || isOr(tok)) throw 0;
     i++;
-    const needle = (tok[0] === '"' ? tok.slice(1, -1) : tok).toLowerCase();
-    return t => t.includes(needle);
+    const raw = (tok[0] === '"' ? tok.slice(1, -1) : tok).toLowerCase();
+    if (raw.length > 1 && raw.endsWith("*")) {
+      const stem = raw.slice(0, -1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = new RegExp("\\b" + stem, "i");
+      return t => rx.test(t);
+    }
+    return t => t.includes(raw);
   };
   try {
     const fn = parseOr();
