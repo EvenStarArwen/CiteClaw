@@ -56,7 +56,11 @@ image = (
 
 # ---- datasets API helpers (need the S2 key) --------------------------------
 
-def _datasets_get(path: str, api_key: str, attempts: int = 8) -> dict:
+def _datasets_get(path: str, api_key: str, attempts: int = 15) -> dict:
+    # The Datasets API rate-limits listing calls aggressively (shared per-key
+    # window). Be patient: a cold 429 can persist for a full minute-plus, and
+    # the listing only has to succeed once per ingest before the map fan-out
+    # takes over on presigned URLs.
     for i in range(attempts):
         req = urllib.request.Request(
             f"{DATASETS_API}{path}", headers={"x-api-key": api_key},
@@ -66,7 +70,7 @@ def _datasets_get(path: str, api_key: str, attempts: int = 8) -> dict:
                 return json.loads(r.read())
         except urllib.error.HTTPError as exc:
             if exc.code in (429, 503) and i < attempts - 1:
-                time.sleep(2.5 * (i + 1))
+                time.sleep(min(30.0, 5.0 * (i + 1)))
                 continue
             raise
     raise RuntimeError("unreachable")
