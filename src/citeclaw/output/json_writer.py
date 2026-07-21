@@ -75,6 +75,10 @@ def _paper_to_dict(p: PaperRecord) -> dict[str, Any]:
         "expanded": p.expanded,
         "pdf_url": p.pdf_url,
         "authors": p.authors,
+        # Additive: carries the S2 externalIds map (incl. "CorpusId"), so a
+        # finished/evicted run read back from disk can still resolve a paper
+        # to its S2ORC full text without a fresh S2 round-trip.
+        "external_ids": p.external_ids,
     }
 
 

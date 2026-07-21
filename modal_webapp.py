@@ -36,6 +36,10 @@ S2_MIRROR_URL = os.environ.get(
     "CITECLAW_WEB_S2_MIRROR_URL",
     "https://cola-lab--citeclaw-s2-mirror-serve.modal.run",
 )
+S2ORC_MIRROR_URL = os.environ.get(
+    "CITECLAW_WEB_S2ORC_MIRROR_URL",
+    "https://cola-lab--citeclaw-s2orc-serve.modal.run",
+)
 
 app = modal.App(APP_NAME)
 vol = modal.Volume.from_name(f"{APP_NAME}-data", create_if_missing=True)
@@ -82,6 +86,11 @@ image = (
         # traffic bypasses the 1 rps S2 cap; search still uses each
         # tenant's own S2 key. See modal_s2_mirror.py.
         modal.Secret.from_name("citeclaw-s2-mirror"),
+        # Self-hosted S2ORC full-text mirror bearer key (S2ORC_MIRROR_KEY,
+        # a DISTINCT env name so it never collides with the graph mirror's
+        # MIRROR_KEYS): lets accepted OA papers' full text be fetched for
+        # the chat panel. See modal_s2orc_mirror.py.
+        modal.Secret.from_name("citeclaw-s2orc-web"),
     ],
     cpu=2.0,
     memory=2048,
@@ -103,6 +112,11 @@ def serve():
         os.environ.setdefault("CITECLAW_S2_MIRROR_URL", S2_MIRROR_URL)
         os.environ.setdefault("CITECLAW_S2_MIRROR_KEY",
                               mirror_keys.split(",")[0].strip())
+    # Same idea for the S2ORC full-text mirror (distinct env name).
+    s2orc_key = os.environ.get("S2ORC_MIRROR_KEY", "")
+    if s2orc_key:
+        os.environ.setdefault("CITECLAW_S2ORC_MIRROR_URL", S2ORC_MIRROR_URL)
+        os.environ.setdefault("CITECLAW_S2ORC_MIRROR_KEY", s2orc_key)
     from web.public.backend import auth, cache_sync, server
 
     cache_sync.VOLUME_COMMIT = vol.commit
