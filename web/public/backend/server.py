@@ -542,6 +542,51 @@ async def run_rejected(request: Request, run_id: str, offset: int = 0,
     return build_rejected_page(rs.ctx, offset=offset, limit=limit, sort=sort, q=q)
 
 
+_S2ORC = {"init": False, "client": None}
+
+
+def _s2orc_client():
+    """Lazily-built shared S2ORC full-text client (None if no mirror is set)."""
+    if not _S2ORC["init"]:
+        _S2ORC["init"] = True
+        try:
+            from citeclaw.clients.s2orc import build_s2orc_client
+            from citeclaw.config import load_settings
+            _S2ORC["client"] = build_s2orc_client(load_settings(None))
+        except Exception:
+            _S2ORC["client"] = None
+    return _S2ORC["client"]
+
+
+@app.get("/api/run/{run_id}/paper/{paper_id}/fulltext")
+async def run_paper_fulltext(request: Request, run_id: str, paper_id: str) -> dict:
+    """Parsed open-access full text for one accepted paper, when it has an
+    S2ORC record — the data source for the (future) per-paper chat panel.
+
+    ``available: false`` (with a ``reason``) rather than a 404 when the
+    paper simply isn't open-access in S2ORC, so the UI can tell "no full
+    text" apart from "no such paper".
+    """
+    sess = _require(request)
+    rs = manager.get_owned(run_id, sess["sid"])
+    if not rs:
+        raise HTTPException(status_code=404, detail="run not found")
+    paper = rs.ctx.collection.get(paper_id) if rs.ctx is not None else None
+    if paper is None:
+        raise HTTPException(status_code=404, detail="paper not in run")
+    client = _s2orc_client()
+    if client is None:
+        return {"available": False, "reason": "mirror_not_configured", "paper_id": paper_id}
+    res = client.fetch_full_text(paper, cache=getattr(rs.ctx, "cache", None))
+    if res is None:
+        return {"available": False, "reason": "not_open_access_in_s2orc", "paper_id": paper_id}
+    return {
+        "available": True, "paper_id": paper_id, "source": res.source,
+        "chars": res.chars, "text": res.text, "license": res.license,
+        "status": res.status, "openAccessUrl": res.open_access_url,
+    }
+
+
 @app.websocket("/api/run/{run_id}/stream")
 async def run_stream(ws: WebSocket, run_id: str) -> None:
     sid = auth.parse_cookie(ws.cookies.get(auth.COOKIE_NAME, ""))
