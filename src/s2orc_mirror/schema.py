@@ -38,13 +38,16 @@ def id_shard(key: str) -> int:
 
 # ---- external id indexing --------------------------------------------------
 
-# S2ORC's externalids sub-object uses lowercase keys. We index the kinds
-# CiteClaw actually resolves papers by (dataset key -> idmap prefix);
-# mag / acl / dblp are deliberately not indexed.
+# S2ORC externalids keys vary by record schema: the modern `content` files
+# use lowercase (doi/arxiv/pubmed/pubmedcentral); the legacy `body` files nest
+# them under openaccessinfo with TitleCase (DOI/ArXiv/Medline/PubMedCentral).
+# Match case-insensitively. We index only the kinds CiteClaw resolves papers
+# by; mag / acl / dblp / medrxiv are deliberately not indexed.
 _XID_PREFIX = {
     "doi": "doi",
     "arxiv": "arxiv",
     "pubmed": "pmid",
+    "medline": "pmid",
     "pubmedcentral": "pmcid",
 }
 
@@ -52,9 +55,11 @@ _XID_PREFIX = {
 def idmap_keys(externalids: dict | None) -> list[str]:
     """The ``<prefix>:<value>`` idmap keys a record contributes."""
     out: list[str] = []
-    for dkey, prefix in _XID_PREFIX.items():
-        val = (externalids or {}).get(dkey)
-        if val:
+    for key, val in (externalids or {}).items():
+        if not val:
+            continue
+        prefix = _XID_PREFIX.get(str(key).strip().lower())
+        if prefix:
             out.append(f"{prefix}:{str(val).strip().lower()}")
     return out
 
@@ -111,23 +116,48 @@ def parse_paper_id(raw: str) -> tuple[str, str | int] | None:
 def slim_record(row: dict) -> dict | None:
     """Turn one raw S2ORC dump record into the slim dict we store.
 
-    Returns ``None`` when the record has no ``corpusid`` or no body text
-    (a record without full text is useless for the mirror's purpose).
+    Handles BOTH record schemas the ``s2orc`` dataset ships across its files:
+
+    * modern ``content`` files -- full text at ``content.text``, OA info at
+      ``content.source.oainfo`` (``openaccessurl``), externalids top-level
+      and lowercase;
+    * legacy ``body`` files -- full text at ``body.text``, OA info at
+      top-level ``openaccessinfo`` (``url`` + a nested TitleCase
+      ``externalids``), and no ``content`` key at all.
+
+    Returns ``None`` when the record has no ``corpusid`` or no body text.
     """
     cid = row.get("corpusid")
     if not isinstance(cid, int):
         return None
-    content = row.get("content") or {}
-    text = content.get("text")
+
+    content = row.get("content")
+    if isinstance(content, dict):  # modern schema
+        text = content.get("text")
+        if not text or not isinstance(text, str):
+            return None
+        oa = (content.get("source") or {}).get("oainfo") or {}
+        return {
+            "corpusid": cid,
+            "text": text,
+            "annotations": content.get("annotations") or {},
+            "license": oa.get("license"),
+            "status": oa.get("status"),
+            "oaurl": oa.get("openaccessurl"),
+            "externalids": row.get("externalids") or {},
+        }
+
+    body = row.get("body")  # legacy schema
+    text = body.get("text") if isinstance(body, dict) else body
     if not text or not isinstance(text, str):
         return None
-    oa = (content.get("source") or {}).get("oainfo") or {}
+    oai = row.get("openaccessinfo") or {}
     return {
         "corpusid": cid,
         "text": text,
-        "annotations": content.get("annotations") or {},
-        "license": oa.get("license"),
-        "status": oa.get("status"),
-        "oaurl": oa.get("openaccessurl"),
-        "externalids": row.get("externalids") or {},
+        "annotations": (body.get("annotations") if isinstance(body, dict) else None) or {},
+        "license": oai.get("license"),
+        "status": oai.get("status"),
+        "oaurl": oai.get("url"),
+        "externalids": oai.get("externalids") or {},
     }

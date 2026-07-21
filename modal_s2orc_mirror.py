@@ -212,7 +212,8 @@ def status() -> dict:
 # ---- orchestration ---------------------------------------------------------
 
 @app.local_entrypoint()
-def ingest(release: str = "latest", subset: int = 0, skip_map: bool = False) -> None:
+def ingest(release: str = "latest", subset: int = 0, skip_map: bool = False,
+           tag: str = "") -> None:
     """Full build: map every ``s2orc`` dump file, reduce every shard, flip CURRENT.
 
     ``--subset N`` limits to the first N dump files (smoke runs; stored as a
@@ -232,7 +233,7 @@ def ingest(release: str = "latest", subset: int = 0, skip_map: bool = False) -> 
     if release == "latest":
         release = _datasets_get("/release/latest", api_key)["release_id"]
         time.sleep(1.3)
-    tag = release if not subset else f"smoke-{release}"
+    tag = tag or (release if not subset else f"smoke-{release}")
     print(f"release {release} -> store version '{tag}'")
 
     n_files = 0

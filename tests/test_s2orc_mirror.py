@@ -51,7 +51,38 @@ RECORDS = [
         "externalids": {"doi": "10.1/nocid"},
         "content": {"text": "orphan", "annotations": {}},
     },
+    {  # Schema B: legacy `body`-based record (s2orc dataset files ~320-635)
+        "corpusid": 555,
+        "openaccessinfo": {
+            "license": "CCBYNCSA", "status": "GOLD",
+            "url": "https://doi.org/10.4148/legacy",
+            "externalids": {"DOI": "10.4148/legacy", "ArXiv": None,
+                            "Medline": "778899", "PubMedCentral": None, "MAG": "3160"},
+        },
+        "title": "A legacy full-text paper",
+        "authors": [{"name": "A. Author"}],
+        "body": {"text": "Legacy body full text about ecosystems."},
+        "bibliography": [{"title": "ref one"}],
+    },
 ]
+
+
+def test_schema_b_legacy_body(tmp_path):
+    b = schema.slim_record(RECORDS[4])
+    assert b is not None and b["corpusid"] == 555
+    assert b["text"].startswith("Legacy body full text")
+    assert b["license"] == "CCBYNCSA" and b["status"] == "GOLD"
+    assert b["oaurl"] == "https://doi.org/10.4148/legacy"
+    keys = schema.idmap_keys(b["externalids"])
+    assert "doi:10.4148/legacy" in keys      # TitleCase DOI matched case-insensitively
+    assert "pmid:778899" in keys             # Medline -> pmid
+    # round-trips through the store, resolvable by every id kind
+    store = _build_store(tmp_path)
+    assert store.resolve("CorpusId:555") == 555
+    assert store.resolve("DOI:10.4148/legacy") == 555
+    assert store.resolve("PMID:778899") == 555
+    rec = store.get_fulltext(555)
+    assert rec["text"].startswith("Legacy body full text") and rec["license"] == "CCBYNCSA"
 
 
 def _build_store(tmp_path: Path, records=RECORDS) -> MirrorStore:
