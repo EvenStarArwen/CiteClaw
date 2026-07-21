@@ -1182,10 +1182,10 @@ select {
   min-width: 0; min-height: 0;
   overflow: hidden;
 }
-.config-col-tree { border-right: 1px solid var(--cc-rule-strong); background: #fbfaf7; }
+.config-col-tree { border-right: 1px solid var(--cc-rule-strong); background: var(--cc-card); }
 .config-col-inspect { background: var(--cc-panel); }
 .config-col-globals {
-  background: #fbfaf7;
+  background: var(--cc-card);
   border-left: 1px solid var(--cc-rule-strong);
 }
 
@@ -1196,8 +1196,8 @@ select {
   display: flex; align-items: baseline; gap: 10px;
   background: var(--cc-panel);
 }
-.config-col-tree .config-col-head { background: #fbfaf7; }
-.config-col-globals .config-col-head { background: #fbfaf7; }
+.config-col-tree .config-col-head { background: var(--cc-card); }
+.config-col-globals .config-col-head { background: var(--cc-card); }
 .config-col-title {
   font-size: 10px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.08em;
