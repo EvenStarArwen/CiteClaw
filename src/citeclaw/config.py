@@ -238,6 +238,13 @@ class Settings(BaseSettings):
     # a .../graph/v1 URL. The bearer key is env-only (never YAML).
     s2_mirror_url: str = ""
     s2_mirror_key: str = ""
+    # Self-hosted S2ORC full-text mirror (see src/s2orc_mirror +
+    # modal_s2orc_mirror.py). When set, accepted open-access papers that
+    # have an S2ORC record can have their parsed full text fetched (for
+    # chat / ``full_text`` screening). Accepts the bare origin or a
+    # .../s2orc/v1 URL. The bearer key is env-only (never YAML).
+    s2orc_mirror_url: str = ""
+    s2orc_mirror_key: str = ""
 
     # --- Topic + IO --------------------------------------------------
     topic_description: str = ""
@@ -292,12 +299,14 @@ _FORBIDDEN_YAML_KEYS = {
     "gemini_api_key",
     "s2_api_key",
     "s2_mirror_key",
+    "s2orc_mirror_key",
     "llm_api_key",
     "openalex_api_key",
     "OPENAI_API_KEY",
     "GEMINI_API_KEY",
     "S2_API_KEY",
     "S2_MIRROR_KEY",
+    "S2ORC_MIRROR_KEY",
     "SEMANTIC_SCHOLAR_API_KEY",
     "LLM_API_KEY",
     "OPENALEX_API_KEY",
@@ -313,6 +322,8 @@ _ENV_OVERRIDE_TABLE: tuple[tuple[tuple[str, ...], str], ...] = (
     (("CITECLAW_S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "S2_API_KEY"), "s2_api_key"),
     (("CITECLAW_S2_MIRROR_URL", "S2_MIRROR_URL"), "s2_mirror_url"),
     (("CITECLAW_S2_MIRROR_KEY", "S2_MIRROR_KEY"), "s2_mirror_key"),
+    (("CITECLAW_S2ORC_MIRROR_URL", "S2ORC_MIRROR_URL"), "s2orc_mirror_url"),
+    (("CITECLAW_S2ORC_MIRROR_KEY", "S2ORC_MIRROR_KEY"), "s2orc_mirror_key"),
     (("CITECLAW_OPENALEX_API_KEY", "OPENALEX_API_KEY"), "openalex_api_key"),
     (("CITECLAW_OPENALEX_EMAIL", "OPENALEX_EMAIL"), "openalex_email"),
 )
