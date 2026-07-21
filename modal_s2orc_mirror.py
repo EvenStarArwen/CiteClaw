@@ -186,8 +186,9 @@ def probe(paper_id: str = "") -> dict:
     return out
 
 
-@app.function(image=image, volumes={DATA: vol}, timeout=600)
-def status() -> dict:
+@app.function(image=image, volumes={DATA: vol}, timeout=1800)
+def status(count_rows: bool = False) -> dict:
+    import sqlite3
     from pathlib import Path
 
     vol.reload()
@@ -197,15 +198,41 @@ def status() -> dict:
     if cur.exists():
         out["current"] = cur.read_text().strip()
     for d in sorted(base.iterdir()) if base.exists() else []:
-        if d.is_dir():
-            dbs = list(d.glob("*.db"))
-            out["versions"][d.name] = {
-                "dbs": len(dbs),
-                "gb": round(sum(p.stat().st_size for p in dbs) / 1e9, 2),
-            }
+        if not d.is_dir():
+            continue
+        dbs = list(d.glob("*.db"))
+        ver = {"dbs": len(dbs),
+               "gb": round(sum(p.stat().st_size for p in dbs) / 1e9, 2)}
+        mp = d / "meta.json"
+        if mp.exists():
+            try:
+                ver["meta_totals"] = json.loads(mp.read_text()).get("totals")
+            except Exception:
+                pass
+        if count_rows:
+            # Full COUNT(*) across 96 shards over a FUSE volume is too slow
+            # (btree leaf traversal). corpusid % TEXT_SHARDS is uniform, so
+            # sample a few shards and extrapolate.
+            from s2orc_mirror import schema as _sch
+            sample = [0, 1, 2]
+            got = 0
+            for s in sample:
+                db = d / f"fulltext_{s:02d}.db"
+                if not db.exists():
+                    continue
+                try:
+                    c = sqlite3.connect(f"file:{db}?mode=ro&immutable=1", uri=True)
+                    got += c.execute("SELECT COUNT(*) FROM fulltext").fetchone()[0]
+                    c.close()
+                except Exception:
+                    pass
+            ver["fulltext_rows_sample3"] = got
+            ver["fulltext_rows_est"] = int(round(got * _sch.TEXT_SHARDS / len(sample)))
+        out["versions"][d.name] = ver
     ingest = Path(DATA) / "ingest"
     if ingest.exists():
         out["ingest_dirs"] = [d.name for d in ingest.iterdir() if d.is_dir()]
+    print(json.dumps(out, indent=2))
     return out
 
 

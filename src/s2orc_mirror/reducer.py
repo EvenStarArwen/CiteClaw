@@ -70,8 +70,21 @@ def reduce_text(parts_root: Path, shard: int, out_path: Path, scratch: Path) -> 
     def _flush() -> None:
         nonlocal batch, batch_bytes
         if batch:
+            # A corpusid can appear in BOTH schemas (modern `content` file +
+            # legacy `body` file). Prefer the annotation-bearing (modern)
+            # record on conflict, regardless of partition order: a record
+            # with no annotations only fills a gap, never clobbers an
+            # already-stored annotated one. Keeps max coverage AND annotations.
             conn.executemany(
-                "INSERT OR REPLACE INTO fulltext VALUES (?, ?, ?, ?, ?, ?, ?)", batch
+                "INSERT INTO fulltext "
+                "(corpusid, license, status, oaurl, externalids, body, annos) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(corpusid) DO UPDATE SET "
+                "license=excluded.license, status=excluded.status, "
+                "oaurl=excluded.oaurl, externalids=excluded.externalids, "
+                "body=excluded.body, annos=excluded.annos "
+                "WHERE excluded.annos IS NOT NULL",
+                batch,
             )
             batch = []
             batch_bytes = 0

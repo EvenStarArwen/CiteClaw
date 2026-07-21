@@ -64,7 +64,30 @@ RECORDS = [
         "body": {"text": "Legacy body full text about ecosystems."},
         "bibliography": [{"title": "ref one"}],
     },
+    {  # duplicate corpusid: legacy (no annotations) reduced FIRST ...
+        "corpusid": 777,
+        "openaccessinfo": {"license": "CCBY", "status": "GREEN", "url": None,
+                           "externalids": {}},
+        "body": {"text": "Legacy text for a paper also in the modern half."},
+    },
+    {  # ... then modern (with annotations): modern must win despite order
+        "corpusid": 777,
+        "externalids": {"doi": "10.9/dup"},
+        "content": {"source": {"oainfo": {"license": "CCBY", "status": "GOLD",
+                                          "openaccessurl": "https://ex.org/dup.pdf"}},
+                    "text": "Modern text for the same paper.",
+                    "annotations": {"paragraph": '[{"start":0,"end":6}]'}},
+    },
 ]
+
+
+def test_prefer_annotated_on_conflict(tmp_path):
+    store = _build_store(tmp_path)
+    rec = store.get_fulltext(777, want_annos=True)
+    # modern record won despite being reduced AFTER the legacy one
+    assert rec["text"].startswith("Modern text")
+    assert rec["status"] == "GOLD"
+    assert "paragraph" in (rec["annotations"] or {})
 
 
 def test_schema_b_legacy_body(tmp_path):
