@@ -1,0 +1,49 @@
+<!-- @dsCard group="Components" viewport="700x360" name="Core — buttons, badges, tabs, progress, metrics" subtitle="Primitives shared across every screen" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><style>
+  html,body{margin:0;font-family:var(--cc-font-sans);color:var(--cc-ink-1);background:var(--cc-panel);}
+  body{padding:18px 20px;display:flex;flex-direction:column;gap:16px;}
+  .grp{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  .cap{font-family:var(--cc-font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--cc-ink-faint);width:100%;}
+  .btn{display:inline-flex;align-items:center;gap:6px;font-weight:500;border-radius:var(--cc-r-ctrl);padding:6px 12px;font-size:13px;cursor:pointer;}
+  .primary{background:var(--cc-accent);color:#fff;border:1px solid var(--cc-accent);font-weight:600;box-shadow:var(--cc-shadow-1);}
+  .secondary{background:var(--cc-card);color:var(--cc-ink-1);border:1px solid var(--cc-rule-strong);}
+  .ghost{background:transparent;color:var(--cc-ink-2);border:1px solid transparent;}
+  .badge{font-family:var(--cc-font-mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;}
+  .b-neutral{color:var(--cc-ink-2);background:var(--cc-hover-soft);border:1px solid var(--cc-rule);}
+  .b-accent{color:var(--cc-accent);background:var(--cc-accent-wash);border:1px solid color-mix(in srgb,var(--cc-accent) 25%,transparent);}
+  .b-danger{color:var(--cc-danger);background:color-mix(in srgb,var(--cc-danger) 12%,var(--cc-card));border:1px solid color-mix(in srgb,var(--cc-danger) 28%,transparent);}
+  .seg{display:inline-flex;padding:3px;gap:2px;background:var(--cc-hover-deep);border-radius:var(--cc-r-toggle);}
+  .seg button{padding:5px 15px;font-size:13px;font-weight:500;color:var(--cc-ink-2);background:transparent;border:none;border-radius:var(--cc-r-toggle-in);cursor:pointer;font-family:inherit;}
+  .seg button.on{background:var(--cc-card);color:var(--cc-ink-accent);font-weight:600;box-shadow:var(--cc-shadow-1);}
+  .track{height:6px;border-radius:999px;background:var(--cc-hover-deep);overflow:hidden;width:180px;}
+  .fill{height:100%;background:var(--cc-accent);border-radius:999px;}
+  .metric{display:flex;flex-direction:column;gap:2px;padding-right:22px;}
+  .m-l{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--cc-ink-3);}
+  .m-v{font-size:19px;font-weight:600;letter-spacing:-.02em;}
+  .m-s{font-family:var(--cc-font-mono);font-size:9px;color:var(--cc-ink-faint);}
+</style></head><body>
+  <div class="grp"><span class="cap">Button</span>
+    <button class="btn primary">▶ Run pipeline</button>
+    <button class="btn secondary">Pause</button>
+    <button class="btn ghost">Clear draft</button>
+    <button class="btn secondary" style="opacity:.55;cursor:not-allowed;">Disabled</button>
+  </div>
+  <div class="grp"><span class="cap">Badge</span>
+    <span class="badge b-accent">● running</span>
+    <span class="badge b-neutral">6 papers</span>
+    <span class="badge b-neutral">5 filters</span>
+    <span class="badge b-danger">Rejected</span>
+  </div>
+  <div class="grp"><span class="cap">SegmentedToggle</span>
+    <div class="seg"><button class="on">Build</button><button>Run</button><button>Explore</button></div>
+  </div>
+  <div class="grp"><span class="cap">ProgressBar</span>
+    <div class="track"><div class="fill" style="width:62%"></div></div>
+    <span style="font-family:var(--cc-font-mono);font-size:11px;color:var(--cc-ink-3);">62%</span>
+  </div>
+  <div class="grp"><span class="cap">MetricStat</span>
+    <div class="metric"><span class="m-l">Accepted</span><span class="m-v">418</span><span class="m-s">papers</span></div>
+    <div class="metric"><span class="m-l">Cost</span><span class="m-v">$0.63</span><span class="m-s">this run</span></div>
+    <div class="metric"><span class="m-l">S2 cache</span><span class="m-v">88%</span><span class="m-s">12.1k / 13.7k</span></div>
+  </div>
+</body></html>

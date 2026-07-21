@@ -1,0 +1,34 @@
+/* ============================================================
+   TYPE — Inter for everything human-readable; IBM Plex Mono for IDs,
+   metrics, meta rows and eyebrow labels. ONE tight scale (few sizes).
+   ============================================================ */
+:root {
+  --cc-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --cc-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Size scale (px) */
+  --cc-fs-tiny:  11px;   /* mono meta, chips, captions            */
+  --cc-fs-meta:  11.5px; /* filter summaries, dense mono rows     */
+  --cc-fs-body:  13px;   /* body default, controls, list text     */
+  --cc-fs-name:  14px;   /* card/block titles, panel headings     */
+  --cc-fs-h:     14px;   /* section / pane headings               */
+  --cc-fs-lg:    15px;   /* detail titles                         */
+  --cc-fs-xl:    19px;   /* dashboard metric value                */
+  --cc-fs-2xl:   24px;   /* feature number                        */
+  --cc-fs-eyebrow: 11px; /* uppercase mono eyebrow (panel labels) */
+
+  /* Weights */
+  --cc-fw-regular: 400;
+  --cc-fw-medium:  500;
+  --cc-fw-semibold:600;
+  --cc-fw-bold:    700;
+
+  /* Line heights */
+  --cc-lh-tight: 1.25;
+  --cc-lh-snug:  1.35;
+  --cc-lh-body:  1.55;
+
+  /* Eyebrow treatment (uppercase mono label used on every panel header) */
+  --cc-eyebrow-transform: uppercase;
+  --cc-eyebrow-tracking: 0.08em;
+}
