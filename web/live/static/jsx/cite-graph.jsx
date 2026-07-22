@@ -252,7 +252,7 @@ const CG_FA2_DEFAULTS = {
 };
 const CG_VIS_DEFAULTS = {
   minSize: 3, maxSize: 20, sizeCurve: "sqrt",
-  edgeMin: 0.8, edgeMax: 2.5, edgeCurve: "linear",
+  edgeMin: 0.25, edgeMax: 1.1, edgeCurve: "linear",
   palette: "ember",
 };
 const CG_GF_DEFAULTS = { minDegree: 0, minEdgeW: 0, largestOnly: false };
@@ -1012,7 +1012,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         const k = st.sizeK || 1;
         // width stays weight-mapped (our project); only the colour follows the
         // demo's ink. Selection lights the whole neighbourhood sub-graph.
-        const bw = (st.legacy ? 0.8 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * k;
+        const bw = (st.legacy ? 0.3 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * k;
         if (st.anchor) {
           const inHood = (id) => id === st.anchor || st.connected.has(id);
           if (inHood(src) && inHood(tgt)) {
