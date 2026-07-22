@@ -211,10 +211,11 @@ function cgParamRadius(p, kind, vis, vmax) {
 function cgRadius(p, kind, vis, vmax, legacy) {
   return legacy ? cgLegacyRadius(p) : cgParamRadius(p, kind, vis, vmax);
 }
-// Border budget added around the fill (ring space + halo/stroke), so the
-// visible fill keeps the run-canvas sizes.
+// Border budget added around the fill (ring space + ink stroke), so the
+// visible fill keeps the run-canvas sizes. Uniform now that seeds carry no
+// halo — the old +5 seed budget was room for the (now removed) glow.
 function cgNodeSize(p, kind, vis, vmax, legacy) {
-  return cgRadius(p, kind, vis, vmax, legacy) + (p.seed ? 5 : 2.5);
+  return cgRadius(p, kind, vis, vmax, legacy) + 2.5;
 }
 
 // Edge width ∝ edge weight over the VISIBLE edges' weight range, with its
@@ -252,7 +253,7 @@ const CG_FA2_DEFAULTS = {
 };
 const CG_VIS_DEFAULTS = {
   minSize: 3, maxSize: 20, sizeCurve: "sqrt",
-  edgeMin: 0.15, edgeMax: 1.2, edgeCurve: "linear",
+  edgeMin: 0.5, edgeMax: 1.5, edgeCurve: "linear",
   palette: "ember",
 };
 const CG_GF_DEFAULTS = { minDegree: 0, minEdgeW: 0, largestOnly: false };
@@ -603,11 +604,11 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       color: p.seed ? st.pal.seed : cgRampColor(st.pal, st.cdomain, cv),
       _seed: !!p.seed,
       _cval: cv,
-      haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
-      strokeColor: p.seed ? st.pal.seedStroke : st.pal.netInk,
-      haloSize: p.seed ? 0.22 : 0.0,
-      // demo's node "line style": an ink ring whose width grows with the node
-      strokeSize: p.seed ? 0.09 : 0.14,
+      haloColor: CG_TRANSPARENT,
+      strokeColor: st.pal.netInk,
+      haloSize: 0.0,
+      // demo's node "line style": a solid ink ring on every node, no halo/glow
+      strokeSize: p.seed ? 0.12 : 0.14,
     };
   };
 
@@ -1009,24 +1010,21 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       },
       edgeReducer: (edge, data) => {
         const src = st.graph.source(edge), tgt = st.graph.target(edge);
-        // Edge width is a TRUE screen-pixel value (like the demo's constant
-        // stroke-width) — weight-mapped, but never inflated by the position
-        // reference (sizeK≈15-20× under "prevent node overlap") nor thickened
-        // by zoom. In positions mode sigma renders size/ratio px, so multiply
-        // by the live camera ratio to cancel it back to a fixed px width.
-        const px = st.legacy ? 0.6 : cgEdgeWidth(data.weight, st.wrange, st.vis);
-        const posMode = !!(st.fa2 && st.fa2.adjustSizes);
-        const ratio = posMode ? (st.sigma.getCamera().ratio || 1) : 1;
-        const bw = px * ratio;
+        // width stays weight-mapped (our project); only the colour follows the
+        // demo's ink. In overlap mode sizes render in layout units (sizeK ≫ 1);
+        // scale edge WIDTH by only √sizeK — the full sizeK is tuned for node
+        // discs and over-thickens 1-D strokes into the heavy mesh we don't want.
+        const kw = Math.sqrt(st.sizeK || 1);
+        const bw = (st.legacy ? 0.8 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * kw;
         if (st.anchor) {
           const inHood = (id) => id === st.anchor || st.connected.has(id);
           if (inHood(src) && inHood(tgt)) {
-            return { ...data, color: cgFade(st.pal.selStrong, 0.72, st.pal.bgRgb),
-                     size: Math.max(bw * 1.8, (px + 0.9) * ratio), zIndex: 1 };
+            return { ...data, color: cgFade(st.pal.selStrong, 0.7, st.pal.bgRgb),
+                     size: Math.max(bw * 1.6, bw + 0.6 * kw), zIndex: 1 };
           }
-          return { ...data, color: cgFade(st.pal.netInk, 0.06, st.pal.bgRgb), size: bw };
+          return { ...data, color: cgFade(st.pal.netInk, 0.05, st.pal.bgRgb), size: bw };
         }
-        return { ...data, color: cgFade(st.pal.netInk, 0.28, st.pal.bgRgb), size: bw };
+        return { ...data, color: cgFade(st.pal.netInk, 0.15, st.pal.bgRgb), size: bw };
       },
     };
     if (createNodeBorderProgram) {
@@ -1218,8 +1216,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       st.graph.mergeNodeAttributes(nid, {
         _cval: cv,
         color: p.seed ? st.pal.seed : cgRampColor(st.pal, st.cdomain, cv),
-        haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
-        strokeColor: p.seed ? st.pal.seedStroke : st.pal.netInk,
+        haloColor: CG_TRANSPARENT,
+        strokeColor: st.pal.netInk,
       });
     });
   };
