@@ -1,5 +1,0 @@
-/* Webfonts — Inter (sans) + IBM Plex Mono (mono).
-   The CiteClaw WebUI loads these from Google Fonts; we keep that source so
-   consumers get the exact faces. (No binaries are vendored in this system —
-   see readme.md › Iconography/Fonts.) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
