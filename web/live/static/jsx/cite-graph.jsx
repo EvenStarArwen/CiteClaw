@@ -118,6 +118,9 @@ function cgReadPalette(paletteName) {
     ink1: cgCssVar("--cc-ink-1", "#1e2735"),
     ink2: cgCssVar("--cc-ink-2", "#55606d"),
     inkFaint: cgCssVar("--cc-ink-faint", "#94a3b8"),
+    // the demo's ink for node outlines + edges — theme-aware (dark on light,
+    // light on dark) via --cc-ink-1; a --cc-net-ink token overrides if defined.
+    netInk: cgCssVar("--cc-net-ink", cgCssVar("--cc-ink-1", "#26231f")),
   };
 }
 
@@ -447,6 +450,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     sizeK: 1, origZoomFn: null,
     dataKey: null, stopTimer: null, animRAF: 0, replayTimer: null,
     syncTimer: null,
+    dragging: null, dragHome: null, dragLast: null, dragVel: { x: 0, y: 0 },
+    _dragMoved: false, bounceRAF: 0, _bounceId: null, layoutWasRunning: false,
     fa2: { ...CG_FA2_DEFAULTS }, vis: { ...CG_VIS_DEFAULTS }, gf: { ...CG_GF_DEFAULTS },
     onSelect: null, onHover: null, onStats: null,
   }).current;
@@ -599,9 +604,10 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       _seed: !!p.seed,
       _cval: cv,
       haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
-      strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
+      strokeColor: p.seed ? st.pal.seedStroke : st.pal.netInk,
       haloSize: p.seed ? 0.22 : 0.0,
-      strokeSize: p.seed ? 0.09 : 0.12,
+      // demo's node "line style": an ink ring whose width grows with the node
+      strokeSize: p.seed ? 0.09 : 0.14,
     };
   };
 
@@ -818,6 +824,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     clearTimeout(st.syncTimer);
     clearTimeout(st.fa2Timer);
     cancelAnimationFrame(st.animRAF);
+    cancelAnimationFrame(st.bounceRAF);
+    st.dragging = null; st._bounceId = null; st.bounceRAF = 0;
     if (st.layout) { try { st.layout.kill(); } catch (_) {} st.layout = null; }
     if (st.sigma) { try { st.sigma.kill(); } catch (_) {} st.sigma = null; }
     st.graph = null;
@@ -853,6 +861,82 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         ctx.fillRect(gx, gy, 1, 1);
       }
     }
+  };
+
+  // ---- node drag + bounce (the demo's grab-and-spring-home) --------------
+  const CG_BOUNCE = 0.5;
+  const beginNodeDrag = (id) => {
+    const g = st.graph;
+    if (!g || !g.hasNode(id)) return;
+    cancelAnimationFrame(st.bounceRAF); st.bounceRAF = 0; st._bounceId = null;
+    st.dragging = id;
+    st.dragHome = { x: g.getNodeAttribute(id, "x"), y: g.getNodeAttribute(id, "y") };
+    st.dragLast = { ...st.dragHome };
+    st.dragVel = { x: 0, y: 0 };
+    st._dragMoved = false;
+    st.layoutWasRunning = false;
+    if (boxRef.current) boxRef.current.style.cursor = "grabbing";
+    hideTip();
+    if (st.onSelect) st.onSelect(id);   // grab reveals the neighbourhood, like the demo
+  };
+  const moveNodeDrag = (e) => {
+    const g = st.graph;
+    if (st.dragging === null || !g || !st.sigma || !g.hasNode(st.dragging)) return false;
+    if (!st._dragMoved) {
+      // pause the live layout only once the drag really starts, so a plain
+      // click never disturbs the running simulation
+      st._dragMoved = true;
+      st.layoutWasRunning = !!(st.layout && st.layout.isRunning());
+      if (st.layoutWasRunning) {
+        clearTimeout(st.stopTimer);
+        try { st.layout.stop(); } catch (_) {}
+        setLayoutOn(false);
+      }
+    }
+    const pos = st.sigma.viewportToGraph({ x: e.x, y: e.y });
+    st.dragVel = { x: pos.x - st.dragLast.x, y: pos.y - st.dragLast.y };
+    st.dragLast = { x: pos.x, y: pos.y };
+    g.setNodeAttribute(st.dragging, "x", pos.x);
+    g.setNodeAttribute(st.dragging, "y", pos.y);
+    st.sigma.refresh();
+    return true;
+  };
+  const endNodeDrag = () => {
+    if (st.dragging === null) return;
+    const id = st.dragging;
+    st.dragging = null;
+    if (boxRef.current) boxRef.current.style.cursor = "";
+    if (!st._dragMoved) return;   // a click, not a drag — nothing to spring back
+    const g = st.graph;
+    if (!g || !g.hasNode(id) || !st.dragHome) return;
+    st._bounceId = id;
+    const home = st.dragHome;
+    const damp = 0.92 - CG_BOUNCE * 0.30;   // bouncier release ⇒ more overshoot
+    const stiff = 0.16;
+    const step = () => {
+      st.bounceRAF = 0;
+      if (st._bounceId !== id || !st.graph || !st.graph.hasNode(id)) return;
+      let x = st.graph.getNodeAttribute(id, "x");
+      let y = st.graph.getNodeAttribute(id, "y");
+      const dx = home.x - x, dy = home.y - y;
+      if (Math.abs(st.dragVel.x) > 0.03 || Math.abs(st.dragVel.y) > 0.03
+          || Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
+        st.dragVel.x = (st.dragVel.x + dx * stiff) * damp;
+        st.dragVel.y = (st.dragVel.y + dy * stiff) * damp;
+        x += st.dragVel.x; y += st.dragVel.y;
+        st.graph.setNodeAttribute(id, "x", x);
+        st.graph.setNodeAttribute(id, "y", y);
+        if (st.sigma) st.sigma.refresh();
+        st.bounceRAF = requestAnimationFrame(step);
+      } else {
+        st.graph.setNodeAttribute(id, "x", home.x);
+        st.graph.setNodeAttribute(id, "y", home.y);
+        if (st.sigma) st.sigma.refresh();
+        st._bounceId = null;
+        if (st.layoutWasRunning) heatLayout();   // hand the node back to the live layout
+      }
+    };
+    st.bounceRAF = requestAnimationFrame(step);
   };
 
   // ---- build / rebuild on data-source change ----------------------------
@@ -913,27 +997,31 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         }
         if (st.anchor) {
           if (st.connected.has(id)) return { ...base, zIndex: 2 };
-          // run-canvas dim: alpha 0.22 against the paper base
+          // dim the out-of-neighbourhood nodes (demo-style) against the paper base
           return { ...base,
-                   color: cgFade(data.color, 0.22, st.pal.bgRgb),
+                   color: cgFade(data.color, 0.15, st.pal.bgRgb),
                    haloColor: CG_TRANSPARENT,
-                   strokeColor: cgFade(data.strokeColor, 0.22, st.pal.bgRgb),
-                   labelColor: cgFade(st.pal.ink1, 0.25, st.pal.bgRgb),
+                   strokeColor: cgFade(data.strokeColor, 0.15, st.pal.bgRgb),
+                   labelColor: cgFade(st.pal.ink1, 0.2, st.pal.bgRgb),
                    forceLabel: false };
         }
         return base;
       },
       edgeReducer: (edge, data) => {
         const src = st.graph.source(edge), tgt = st.graph.target(edge);
-        const yc = cgRampColor(st.pal, st.cdomain, st.graph.getNodeAttribute(tgt, "_cval"));
-        const touches = st.anchor && (src === st.anchor || tgt === st.anchor);
         const k = st.sizeK || 1;
+        // width stays weight-mapped (our project); only the colour follows the
+        // demo's ink. Selection lights the whole neighbourhood sub-graph.
         const bw = (st.legacy ? 0.8 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * k;
-        if (touches) {
-          return { ...data, color: cgFade(yc, 0.85, st.pal.bgRgb),
-                   size: Math.max(bw * 1.6, bw + 0.8 * k), zIndex: 1 };
+        if (st.anchor) {
+          const inHood = (id) => id === st.anchor || st.connected.has(id);
+          if (inHood(src) && inHood(tgt)) {
+            return { ...data, color: cgFade(st.pal.selStrong, 0.72, st.pal.bgRgb),
+                     size: Math.max(bw * 1.6, bw + 0.8 * k), zIndex: 1 };
+          }
+          return { ...data, color: cgFade(st.pal.netInk, 0.06, st.pal.bgRgb), size: bw };
         }
-        return { ...data, color: cgFade(yc, 0.32, st.pal.bgRgb), size: bw };
+        return { ...data, color: cgFade(st.pal.netInk, 0.22, st.pal.bgRgb), size: bw };
       },
     };
     if (createNodeBorderProgram) {
@@ -985,7 +1073,18 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       hideTip();
       sigma.refresh();
     });
-    sigma.getMouseCaptor().on("mousemovebody", (e) => moveTip(e));
+    sigma.on("downNode", ({ node }) => beginNodeDrag(node));
+    sigma.getMouseCaptor().on("mousemovebody", (e) => {
+      if (st.dragging !== null) {
+        if (moveNodeDrag(e)) {
+          e.preventSigmaDefault();
+          if (e.original) { e.original.preventDefault(); e.original.stopPropagation(); }
+        }
+        return;
+      }
+      moveTip(e);
+    });
+    sigma.getMouseCaptor().on("mouseup", () => endNodeDrag());
     const cam = sigma.getCamera();
     cam.on("updated", () => { setZoomPct(Math.round(100 / cam.ratio)); drawGrid(); });
     setZoomPct(Math.round(100 / cam.ratio));
@@ -1115,7 +1214,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         _cval: cv,
         color: p.seed ? st.pal.seed : cgRampColor(st.pal, st.cdomain, cv),
         haloColor: p.seed ? st.pal.seedHalo : CG_TRANSPARENT,
-        strokeColor: p.seed ? st.pal.seedStroke : st.pal.nodeStroke,
+        strokeColor: p.seed ? st.pal.seedStroke : st.pal.netInk,
       });
     });
   };
@@ -1236,6 +1335,13 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
   const fitView = () => {
     if (!st.sigma) return;
     st.sigma.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }, { duration: 220 });
+  };
+  // Manual 30°-per-click rotation of the whole field (no auto-spin) — rotates
+  // the camera, so node positions / drag / hit-testing all stay correct.
+  const rotate30 = () => {
+    if (!st.sigma) return;
+    const cam = st.sigma.getCamera();
+    cam.animate({ angle: cam.angle + Math.PI / 6 }, { duration: 240 });
   };
 
   // f5's "Simulate live growth" over the active collection: seeds first, then
@@ -1378,6 +1484,7 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
           <span className="pipe-zoom">{zoomPct}%</span>
           <button className="btn-icon btn" onClick={() => zoomBy(1.25)} title="Zoom in"><Icon name="plus" size={11} /></button>
           <button className="btn-icon btn" onClick={fitView} title="Fit to view"><Icon name="maximize-2" size={11} /></button>
+          <button className="btn-icon btn" onClick={rotate30} title="Rotate 30°"><Icon name="rotate-cw" size={11} /></button>
           {(tools.layout || tools.replay || tools.layoutOptions || tools.labels) && <span className="cg-toolbar-sep" />}
           {tools.layout && (
             <button className={"btn-icon btn" + (layoutOn ? " is-on" : "")} onClick={toggleLayout}
