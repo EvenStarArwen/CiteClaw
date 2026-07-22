@@ -72,7 +72,7 @@ function SettingsModal({ open, onClose, pipeline }) {
     backdrop: { position: "fixed", inset: 0, background: "rgba(30,39,53,0.30)", zIndex: 200,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
     card: { width: "min(560px, 96vw)", maxHeight: "90vh", overflow: "auto", background: "var(--cc-panel)",
-      border: "1px solid var(--cc-rule-strong)", borderRadius: 8, boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
+      border: "1px solid var(--cc-rule-strong)", borderRadius: "var(--mono-r-lg)", boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
     head: { display: "flex", alignItems: "center", justifyContent: "space-between",
       padding: "14px 18px", borderBottom: "1px solid var(--cc-rule)", background: "var(--cc-chrome)" },
     body: { padding: 18 },
@@ -81,12 +81,12 @@ function SettingsModal({ open, onClose, pipeline }) {
     keyLabel: { display: "flex", alignItems: "center", gap: 8, fontSize: 10, letterSpacing: "0.08em",
       textTransform: "uppercase", color: "var(--cc-ink-3)", marginBottom: 6, marginTop: 14 },
     input: { width: "100%", boxSizing: "border-box", padding: "8px 10px", fontSize: 13,
-      border: "1px solid var(--cc-btn-border)", borderRadius: 4, background: "var(--cc-paper)", color: "var(--cc-ink-1)" },
+      border: "1px solid var(--cc-btn-border)", borderRadius: "var(--mono-r-xs)", background: "var(--cc-paper)", color: "var(--cc-ink-1)" },
     setChip: { display: "inline-flex", alignItems: "center", gap: 5,
       color: "var(--cc-positive)", fontWeight: 700, letterSpacing: "0.06em" },
-    setDot: { width: 8, height: 8, borderRadius: "50%", background: "var(--cc-positive)", flex: "none" },
+    setDot: { width: 8, height: 8, borderRadius: "var(--mono-r-circle)", background: "var(--cc-positive)", flex: "none" },
     frozen: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-      padding: "5px 6px 5px 11px", border: "1px solid var(--cc-rule)", borderRadius: 4,
+      padding: "5px 6px 5px 11px", border: "1px solid var(--cc-rule)", borderRadius: "var(--mono-r-xs)",
       background: "var(--cc-hover-soft)" },
     frozenDots: { fontFamily: "var(--cc-font-mono)", fontSize: 11, letterSpacing: 3,
       color: "var(--cc-ink-3)", userSelect: "none" },
@@ -256,7 +256,7 @@ function RunErrorDialog({ error, onClose, onOpenSettings }) {
     backdrop: { position: "fixed", inset: 0, background: "rgba(30,39,53,0.30)", zIndex: 240,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
     card: { width: "min(440px, 96vw)", background: "var(--cc-panel)", overflow: "hidden",
-      border: "1px solid var(--cc-rule-strong)", borderRadius: 8, boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
+      border: "1px solid var(--cc-rule-strong)", borderRadius: "var(--mono-r-lg)", boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
     head: { display: "flex", alignItems: "center", gap: 9,
       padding: "14px 18px", borderBottom: "1px solid var(--cc-rule)", background: "var(--cc-chrome)" },
     body: { padding: 18, fontSize: 13, color: "var(--cc-ink-1)", lineHeight: 1.55 },
@@ -299,7 +299,7 @@ function CapDialog() {
     backdrop: { position: "fixed", inset: 0, background: "rgba(30,39,53,0.30)", zIndex: 240,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
     card: { width: "min(460px, 96vw)", background: "var(--cc-panel)", overflow: "hidden",
-      border: "1px solid var(--cc-rule-strong)", borderRadius: 8, boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
+      border: "1px solid var(--cc-rule-strong)", borderRadius: "var(--mono-r-lg)", boxShadow: "0 12px 40px rgba(30,39,53,0.18)" },
     head: { display: "flex", alignItems: "center", gap: 9,
       padding: "14px 18px", borderBottom: "1px solid var(--cc-rule)", background: "var(--cc-chrome)" },
     body: { padding: 18, fontSize: 13, color: "var(--cc-ink-1)", lineHeight: 1.55 },
@@ -325,7 +325,7 @@ function CapDialog() {
             <span style={{ color: "var(--cc-ink-2)" }}>Raise the limit to</span>
             <input value={newMax} onChange={e => setNewMax(e.target.value.replace(/[^0-9]/g, ""))}
               style={{ width: 90, padding: "5px 8px", fontFamily: "var(--cc-font-mono)", fontSize: 13,
-                border: "1px solid var(--cc-rule-strong)", borderRadius: 5, background: "var(--cc-bg)" }} />
+                border: "1px solid var(--cc-rule-strong)", borderRadius: "var(--mono-r-xs)", background: "var(--cc-bg)" }} />
             <span style={{ color: "var(--cc-ink-3)" }}>papers and keep going, or stop now.</span>
           </div>
         </div>
