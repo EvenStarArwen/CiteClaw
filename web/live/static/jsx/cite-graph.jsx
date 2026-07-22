@@ -237,11 +237,22 @@ function cgEaseOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 const CG_TRANSPARENT = "#00000000";
 // Node outline = a constant on-screen width on every node (the demo's look: the
 // same stroke width regardless of node size). @sigma/node-border sizes borders
-// as a FRACTION of each node's radius, so nodeReducer converts these target
-// pixels into a per-node fraction. The selection/hover ring is likewise a fixed
-// width, 0 at rest so the ink outline sits flush at the node edge on every node.
-const CG_BORDER_PX = 3;     // resting ink outline width (tuned to ~2 on-screen px)
-const CG_RING_PX = 5;       // selection / hover ring width
+// as a FRACTION of each node's radius, so nodeReducer converts a target pixel
+// width (vis.borderWidth) into a per-node fraction. The selection/hover ring is
+// drawn fixed-width (2px fatter than the outline), 0 at rest so the ink outline
+// sits flush at the node edge on every node.
+const CG_BORDER_PX = 3;     // default vis.borderWidth (px)
+
+// Gephi-style global edge-thickness slider: a log map position↔multiplier, so
+// the thin end has fine control while the range still reaches "very thick".
+const CG_ESCALE_MIN = 0.05, CG_ESCALE_MAX = 8;
+function cgEScaleToPos(v) {
+  const c = Math.max(CG_ESCALE_MIN, Math.min(CG_ESCALE_MAX, Number(v) || 1));
+  return Math.round(1000 * Math.log(c / CG_ESCALE_MIN) / Math.log(CG_ESCALE_MAX / CG_ESCALE_MIN));
+}
+function cgEScaleFromPos(p) {
+  return CG_ESCALE_MIN * Math.pow(CG_ESCALE_MAX / CG_ESCALE_MIN, (Number(p) || 0) / 1000);
+}
 
 // FA2 defaults — Gephi's citation-network recipe rather than the f5 demo's
 // small-graph aesthetics. edgeWeightInfluence defaults to 0 (pure topology):
@@ -260,7 +271,8 @@ const CG_FA2_DEFAULTS = {
 };
 const CG_VIS_DEFAULTS = {
   minSize: 3, maxSize: 20, sizeCurve: "sqrt",
-  edgeMin: 0.5, edgeMax: 1.5, edgeCurve: "linear",
+  edgeMin: 0.5, edgeMax: 1.5, edgeCurve: "linear", edgeScale: 1,
+  borderWidth: CG_BORDER_PX,
   palette: "ember",
 };
 const CG_GF_DEFAULTS = { minDegree: 0, minEdgeW: 0, largestOnly: false };
@@ -999,8 +1011,9 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         // ≈ size/sizeK in BOTH the screen and positions size references, so
         // (TARGET·sizeK)/size is the fraction that renders TARGET px everywhere.
         const k = st.sizeK || 1;
-        const strokeSize = Math.min(0.5, (CG_BORDER_PX * k) / Math.max(1e-6, size));
-        const ringPx = Math.min(0.6, (CG_RING_PX * k) / Math.max(1e-6, size));
+        const bpx = Number.isFinite(+st.vis.borderWidth) ? +st.vis.borderWidth : CG_BORDER_PX;
+        const strokeSize = bpx > 0 ? Math.min(0.5, (bpx * k) / Math.max(1e-6, size)) : 0;
+        const ringPx = Math.min(0.6, ((bpx + 2) * k) / Math.max(1e-6, size));
         const base = { ...data, size, strokeSize, labelColor: st.pal.ink1,
                        ringColor: CG_TRANSPARENT, ringSize: 0,
                        forceLabel: st.labels && st.top3.has(id) };
@@ -1030,7 +1043,11 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         // scale edge WIDTH by only √sizeK — the full sizeK is tuned for node
         // discs and over-thickens 1-D strokes into the heavy mesh we don't want.
         const kw = Math.sqrt(st.sizeK || 1);
-        const bw = (st.legacy ? 0.8 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * kw;
+        // vis.edgeScale = Gephi's global edge-thickness multiplier: scales EVERY
+        // edge together, on top of the weight→width min/max mapping, so widths
+        // can go far thinner or thicker than the min/max range alone allows.
+        const escale = Number.isFinite(+st.vis.edgeScale) ? +st.vis.edgeScale : 1;
+        const bw = (st.legacy ? 0.8 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * escale * kw;
         if (st.anchor) {
           const inHood = (id) => id === st.anchor || st.connected.has(id);
           if (inHood(src) && inHood(tgt)) {
@@ -1291,7 +1308,9 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
     CG_PREFS.vis = next; cgSavePrefs();  // share appearance choice across pages
     if (patch.palette != null) applyPalette();
     if (patch.minSize != null || patch.maxSize != null || patch.sizeCurve != null) resizeNodes();
-    if (patch.edgeMin != null || patch.edgeMax != null || patch.edgeCurve != null) {
+    if (patch.borderWidth != null && st.sigma) st.sigma.refresh();  // strokeSize is reducer-derived
+    if (patch.edgeMin != null || patch.edgeMax != null || patch.edgeCurve != null
+        || patch.edgeScale != null) {
       if (st.sigma) st.sigma.refresh();  // widths live in the edge reducer
     }
   };
@@ -1603,6 +1622,13 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
             <span className="cg-pop-v" />
           </label>
           <label className="cg-pop-row"
+                 title="Outline thickness drawn around every node — a constant on-screen width, the same on big and small nodes. 0 = no outline.">
+            <span className="cg-pop-k">Node border</span>
+            <input type="range" min="0" max="8" step="0.5" value={vis.borderWidth}
+                   onChange={e => applyVis({ borderWidth: +e.target.value })} />
+            <span className="cg-pop-v">{Number(vis.borderWidth).toFixed(1)}</span>
+          </label>
+          <label className="cg-pop-row"
                  title={ranges.weighted
                    ? "Edge width is proportional to edge weight, mapped into this min–max range."
                    : "This graph has no varying edge weights — every edge renders at the minimum width."}>
@@ -1616,6 +1642,14 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
                      value={vis.edgeMax}
                      onChange={e => applyVis({ edgeMax: e.target.value === "" ? "" : +e.target.value })} />
             </span>
+          </label>
+          <label className="cg-pop-row"
+                 title="Global edge thickness (Gephi's edge scale): multiplies EVERY edge width together — independent of the weight→width min/max above — so edges can go very thin or very thick.">
+            <span className="cg-pop-k">Edge scale</span>
+            <input type="range" min="0" max="1000" step="1"
+                   value={cgEScaleToPos(vis.edgeScale)}
+                   onChange={e => applyVis({ edgeScale: +cgEScaleFromPos(+e.target.value).toFixed(3) })} />
+            <span className="cg-pop-v">{Number(vis.edgeScale).toFixed(2)}×</span>
           </label>
           {ranges.weighted && (
             <label className="cg-pop-row"
