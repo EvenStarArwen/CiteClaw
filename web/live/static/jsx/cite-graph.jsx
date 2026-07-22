@@ -235,6 +235,13 @@ function cgTrunc(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n
 function cgEaseOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
 const CG_TRANSPARENT = "#00000000";
+// Node outline = a constant on-screen width on every node (the demo's look: the
+// same stroke width regardless of node size). @sigma/node-border sizes borders
+// as a FRACTION of each node's radius, so nodeReducer converts these target
+// pixels into a per-node fraction. The selection/hover ring is likewise a fixed
+// width, 0 at rest so the ink outline sits flush at the node edge on every node.
+const CG_BORDER_PX = 3;     // resting ink outline width (tuned to ~2 on-screen px)
+const CG_RING_PX = 5;       // selection / hover ring width
 
 // FA2 defaults — Gephi's citation-network recipe rather than the f5 demo's
 // small-graph aesthetics. edgeWeightInfluence defaults to 0 (pure topology):
@@ -607,8 +614,8 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       haloColor: CG_TRANSPARENT,
       strokeColor: st.pal.netInk,
       haloSize: 0.0,
-      // demo's node "line style": a solid ink ring on every node, no halo/glow
-      strokeSize: p.seed ? 0.12 : 0.14,
+      // outline COLOUR is per-node (ink); its WIDTH is a global constant (px),
+      // set on the border program, so every node's ring is the same thickness.
     };
   };
 
@@ -986,15 +993,23 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       maxCameraRatio: 8,
       nodeReducer: (id, data) => {
         const size = data._animSize ?? data.size;
-        const base = { ...data, size, labelColor: st.pal.ink1,
-                       ringColor: CG_TRANSPARENT, ringSize: 0.12,
+        // Constant-width outline: strokeSize is a fraction of the rendered
+        // radius, so to hold the on-screen width fixed across big & small nodes
+        // divide the target px by the on-screen size. sizeK makes on-screen size
+        // ≈ size/sizeK in BOTH the screen and positions size references, so
+        // (TARGET·sizeK)/size is the fraction that renders TARGET px everywhere.
+        const k = st.sizeK || 1;
+        const strokeSize = Math.min(0.5, (CG_BORDER_PX * k) / Math.max(1e-6, size));
+        const ringPx = Math.min(0.6, (CG_RING_PX * k) / Math.max(1e-6, size));
+        const base = { ...data, size, strokeSize, labelColor: st.pal.ink1,
+                       ringColor: CG_TRANSPARENT, ringSize: 0,
                        forceLabel: st.labels && st.top3.has(id) };
         if (id === st.selected) {
           return { ...base, zIndex: 3, forceLabel: st.labels,
-                   ringColor: st.pal.selStrong };
+                   ringColor: st.pal.selStrong, ringSize: ringPx };
         }
         if (id === st.hovered) {
-          return { ...base, zIndex: 3, ringColor: st.pal.selSoft };
+          return { ...base, zIndex: 3, ringColor: st.pal.selSoft, ringSize: ringPx };
         }
         if (st.anchor) {
           if (st.connected.has(id)) return { ...base, zIndex: 2 };
@@ -1033,11 +1048,15 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
         settings.nodeProgramClasses = {
           bordered: createNodeBorderProgram({
             borders: [
-              { size: { attribute: "ringSize", defaultValue: 0.12 },
+              { size: { attribute: "ringSize", defaultValue: 0 },
                 color: { attribute: "ringColor" } },
               { size: { attribute: "haloSize", defaultValue: 0.0 },
                 color: { attribute: "haloColor" } },
-              { size: { attribute: "strokeSize", defaultValue: 0.12 },
+              // constant-width ink outline — strokeSize is a fraction of the
+              // rendered radius computed per-node so the on-screen width is the
+              // same on every node (see nodeReducer). pixel mode is a no-op in
+              // @sigma/node-border@3.0.0, hence the per-node fraction.
+              { size: { attribute: "strokeSize", defaultValue: 0.1 },
                 color: { attribute: "strokeColor" } },
               { size: { fill: true }, color: { attribute: "color" } },
             ],
