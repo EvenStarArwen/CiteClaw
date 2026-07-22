@@ -40,7 +40,7 @@ function App() {
   const setBlockStyle = (v) => setTweak("blockStyle", v);
   const showBottomBar = tweaks.showBottomBar !== false;
   const theme = tweaks.theme === "dark" ? "dark" : "light";
-  const palette = tweaks.palette || "citrus";
+  const palette = tweaks.palette || "mono";
   const toggleTheme = () => setTweak("theme", theme === "dark" ? "light" : "dark");
 
   // Mono-specific component variants (only applied when palette === "mono")

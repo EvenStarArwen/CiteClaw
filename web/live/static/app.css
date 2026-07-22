@@ -242,15 +242,11 @@
 }
 
 /* Light baseline also exposes a chrome-blur rgba for glass elements */
-:root { --cc-chrome-blur: rgba(250, 248, 242, 0.92); }
-
-/* ==========================================================================
-   PALETTE: citrus (butter cream / jet-ink, bright green + orange progress)
+:root { --cc-chrome-blur: rgba(250, 248, 242, 0.92); }/* ==========================================================================
+   PALETTE: citrus (butter cream / jet-ink,
+bright green + orange progress)
    Inspired by the cream-paper aesthetic: warm buttery background,
-   bright vegetable-green as primary accent/fill, Anthropic-orange
-   reserved for progress indicators.
-   ========================================================================== */
-:root[data-palette="citrus"] {
+bright vegetable-green as primary accent/fill{
   --cc-bg:          #f2ead6;   /* warm butter cream */
   --cc-panel:       #f7f0dd;
   --cc-panel-soft:  #f4ecd8;
@@ -290,99 +286,8 @@
   --cc-net-sel-strong: #2f6b3a; --cc-net-sel-soft: rgba(47, 107, 58, 0.55);
   --cc-net-node-stroke: rgba(245, 237, 217, 0.8); --cc-net-seed-stroke: #f5edd9;
   --cc-grid-dot: rgba(60, 50, 20, 0.12); --cc-grid-dot-soft: rgba(60, 50, 20, 0.08);
-}
-/* Citrus dark = neutral jet-black with green + orange accents */
-:root[data-theme="dark"][data-palette="citrus"] {
-  --cc-bg: #0d0d0d; --cc-panel: #161616; --cc-panel-soft: #121212;
-  --cc-chrome: #1a1a1a; --cc-chrome-blur: rgba(26, 26, 26, 0.92);
-  --cc-paper: #222222; --cc-hover: #2e2e2e; --cc-hover-soft: #1c1c1c; --cc-hover-deep: #393939;
-  --cc-rule: #2c2c2c; --cc-rule-soft: #212121; --cc-rule-strong: #4a4a4a; --cc-btn-border: #5a5a5a;
-  --cc-ink-1: #f5f5f5; --cc-ink-1-alt: #eaeaea; --cc-ink-2: #a8a8a8; --cc-ink-3: #787878; --cc-ink-faint: #4f4f4f;
-  --cc-accent: #6cc27a; --cc-accent-hover: #82d48f; --cc-on-accent: #0d0d0d;
-  --cc-accent-warm: #ea8a6a; --cc-accent-warm-hover: #f29a7d;
-  --cc-selection-bg: rgba(108, 194, 122, 0.10);
-  --cc-step-seeds: #8dc898; --cc-step-forward: #d9a08b; --cc-step-backward: #a8b898;
-  --cc-step-rerank: #d5ba8b; --cc-step-rescreen: #a0b8a5;
-  --cc-year-2018: #454545; --cc-year-2019: #5a5a5a; --cc-year-2020: #707070;
-  --cc-year-2021: #868686; --cc-year-2022: #9c9c9c; --cc-year-2023: #b2b2b2;
-  --cc-year-2024: #c8c8c8; --cc-year-2025: #e6e6e6;
-  --cc-year-p-2018: #3c5840; --cc-year-p-2019: #4a6c4e; --cc-year-p-2020: #5a825e;
-  --cc-year-p-2021: #6c956f; --cc-year-p-2022: #7ea883; --cc-year-p-2023: #92b996;
-  --cc-year-p-2024: #a9c9ad; --cc-year-p-2025: #c5dcc8;
-  --cc-net-seed: #6cc27a; --cc-net-seed-halo: rgba(108, 194, 122, 0.22);
-  --cc-net-sel-strong: #6cc27a; --cc-net-sel-soft: rgba(108, 194, 122, 0.55);
-  --cc-net-node-stroke: rgba(13, 13, 13, 0.8); --cc-net-seed-stroke: #0d0d0d;
-  --cc-grid-dot: rgba(255, 255, 255, 0.1); --cc-grid-dot-soft: rgba(255, 255, 255, 0.07);
-}
-
-/* ==========================================================================
-   PALETTE: plum (warm cream / cool plum-black) — RESTORES original look
-   ========================================================================== */
-:root[data-palette="plum"] {
-  --cc-bg:          #f5f3ee;
-  --cc-panel:       #fbf9f3;
-  --cc-panel-soft:  #faf7f1;
-  --cc-chrome:      #faf8f2;
-  --cc-chrome-blur: rgba(250, 248, 242, 0.92);
-  --cc-paper:       #ffffff;
-  --cc-hover:       #f0ecde;
-  --cc-hover-soft:  #f7f3e8;
-  --cc-hover-deep:  #efeadc;
-  --cc-rule:        #e4e0d4;
-  --cc-rule-soft:   #ece7d7;
-  --cc-rule-strong: #cfcabb;
-  --cc-btn-border:  #c4bcaa;
-  --cc-ink-1:       #1e2735;
-  --cc-ink-1-alt:   #1e293b;
-  --cc-ink-2:       #55606d;
-  --cc-ink-3:       #7f768c;
-  --cc-ink-faint:   #94a3b8;
-  --cc-accent:      #3e3548;
-  --cc-accent-hover:#4a4056;
-  --cc-on-accent:   #ffffff;
-  --cc-selection-bg: rgba(62, 53, 72, 0.04);
-  --cc-step-seeds:    #8aa695;
-  --cc-step-forward:  #9c7d8a;
-  --cc-step-backward: #6b82a0;
-  --cc-step-rerank:   #a89878;
-  --cc-step-rescreen: #78688a;
-  --cc-year-2018: #adb5bd; --cc-year-2019: #97a0a9; --cc-year-2020: #818b95;
-  --cc-year-2021: #6b7681; --cc-year-2022: #55606d; --cc-year-2023: #414b58;
-  --cc-year-2024: #2d3744; --cc-year-2025: #1a2330;
-  --cc-year-p-2018: #a89078; --cc-year-p-2019: #95867a; --cc-year-p-2020: #80848c;
-  --cc-year-p-2021: #6d7f94; --cc-year-p-2022: #5a7a9c; --cc-year-p-2023: #4a72a0;
-  --cc-year-p-2024: #4668a0; --cc-year-p-2025: #3e5c8f;
-  --cc-net-seed: #3e3548; --cc-net-seed-halo: rgba(62, 53, 72, 0.10);
-  --cc-net-sel-strong: #3e3548; --cc-net-sel-soft: rgba(62, 53, 72, 0.55);
-  --cc-net-node-stroke: rgba(250, 248, 242, 0.7); --cc-net-seed-stroke: #faf8f2;
-  --cc-grid-dot: rgba(68, 60, 40, 0.11); --cc-grid-dot-soft: rgba(68, 60, 40, 0.09);
-}
-:root[data-theme="dark"][data-palette="plum"] {
-  --cc-bg: #1a1320; --cc-panel: #231b2b; --cc-panel-soft: #1f1825;
-  --cc-chrome: #251d2e; --cc-chrome-blur: rgba(37, 29, 46, 0.92);
-  --cc-paper: #2e2538; --cc-hover: #3a3045; --cc-hover-soft: #27202f; --cc-hover-deep: #433850;
-  --cc-rule: #3a3045; --cc-rule-soft: #2c2434; --cc-rule-strong: #564862; --cc-btn-border: #6a5a77;
-  --cc-ink-1: #f0e9f5; --cc-ink-1-alt: #e6dcee; --cc-ink-2: #b4a4c2; --cc-ink-3: #857592; --cc-ink-faint: #5a4e68;
-  --cc-accent: #bca6d4; --cc-accent-hover: #cfbde2; --cc-on-accent: #1a1320;
-  --cc-selection-bg: rgba(188, 166, 212, 0.12);
-  --cc-step-seeds: #9ec0ad; --cc-step-forward: #b898a5; --cc-step-backward: #8fa6c4;
-  --cc-step-rerank: #c2b293; --cc-step-rescreen: #9888b0;
-  --cc-year-2018: #4a4050; --cc-year-2019: #5b4e64; --cc-year-2020: #6c5e76;
-  --cc-year-2021: #7d6f88; --cc-year-2022: #8f819a; --cc-year-2023: #a394ad;
-  --cc-year-2024: #b9aac2; --cc-year-2025: #d6cbde;
-  --cc-year-p-2018: #4a4050; --cc-year-p-2019: #5b4e64; --cc-year-p-2020: #6c5e76;
-  --cc-year-p-2021: #7d6f88; --cc-year-p-2022: #8f819a; --cc-year-p-2023: #a394ad;
-  --cc-year-p-2024: #b9aac2; --cc-year-p-2025: #d6cbde;
-  --cc-net-seed: #d1bae8; --cc-net-seed-halo: rgba(188, 166, 212, 0.22);
-  --cc-net-sel-strong: #d1bae8; --cc-net-sel-soft: rgba(209, 186, 232, 0.55);
-  --cc-net-node-stroke: rgba(26, 19, 32, 0.8); --cc-net-seed-stroke: #1a1320;
-  --cc-grid-dot: rgba(210, 200, 230, 0.11); --cc-grid-dot-soft: rgba(210, 200, 230, 0.09);
-}
-
-/* ==========================================================================
-   PALETTE: ocean (sea-glass cream / deep midnight navy, teal accent)
-   ========================================================================== */
-:root[data-palette="ocean"] {
+}/* ==========================================================================
+   PALETTE: ocean (sea-glass cream / deep midnight navy{
   --cc-bg: #eef3f3; --cc-panel: #f7fafa; --cc-panel-soft: #f2f6f6;
   --cc-chrome: #f6f9f9; --cc-chrome-blur: rgba(246, 249, 249, 0.92);
   --cc-paper: #ffffff; --cc-hover: #dde8e8; --cc-hover-soft: #e8eeee; --cc-hover-deep: #cfdede;
@@ -402,33 +307,8 @@
   --cc-net-sel-strong: #1a6f7a; --cc-net-sel-soft: rgba(26, 111, 122, 0.55);
   --cc-net-node-stroke: rgba(246, 249, 249, 0.75); --cc-net-seed-stroke: #f6f9f9;
   --cc-grid-dot: rgba(26, 80, 90, 0.1); --cc-grid-dot-soft: rgba(26, 80, 90, 0.07);
-}
-:root[data-theme="dark"][data-palette="ocean"] {
-  --cc-bg: #0a1821; --cc-panel: #12222d; --cc-panel-soft: #0e1d27;
-  --cc-chrome: #142631; --cc-chrome-blur: rgba(20, 38, 49, 0.92);
-  --cc-paper: #1a2d39; --cc-hover: #27404f; --cc-hover-soft: #172833; --cc-hover-deep: #304b5c;
-  --cc-rule: #263c4a; --cc-rule-soft: #1d303c; --cc-rule-strong: #3f5a6c; --cc-btn-border: #516d80;
-  --cc-ink-1: #e8f1f3; --cc-ink-1-alt: #dcebee; --cc-ink-2: #9ab2ba; --cc-ink-3: #6f8891; --cc-ink-faint: #4c6570;
-  --cc-accent: #5dd1de; --cc-accent-hover: #7adbe6; --cc-on-accent: #0a1821;
-  --cc-selection-bg: rgba(93, 209, 222, 0.12);
-  --cc-step-seeds: #8fc5b5; --cc-step-forward: #b49a92; --cc-step-backward: #85b4c4;
-  --cc-step-rerank: #c2ad90; --cc-step-rescreen: #8e9ab4;
-  --cc-year-2018: #3d535f; --cc-year-2019: #4c6572; --cc-year-2020: #5c7785;
-  --cc-year-2021: #6f8998; --cc-year-2022: #819daa; --cc-year-2023: #95b1bc;
-  --cc-year-2024: #abc4ce; --cc-year-2025: #c9dce1;
-  --cc-year-p-2018: #3d535f; --cc-year-p-2019: #4c6572; --cc-year-p-2020: #5c7785;
-  --cc-year-p-2021: #6f8998; --cc-year-p-2022: #819daa; --cc-year-p-2023: #95b1bc;
-  --cc-year-p-2024: #abc4ce; --cc-year-p-2025: #c9dce1;
-  --cc-net-seed: #5dd1de; --cc-net-seed-halo: rgba(93, 209, 222, 0.22);
-  --cc-net-sel-strong: #5dd1de; --cc-net-sel-soft: rgba(93, 209, 222, 0.55);
-  --cc-net-node-stroke: rgba(10, 24, 33, 0.8); --cc-net-seed-stroke: #0a1821;
-  --cc-grid-dot: rgba(180, 210, 220, 0.11); --cc-grid-dot-soft: rgba(180, 210, 220, 0.09);
-}
-
-/* ==========================================================================
-   PALETTE: forest (moss cream / deep pine-black, sage accent)
-   ========================================================================== */
-:root[data-palette="forest"] {
+}/* ==========================================================================
+   PALETTE: forest (moss cream / deep pine-black{
   --cc-bg: #f1f2ed; --cc-panel: #f9faf4; --cc-panel-soft: #f5f7ef;
   --cc-chrome: #f8f9f2; --cc-chrome-blur: rgba(248, 249, 242, 0.92);
   --cc-paper: #ffffff; --cc-hover: #e1e5d6; --cc-hover-soft: #ebeee1; --cc-hover-deep: #d4d9c5;
@@ -448,33 +328,8 @@
   --cc-net-sel-strong: #3a5c3e; --cc-net-sel-soft: rgba(58, 92, 62, 0.55);
   --cc-net-node-stroke: rgba(248, 249, 242, 0.75); --cc-net-seed-stroke: #f8f9f2;
   --cc-grid-dot: rgba(50, 70, 40, 0.1); --cc-grid-dot-soft: rgba(50, 70, 40, 0.07);
-}
-:root[data-theme="dark"][data-palette="forest"] {
-  --cc-bg: #121a13; --cc-panel: #1a261b; --cc-panel-soft: #172117;
-  --cc-chrome: #1d2a1e; --cc-chrome-blur: rgba(29, 42, 30, 0.92);
-  --cc-paper: #233224; --cc-hover: #324831; --cc-hover-soft: #1f2e20; --cc-hover-deep: #3d5a3c;
-  --cc-rule: #2f4330; --cc-rule-soft: #263526; --cc-rule-strong: #4b6749; --cc-btn-border: #597a58;
-  --cc-ink-1: #eaf1e8; --cc-ink-1-alt: #dde8da; --cc-ink-2: #a6b6a2; --cc-ink-3: #7a8a76; --cc-ink-faint: #526050;
-  --cc-accent: #7ec088; --cc-accent-hover: #8fce99; --cc-on-accent: #121a13;
-  --cc-selection-bg: rgba(126, 192, 136, 0.12);
-  --cc-step-seeds: #9ecba5; --cc-step-forward: #b89896; --cc-step-backward: #a0b0a8;
-  --cc-step-rerank: #c4b08f; --cc-step-rescreen: #9cad8c;
-  --cc-year-2018: #455540; --cc-year-2019: #536750; --cc-year-2020: #627962;
-  --cc-year-2021: #738c73; --cc-year-2022: #8ca18c; --cc-year-2023: #a3b5a4;
-  --cc-year-2024: #bccbbc; --cc-year-2025: #d8e2d8;
-  --cc-year-p-2018: #455540; --cc-year-p-2019: #536750; --cc-year-p-2020: #627962;
-  --cc-year-p-2021: #738c73; --cc-year-p-2022: #8ca18c; --cc-year-p-2023: #a3b5a4;
-  --cc-year-p-2024: #bccbbc; --cc-year-p-2025: #d8e2d8;
-  --cc-net-seed: #7ec088; --cc-net-seed-halo: rgba(126, 192, 136, 0.22);
-  --cc-net-sel-strong: #7ec088; --cc-net-sel-soft: rgba(126, 192, 136, 0.55);
-  --cc-net-node-stroke: rgba(18, 26, 19, 0.8); --cc-net-seed-stroke: #121a13;
-  --cc-grid-dot: rgba(190, 210, 190, 0.11); --cc-grid-dot-soft: rgba(190, 210, 190, 0.09);
-}
-
-/* ==========================================================================
-   PALETTE: sunset (warm blush cream / warm charcoal, terracotta accent)
-   ========================================================================== */
-:root[data-palette="sunset"] {
+}/* ==========================================================================
+   PALETTE: sunset (warm blush cream / warm charcoal{
   --cc-bg: #f6efea; --cc-panel: #fbf5f0; --cc-panel-soft: #f8f2ed;
   --cc-chrome: #faf4ef; --cc-chrome-blur: rgba(250, 244, 239, 0.92);
   --cc-paper: #ffffff; --cc-hover: #ebdccf; --cc-hover-soft: #f1e4d7; --cc-hover-deep: #e0cfbf;
@@ -494,33 +349,8 @@
   --cc-net-sel-strong: #c24a2e; --cc-net-sel-soft: rgba(194, 74, 46, 0.55);
   --cc-net-node-stroke: rgba(250, 244, 239, 0.75); --cc-net-seed-stroke: #faf4ef;
   --cc-grid-dot: rgba(100, 60, 40, 0.1); --cc-grid-dot-soft: rgba(100, 60, 40, 0.07);
-}
-:root[data-theme="dark"][data-palette="sunset"] {
-  --cc-bg: #1d1410; --cc-panel: #271d18; --cc-panel-soft: #221913;
-  --cc-chrome: #2a2019; --cc-chrome-blur: rgba(42, 32, 25, 0.92);
-  --cc-paper: #33271f; --cc-hover: #45362c; --cc-hover-soft: #2d2219; --cc-hover-deep: #513f32;
-  --cc-rule: #3f3025; --cc-rule-soft: #33261d; --cc-rule-strong: #62483a; --cc-btn-border: #795846;
-  --cc-ink-1: #f3e8df; --cc-ink-1-alt: #ecdfd2; --cc-ink-2: #b9a091; --cc-ink-3: #8a7264; --cc-ink-faint: #5c4a3e;
-  --cc-accent: #ff7a52; --cc-accent-hover: #ff8f6b; --cc-on-accent: #1d1410;
-  --cc-selection-bg: rgba(255, 122, 82, 0.12);
-  --cc-step-seeds: #bfa98a; --cc-step-forward: #d49287; --cc-step-backward: #a29db0;
-  --cc-step-rerank: #d5ba90; --cc-step-rescreen: #b6938e;
-  --cc-year-2018: #5a4235; --cc-year-2019: #6b5140; --cc-year-2020: #7e604d;
-  --cc-year-2021: #91715b; --cc-year-2022: #a5846c; --cc-year-2023: #bb9a81;
-  --cc-year-2024: #d1b299; --cc-year-2025: #e7ccb5;
-  --cc-year-p-2018: #5a4235; --cc-year-p-2019: #6b5140; --cc-year-p-2020: #7e604d;
-  --cc-year-p-2021: #91715b; --cc-year-p-2022: #a5846c; --cc-year-p-2023: #bb9a81;
-  --cc-year-p-2024: #d1b299; --cc-year-p-2025: #e7ccb5;
-  --cc-net-seed: #ff7a52; --cc-net-seed-halo: rgba(255, 122, 82, 0.22);
-  --cc-net-sel-strong: #ff7a52; --cc-net-sel-soft: rgba(255, 122, 82, 0.55);
-  --cc-net-node-stroke: rgba(29, 20, 16, 0.8); --cc-net-seed-stroke: #1d1410;
-  --cc-grid-dot: rgba(230, 200, 175, 0.11); --cc-grid-dot-soft: rgba(230, 200, 175, 0.09);
-}
-
-/* ==========================================================================
-   PALETTE: sand (warm desert cream / deep sepia, ochre accent)
-   ========================================================================== */
-:root[data-palette="sand"] {
+}/* ==========================================================================
+   PALETTE: sand (warm desert cream / deep sepia{
   --cc-bg: #f4ede0; --cc-panel: #fbf5e8; --cc-panel-soft: #f7f1e4;
   --cc-chrome: #f9f3e6; --cc-chrome-blur: rgba(249, 243, 230, 0.92);
   --cc-paper: #fffcf2; --cc-hover: #eadfc4; --cc-hover-soft: #f1e7cf; --cc-hover-deep: #ddd1b2;
@@ -539,33 +369,8 @@
   --cc-net-sel-strong: #8c6f2e; --cc-net-sel-soft: rgba(140, 111, 46, 0.55);
   --cc-net-node-stroke: rgba(249, 243, 230, 0.75); --cc-net-seed-stroke: #f9f3e6;
   --cc-grid-dot: rgba(90, 70, 30, 0.1); --cc-grid-dot-soft: rgba(90, 70, 30, 0.07);
-}
-:root[data-theme="dark"][data-palette="sand"] {
-  --cc-bg: #1b160d; --cc-panel: #241e13; --cc-panel-soft: #1f1910;
-  --cc-chrome: #27210f; --cc-chrome-blur: rgba(39, 33, 15, 0.92);
-  --cc-paper: #2f2716; --cc-hover: #413820; --cc-hover-soft: #2a2313; --cc-hover-deep: #4d4226;
-  --cc-rule: #3c3318; --cc-rule-soft: #2f2813; --cc-rule-strong: #5d4f24; --cc-btn-border: #6d5c2c;
-  --cc-ink-1: #f3ecd6; --cc-ink-1-alt: #ebe3c7; --cc-ink-2: #b5a87f; --cc-ink-3: #857a55; --cc-ink-faint: #5a5139;
-  --cc-accent: #e6c356; --cc-accent-hover: #f0d16d; --cc-on-accent: #1b160d;
-  --cc-selection-bg: rgba(230, 195, 86, 0.12);
-  --cc-step-seeds: #b5b586; --cc-step-forward: #bea084; --cc-step-backward: #a0a2b8;
-  --cc-step-rerank: #d4b86e; --cc-step-rescreen: #ad9b6a;
-  --cc-year-2018: #544625; --cc-year-2019: #65552c; --cc-year-2020: #776635;
-  --cc-year-2021: #8a773e; --cc-year-2022: #9c884a; --cc-year-2023: #b0995a;
-  --cc-year-2024: #c5ae6d; --cc-year-2025: #e0c782;
-  --cc-year-p-2018: #544625; --cc-year-p-2019: #65552c; --cc-year-p-2020: #776635;
-  --cc-year-p-2021: #8a773e; --cc-year-p-2022: #9c884a; --cc-year-p-2023: #b0995a;
-  --cc-year-p-2024: #c5ae6d; --cc-year-p-2025: #e0c782;
-  --cc-net-seed: #e6c356; --cc-net-seed-halo: rgba(230, 195, 86, 0.22);
-  --cc-net-sel-strong: #e6c356; --cc-net-sel-soft: rgba(230, 195, 86, 0.55);
-  --cc-net-node-stroke: rgba(27, 22, 13, 0.8); --cc-net-seed-stroke: #1b160d;
-  --cc-grid-dot: rgba(220, 190, 120, 0.11); --cc-grid-dot-soft: rgba(220, 190, 120, 0.09);
-}
-
-/* ==========================================================================
-   PALETTE: rose (dusty blush / plum-black, rose accent)
-   ========================================================================== */
-:root[data-palette="rose"] {
+}/* ==========================================================================
+   PALETTE: rose (dusty blush / plum-black{
   --cc-bg: #f6edee; --cc-panel: #fcf4f5; --cc-panel-soft: #f8f0f1;
   --cc-chrome: #faf2f3; --cc-chrome-blur: rgba(250, 242, 243, 0.92);
   --cc-paper: #ffffff; --cc-hover: #ecdadc; --cc-hover-soft: #f2e1e3; --cc-hover-deep: #e0caca;
@@ -585,27 +390,6 @@
   --cc-net-sel-strong: #b24a65; --cc-net-sel-soft: rgba(178, 74, 101, 0.55);
   --cc-net-node-stroke: rgba(250, 242, 243, 0.75); --cc-net-seed-stroke: #faf2f3;
   --cc-grid-dot: rgba(100, 50, 65, 0.1); --cc-grid-dot-soft: rgba(100, 50, 65, 0.07);
-}
-:root[data-theme="dark"][data-palette="rose"] {
-  --cc-bg: #1d1318; --cc-panel: #271b22; --cc-panel-soft: #22171d;
-  --cc-chrome: #2a1e25; --cc-chrome-blur: rgba(42, 30, 37, 0.92);
-  --cc-paper: #33252c; --cc-hover: #45343b; --cc-hover-soft: #2d2127; --cc-hover-deep: #523e45;
-  --cc-rule: #402e35; --cc-rule-soft: #33242a; --cc-rule-strong: #634850; --cc-btn-border: #79595f;
-  --cc-ink-1: #f3e3e8; --cc-ink-1-alt: #ecd6db; --cc-ink-2: #b99fa7; --cc-ink-3: #8a7077; --cc-ink-faint: #5c474d;
-  --cc-accent: #ff6f95; --cc-accent-hover: #ff84a6; --cc-on-accent: #1d1318;
-  --cc-selection-bg: rgba(255, 111, 149, 0.12);
-  --cc-step-seeds: #bcac92; --cc-step-forward: #d48a9a; --cc-step-backward: #a09cb8;
-  --cc-step-rerank: #c8a68e; --cc-step-rescreen: #b089a0;
-  --cc-year-2018: #5a3d43; --cc-year-2019: #6b4952; --cc-year-2020: #7e5662;
-  --cc-year-2021: #926672; --cc-year-2022: #a67684; --cc-year-2023: #bb8a99;
-  --cc-year-2024: #d1a1ae; --cc-year-2025: #e8bcc7;
-  --cc-year-p-2018: #5a3d43; --cc-year-p-2019: #6b4952; --cc-year-p-2020: #7e5662;
-  --cc-year-p-2021: #926672; --cc-year-p-2022: #a67684; --cc-year-p-2023: #bb8a99;
-  --cc-year-p-2024: #d1a1ae; --cc-year-p-2025: #e8bcc7;
-  --cc-net-seed: #ff6f95; --cc-net-seed-halo: rgba(255, 111, 149, 0.22);
-  --cc-net-sel-strong: #ff6f95; --cc-net-sel-soft: rgba(255, 111, 149, 0.55);
-  --cc-net-node-stroke: rgba(29, 19, 24, 0.8); --cc-net-seed-stroke: #1d1318;
-  --cc-grid-dot: rgba(230, 200, 210, 0.11); --cc-grid-dot-soft: rgba(230, 200, 210, 0.09);
 }
 
 /* ==========================================================================
@@ -674,12 +458,8 @@
   --cc-net-sel-strong: #f5f5f5; --cc-net-sel-soft: rgba(245, 245, 245, 0.55);
   --cc-net-node-stroke: rgba(13, 13, 13, 0.8); --cc-net-seed-stroke: #0d0d0d;
   --cc-grid-dot: rgba(255, 255, 255, 0.1); --cc-grid-dot-soft: rgba(255, 255, 255, 0.07);
-}
-
-/* ==========================================================================
-   PALETTE: solar (pale yellow cream / jet-black, gold accent)
-   ========================================================================== */
-:root[data-palette="solar"] {
+}/* ==========================================================================
+   PALETTE: solar (pale yellow cream / jet-black{
   --cc-bg: #f8f3df; --cc-panel: #fdf8e5; --cc-panel-soft: #faf5e1;
   --cc-chrome: #fcf7e3; --cc-chrome-blur: rgba(252, 247, 227, 0.92);
   --cc-paper: #fffced; --cc-hover: #eee4ba; --cc-hover-soft: #f4ebc6; --cc-hover-deep: #e2d6a3;
@@ -697,33 +477,8 @@
   --cc-net-sel-strong: #9a7b18; --cc-net-sel-soft: rgba(154, 123, 24, 0.55);
   --cc-net-node-stroke: rgba(252, 247, 227, 0.75); --cc-net-seed-stroke: #fcf7e3;
   --cc-grid-dot: rgba(100, 80, 20, 0.11); --cc-grid-dot-soft: rgba(100, 80, 20, 0.08);
-}
-:root[data-theme="dark"][data-palette="solar"] {
-  --cc-bg: #0c0a04; --cc-panel: #17140a; --cc-panel-soft: #131008;
-  --cc-chrome: #1a170b; --cc-chrome-blur: rgba(26, 23, 11, 0.92);
-  --cc-paper: #221e10; --cc-hover: #322c18; --cc-hover-soft: #1b180d; --cc-hover-deep: #403820;
-  --cc-rule: #2d2712; --cc-rule-soft: #201b0c; --cc-rule-strong: #50451f; --cc-btn-border: #5f5325;
-  --cc-ink-1: #f9edbf; --cc-ink-1-alt: #ede2a8; --cc-ink-2: #baa964; --cc-ink-3: #85773c; --cc-ink-faint: #584f24;
-  --cc-accent: #ffd93d; --cc-accent-hover: #ffe05a; --cc-on-accent: #0c0a04;
-  --cc-selection-bg: rgba(255, 217, 61, 0.12);
-  --cc-step-seeds: #c8be70; --cc-step-forward: #c9a57a; --cc-step-backward: #a5a4b8;
-  --cc-step-rerank: #e5c452; --cc-step-rescreen: #b6a468;
-  --cc-year-2018: #4a4020; --cc-year-2019: #5b4f28; --cc-year-2020: #6d5f30;
-  --cc-year-2021: #816f3a; --cc-year-2022: #958148; --cc-year-2023: #ab9657;
-  --cc-year-2024: #c2ae6b; --cc-year-2025: #dac885;
-  --cc-year-p-2018: #4a4020; --cc-year-p-2019: #5b4f28; --cc-year-p-2020: #6d5f30;
-  --cc-year-p-2021: #816f3a; --cc-year-p-2022: #958148; --cc-year-p-2023: #ab9657;
-  --cc-year-p-2024: #c2ae6b; --cc-year-p-2025: #dac885;
-  --cc-net-seed: #ffd93d; --cc-net-seed-halo: rgba(255, 217, 61, 0.22);
-  --cc-net-sel-strong: #ffd93d; --cc-net-sel-soft: rgba(255, 217, 61, 0.55);
-  --cc-net-node-stroke: rgba(12, 10, 4, 0.8); --cc-net-seed-stroke: #0c0a04;
-  --cc-grid-dot: rgba(240, 220, 130, 0.11); --cc-grid-dot-soft: rgba(240, 220, 130, 0.08);
-}
-
-/* ==========================================================================
-   PALETTE: arctic (icy blue-white / deep slate-navy, ice accent)
-   ========================================================================== */
-:root[data-palette="arctic"] {
+}/* ==========================================================================
+   PALETTE: arctic (icy blue-white / deep slate-navy{
   --cc-bg: #eef2f5; --cc-panel: #f7fafc; --cc-panel-soft: #f2f5f8;
   --cc-chrome: #f5f8fa; --cc-chrome-blur: rgba(245, 248, 250, 0.92);
   --cc-paper: #ffffff; --cc-hover: #dbe4eb; --cc-hover-soft: #e7edf1; --cc-hover-deep: #c8d3dd;
@@ -743,47 +498,7 @@
   --cc-net-sel-strong: #2c64a8; --cc-net-sel-soft: rgba(44, 100, 168, 0.55);
   --cc-net-node-stroke: rgba(245, 248, 250, 0.75); --cc-net-seed-stroke: #f5f8fa;
   --cc-grid-dot: rgba(40, 70, 100, 0.1); --cc-grid-dot-soft: rgba(40, 70, 100, 0.07);
-}
-:root[data-theme="dark"][data-palette="arctic"] {
-  --cc-bg: #0d1624; --cc-panel: #151f30; --cc-panel-soft: #111b2a;
-  --cc-chrome: #18223595; --cc-chrome-blur: rgba(24, 34, 53, 0.92);
-  --cc-paper: #1f2a3e; --cc-hover: #2b3a52; --cc-hover-soft: #1a2536; --cc-hover-deep: #374765;
-  --cc-rule: #283448; --cc-rule-soft: #1d2638; --cc-rule-strong: #465779; --cc-btn-border: #54688a;
-  --cc-ink-1: #ebf1f9; --cc-ink-1-alt: #dde6f0; --cc-ink-2: #9fb0c8; --cc-ink-3: #718299; --cc-ink-faint: #4b5c78;
-  --cc-accent: #7ab8ff; --cc-accent-hover: #8cc3ff; --cc-on-accent: #0d1624;
-  --cc-selection-bg: rgba(122, 184, 255, 0.12);
-  --cc-step-seeds: #94c2b2; --cc-step-forward: #b596b5; --cc-step-backward: #92afd6;
-  --cc-step-rerank: #c6b690; --cc-step-rescreen: #8a97bc;
-  --cc-year-2018: #3e4a62; --cc-year-2019: #4c5c78; --cc-year-2020: #5d6f8e;
-  --cc-year-2021: #6f83a4; --cc-year-2022: #8296b8; --cc-year-2023: #97abcb;
-  --cc-year-2024: #adc0de; --cc-year-2025: #c8d6eb;
-  --cc-year-p-2018: #3e4a62; --cc-year-p-2019: #4c5c78; --cc-year-p-2020: #5d6f8e;
-  --cc-year-p-2021: #6f83a4; --cc-year-p-2022: #8296b8; --cc-year-p-2023: #97abcb;
-  --cc-year-p-2024: #adc0de; --cc-year-p-2025: #c8d6eb;
-  --cc-net-seed: #7ab8ff; --cc-net-seed-halo: rgba(122, 184, 255, 0.22);
-  --cc-net-sel-strong: #7ab8ff; --cc-net-sel-soft: rgba(122, 184, 255, 0.55);
-  --cc-net-node-stroke: rgba(13, 22, 36, 0.8); --cc-net-seed-stroke: #0d1624;
-  --cc-grid-dot: rgba(200, 220, 240, 0.11); --cc-grid-dot-soft: rgba(200, 220, 240, 0.09);
-}
-
-/* ==========================================================================
-   UNIFIED DARK — every palette's dark mode uses the SAME pure-black neutral
-   surface ladder (mono). Only the accent color is inherited from the palette.
-   This block is positioned AFTER every palette-specific dark block so the
-   surfaces/rules/inks here win; accents set above survive because they aren't
-   redeclared.
-   ========================================================================== */
-:root[data-theme="dark"][data-palette="plum"],
-:root[data-theme="dark"][data-palette="ocean"],
-:root[data-theme="dark"][data-palette="forest"],
-:root[data-theme="dark"][data-palette="sunset"],
-:root[data-theme="dark"][data-palette="sand"],
-:root[data-theme="dark"][data-palette="rose"],
-:root[data-theme="dark"][data-palette="solar"],
-:root[data-theme="dark"][data-palette="arctic"],
-:root[data-theme="dark"][data-palette="citrus"],
-:root[data-theme="dark"][data-palette="graphite"],
-:root[data-theme="dark"] {
+}:root[data-theme="dark"]{
   --cc-bg: #0d0d0d;
   --cc-panel: #161616;
   --cc-panel-soft: #121212;
@@ -807,16 +522,11 @@
   --cc-grid-dot: rgba(255, 255, 255, 0.1);
   --cc-grid-dot-soft: rgba(255, 255, 255, 0.07);
   color-scheme: dark;
-}
-
-/* Root palette marker — light baseline inherits from :root; dark baseline from :root[data-theme="dark"].
+}/* Root palette marker — light baseline inherits from :root; dark baseline from :root[data-theme="dark"].
    Per-palette overrides above apply on top. */
 
 /* ==========================================================================
-   PALETTE: graphite LIGHT (macOS-style neutral grays, system blue accent)
-   Dark side uses :root[data-theme="dark"] baseline directly.
-   ========================================================================== */
-:root[data-palette="graphite"] {
+   PALETTE: graphite LIGHT (macOS-style neutral grays{
   --cc-bg: #f0f0f2; --cc-panel: #f8f8fa; --cc-panel-soft: #f4f4f6;
   --cc-chrome: #f6f6f8; --cc-chrome-blur: rgba(246, 246, 248, 0.92);
   --cc-paper: #ffffff; --cc-hover: #e3e3e6; --cc-hover-soft: #ebebed; --cc-hover-deep: #d2d2d6;
@@ -837,34 +547,6 @@
   --cc-net-node-stroke: rgba(246, 246, 248, 0.75); --cc-net-seed-stroke: #f6f6f8;
   --cc-grid-dot: rgba(0, 0, 0, 0.09); --cc-grid-dot-soft: rgba(0, 0, 0, 0.06);
 }
-
-/* Graphite DARK — re-declared here with higher specificity so it beats the
-   graphite-light block that sits above in source order. Matches the content of
-   the default :root[data-theme="dark"] baseline. */
-:root[data-theme="dark"][data-palette="graphite"] {
-  --cc-bg: #1c1c1e; --cc-panel: #232326; --cc-panel-soft: #202023;
-  --cc-chrome: #26262a; --cc-chrome-blur: rgba(38, 38, 42, 0.92);
-  --cc-paper: #2c2c2f; --cc-hover: #3a3a3d; --cc-hover-soft: #28282b; --cc-hover-deep: #434347;
-  --cc-rule: #3a3a3e; --cc-rule-soft: #2f2f33; --cc-rule-strong: #55555a; --cc-btn-border: #656569;
-  --cc-ink-1: #f2f2f5; --cc-ink-1-alt: #e8e8ea; --cc-ink-2: #a8a8ad; --cc-ink-3: #78787c; --cc-ink-faint: #505055;
-  --cc-accent: #0a84ff; --cc-accent-ink: #f2f2f5; --cc-on-accent: #ffffff; --cc-accent-hover: #409cff;
-  --cc-accent-brand: #0a84ff; --cc-accent-brand-soft: #409cff; --cc-accent-brand-wash: #15304d;
-  --cc-positive: #30d158; --cc-warning: #ff9f0a; --cc-danger: #ff453a; --cc-seed: #ff453a;
-  --cc-selection-bg: rgba(10, 132, 255, 0.12);
-  --cc-step-seeds: #8ecf9f; --cc-step-forward: #cf9caa; --cc-step-backward: #8eb2d9;
-  --cc-step-rerank: #d9c18e; --cc-step-rescreen: #b09fd4;
-  --cc-year-2018: #4a4a4e; --cc-year-2019: #5a5a5e; --cc-year-2020: #6a6a6e; --cc-year-2021: #7c7c80;
-  --cc-year-2022: #919195; --cc-year-2023: #a8a8ac; --cc-year-2024: #c0c0c4; --cc-year-2025: #dcdce0;
-  --cc-year-p-2018: #4a4a4e; --cc-year-p-2019: #5a5a5e; --cc-year-p-2020: #6a6a6e; --cc-year-p-2021: #7c7c80;
-  --cc-year-p-2022: #919195; --cc-year-p-2023: #a8a8ac; --cc-year-p-2024: #c0c0c4; --cc-year-p-2025: #dcdce0;
-  --cc-net-seed: #0a84ff; --cc-net-seed-halo: rgba(10, 132, 255, 0.18);
-  --cc-net-sel-strong: #409cff; --cc-net-sel-soft: rgba(64, 156, 255, 0.55);
-  --cc-net-node-stroke: rgba(28, 28, 30, 0.85); --cc-net-seed-stroke: #1c1c1e;
-  --cc-grid-dot: rgba(220, 220, 224, 0.10); --cc-grid-dot-soft: rgba(220, 220, 224, 0.07);
-  --cc-tip-bg: rgba(58, 58, 62, 0.98); --cc-tip-ink: #f2f2f5;
-  --cc-tip-ink-strong: #ffffff; --cc-tip-ink-dim: rgba(242, 242, 245, 0.7);
-}
-
 
 /* ==========================================================================
    MONO — MODERN SOFT-CARD SKIN
@@ -1780,7 +1462,6 @@
 /* Default .ft-comp-body border-left-color still lives in the block above;
    leave it gray for when no variant attr is present. */
 
-
 /* ==========================================================================
    MONO v3 — GREEN ACCENT INTEGRATION
    Thread the --cc-accent-2 forest green through every "alive" surface in
@@ -1792,7 +1473,6 @@
 :root[data-palette="mono"] .sb-progress { background: #e4e1dc; border-radius: var(--mono-r-pill); }
 
 /* Run status dot + pulse — variant attr owns color (default green lives in v4 block) */
-
 
 /* Pipeline block edges/connectors — give them subtle green */
 :root[data-palette="mono"] .pipe-edge svg path,
@@ -1863,61 +1543,12 @@
 
 /* Acceptance trail "pass" steps — variant attr owns color/fill */
 
-
 /* (ANY composite kind pill is owned by v4 block above — all variants = black) */
-
 
 /* Hide empty auxiliary hint/foot strips in mono */
 :root[data-palette="mono"] .pipe-hint,
 :root[data-palette="mono"] .blocks-foot { display: none; }
 :root[data-palette="mono"] .config-col-sub:empty { display: none; }
-
-/* ==========================================================================
-   SEMANTIC ELEMENTS
-   ========================================================================== */
-/* ==========================================================================
-   CITRUS — region-boundary refinements.
-   Slightly stronger hairlines and a subtle ink-tinted card separation so
-   the six panels read as distinct regions over the warm cream ground.
-   Also: selected seed stars + the "Run pipeline" / primary actions use
-   solid jet-black for the confident filled-button feel.
-   ========================================================================== */
-:root[data-palette="citrus"] {
-  /* soften existing cream hairlines → deepen region boundaries */
-  --cc-rule:        #c9b98d;
-  --cc-rule-soft:   #d8c99f;
-  --cc-rule-strong: #9a8a5a;
-}
-:root[data-palette="citrus"] .topbar,
-:root[data-palette="citrus"] .statusbar {
-  border-color: #c9b98d;
-}
-:root[data-palette="citrus"] .panel,
-:root[data-palette="citrus"] .panel-left,
-:root[data-palette="citrus"] .panel-right,
-:root[data-palette="citrus"] .config {
-  border-color: #c9b98d;
-}
-/* Seeds: make active/starred stars jet-black (not yellow) so they echo the
-   solid-fill button language. */
-:root[data-palette="citrus"] .seed-card.is-selected .seed-star {
-  color: #0f1412;
-}
-:root[data-palette="citrus"] .seed-card.is-selected {
-  border-color: #0f1412;
-  box-shadow: 0 0 0 1px #0f1412;
-}
-/* Seed "Add seed" affordance picks up the ink treatment. */
-:root[data-palette="citrus"] .seeds-counter-n,
-:root[data-palette="citrus"] .tb-meta-num,
-:root[data-palette="citrus"] .cc-num { color: #0f1412; }
-
-/* Run / build CTA buttons in the topbar get the solid-black shell. */
-:root[data-palette="citrus"] .tb-actions .btn-primary { border-radius: var(--mono-r-pill); padding: 6px 14px; }
-:root[data-palette="citrus"] .mode-btn.on {
-  background: #0f1412;
-  color: #f3ecd8;
-}
 
 html, body {
   font-family: var(--cc-font-sans);
@@ -2213,21 +1844,13 @@ select {
 .btn:hover { background: var(--cc-hover-soft); }
 .btn:active { background: var(--cc-hover); }
 .btn-ghost { background: transparent; border-color: transparent; }
-.btn-ghost:hover { background: var(--cc-hover-soft); border-color: var(--cc-rule); }
-
-/* In citrus palette, primary buttons are solid jet-black (like the
-   reference cards' "Read announcement" pill). */
-:root[data-palette="citrus"] .btn-primary {
+.btn-ghost:hover { background: var(--cc-hover-soft); border-color: var(--cc-rule); }/* In citrus palette{
   background: #0f1412;
   color: #fbf6e7;
   border-color: #0f1412;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   border-radius: var(--mono-r-xs);
   font-weight: 600;
-}
-:root[data-palette="citrus"] .btn-primary:hover {
-  background: #1e2620;
-  border-color: #1e2620;
 }
 
 /* Solid-ink button variant — use anywhere you want a confident black chip */
@@ -2408,14 +2031,6 @@ select {
 .sb-progress-fill {
   height: 100%; background: var(--cc-accent);
   transition: width 400ms ease-out;
-}
-
-/* Citrus: progress bars use the warm orange — green stays for
-   primary action/selection only. */
-:root[data-palette="citrus"] .sb-progress-fill,
-:root[data-palette="citrus"] .prog-bar-fill,
-:root[data-palette="citrus"] .bar-fill.cost {
-  background: var(--cc-accent-warm, #d97757);
 }
 
 .sb-spacer { flex: 1; }
