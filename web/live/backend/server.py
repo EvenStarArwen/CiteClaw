@@ -110,15 +110,18 @@ _HEAD = """<!doctype html>
 <body>
 <div id="root"></div>
 <script>
-// Committed design-system defaults — the single identity (warm cream surfaces,
-// forest-green accent). The exploratory "mono" palette + its many variants were
-// retired in the design-system migration, so the app now ships one skin.
-// `mode` is "build" so a live session starts in the configurator (run mode
-// shows demo data a fresh live app doesn't have yet).
+// Design defaults lifted verbatim from the original v3.html __TWEAKS block
+// (the "mono" palette + variants). These control the exact skin. `mode` is
+// set to "build" so a live session starts in the configurator (the design's
+// original "run" default shows demo data that a live app doesn't have yet).
 window.__TWEAKS = {
-  "palette": "cream", "theme": "light", "mode": "build", "showBottomBar": true,
-  "blockStyle": "specimen",
-  "buildSplit": 0.42, "colLeft": 257, "runSplit": 0.604
+  "palette": "mono", "theme": "light", "mode": "build", "showBottomBar": true,
+  "monoRadius": "pillowy", "monoPrimary": "outline", "monoKind": "tag-mono",
+  "monoLeaf": "card", "monoSeed": "inline", "monoCompLine": "gray",
+  "monoRunPill": "plain", "monoTrail": "black", "monoAcc": "black",
+  "monoRunDot": "green", "buildSplit": 0.42, "monoSeedFill": "orange-chip",
+  "monoCanvas": "paper", "monoAccent": "cobalt", "blockStyle": "specimen",
+  "colLeft": 257, "runSplit": 0.604
 };
 </script>
 <script type="text/babel">

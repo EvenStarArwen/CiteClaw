@@ -40,16 +40,47 @@ function App() {
   const setBlockStyle = (v) => setTweak("blockStyle", v);
   const showBottomBar = tweaks.showBottomBar !== false;
   const theme = tweaks.theme === "dark" ? "dark" : "light";
-  const palette = tweaks.palette || "cream";
+  const palette = tweaks.palette || "citrus";
   const toggleTheme = () => setTweak("theme", theme === "dark" ? "light" : "dark");
 
+  // Mono-specific component variants (only applied when palette === "mono")
+  const monoRadius  = tweaks.monoRadius  || "soft";
+  const monoPrimary = tweaks.monoPrimary || "black";
+  const monoKind    = tweaks.monoKind    || "pill-black";
+  const monoLeaf    = tweaks.monoLeaf    || "card";
+  const monoSeed    = tweaks.monoSeed    || "card";
+  const monoSeedFill = tweaks.monoSeedFill || "orange-bar";
+  const monoCompLine = tweaks.monoCompLine || "gray";
+  const monoRunPill  = tweaks.monoRunPill  || "black";
+  const monoTrail    = tweaks.monoTrail    || "black";
+  const monoAcc      = tweaks.monoAcc      || "black";
+  const monoRunDot   = tweaks.monoRunDot   || "green";
+  const monoCanvas   = tweaks.monoCanvas   || "paper";  // paper | snow | fog
+  const monoAccent   = tweaks.monoAccent   || "ink";    // ink | indigo | cobalt | crimson
+
   useEffect(() => {
-    // Single committed identity: the palette/mono skin machinery was retired
-    // in the design-system migration, so only theme + palette are reflected.
     const root = document.documentElement;
     root.setAttribute("data-theme", theme);
     root.setAttribute("data-palette", palette);
-  }, [theme, palette]);
+    if (palette === "mono") {
+      root.setAttribute("data-mono-radius",  monoRadius);
+      root.setAttribute("data-mono-primary", monoPrimary);
+      root.setAttribute("data-mono-kind",    monoKind);
+      root.setAttribute("data-mono-leaf",    monoLeaf);
+      root.setAttribute("data-mono-seed",    monoSeed);
+      root.setAttribute("data-mono-seedfill", monoSeedFill);
+      root.setAttribute("data-mono-compline", monoCompLine);
+      root.setAttribute("data-mono-runpill",  monoRunPill);
+      root.setAttribute("data-mono-trail",    monoTrail);
+      root.setAttribute("data-mono-acc",      monoAcc);
+      root.setAttribute("data-mono-rundot",   monoRunDot);
+      root.setAttribute("data-mono-canvas",   monoCanvas);
+      root.setAttribute("data-mono-accent",   monoAccent);
+    } else {
+      ["radius","primary","kind","leaf","seed","seedfill","compline","runpill","trail","acc","rundot","canvas","accent"]
+        .forEach(k => root.removeAttribute("data-mono-" + k));
+    }
+  }, [theme, palette, monoRadius, monoPrimary, monoKind, monoLeaf, monoSeed, monoSeedFill, monoCompLine, monoRunPill, monoTrail, monoAcc, monoRunDot, monoCanvas, monoAccent]);
 
   // Run state — driven by the live backend store (see live-store.jsx)
   const running = useLive("running");
