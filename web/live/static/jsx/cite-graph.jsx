@@ -1009,22 +1009,24 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       },
       edgeReducer: (edge, data) => {
         const src = st.graph.source(edge), tgt = st.graph.target(edge);
-        // edges follow the position-space scale only weakly (sqrt) — otherwise
-        // "prevent node overlap" (sizeK≈15-20×) inflates every edge past the
-        // demo's hairline look and swamps the min/max range.
-        const k = Math.sqrt(st.sizeK || 1);
-        // width stays weight-mapped (our project); only the colour follows the
-        // demo's ink. Selection lights the whole neighbourhood sub-graph.
-        const bw = (st.legacy ? 0.3 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * k;
+        // Edge width is a TRUE screen-pixel value (like the demo's constant
+        // stroke-width) — weight-mapped, but never inflated by the position
+        // reference (sizeK≈15-20× under "prevent node overlap") nor thickened
+        // by zoom. In positions mode sigma renders size/ratio px, so multiply
+        // by the live camera ratio to cancel it back to a fixed px width.
+        const px = st.legacy ? 0.6 : cgEdgeWidth(data.weight, st.wrange, st.vis);
+        const posMode = !!(st.fa2 && st.fa2.adjustSizes);
+        const ratio = posMode ? (st.sigma.getCamera().ratio || 1) : 1;
+        const bw = px * ratio;
         if (st.anchor) {
           const inHood = (id) => id === st.anchor || st.connected.has(id);
           if (inHood(src) && inHood(tgt)) {
             return { ...data, color: cgFade(st.pal.selStrong, 0.72, st.pal.bgRgb),
-                     size: Math.max(bw * 1.6, bw + 0.8 * k), zIndex: 1 };
+                     size: Math.max(bw * 1.8, (px + 0.9) * ratio), zIndex: 1 };
           }
           return { ...data, color: cgFade(st.pal.netInk, 0.06, st.pal.bgRgb), size: bw };
         }
-        return { ...data, color: cgFade(st.pal.netInk, 0.22, st.pal.bgRgb), size: bw };
+        return { ...data, color: cgFade(st.pal.netInk, 0.28, st.pal.bgRgb), size: bw };
       },
     };
     if (createNodeBorderProgram) {
