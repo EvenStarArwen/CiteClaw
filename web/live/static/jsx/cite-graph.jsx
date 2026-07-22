@@ -252,7 +252,7 @@ const CG_FA2_DEFAULTS = {
 };
 const CG_VIS_DEFAULTS = {
   minSize: 3, maxSize: 20, sizeCurve: "sqrt",
-  edgeMin: 0.25, edgeMax: 1.1, edgeCurve: "linear",
+  edgeMin: 0.15, edgeMax: 1.2, edgeCurve: "linear",
   palette: "ember",
 };
 const CG_GF_DEFAULTS = { minDegree: 0, minEdgeW: 0, largestOnly: false };
@@ -1009,7 +1009,10 @@ function CiteGraph({ papers, edges, dataKey, selectedId, onSelect, onHover,
       },
       edgeReducer: (edge, data) => {
         const src = st.graph.source(edge), tgt = st.graph.target(edge);
-        const k = st.sizeK || 1;
+        // edges follow the position-space scale only weakly (sqrt) — otherwise
+        // "prevent node overlap" (sizeK≈15-20×) inflates every edge past the
+        // demo's hairline look and swamps the min/max range.
+        const k = Math.sqrt(st.sizeK || 1);
         // width stays weight-mapped (our project); only the colour follows the
         // demo's ink. Selection lights the whole neighbourhood sub-graph.
         const bw = (st.legacy ? 0.3 : cgEdgeWidth(data.weight, st.wrange, st.vis)) * k;
