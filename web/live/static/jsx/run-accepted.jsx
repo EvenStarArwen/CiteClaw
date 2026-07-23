@@ -223,12 +223,11 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
           >
             <div className="acc-title pcard-title">{p.title}</div>
             <span className="acc-depth">d{p.depth}</span>
+            <div className="acc-meta pcard-meta pcard-venue" style={{ gridColumn: "1 / 3" }}>{p.venue || "—"}</div>
             <div className="acc-meta pcard-meta" style={{ gridColumn: "1 / 3" }}>
               <span>{p.authors}</span>
               <span className="acc-meta-sep">·</span>
               <span>{p.year}</span>
-              <span className="acc-meta-sep">·</span>
-              <span>{p.venue}</span>
               <span className="acc-meta-sep">·</span>
               <span>{(p.cites || 0).toLocaleString()} cites</span>
             </div>
@@ -245,6 +244,7 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
             <span className="acc-reject-mark" title="Rejected"><Icon name="x" size={12} /></span>
             <div className="acc-title pcard-title">{p.title}</div>
             <span className="acc-cat" title={p.category}>{fmtReason(p.category)}</span>
+            <div className="acc-meta pcard-meta pcard-venue" style={{ gridColumn: "2 / 4" }}>{p.venue || "—"}</div>
             <div className="acc-meta pcard-meta" style={{ gridColumn: "2 / 4" }}>
               <span>{p.authors || "—"}</span>
               <span className="acc-meta-sep">·</span>

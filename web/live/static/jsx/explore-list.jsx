@@ -322,16 +322,12 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
                 {p.seed && <span className="xp-seed-dot" title="Seed paper" />}
                 {p.title}
               </div>
-              <div className="xp-item-meta">
-                <span className="xp-item-sub">
-                  {author
-                    ? [p.venue || null, p.hIndex != null ? `h ${p.hIndex}` : null].filter(Boolean).join(" · ") || "—"
-                    : [p.authors, p.year || null].filter(Boolean).join(" · ")}
-                </span>
-                <span className="xp-item-cites">
-                  {off && <Icon name="unlink" size={10} className="xp-offnet-ic" />}
-                  {author ? `${(p.nPapers || 0).toLocaleString()}p` : fmtK(p.cites || 0)}
-                </span>
+              <div className="pcard-meta pcard-venue">{p.venue || "—"}</div>
+              <div className="pcard-meta">
+                {off && <Icon name="unlink" size={10} className="xp-offnet-ic" />}
+                {author
+                  ? [p.hIndex != null ? `h ${p.hIndex}` : null, `${(p.nPapers || 0).toLocaleString()}p`].filter(Boolean).join(" · ") || "—"
+                  : [p.authors, p.year || null, `${fmtK(p.cites || 0)} cites`].filter(Boolean).join(" · ")}
               </div>
             </div>
           );

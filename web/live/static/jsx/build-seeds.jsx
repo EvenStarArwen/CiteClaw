@@ -225,12 +225,11 @@ function SeedCard({ paper, onOpen, onAction, mode }) {
         </button>
         <span className="seed-title pcard-title">{paper.title}</span>
       </div>
+      <div className="seed-meta pcard-meta pcard-venue">{paper.venue || "—"}</div>
       <div className="seed-meta pcard-meta">
         <span>{paper.authors}</span>
         <span className="seed-meta-sep">·</span>
         <span>{paper.year}</span>
-        <span className="seed-meta-sep">·</span>
-        <span>{paper.venue}</span>
         <span className="seed-meta-sep">·</span>
         <span className="seed-cites">{(paper.cites || 0).toLocaleString()} cites</span>
       </div>

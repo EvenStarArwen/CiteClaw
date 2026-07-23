@@ -979,14 +979,20 @@ bright vegetable-green as primary accent/fill{
   -webkit-box-orient: vertical; overflow: hidden;
   min-height: calc(var(--pcard-title-lines) * var(--pcard-title-lh) * 1em);
 }
-/* The meta line — always ONE clipped line (never wraps), so it can't add a
-   variable second row the way the old flex-wrap meta did. */
+/* A meta line — always ONE clipped line (never wraps) that RESERVES its line
+   even when empty (a paper with no venue still gets the row), so the two-line
+   meta block (venue / byline) keeps every card the same height. The card body
+   is now: title (2 lines) · venue (1) · authors+year+cites (1). */
 .pcard-meta {
   display: block;
-  font-family: var(--cc-font-sans); font-size: 10.5px; color: var(--cc-ink-3);
+  font-family: var(--cc-font-sans); font-size: 10.5px; line-height: 1.4;
+  color: var(--cc-ink-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  min-height: 1.4em;
 }
 .pcard-meta > * { white-space: nowrap; }
+/* venue reads a touch stronger than the byline → title > venue > byline. */
+.pcard-venue { color: var(--cc-ink-2); }
 :root[data-palette="mono"][data-mono-radius="sharp"] {
   --mono-r-xs: 2px; --mono-r-sm: 2px; --mono-r-md: 3px;
   --mono-r-lg: 4px; --mono-r-pill: 4px;
@@ -1059,7 +1065,6 @@ bright vegetable-green as primary accent/fill{
   -webkit-line-clamp: 2;
 }
 :root[data-palette="mono"] .seed-meta {
-  color: var(--cc-ink-3);
   padding-left: 22px;
 }
 :root[data-palette="mono"] .seed-meta-sep { color: var(--cc-ink-faint); }
@@ -5061,10 +5066,9 @@ select.gp-v { cursor: pointer; }
 /* .xp-item = explore row skin only; box comes from .pcard, title from
    .pcard-title. Separate gapped cards (no connecting borders) so every list
    reads the same. */
+.xp-item { display: flex; flex-direction: column; gap: var(--pcard-row-gap); }
 .xp-item:hover { background: var(--cc-hover-soft); }
 .xp-item.is-selected { background: var(--cc-paper); border-color: var(--cc-rule-strong); }
-
-.xp-item-title { margin-bottom: var(--pcard-row-gap); }
 .xp-seed-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: var(--mono-r-circle);
   background: var(--cc-net-seed);
@@ -5098,8 +5102,8 @@ select.gp-v { cursor: pointer; }
   background: #0a0a0a; box-shadow: none;
 }
 :root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-title,
-:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-cites { color: #ffffff !important; }
-:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-sub { color: rgba(255, 255, 255, 0.72) !important; }
+:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .pcard-meta { color: #ffffff !important; }
+:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .pcard-venue { color: rgba(255, 255, 255, 0.82) !important; }
 :root[data-palette="mono"][data-mono-acc="outline"] .xp-item.is-selected {
   background: #ffffff; box-shadow: none; border: 1px solid #0a0a0a;
 }
