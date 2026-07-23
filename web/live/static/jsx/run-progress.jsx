@@ -121,7 +121,6 @@ function RoadNode({ index, label, hint, filters, state, liveBar, laneBar, screen
       </span>
       <div className="road-body">
         <span className="road-label">{label}</span>
-        {hint ? <span className="road-hint">{hint}</span> : null}
         {filters && filters.length > 0 && (
           <div className="road-filters">
             {filters.map((f, i) => <div key={i} className="road-filter">{f}</div>)}
@@ -282,30 +281,15 @@ function StepDetailPage({ s, index, activity, running, lastEventAt, nowMs, onBac
 
 function RunProgress() {
   const progress = useLive("progress");
-  const logs = useLive("logs");
   const activity = useLive("activity");
   const running = useLive("running");
   const lastEventAt = useLive("lastEventAt");
   const nowMs = useLive("nowMs");
   const steps = progress.steps || [];
   const [detailStep, setDetailStep] = React.useState(null);   // localId | null
-  const [openLogs, setOpenLogs] = React.useState(() => new Set());
 
-  const toggleLog = (id) => setOpenLogs(cur => {
-    const next = new Set(cur);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
-
-  const tagClass = (tag) =>
-    tag === "ERR" ? "prog-log-tag--err"
-    : tag === "WARN" || tag === "RETRY" ? "prog-log-tag--warn"
-    : tag === "DONE" ? "prog-log-tag--ok"
-    : tag === "S2" ? "prog-log-tag--s2"
-    : tag === "LLM" ? "prog-log-tag--llm"
-    : tag === "PHASE" ? "prog-log-tag--phase"
-    : "prog-log-tag--info";
-
+  // The live log now lives only in the Dashboard's Logs tab — the Run sidebar
+  // stays focused on step progress.
   const detail = detailStep ? steps.find(x => x.localId === detailStep) : null;
   if (detail) {
     return <StepDetailPage s={detail} index={steps.indexOf(detail)}
@@ -364,41 +348,6 @@ function RunProgress() {
             <ActivityDetail activity={activity} />
           </div>
         )}
-
-        <div className="prog-log">
-          <div className="prog-log-head">
-            <span>Live log</span>
-            <span className="prog-log-n">
-              {logs.length ? (logs.length >= 100 ? "last 100" : logs.length) : ""}
-            </span>
-            <span className="prog-log-dot" aria-hidden="true" />
-          </div>
-          <div className="prog-log-body">
-            {logs.length === 0 && (
-              <div className="prog-log-row"><span>no activity yet</span></div>
-            )}
-            {logs.map((l) => {
-              const open = openLogs.has(l.id);
-              return open ? (
-                <div key={l.id} className="prog-log-open" onClick={() => toggleLog(l.id)}
-                  title="Click to collapse">
-                  <div className="prog-log-open-head">
-                    <span className="prog-log-t">{l.t}</span>
-                    <span className={"prog-log-tag " + tagClass(l.tag)}>{l.tag}</span>
-                  </div>
-                  <div className="prog-log-open-msg">{l.msg}</div>
-                </div>
-              ) : (
-                <div key={l.id} className="prog-log-row is-clickable" onClick={() => toggleLog(l.id)}
-                  title="Click to read the full message">
-                  <span className="prog-log-t">{l.t}</span>
-                  <span className={"prog-log-tag " + tagClass(l.tag)}>{l.tag}</span>
-                  <span className="prog-log-msg">{l.msg}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </div>
     </aside>
   );
