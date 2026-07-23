@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PaperCard · CiteClaw UI element</title>
+
+<!-- Same CDN + versions as the CiteClaw web app -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+<!-- The element under test — its OWN stylesheet, nothing else -->
+<link rel="stylesheet" href="paper-card.css" />
+
+<style>
+  /* ---- Demo chrome only (NOT part of the element) ---- */
+  :root {
+    /* app theme tokens the card falls back to — set here so the demo matches
+       the shipped app exactly. */
+    --cc-bg: #f5f3ee; --cc-panel: #fbf9f3; --cc-chrome: #faf8f2;
+    --cc-paper: #ffffff; --cc-hover-soft: #f7f3e8;
+    --cc-rule: #e4e0d4; --cc-rule-soft: #ece7d7; --cc-rule-strong: #cfcabb;
+    --cc-ink-1: #1e2735; --cc-ink-2: #55606d; --cc-ink-3: #7f768c; --cc-ink-faint: #94a3b8;
+    --cc-warning: #8a7a58; --cc-danger: #8b5a5a; --cc-net-seed: #3e3548;
+    --cc-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --cc-font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--cc-bg); color: var(--cc-ink-1);
+    font-family: var(--cc-font-sans); -webkit-font-smoothing: antialiased;
+  }
+  .demo-head { padding: 28px 32px 8px; }
+  .demo-head h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: -0.01em; }
+  .demo-head p { margin: 0; color: var(--cc-ink-3); font-size: 13px; max-width: 62ch; line-height: 1.5; }
+  .demo-head code { font-family: var(--cc-font-mono); font-size: 12px; background: var(--cc-hover-soft); padding: 1px 5px; border-radius: 5px; }
+
+  .demo-wrap { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; padding: 20px 32px 64px; align-items: start; }
+
+  /* Parameter editor */
+  .ctrls { position: sticky; top: 16px; background: var(--cc-panel); border: 1px solid var(--cc-rule); border-radius: 14px; padding: 16px; }
+  .ctrls h2 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cc-ink-2); }
+  .ctrls .grp { margin-top: 14px; }
+  .ctrls .grp-h { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--cc-ink-3); margin: 0 0 6px; }
+  .ctrl { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; align-items: center; margin-bottom: 9px; }
+  .ctrl label { font-size: 11.5px; color: var(--cc-ink-2); }
+  .ctrl .val { font-family: var(--cc-font-mono); font-size: 10.5px; color: var(--cc-ink-3); text-align: right; }
+  .ctrl input[type="range"] { grid-column: 1 / 3; width: 100%; accent-color: #0a0a0a; }
+  .ctrl input[type="color"] { grid-column: 2; width: 34px; height: 20px; padding: 0; border: 1px solid var(--cc-rule-strong); border-radius: 5px; background: none; cursor: pointer; }
+  .ctrls .reset { margin-top: 12px; width: 100%; padding: 7px; font-size: 12px; font-family: var(--cc-font-sans); color: var(--cc-ink-1); background: var(--cc-paper); border: 1px solid var(--cc-rule-strong); border-radius: 999px; cursor: pointer; }
+  .ctrls .reset:hover { background: var(--cc-hover-soft); }
+
+  /* Specimen gallery */
+  .specimens { display: flex; flex-direction: column; gap: 26px; }
+  .spec-group > h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: -0.01em; }
+  .spec-row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .spec { width: 320px; }
+  .spec-cap { font-family: var(--cc-font-mono); font-size: 10.5px; color: var(--cc-ink-3); margin: 0 0 5px; }
+  /* a sidebar-like frame so a card is shown at its real width + surface */
+  .spec-panel { background: var(--cc-panel); border: 1px solid var(--cc-rule); border-radius: 14px; padding: 8px; }
+
+  /* demo-only: force the hover look in a static frame */
+  .demo-hover.pcard { background: var(--pcard-hover-bg); }
+</style>
+</head>
+<body>
+  <div class="demo-head">
+    <h1>PaperCard</h1>
+    <p>
+      The one card used by every paper list in CiteClaw — Build seeds, Run
+      accepted&nbsp;/&nbsp;rejected, Explore. Everything visual lives in
+      <code>paper-card.css</code> (edit the <code>--pcard-*</code> tokens) and
+      <code>paper-card.jsx</code>. Drag the controls to see each parameter; click
+      a card in the interactive list to toggle its selected state.
+    </p>
+  </div>
+
+  <div id="root"></div>
+
+  <!-- demo data (plain JS) then the element, then the demo app -->
+  <script src="demo-data.js"></script>
+  <script type="text/babel" src="paper-card.jsx"></script>
+  <script type="text/babel">
+    const { useState } = React;
+    const D = window.PAPER_CARD_DEMO;
+    const DL = window.PAPER_CARD_DEMO_LIST;
+
+    /* ---- inline glyphs (the demo supplies its own; the element has none) ---- */
+    const Svg = (p) => <svg width={p.s||13} height={p.s||13} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{p.children}</svg>;
+    const IcStar  = () => <Svg><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></Svg>;
+    const IcX     = (p) => <Svg s={p.s}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Svg>;
+    const IcUnlink= () => <Svg s={10}><path d="M18.84 12.25l1.72-1.71a4 4 0 0 0-5.66-5.66l-1.71 1.72"/><path d="M5.17 11.75l-1.72 1.71a4 4 0 0 0 5.66 5.66l1.71-1.72"/><line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/></Svg>;
+
+    /* ---- leads / trails a list would compose (shown here for the demo) ---- */
+    const StarLead   = () => <button className="pcard-starbtn" title="Star as seed"><span className="pcard-star"><IcStar/></span></button>;
+    const RemoveLead = () => <button className="pcard-removebtn" title="Remove from seeds"><IcX s={13}/></button>;
+    const RejectLead = () => <span className="pcard-reject-mark" title="Rejected"><IcX s={12}/></span>;
+    const DepthTrail = (p) => <span className="pcard-depth">d{p.d}</span>;
+    const CatTrail   = (p) => <span className="pcard-cat">{p.c}</span>;
+
+    /* ---- the parameter editor config ---- */
+    const PARAMS = [
+      { group: "Geometry", items: [
+        { v: "--pcard-radius",      label: "Corner radius",     min: 0, max: 30, step: 1, unit: "px" },
+        { v: "--pcard-pad-y",       label: "Padding · vertical",   min: 0, max: 24, step: 1, unit: "px" },
+        { v: "--pcard-pad-x",       label: "Padding · horizontal", min: 0, max: 24, step: 1, unit: "px" },
+        { v: "--pcard-lead-gap",    label: "Lead → body gap",   min: 0, max: 20, step: 1, unit: "px" },
+        { v: "--pcard-row-gap",     label: "Row gap",           min: 0, max: 16, step: 1, unit: "px" },
+        { v: "--pcard-gap",         label: "Gap between cards",  min: 0, max: 20, step: 1, unit: "px" },
+        { v: "--pcard-title-lines", label: "Title lines",       min: 1, max: 4,  step: 1, unit: "" },
+      ]},
+      { group: "Type", items: [
+        { v: "--pcard-title-size",   label: "Title size",   min: 9, max: 18, step: 0.5, unit: "px" },
+        { v: "--pcard-title-weight", label: "Title weight", min: 400, max: 800, step: 100, unit: "" },
+        { v: "--pcard-meta-size",    label: "Meta size",    min: 8, max: 14, step: 0.5, unit: "px" },
+      ]},
+      { group: "Colour", items: [
+        { v: "--pcard-ink-title", label: "Title ink",   type: "color" },
+        { v: "--pcard-ink-venue", label: "Venue ink",   type: "color" },
+        { v: "--pcard-ink-meta",  label: "Meta ink",    type: "color" },
+        { v: "--pcard-hover-bg",  label: "Hover bg",    type: "color" },
+        { v: "--pcard-sel-bg",    label: "Selected bg", type: "color" },
+        { v: "--pcard-sel-ink",   label: "Selected ink",type: "color" },
+      ]},
+    ];
+
+    function Controls({ stage }) {
+      const [, force] = useState(0);
+      const read = (v, unit) => {
+        if (!stage) return "";
+        const cur = stage.style.getPropertyValue(v);
+        if (cur) return cur.trim();
+        return getComputedStyle(stage).getPropertyValue(v).trim();
+      };
+      const set = (v, value, unit) => { stage.style.setProperty(v, value + (unit || "")); force(x => x + 1); };
+      const reset = () => {
+        PARAMS.forEach(g => g.items.forEach(it => stage.style.removeProperty(it.v)));
+        force(x => x + 1);
+      };
+      return (
+        <aside className="ctrls">
+          <h2>Parameters</h2>
+          {PARAMS.map(g => (
+            <div className="grp" key={g.group}>
+              <div className="grp-h">{g.group}</div>
+              {g.items.map(it => {
+                const raw = read(it.v);
+                if (it.type === "color") {
+                  const hex = /^#([0-9a-f]{6})$/i.test(raw) ? raw : "#000000";
+                  return (
+                    <div className="ctrl" key={it.v}>
+                      <label>{it.label}</label>
+                      <input type="color" value={hex} onChange={e => set(it.v, e.target.value)} />
+                    </div>
+                  );
+                }
+                const num = parseFloat(raw) || 0;
+                return (
+                  <div className="ctrl" key={it.v}>
+                    <label>{it.label}</label>
+                    <span className="val">{num}{it.unit}</span>
+                    <input type="range" min={it.min} max={it.max} step={it.step}
+                      value={num} onChange={e => set(it.v, e.target.value, it.unit)} />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          <button className="reset" onClick={reset}>Reset to defaults</button>
+        </aside>
+      );
+    }
+
+    const Spec = ({ cap, children }) => (
+      <div className="spec">
+        <p className="spec-cap">{cap}</p>
+        <div className="spec-panel">{children}</div>
+      </div>
+    );
+
+    function Demo() {
+      const [stage, setStage] = useState(null);
+      const [freshKey, setFreshKey] = useState(0);
+      const [sel, setSel] = useState(DL[0].id);
+
+      return (
+        <div className="demo-wrap" ref={el => { if (el && !stage) setStage(el); }}>
+          {stage && <Controls stage={stage} />}
+
+          <div className="specimens">
+            <div className="spec-group">
+              <h2>States</h2>
+              <div className="spec-row">
+                <Spec cap="normal">
+                  <PaperCard {...D.normal} lead={<StarLead/>} />
+                </Spec>
+                <Spec cap="hover">
+                  <PaperCard {...D.normal} lead={<StarLead/>} className="demo-hover" />
+                </Spec>
+                <Spec cap="selected (on click)">
+                  <PaperCard {...D.normal} lead={<StarLead/>} selected trail={<DepthTrail d={1}/>} />
+                </Spec>
+                <Spec cap="fresh — newly accepted">
+                  <PaperCard key={freshKey} {...D.normal} fresh trail={<DepthTrail d={1}/>} />
+                  <button className="reset" style={{marginTop:8}} onClick={() => setFreshKey(k => k + 1)}>Replay flash</button>
+                </Spec>
+                <Spec cap="off-network (Explore)">
+                  <PaperCard {...D.offnet} offnet
+                    rows={[ D.offnet.authors,
+                      <span><span className="pcard-offnet-ic"><IcUnlink/></span>{D.offnet.year} · {D.offnet.cites.toLocaleString()} cites</span> ]} />
+                </Spec>
+              </div>
+            </div>
+
+            <div className="spec-group">
+              <h2>Roles — the lead / trail / footer slots</h2>
+              <div className="spec-row">
+                <Spec cap="seed candidate — star to accept">
+                  <PaperCard {...D.normal} lead={<StarLead/>} />
+                </Spec>
+                <Spec cap="seed set — × to remove">
+                  <PaperCard {...D.normal} lead={<RemoveLead/>} />
+                </Spec>
+                <Spec cap="accepted — depth trail">
+                  <PaperCard {...D.longAuthors} trail={<DepthTrail d={1}/>} />
+                </Spec>
+                <Spec cap="rejected — mark · category · reason">
+                  <PaperCard {...D.rejected}
+                    lead={<RejectLead/>}
+                    trail={<CatTrail c="LLM · filter 3"/>}
+                    footer={<div className="pcard-reason">{D.rejected.reason}</div>} />
+                </Spec>
+                <Spec cap="explore — seed dot in title">
+                  <PaperCard {...D.longAuthors} titlePrefix={<span className="pcard-seed-dot" title="Seed paper"/>} />
+                </Spec>
+              </div>
+            </div>
+
+            <div className="spec-group">
+              <h2>Edge cases — equal height holds</h2>
+              <div className="spec-row">
+                <Spec cap="1-line title (reserves 2)"><PaperCard {...D.shortTitle} lead={<StarLead/>} /></Spec>
+                <Spec cap="missing venue → “—”"><PaperCard {...D.noVenue} lead={<StarLead/>} /></Spec>
+                <Spec cap="long author list clips"><PaperCard {...D.longAuthors} lead={<StarLead/>} /></Spec>
+              </div>
+            </div>
+
+            <div className="spec-group">
+              <h2>Interactive list — click to select</h2>
+              <div className="spec-row">
+                <Spec cap="a real list: one selection, unified gap">
+                  <div className="pcard-list">
+                    {DL.map(p => (
+                      <PaperCard key={p.id} {...p}
+                        trail={<DepthTrail d={p.depth}/>}
+                        selected={sel === p.id}
+                        onClick={() => setSel(p.id)} />
+                    ))}
+                  </div>
+                </Spec>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+  </script>
+</body>
+</html>

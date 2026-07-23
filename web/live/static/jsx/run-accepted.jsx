@@ -211,57 +211,36 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
         )}
 
         {tab === "accepted" && items.map(p => (
-          <div
+          <PaperCard
             key={p.id}
-            data-paper-id={p.id}
-            className={
-              "acc-item pcard" +
-              (selected === p.id ? " is-selected" : "") +
-              (freshIds.has(p.id) ? " is-fresh" : "")
-            }
+            paperId={p.id}
+            title={p.title}
+            venue={p.venue}
+            authors={p.authors}
+            year={p.year}
+            cites={p.cites}
+            trail={<span className="pcard-depth">d{p.depth}</span>}
+            selected={selected === p.id}
+            fresh={freshIds.has(p.id)}
             onClick={() => pick(p, false)}
-          >
-            <div className="pcard-body">
-              <div className="pcard-headrow">
-                <div className="acc-title pcard-title">{p.title}</div>
-                <span className="acc-depth pcard-trail">d{p.depth}</span>
-              </div>
-              <div className="acc-meta pcard-meta pcard-venue">{p.venue || "—"}</div>
-              <div className="acc-meta pcard-meta">{p.authors || "—"}</div>
-              <div className="acc-meta pcard-meta">
-                <span>{p.year || "—"}</span>
-                <span className="pcard-sep">·</span>
-                <span>{(p.cites || 0).toLocaleString()} cites</span>
-              </div>
-            </div>
-          </div>
+          />
         ))}
 
         {tab === "rejected" && items.map(p => (
-          <div
+          <PaperCard
             key={p.id}
-            data-paper-id={p.id}
-            className={"acc-item is-reject pcard" + (selected === p.id ? " is-selected" : "")}
+            paperId={p.id}
+            title={p.title}
+            venue={p.venue}
+            authors={p.authors}
+            year={p.year}
+            cites={p.cites}
+            lead={<span className="pcard-reject-mark" title="Rejected"><Icon name="x" size={12} /></span>}
+            trail={<span className="pcard-cat" title={p.category}>{fmtReason(p.category)}</span>}
+            footer={p.reason ? <div className="pcard-reason" title={p.reason}>{p.reason}</div> : null}
+            selected={selected === p.id}
             onClick={() => pick(p, true)}
-          >
-            <span className="acc-reject-mark pcard-lead" title="Rejected"><Icon name="x" size={12} /></span>
-            <div className="pcard-body">
-              <div className="pcard-headrow">
-                <div className="acc-title pcard-title">{p.title}</div>
-                <span className="acc-cat pcard-trail" title={p.category}>{fmtReason(p.category)}</span>
-              </div>
-              <div className="acc-meta pcard-meta pcard-venue">{p.venue || "—"}</div>
-              <div className="acc-meta pcard-meta">{p.authors || "—"}</div>
-              <div className="acc-meta pcard-meta">
-                <span>{p.year || "—"}</span>
-                <span className="pcard-sep">·</span>
-                <span>{(p.cites || 0).toLocaleString()} cites</span>
-              </div>
-              {p.reason && (
-                <div className="acc-reason" title={p.reason}>{p.reason}</div>
-              )}
-            </div>
-          </div>
+          />
         ))}
       </div>
 

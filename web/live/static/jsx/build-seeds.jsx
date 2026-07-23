@@ -211,32 +211,28 @@ function SeedAbstractDetail({ paper, onBack, footer }) {
 function SeedCard({ paper, onOpen, onAction, mode }) {
   const accepted = mode === "accepted";
   return (
-    <div className="seed-card pcard" onClick={() => onOpen(paper.id)} title="Click to read the abstract">
-      <span className="pcard-lead">
+    <PaperCard
+      paperId={paper.id}
+      title={paper.title}
+      venue={paper.venue}
+      authors={paper.authors}
+      year={paper.year}
+      cites={paper.cites}
+      onClick={() => onOpen(paper.id)}
+      tooltip="Click to read the abstract"
+      lead={
         <button
-          className={accepted ? "seed-remove-btn" : "seed-star-btn"}
+          className={accepted ? "pcard-removebtn" : "pcard-starbtn"}
           onClick={e => { e.stopPropagation(); onAction(paper.id); }}
           title={accepted ? "Remove from seeds" : "Star as seed"}
           aria-label={accepted ? "Remove from seeds" : "Star as seed"}
         >
-          <span className={accepted ? "seed-remove" : "seed-star"}>
-            <Icon name={accepted ? "x" : "star"} size={13} />
-          </span>
+          {accepted
+            ? <Icon name="x" size={13} />
+            : <span className="pcard-star"><Icon name="star" size={13} /></span>}
         </button>
-      </span>
-      <div className="pcard-body">
-        <div className="pcard-headrow">
-          <span className="seed-title pcard-title">{paper.title}</span>
-        </div>
-        <div className="pcard-meta pcard-venue">{paper.venue || "—"}</div>
-        <div className="pcard-meta">{paper.authors || "—"}</div>
-        <div className="pcard-meta">
-          <span>{paper.year || "—"}</span>
-          <span className="pcard-sep">·</span>
-          <span>{(paper.cites || 0).toLocaleString()} cites</span>
-        </div>
-      </div>
-    </div>
+      }
+    />
   );
 }
 

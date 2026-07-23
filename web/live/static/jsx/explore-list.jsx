@@ -308,35 +308,28 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
         {sorted.map(p => {
           const off = offSet ? offSet.has(p.id) : false;
           return (
-            <div
+            <PaperCard
               key={p.id}
-              data-paper-id={p.id}
-              className={"xp-item pcard" + (selectedId === p.id ? " is-selected" : "")
-                + (off ? " is-offnet" : "")}
+              paperId={p.id}
+              title={p.title}
+              titlePrefix={p.seed ? <span className="pcard-seed-dot" title="Seed paper" /> : null}
+              venue={p.venue}
+              rows={[
+                <span key="a">
+                  {off && <span className="pcard-offnet-ic"><Icon name="unlink" size={10} /></span>}
+                  {author ? (p.affiliation || "—") : (p.authors || "—")}
+                </span>,
+                author
+                  ? ([p.hIndex != null ? `h ${p.hIndex}` : null, `${(p.nPapers || 0).toLocaleString()} papers`].filter(Boolean).join(" · ") || "—")
+                  : ([p.year || null, `${fmtK(p.cites || 0)} cites`].filter(Boolean).join(" · ") || "—"),
+              ]}
+              selected={selectedId === p.id}
+              offnet={off}
               onClick={() => onSelect(p.id === selectedId ? null : p.id)}
-              title={off
+              tooltip={off
                 ? "In the collection, but not in the network view — removed by the graph filters (min degree / edge weight / largest component)"
                 : undefined}
-            >
-              <div className="pcard-body">
-                <div className="pcard-headrow">
-                  <div className="xp-item-title pcard-title">
-                    {p.seed && <span className="xp-seed-dot" title="Seed paper" />}
-                    {p.title}
-                  </div>
-                </div>
-                <div className="pcard-meta pcard-venue">{p.venue || "—"}</div>
-                <div className="pcard-meta">
-                  {off && <Icon name="unlink" size={10} className="xp-offnet-ic" />}
-                  {author ? (p.affiliation || "—") : (p.authors || "—")}
-                </div>
-                <div className="pcard-meta">
-                  {author
-                    ? [p.hIndex != null ? `h ${p.hIndex}` : null, `${(p.nPapers || 0).toLocaleString()} papers`].filter(Boolean).join(" · ") || "—"
-                    : [p.year || null, `${fmtK(p.cites || 0)} cites`].filter(Boolean).join(" · ") || "—"}
-                </div>
-              </div>
-            </div>
+            />
           );
         })}
       </div>

@@ -33,6 +33,15 @@ from .snapshots import build_graph, build_metrics, build_rejected_page
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 JSX_DIR = STATIC_DIR / "jsx"
 
+# Standalone UI elements store (repo-root ui-elements/). Each element owns its
+# own CSS + JSX; the app LOADS them from here rather than hosting the markup /
+# styles inline. Mounted at /elements; CSS linked in <head>; JSX concatenated
+# into the Babel block BEFORE the app components that use it.
+ELEMENTS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "ui-elements"
+ELEMENT_JSX = [
+    ELEMENTS_DIR / "paper-card" / "paper-card.jsx",
+]
+
 # Concatenation order for the single text/babel block (live-store first,
 # app.jsx last so it renders after every component is defined).
 ASSEMBLY_ORDER = [
@@ -69,6 +78,7 @@ _HEAD = """<!doctype html>
 <link rel="icon" href="/static/assets/favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/elements/paper-card/paper-card.css">
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
@@ -136,6 +146,11 @@ _TAIL = """
 
 def assemble_index() -> str:
     parts = [_HEAD]
+    # UI elements first, so their components are defined before app code uses them.
+    for f in ELEMENT_JSX:
+        if f.exists():
+            parts.append(f"\n// === element: {f.parent.name}/{f.name} ===\n")
+            parts.append(f.read_text(encoding="utf-8"))
     for name in ASSEMBLY_ORDER:
         f = JSX_DIR / name
         if f.exists():
@@ -160,6 +175,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CiteClaw Live", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/elements", StaticFiles(directory=str(ELEMENTS_DIR)), name="elements")
 
 
 @app.get("/", response_class=HTMLResponse)

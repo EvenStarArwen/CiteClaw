@@ -922,19 +922,9 @@ bright vegetable-green as primary accent/fill{
   --pane-sbw: 8px;
   --list-x: calc(var(--pane-x) - var(--pane-sbw));   /* 4px */
 
-  /* PAPER CARD — one geometry for every list (Build seeds, Run accepted /
-     rejected, Explore). Colour + selection stay per-list (skin); these tokens
-     own the size so all three read as the same component and, crucially, every
-     row is the SAME HEIGHT: the title always reserves --pcard-title-lines and
-     the meta is always a single clipped line. */
-  --pcard-pad-y: 12px;        /* roomier internal padding (was 8 — cards read cramped) */
-  --pcard-pad-x: 12px;
-  --pcard-radius: var(--mono-r-md);
-  --pcard-lead-gap: 9px;      /* gap from the leading control (star/×) to the body */
-  --pcard-row-gap: 4px;       /* gap between the stacked text rows */
-  --pcard-gap: 4px;           /* vertical space BETWEEN cards — one value, every list */
-  --pcard-title-lines: 2;
-  --pcard-title-lh: 1.35;
+  /* Paper-card parameters (--pcard-*, incl. --pcard-gap used by the list
+     containers below) now live in the standalone module
+     ui-elements/paper-card/paper-card.css — loaded via /elements. */
 }
 
 /* Symmetric-gutter scroll helper. Any pane that scrolls a card list carries
@@ -942,64 +932,13 @@ bright vegetable-green as primary accent/fill{
 .cc-scroll { scrollbar-gutter: stable both-edges; }
 
 /* ==========================================================================
-   UNIFIED PAPER CARD  ·  .pcard
-   ONE card used by every list: Build seeds, Run accepted / rejected, Explore.
-   This class owns GEOMETRY only (size, layout, the equal-height guarantee).
-   Per-list COLOUR / selection stays on .seed-card / .acc-item / .xp-item and
-   their skins, so a card reads correctly in whichever list it sits in.
-
-   Layout is a flex row of three slots:
-     [.pcard-lead]  optional leading control (seed star, reject mark)
-     [.pcard-main]  title row (+ optional trailing chip) then the meta line
-     — trailing chips (depth, category, cites) live at the end of the title row.
-
-   EQUAL HEIGHT is structural, not luck: .pcard-title always reserves
-   --pcard-title-lines lines (min-height) and clips to that many; .pcard-meta is
-   always a single clipped line. A 1-line title and a 3-line title yield the
-   same card height. Tune every card at once from the --pcard-* tokens above.
+   PAPER CARD  —  moved out of the app.
+   The .pcard* element (markup + all styling + its --pcard-* parameters) now
+   lives in the standalone module  ui-elements/paper-card/  and is loaded via
+   the /elements mount (CSS linked in <head>, <PaperCard> concatenated into the
+   Babel block by server.py). The app no longer hosts the card internally — to
+   restyle the card, edit that module.
    ========================================================================== */
-/* UNIFIED CARD — a flex row of [lead?] + body. The lead (star / × / reject
-   mark) sits in its OWN column, so the body's text rail is identical for the
-   title and every meta line → all text left-aligns with no per-list indent
-   hack. Body rows: title (2) / venue / author(s) / year · cites. Every row
-   reserves its height, so a missing field can't shrink a card — all rows stay
-   equal height. */
-.pcard {
-  display: flex; align-items: flex-start; gap: var(--pcard-lead-gap);
-  padding: var(--pcard-pad-y) var(--pcard-pad-x);
-  border: 1px solid transparent;
-  border-radius: var(--pcard-radius);
-  cursor: pointer;
-  transition: background 120ms, border-color 120ms, box-shadow 120ms;
-}
-.pcard-lead { flex: 0 0 auto; display: flex; align-items: flex-start; }
-.pcard-body {
-  flex: 1 1 auto; min-width: 0;
-  display: flex; flex-direction: column; gap: var(--pcard-row-gap);
-}
-.pcard-headrow { display: flex; align-items: flex-start; gap: 8px; }
-.pcard-title {
-  flex: 1 1 auto; min-width: 0;
-  font-size: 12px; font-weight: 600; line-height: var(--pcard-title-lh);
-  letter-spacing: -0.005em; color: var(--cc-ink-1);
-  display: -webkit-box; -webkit-line-clamp: var(--pcard-title-lines);
-  -webkit-box-orient: vertical; overflow: hidden;
-  min-height: calc(var(--pcard-title-lines) * var(--pcard-title-lh) * 1em);
-}
-.pcard-trail { flex: 0 0 auto; align-self: flex-start; }
-/* A meta line — always ONE clipped line (never wraps) that RESERVES its line
-   even when empty, so every card stays the same height. */
-.pcard-meta {
-  display: block;
-  font-family: var(--cc-font-sans); font-size: 10.5px; line-height: 1.4;
-  color: var(--cc-ink-3);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
-  min-height: 1.4em;
-}
-.pcard-meta > * { white-space: nowrap; }
-.pcard-sep { opacity: 0.5; margin: 0 4px; }
-/* venue reads a touch stronger than the author / stat lines. */
-.pcard-venue { color: var(--cc-ink-2); }
 :root[data-palette="mono"][data-mono-radius="sharp"] {
   --mono-r-xs: 2px; --mono-r-sm: 2px; --mono-r-md: 3px;
   --mono-r-lg: 4px; --mono-r-pill: 4px;

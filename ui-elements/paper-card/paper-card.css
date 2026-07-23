@@ -1,0 +1,279 @@
+/* ==========================================================================
+   PAPER CARD  ·  CiteClaw UI element  ·  self-contained stylesheet
+   --------------------------------------------------------------------------
+   The one card used by every paper list (Build seeds, Run accepted / rejected,
+   Explore). This file owns EVERYTHING visual about the card — geometry, type,
+   colour, states, and the small lead / trail / decoration kit — so the look can
+   be edited here in isolation without touching the web app.
+
+   HOW IT STAYS PORTABLE
+   • All tunable parameters are the `--pcard-*` custom properties in the :root
+     block below. Change a number there and every card, in every list and in the
+     demo, updates at once. This IS the card's public parameter surface.
+   • Theme colours defer to the host app's `--cc-*` design tokens with a literal
+     fallback: `var(--cc-ink-1, #1e2735)`. Embedded in the app the card follows
+     the app's light/dark theme; opened standalone (demo.html) it uses the
+     fallbacks and looks identical to the shipped app.
+   • Geometry / type params are plain literals (the card owns them) so editing
+     them here is authoritative — they do not defer to app tokens.
+
+   STATES  (add the class to the .pcard element)
+     (default) normal      ·  .is-selected  ·  .is-fresh (accepted flash)
+     .is-reject (rejected)  ·  .is-offnet (explore, removed from graph view)
+     :hover is handled automatically.
+   ========================================================================== */
+
+:root {
+  /* ---- Geometry (the card owns these — literals, editable here) ---- */
+  --pcard-pad-y: 12px;          /* internal padding, top / bottom          */
+  --pcard-pad-x: 12px;          /* internal padding, left / right          */
+  --pcard-radius: 16px;         /* corner roundness                        */
+  --pcard-lead-gap: 9px;        /* gap from lead control (star/×) to body  */
+  --pcard-row-gap: 4px;         /* gap between the stacked text rows        */
+  --pcard-gap: 4px;             /* gap BETWEEN cards in a list             */
+  --pcard-title-lines: 2;       /* lines the title reserves + clips to     */
+
+  /* ---- Type ---- */
+  --pcard-title-size: 12px;
+  --pcard-title-weight: 600;
+  --pcard-title-lh: 1.35;
+  --pcard-meta-size: 10.5px;
+  --pcard-meta-lh: 1.4;
+  --pcard-font: var(--cc-font-sans, "Inter", -apple-system, BlinkMacSystemFont,
+                 "Segoe UI", Helvetica, Arial, sans-serif);
+  --pcard-font-mono: var(--cc-font-mono, "IBM Plex Mono", "SFMono-Regular",
+                 Menlo, Consolas, monospace);
+
+  /* ---- Colour — text (follows the app theme, falls back standalone) ---- */
+  --pcard-ink-title: var(--cc-ink-1, #1e2735);
+  --pcard-ink-venue: var(--cc-ink-2, #55606d);
+  --pcard-ink-meta:  var(--cc-ink-3, #7f768c);
+  --pcard-ink-faint: var(--cc-ink-faint, #94a3b8);
+
+  /* ---- Colour — surfaces / states (mono-skin shipped look) ---- */
+  --pcard-hover-bg:  #eceae5;
+  --pcard-sel-bg:    #0a0a0a;
+  --pcard-sel-ink:   #ffffff;
+  --pcard-sel-venue: rgba(255, 255, 255, 0.82);
+  --pcard-fresh-bg:  rgba(90, 133, 112, 0.12);
+
+  /* ---- Colour — decoration kit ---- */
+  --pcard-star:        var(--cc-ink-faint, #94a3b8);
+  --pcard-star-hover:  var(--cc-warning, #8a7a58);
+  --pcard-danger:      var(--cc-danger, #8b5a5a);
+  --pcard-chip-bg:     var(--cc-hover-soft, #f7f3e8);
+  --pcard-chip-ink:    var(--cc-ink-2, #55606d);
+  --pcard-chip-radius: 8px;
+  --pcard-reject-bg:   rgba(139, 90, 90, 0.11);
+  --pcard-seed-dot:    var(--cc-net-seed, #3e3548);
+  --pcard-rule-soft:   var(--cc-rule-soft, #ece7d7);
+}
+
+/* Dark-theme flip: only the state surfaces change; the rest reads from --cc-*. */
+:root[data-theme="dark"] {
+  --pcard-hover-bg:  var(--cc-hover-soft, #24262b);
+  --pcard-sel-bg:    var(--cc-paper, #1b1d22);
+  --pcard-sel-ink:   var(--cc-ink-1, #e8e8ea);
+  --pcard-sel-venue: var(--cc-ink-2, #b6bcc6);
+}
+
+/* ==========================================================================
+   The card — a flex row of [lead?] + body. The lead (star / × / reject mark)
+   sits in its own column, so the title AND every meta line share one left rail
+   → all text aligns with no per-list indent. Body rows stack: title (2) /
+   venue / authors / year·cites. Every row reserves its height, so a missing
+   field can't shrink a card — all rows in a list are the same height.
+   ========================================================================== */
+.pcard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pcard-lead-gap);
+  padding: var(--pcard-pad-y) var(--pcard-pad-x);
+  border: 1px solid transparent;
+  border-radius: var(--pcard-radius);
+  cursor: pointer;
+  font-family: var(--pcard-font);
+  transition: background 120ms, border-color 120ms, box-shadow 120ms;
+}
+
+.pcard-lead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+}
+
+.pcard-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pcard-row-gap);
+}
+
+.pcard-headrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pcard-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--pcard-title-size);
+  font-weight: var(--pcard-title-weight);
+  line-height: var(--pcard-title-lh);
+  letter-spacing: -0.005em;
+  color: var(--pcard-ink-title);
+  display: -webkit-box;
+  -webkit-line-clamp: var(--pcard-title-lines);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: calc(var(--pcard-title-lines) * var(--pcard-title-lh) * 1em);
+}
+
+.pcard-trail {
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+/* A meta line — always ONE clipped line (never wraps) that reserves its line
+   even when empty, so every card stays the same height. */
+.pcard-meta {
+  display: block;
+  font-family: var(--pcard-font);
+  font-size: var(--pcard-meta-size);
+  line-height: var(--pcard-meta-lh);
+  color: var(--pcard-ink-meta);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  min-height: calc(var(--pcard-meta-lh) * 1em);
+}
+.pcard-meta > * { white-space: nowrap; }
+.pcard-sep { opacity: 0.5; margin: 0 4px; }
+
+/* venue reads a touch stronger than the author / stat lines. */
+.pcard-venue { color: var(--pcard-ink-venue); }
+
+/* ---- States ---------------------------------------------------------- */
+.pcard:hover { background: var(--pcard-hover-bg); }
+
+.pcard.is-selected {
+  background: var(--pcard-sel-bg);
+  border-color: transparent;
+}
+.pcard.is-selected .pcard-title,
+.pcard.is-selected .pcard-meta { color: var(--pcard-sel-ink); }
+.pcard.is-selected .pcard-venue { color: var(--pcard-sel-venue); }
+.pcard.is-selected .pcard-depth {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+@keyframes pcardFresh {
+  0%   { background: var(--pcard-fresh-bg); }
+  100% { background: transparent; }
+}
+.pcard.is-fresh { animation: pcardFresh 1800ms ease-out; }
+
+/* In the collection but removed from the network view by graph filters. */
+.pcard.is-offnet { opacity: 0.55; }
+.pcard.is-offnet:hover,
+.pcard.is-offnet.is-selected { opacity: 0.8; }
+.pcard.is-offnet .pcard-title { color: var(--pcard-ink-venue); font-weight: 500; }
+
+/* ==========================================================================
+   Decoration kit — the small controls a list drops into the lead / trail /
+   footer slots. Styled here so ALL card looks live in this file; the lists
+   only supply behaviour (which handler fires) + the icon glyph.
+   ========================================================================== */
+
+/* Leading star button (Build seeds — click to accept as a seed). */
+.pcard-starbtn {
+  flex: 0 0 auto;
+  width: 16px; height: 16px; padding: 0; margin: 0;
+  border: none; background: transparent; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.pcard-star {
+  flex: 0 0 auto; width: 100%; height: 100%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--pcard-star);
+  transition: color 120ms, transform 120ms;
+}
+.pcard:hover .pcard-star { color: var(--pcard-ink-venue); }
+.pcard-starbtn:hover .pcard-star { color: var(--pcard-star-hover); transform: scale(1.08); }
+.pcard-starbtn:active .pcard-star { transform: scale(0.9); }
+
+/* Leading remove button (Seed set — click × to drop from seeds). */
+.pcard-removebtn {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: none; background: transparent;
+  color: var(--pcard-ink-meta); cursor: pointer; border-radius: var(--pcard-chip-radius);
+}
+.pcard-removebtn:hover { color: var(--pcard-danger); background: var(--pcard-chip-bg); }
+
+/* Leading reject mark (Run rejected). */
+.pcard-reject-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-top: 1px;
+  border-radius: 999px;
+  color: var(--pcard-danger);
+  background: var(--pcard-reject-bg);
+}
+
+/* Trailing depth chip (Run accepted). */
+.pcard-depth {
+  font-family: var(--pcard-font-mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--pcard-chip-ink);
+  padding: 2px 5px 1px;
+  background: var(--pcard-chip-bg);
+  border-radius: var(--pcard-chip-radius);
+  white-space: nowrap;
+}
+
+/* Trailing category chip (Run rejected — which filter cut it). */
+.pcard-cat {
+  font-family: var(--pcard-font-mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.03em;
+  color: var(--pcard-danger);
+  padding: 2px 6px 1px;
+  background: var(--pcard-reject-bg);
+  border-radius: var(--pcard-chip-radius);
+  white-space: nowrap;
+  max-width: 118px; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Footer reason block (Run rejected — the human reason it was cut). */
+.pcard-reason {
+  font-family: var(--pcard-font-mono); font-size: 10px; line-height: 1.4;
+  color: var(--pcard-ink-venue);
+  background: var(--pcard-chip-bg);
+  border: 1px solid var(--pcard-rule-soft);
+  border-radius: var(--pcard-chip-radius);
+  padding: 4px 7px;
+  margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* Seed dot in the title (Explore — marks a seed paper). */
+.pcard-seed-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--pcard-seed-dot);
+  margin-right: 5px; vertical-align: 1px;
+}
+
+/* Unlink glyph on the meta line (Explore — off-network paper). */
+.pcard-offnet-ic {
+  display: inline-flex; vertical-align: -1px;
+  margin-right: 4px; color: var(--pcard-ink-meta);
+}
+
+/* ---- List helper ----------------------------------------------------- */
+/* A vertical stack of cards with the unified inter-card gap. Optional — a
+   list can also set `gap: var(--pcard-gap)` on its own scroll container. */
+.pcard-list { display: flex; flex-direction: column; gap: var(--pcard-gap); }
