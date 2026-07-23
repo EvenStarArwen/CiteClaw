@@ -121,7 +121,7 @@ window.__TWEAKS = {
   "monoRunPill": "plain", "monoTrail": "black", "monoAcc": "black",
   "monoRunDot": "green", "buildSplit": 0.42, "monoSeedFill": "orange-chip",
   "monoCanvas": "paper", "monoAccent": "cobalt", "blockStyle": "specimen",
-  "colLeft": 257, "runSplit": 0.604
+  "colLeft": 300, "colRight": 340, "runSplit": 0.604
 };
 </script>
 <script type="text/babel">

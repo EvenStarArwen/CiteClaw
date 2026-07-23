@@ -371,8 +371,8 @@ function App() {
     <div
       className={"app" + (showBottomBar ? "" : " no-foot")}
       style={{
-        "--cc-col-left": (tweaks.colLeft ?? 248) + "px",
-        "--cc-col-right": (tweaks.colRight ?? 312) + "px",
+        "--cc-col-left": (tweaks.colLeft ?? 300) + "px",
+        "--cc-col-right": (tweaks.colRight ?? 340) + "px",
       }}
     >
       <TopBar
@@ -396,14 +396,14 @@ function App() {
 
       <ColSplitter
         side="left"
-        value={tweaks.colLeft ?? 248}
+        value={tweaks.colLeft ?? 300}
         onChange={(v) => setTweak("colLeft", v)}
         min={220}
         max={460}
       />
       <ColSplitter
         side="right"
-        value={tweaks.colRight ?? 312}
+        value={tweaks.colRight ?? 340}
         onChange={(v) => setTweak("colRight", v)}
         min={260}
         max={560}
