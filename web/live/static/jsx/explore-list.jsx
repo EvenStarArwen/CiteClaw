@@ -311,14 +311,14 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
             <div
               key={p.id}
               data-paper-id={p.id}
-              className={"xp-item" + (selectedId === p.id ? " is-selected" : "")
+              className={"xp-item pcard" + (selectedId === p.id ? " is-selected" : "")
                 + (off ? " is-offnet" : "")}
               onClick={() => onSelect(p.id === selectedId ? null : p.id)}
               title={off
                 ? "In the collection, but not in the network view — removed by the graph filters (min degree / edge weight / largest component)"
                 : undefined}
             >
-              <div className="xp-item-title">
+              <div className="xp-item-title pcard-title">
                 {p.seed && <span className="xp-seed-dot" title="Seed paper" />}
                 {p.title}
               </div>

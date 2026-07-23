@@ -894,6 +894,99 @@ bright vegetable-green as primary accent/fill{
   --mono-r-pill: 999px;
   --mono-r-circle: 50%;
 }
+
+/* ==========================================================================
+   PANEL SPACING PROTOCOL — the single source of truth for how far sidebar
+   content sits from the panel edges. NEVER hard-code a horizontal inset on a
+   sidebar section again; reach for these tokens so every section (header,
+   search box, filter bar, card rows, counters, empty states) shares ONE
+   left/right rail and can never drift out of alignment.
+
+     --pane-x      inset of full-width sections from the panel edge.
+     --pane-sbw    scrollbar width a scroll pane reserves.
+     --list-x      inset of scrollable card rows (= --pane-x - --pane-sbw), so a
+                   row's edge lands on the same rail as the boxes above it once
+                   the pane's symmetric gutter is accounted for.
+     --pane-y      top/bottom breathing inside a scroll region (equal both ends).
+     --pane-stack  vertical gap between stacked sections.
+
+   RULE: every scroll pane sets `scrollbar-gutter: stable both-edges` (see the
+   .cc-scroll helper) so the gutter is symmetric — left gap == right gap —
+   whether or not the scrollbar is visible. That one line kills the "right
+   margin looks bigger than the left" class of bug for good.
+   ========================================================================== */
+:root {
+  --pane-x: 12px;
+  --pane-y: 12px;
+  --pane-stack: 10px;
+  --pane-sbw: 8px;
+  --list-x: calc(var(--pane-x) - var(--pane-sbw));   /* 4px */
+
+  /* PAPER CARD — one geometry for every list (Build seeds, Run accepted /
+     rejected, Explore). Colour + selection stay per-list (skin); these tokens
+     own the size so all three read as the same component and, crucially, every
+     row is the SAME HEIGHT: the title always reserves --pcard-title-lines and
+     the meta is always a single clipped line. */
+  --pcard-pad-y: 8px;
+  --pcard-pad-x: 8px;
+  --pcard-radius: var(--mono-r-md);
+  --pcard-col-gap: 10px;
+  --pcard-row-gap: 3px;
+  --pcard-gap: 3px;            /* vertical space BETWEEN cards — one value, every list */
+  --pcard-title-lines: 2;
+  --pcard-title-lh: 1.35;
+}
+
+/* Symmetric-gutter scroll helper. Any pane that scrolls a card list carries
+   this so both side margins stay equal. */
+.cc-scroll { scrollbar-gutter: stable both-edges; }
+
+/* ==========================================================================
+   UNIFIED PAPER CARD  ·  .pcard
+   ONE card used by every list: Build seeds, Run accepted / rejected, Explore.
+   This class owns GEOMETRY only (size, layout, the equal-height guarantee).
+   Per-list COLOUR / selection stays on .seed-card / .acc-item / .xp-item and
+   their skins, so a card reads correctly in whichever list it sits in.
+
+   Layout is a flex row of three slots:
+     [.pcard-lead]  optional leading control (seed star, reject mark)
+     [.pcard-main]  title row (+ optional trailing chip) then the meta line
+     — trailing chips (depth, category, cites) live at the end of the title row.
+
+   EQUAL HEIGHT is structural, not luck: .pcard-title always reserves
+   --pcard-title-lines lines (min-height) and clips to that many; .pcard-meta is
+   always a single clipped line. A 1-line title and a 3-line title yield the
+   same card height. Tune every card at once from the --pcard-* tokens above.
+   ========================================================================== */
+/* The card BOX. Owns padding / radius / border only, so it composes over any
+   list's own inner layout (seed = flex column, accepted = grid, explore =
+   block). It deliberately does NOT set `display`, letting each list keep its
+   structure while sharing one footprint. */
+.pcard {
+  padding: var(--pcard-pad-y) var(--pcard-pad-x);
+  border: 1px solid transparent;
+  border-radius: var(--pcard-radius);
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, box-shadow 120ms;
+}
+/* The equal-height guarantee. Every title reserves --pcard-title-lines lines
+   (min-height) and clips to that many, so a 1-line and a 3-line title produce
+   the same card height. */
+.pcard-title {
+  font-size: 12px; font-weight: 600; line-height: var(--pcard-title-lh);
+  letter-spacing: -0.005em; color: var(--cc-ink-1);
+  display: -webkit-box; -webkit-line-clamp: var(--pcard-title-lines);
+  -webkit-box-orient: vertical; overflow: hidden;
+  min-height: calc(var(--pcard-title-lines) * var(--pcard-title-lh) * 1em);
+}
+/* The meta line — always ONE clipped line (never wraps), so it can't add a
+   variable second row the way the old flex-wrap meta did. */
+.pcard-meta {
+  display: block;
+  font-family: var(--cc-font-sans); font-size: 10.5px; color: var(--cc-ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.pcard-meta > * { white-space: nowrap; }
 :root[data-palette="mono"][data-mono-radius="sharp"] {
   --mono-r-xs: 2px; --mono-r-sm: 2px; --mono-r-md: 3px;
   --mono-r-lg: 4px; --mono-r-pill: 4px;
@@ -945,11 +1038,9 @@ bright vegetable-green as primary accent/fill{
   font-size: 10px;
 }
 
-/* ---- Fix: seed-card overflow + paddings ---- */
+/* Box geometry (padding/gap/border) comes from .pcard now; mono keeps only the
+   skin (transparent base, box-shadow transition for the selected lift). */
 :root[data-palette="mono"] .seed-card {
-  padding: 10px 12px;
-  gap: 3px;
-  border: 1px solid transparent;
   background: transparent;
   transition: background 120ms, box-shadow 120ms;
 }
@@ -968,12 +1059,8 @@ bright vegetable-green as primary accent/fill{
   -webkit-line-clamp: 2;
 }
 :root[data-palette="mono"] .seed-meta {
-  font-family: var(--cc-font-sans);
-  font-size: 10.5px;
   color: var(--cc-ink-3);
   padding-left: 22px;
-  flex-wrap: wrap;
-  gap: 5px;
 }
 :root[data-palette="mono"] .seed-meta-sep { color: var(--cc-ink-faint); }
 :root[data-palette="mono"] .seed-cites {
@@ -1186,10 +1273,6 @@ bright vegetable-green as primary accent/fill{
 }
 
 /* ---- SEED variant: inline (tighter, no card) ---- */
-:root[data-palette="mono"][data-mono-seed="inline"] .seed-card {
-  padding: 6px 8px;
-  border-radius: var(--mono-r-sm);
-}
 :root[data-palette="mono"][data-mono-seed="inline"] .seed-card.is-selected {
   /* base inline selected — chrome is controlled by data-mono-seedfill, not here */
   box-shadow: none;
@@ -1404,9 +1487,6 @@ bright vegetable-green as primary accent/fill{
 :root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-title,
 :root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-meta,
 :root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-depth { color: #ffffff !important; }
-:root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-score {
-  color: #ffffff !important;
-}
 :root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-depth {
   background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.88) !important;
 }
@@ -1510,13 +1590,8 @@ bright vegetable-green as primary accent/fill{
 :root[data-palette="mono"][data-mono-seed="inline"] .seed-card.is-selected {
   border: 1px solid transparent;
 }
-/* Inline variant: loosen the spacing between starred seeds */
-:root[data-palette="mono"][data-mono-seed="inline"] .seed-card {
-  padding: 9px 11px;
-  margin-bottom: 4px;
-}
-:root[data-palette="mono"][data-mono-seed="inline"] .seed-card .seed-meta { margin-top: 3px; }
-:root[data-palette="mono"][data-mono-seed="inline"] .seeds-list { gap: 2px; }
+/* Box geometry + inter-card spacing now come from .pcard / --pcard-gap. */
+:root[data-palette="mono"][data-mono-seed="inline"] .seeds-list { gap: var(--pcard-gap); }
 
 /* Session chip in status bar — green accent on the v4 badge */
 :root[data-palette="mono"] .sb-item .sb-val,
@@ -1729,7 +1804,7 @@ select {
 /* ---------- App frame ---------- */
 .app {
   display: grid;
-  grid-template-columns: var(--cc-col-left, 248px) 4px minmax(0, 1fr) 4px var(--cc-col-right, 312px);
+  grid-template-columns: var(--cc-col-left, 300px) 4px minmax(0, 1fr) 4px var(--cc-col-right, 340px);
   grid-template-rows: 44px 1fr 26px;
   grid-template-areas:
     "top    top    top    top    top"
@@ -1946,7 +2021,7 @@ select {
    functional zones read as their own surfaces (no more "white blob" feel). */
 .ph {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 14px 8px;
+  padding: 9px var(--pane-x) 8px;
   flex: 0 0 auto;
   background: var(--cc-chrome);
   border-bottom: 1px solid var(--cc-rule-strong);
@@ -1971,7 +2046,7 @@ select {
 }
 .ph-btn:hover { background: var(--cc-hover-soft); color: var(--cc-ink-1); }
 
-.pb-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+.pb-scroll { flex: 1; overflow-y: auto; min-height: 0; scrollbar-gutter: stable both-edges; padding-block: var(--pane-y); }
 .pb-scroll::-webkit-scrollbar { width: 8px; }
 .pb-scroll::-webkit-scrollbar-track { background: transparent; }
 .pb-scroll::-webkit-scrollbar-thumb { background: var(--cc-rule); border-radius: var(--mono-r-xs); border: 2px solid var(--cc-chrome); }
@@ -1979,7 +2054,7 @@ select {
 
 /* ---------- Search field (Claude-like) ---------- */
 .searchbox {
-  margin: 14px 12px 10px;
+  margin: var(--pane-y) var(--pane-x) var(--pane-stack);
   display: flex; align-items: center; gap: 6px;
   padding: 5px 9px;
   background: var(--cc-paper);
@@ -2141,15 +2216,10 @@ select {
    ========================================================================== */
 
 /* ---------- B: Seed search ---------- */
-.seeds-list { padding: 0 8px 16px; display: flex; flex-direction: column; gap: 2px; }
-.seed-card {
-  padding: 8px 10px;
-  border-radius: var(--mono-r-xs);
-  cursor: pointer;
-  display: flex; flex-direction: column; gap: 3px;
-  border: 1px solid transparent;
-  transition: background 120ms, border-color 120ms;
-}
+.seeds-list { padding: 0 var(--list-x); display: flex; flex-direction: column; gap: var(--pcard-gap); }
+/* .seed-card = the seed list's inner layout + skin; the box (padding/radius/
+   border) comes from .pcard. */
+.seed-card { display: flex; flex-direction: column; gap: var(--pcard-row-gap); }
 .seed-card:hover { background: var(--cc-hover-soft); }
 .seed-card.is-selected {
   background: var(--cc-paper);
@@ -2164,23 +2234,15 @@ select {
 }
 .seed-card.is-selected .seed-star { color: var(--cc-warning); }
 .seed-card:hover .seed-star { color: var(--cc-ink-2); }
-.seed-title {
-  font-size: 12px; font-weight: 500; color: var(--cc-ink-1);
-  line-height: 1.35; letter-spacing: -0.005em;
-  display: -webkit-box;
-  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.seed-meta {
-  font-family: var(--cc-font-mono); font-size: 10px; color: var(--cc-ink-3);
-  padding-left: 22px;
-  display: flex; gap: 6px; align-items: center;
-}
-.seed-meta-sep { opacity: 0.5; }
+/* seed title/meta geometry now comes from .pcard-title / .pcard-meta; these
+   keep only the seed-specific bits (the 22px indent that lines the meta up
+   under the title, past the star). */
+.seed-meta { padding-left: 22px; }
+.seed-meta-sep { opacity: 0.5; margin: 0 4px; }
 .seed-cites { color: var(--cc-ink-2); }
 
 .seeds-counter {
-  margin: 8px 12px 10px;
+  margin: var(--pane-stack) var(--pane-x);
   padding: 8px 10px;
   background: var(--cc-hover-soft);
   border: 1px solid var(--cc-rule);
@@ -3707,7 +3769,7 @@ select.gp-v { cursor: pointer; }
    ========================================================================== */
 
 /* ---------- B: Pipeline progress (left sidebar in run mode) ---------- */
-.progress-list { padding: 4px 8px 16px; display: flex; flex-direction: column; gap: 2px; }
+.progress-list { padding: 0 var(--list-x); display: flex; flex-direction: column; gap: 2px; }
 .prog-step {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 9px 10px;
@@ -4281,7 +4343,7 @@ select.gp-v { cursor: pointer; }
 
 /* ---------- E: Accepted papers (run mode right panel) ---------- */
 .accepted-controls {
-  padding: 10px 12px;
+  padding: 10px var(--pane-x);
   display: flex; gap: 6px; align-items: center;
 }
 .accepted-sort {
@@ -4299,7 +4361,7 @@ select.gp-v { cursor: pointer; }
    In Run it is list-only; in Explore it also drives the graph, exactly like
    the facet filters there. */
 .list-find {
-  margin: 6px 12px 0;
+  margin: 6px var(--pane-x) 0;
   display: flex; align-items: center; gap: 7px;
   padding: 0 9px;
   background: var(--cc-paper);
@@ -4325,57 +4387,31 @@ select.gp-v { cursor: pointer; }
 .accepted-scroll {
   flex: 1; min-height: 0;
   overflow-y: auto;
-  padding: 0 8px 16px;
+  scrollbar-gutter: stable both-edges;
+  padding: var(--pane-y) var(--list-x);
+  display: flex; flex-direction: column; gap: var(--pcard-gap);
 }
 .accepted-scroll::-webkit-scrollbar { width: 8px; }
 .accepted-scroll::-webkit-scrollbar-thumb { background: var(--cc-rule); border-radius: var(--mono-r-xs); border: 2px solid var(--cc-chrome); }
 
+/* .acc-item = accepted row inner layout + skin; box comes from .pcard. Score
+   removed → title | trailing-chip. Rejected rows re-add a leading mark (below).*/
 .acc-item {
-  padding: 9px 10px;
-  border-radius: var(--mono-r-xs);
-  cursor: pointer;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 4px 10px;
-  border: 1px solid transparent;
-  transition: background 120ms, border-color 120ms;
+  grid-template-columns: 1fr auto;
+  gap: var(--pcard-row-gap) var(--pcard-col-gap);
 }
+.acc-item.is-reject { grid-template-columns: auto 1fr auto; }
 .acc-item:hover { background: var(--cc-hover-soft); }
 .acc-item.is-selected {
   background: var(--cc-paper);
   border-color: var(--cc-rule-strong);
 }
-.acc-item + .acc-item { border-top: 1px solid var(--cc-rule-soft); border-radius: 0; }
-.acc-item:first-child, .acc-item:last-child, .acc-item.is-selected { border-radius: var(--mono-r-xs); }
-.acc-item + .acc-item.is-selected,
-.acc-item.is-selected + .acc-item { border-top: 1px solid transparent; }
 
-.acc-score {
-  grid-row: 1 / 3;
-  align-self: start;
-  font-family: var(--cc-font-mono); font-size: 13px;
-  font-weight: 600;
-  color: var(--cc-ink-1);
-  font-variant-numeric: tabular-nums;
-  min-width: 26px; text-align: right;
-  padding-top: 1px;
-}
-.acc-item.is-fresh .acc-score { color: var(--cc-positive); }
-.acc-title {
-  font-size: 12px; font-weight: 500; color: var(--cc-ink-1);
-  line-height: 1.35; letter-spacing: -0.005em;
-  display: -webkit-box;
-  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.acc-meta {
-  font-family: var(--cc-font-mono); font-size: 10px;
-  color: var(--cc-ink-3);
-  display: flex; gap: 5px; align-items: center;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  min-width: 0;
-}
-.acc-meta-sep { opacity: 0.5; }
+/* Score removed from the accepted card. Title/meta geometry come from
+   .pcard-title / .pcard-meta; .acc-title / .acc-meta stay only as skin hooks
+   (mono paints them white when a row is selected on the black accent). */
+.acc-meta-sep { opacity: 0.5; margin: 0 4px; }
 .acc-depth {
   font-family: var(--cc-font-mono); font-size: 9px;
   text-transform: uppercase; letter-spacing: 0.06em;
@@ -4413,7 +4449,7 @@ select.gp-v { cursor: pointer; }
 /* ---------- Accepted / Rejected tabs (Run sidebar) ---------- */
 /* Same idiom as .dash-tab (transparent → hover-deep active) so it reads in
    both the light and mono skins, but stretched to two equal segments. */
-.acc-tabs { display: flex; gap: 3px; padding: 8px 12px 2px; }
+.acc-tabs { display: flex; gap: 3px; padding: 8px var(--pane-x) 2px; }
 .acc-tab {
   flex: 1;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -4575,7 +4611,7 @@ select.gp-v { cursor: pointer; }
 /* ---- Seed search: collapsible filter bar + accepted-seeds cart ---- */
 .seed-filterbar {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 6px 12px; border-bottom: 1px solid var(--cc-rule-soft);
+  padding: 6px var(--pane-x); border-bottom: 1px solid var(--cc-rule-soft);
 }
 .seed-filter-toggle {
   display: inline-flex; align-items: center; gap: 5px;
@@ -4595,7 +4631,7 @@ select.gp-v { cursor: pointer; }
 .seed-accepted-badge:hover { color: var(--cc-ink-1); }
 .seed-filters {
   display: flex; flex-direction: column; gap: 9px;
-  padding: 11px 12px; border-bottom: 1px solid var(--cc-rule-soft);
+  padding: 11px var(--pane-x); border-bottom: 1px solid var(--cc-rule-soft);
   background: var(--cc-chrome);
 }
 .seed-filter-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -4683,7 +4719,7 @@ select.gp-v { cursor: pointer; }
   box-shadow: 0 1px 2px rgba(20,20,20,0.15);
 }
 .dr input[type="range"]:active::-webkit-slider-thumb { cursor: grabbing; border-color: var(--cc-accent); }
-.seeds-empty { padding: 22px 16px; font-size: 12px; color: var(--cc-ink-3); text-align: center; line-height: 1.55; }
+.seeds-empty { padding: 22px var(--pane-x); font-size: 12px; color: var(--cc-ink-3); text-align: center; line-height: 1.55; }
 .seed-remove-btn {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; padding: 0; border: none; background: transparent;
@@ -5009,7 +5045,7 @@ select.gp-v { cursor: pointer; }
 .xp-controls .accepted-sort { min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
 .xp-controls .ph-btn { flex: none; }
 
-.xp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 12px; }
+.xp-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; padding: var(--pane-y) var(--list-x); display: flex; flex-direction: column; gap: var(--pcard-gap); }
 .xp-scroll::-webkit-scrollbar { width: 8px; }
 .xp-scroll::-webkit-scrollbar-thumb {
   background: var(--cc-rule); border-radius: var(--mono-r-xs);
@@ -5022,27 +5058,13 @@ select.gp-v { cursor: pointer; }
 }
 .xp-note-err { color: var(--cc-danger); font-style: normal; }
 
-.xp-item {
-  padding: 8px 10px;
-  border-radius: var(--mono-r-xs);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 120ms, border-color 120ms;
-}
+/* .xp-item = explore row skin only; box comes from .pcard, title from
+   .pcard-title. Separate gapped cards (no connecting borders) so every list
+   reads the same. */
 .xp-item:hover { background: var(--cc-hover-soft); }
 .xp-item.is-selected { background: var(--cc-paper); border-color: var(--cc-rule-strong); }
-.xp-item + .xp-item { border-top: 1px solid var(--cc-rule-soft); border-radius: 0; }
-.xp-item:first-child, .xp-item:last-child, .xp-item.is-selected { border-radius: var(--mono-r-xs); }
-.xp-item + .xp-item.is-selected,
-.xp-item.is-selected + .xp-item { border-top-color: transparent; }
 
-.xp-item-title {
-  font-size: 12px; font-weight: 600; line-height: 1.35;
-  color: var(--cc-ink-1); letter-spacing: -0.005em;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-bottom: 3px;
-}
+.xp-item-title { margin-bottom: var(--pcard-row-gap); }
 .xp-seed-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: var(--mono-r-circle);
   background: var(--cc-net-seed);
@@ -5459,9 +5481,8 @@ select.gp-v { cursor: pointer; }
   white-space: normal; word-break: break-word; overflow: visible; line-height: 1.5;
 }
 
-/* Breathing room between the accepted-list controls and the first card
-   (top/bottom padding lives on the base .accepted-controls rule) */
-.accepted-scroll { padding-top: 6px; }
+/* Breathing above/below the card list now lives on the base .accepted-scroll
+   rule (padding-block: var(--pane-y)) per the panel spacing protocol. */
 
 /* ── Step-detail page: the step's internal ROADMAP ─────────────────────── */
 .sd-step-head { display: flex; align-items: center; gap: 10px; }

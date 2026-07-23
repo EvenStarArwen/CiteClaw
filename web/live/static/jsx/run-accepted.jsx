@@ -215,16 +215,15 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
             key={p.id}
             data-paper-id={p.id}
             className={
-              "acc-item" +
+              "acc-item pcard" +
               (selected === p.id ? " is-selected" : "") +
               (freshIds.has(p.id) ? " is-fresh" : "")
             }
             onClick={() => pick(p, false)}
           >
-            <span className="acc-score">{(p.score || 0).toFixed(2)}</span>
-            <div className="acc-title">{p.title}</div>
+            <div className="acc-title pcard-title">{p.title}</div>
             <span className="acc-depth">d{p.depth}</span>
-            <div className="acc-meta" style={{ gridColumn: "2 / 4" }}>
+            <div className="acc-meta pcard-meta" style={{ gridColumn: "1 / 3" }}>
               <span>{p.authors}</span>
               <span className="acc-meta-sep">·</span>
               <span>{p.year}</span>
@@ -240,13 +239,13 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
           <div
             key={p.id}
             data-paper-id={p.id}
-            className={"acc-item is-reject" + (selected === p.id ? " is-selected" : "")}
+            className={"acc-item is-reject pcard" + (selected === p.id ? " is-selected" : "")}
             onClick={() => pick(p, true)}
           >
             <span className="acc-reject-mark" title="Rejected"><Icon name="x" size={12} /></span>
-            <div className="acc-title">{p.title}</div>
+            <div className="acc-title pcard-title">{p.title}</div>
             <span className="acc-cat" title={p.category}>{fmtReason(p.category)}</span>
-            <div className="acc-meta" style={{ gridColumn: "2 / 4" }}>
+            <div className="acc-meta pcard-meta" style={{ gridColumn: "2 / 4" }}>
               <span>{p.authors || "—"}</span>
               <span className="acc-meta-sep">·</span>
               <span>{p.year || "—"}</span>

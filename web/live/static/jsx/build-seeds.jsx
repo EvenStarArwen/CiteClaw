@@ -211,7 +211,7 @@ function SeedAbstractDetail({ paper, onBack, footer }) {
 function SeedCard({ paper, onOpen, onAction, mode }) {
   const accepted = mode === "accepted";
   return (
-    <div className="seed-card" onClick={() => onOpen(paper.id)} title="Click to read the abstract">
+    <div className="seed-card pcard" onClick={() => onOpen(paper.id)} title="Click to read the abstract">
       <div className="seed-card-head">
         <button
           className={accepted ? "seed-remove-btn" : "seed-star-btn"}
@@ -223,9 +223,9 @@ function SeedCard({ paper, onOpen, onAction, mode }) {
             <Icon name={accepted ? "x" : "star"} size={13} />
           </span>
         </button>
-        <span className="seed-title">{paper.title}</span>
+        <span className="seed-title pcard-title">{paper.title}</span>
       </div>
-      <div className="seed-meta">
+      <div className="seed-meta pcard-meta">
         <span>{paper.authors}</span>
         <span className="seed-meta-sep">·</span>
         <span>{paper.year}</span>
