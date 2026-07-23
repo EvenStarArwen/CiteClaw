@@ -927,12 +927,12 @@ bright vegetable-green as primary accent/fill{
      own the size so all three read as the same component and, crucially, every
      row is the SAME HEIGHT: the title always reserves --pcard-title-lines and
      the meta is always a single clipped line. */
-  --pcard-pad-y: 8px;
-  --pcard-pad-x: 8px;
+  --pcard-pad-y: 12px;        /* roomier internal padding (was 8 — cards read cramped) */
+  --pcard-pad-x: 12px;
   --pcard-radius: var(--mono-r-md);
-  --pcard-col-gap: 10px;
-  --pcard-row-gap: 3px;
-  --pcard-gap: 3px;            /* vertical space BETWEEN cards — one value, every list */
+  --pcard-lead-gap: 9px;      /* gap from the leading control (star/×) to the body */
+  --pcard-row-gap: 4px;       /* gap between the stacked text rows */
+  --pcard-gap: 4px;           /* vertical space BETWEEN cards — one value, every list */
   --pcard-title-lines: 2;
   --pcard-title-lh: 1.35;
 }
@@ -958,31 +958,37 @@ bright vegetable-green as primary accent/fill{
    always a single clipped line. A 1-line title and a 3-line title yield the
    same card height. Tune every card at once from the --pcard-* tokens above.
    ========================================================================== */
-/* The card BOX. Owns padding / radius / border only, so it composes over any
-   list's own inner layout (seed = flex column, accepted = grid, explore =
-   block). It deliberately does NOT set `display`, letting each list keep its
-   structure while sharing one footprint. */
+/* UNIFIED CARD — a flex row of [lead?] + body. The lead (star / × / reject
+   mark) sits in its OWN column, so the body's text rail is identical for the
+   title and every meta line → all text left-aligns with no per-list indent
+   hack. Body rows: title (2) / venue / author(s) / year · cites. Every row
+   reserves its height, so a missing field can't shrink a card — all rows stay
+   equal height. */
 .pcard {
+  display: flex; align-items: flex-start; gap: var(--pcard-lead-gap);
   padding: var(--pcard-pad-y) var(--pcard-pad-x);
   border: 1px solid transparent;
   border-radius: var(--pcard-radius);
   cursor: pointer;
   transition: background 120ms, border-color 120ms, box-shadow 120ms;
 }
-/* The equal-height guarantee. Every title reserves --pcard-title-lines lines
-   (min-height) and clips to that many, so a 1-line and a 3-line title produce
-   the same card height. */
+.pcard-lead { flex: 0 0 auto; display: flex; align-items: flex-start; }
+.pcard-body {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: var(--pcard-row-gap);
+}
+.pcard-headrow { display: flex; align-items: flex-start; gap: 8px; }
 .pcard-title {
+  flex: 1 1 auto; min-width: 0;
   font-size: 12px; font-weight: 600; line-height: var(--pcard-title-lh);
   letter-spacing: -0.005em; color: var(--cc-ink-1);
   display: -webkit-box; -webkit-line-clamp: var(--pcard-title-lines);
   -webkit-box-orient: vertical; overflow: hidden;
   min-height: calc(var(--pcard-title-lines) * var(--pcard-title-lh) * 1em);
 }
+.pcard-trail { flex: 0 0 auto; align-self: flex-start; }
 /* A meta line — always ONE clipped line (never wraps) that RESERVES its line
-   even when empty (a paper with no venue still gets the row), so the two-line
-   meta block (venue / byline) keeps every card the same height. The card body
-   is now: title (2 lines) · venue (1) · authors+year+cites (1). */
+   even when empty, so every card stays the same height. */
 .pcard-meta {
   display: block;
   font-family: var(--cc-font-sans); font-size: 10.5px; line-height: 1.4;
@@ -991,7 +997,8 @@ bright vegetable-green as primary accent/fill{
   min-height: 1.4em;
 }
 .pcard-meta > * { white-space: nowrap; }
-/* venue reads a touch stronger than the byline → title > venue > byline. */
+.pcard-sep { opacity: 0.5; margin: 0 4px; }
+/* venue reads a touch stronger than the author / stat lines. */
 .pcard-venue { color: var(--cc-ink-2); }
 :root[data-palette="mono"][data-mono-radius="sharp"] {
   --mono-r-xs: 2px; --mono-r-sm: 2px; --mono-r-md: 3px;
@@ -2222,9 +2229,7 @@ select {
 
 /* ---------- B: Seed search ---------- */
 .seeds-list { padding: 0 var(--list-x); display: flex; flex-direction: column; gap: var(--pcard-gap); }
-/* .seed-card = the seed list's inner layout + skin; the box (padding/radius/
-   border) comes from .pcard. */
-.seed-card { display: flex; flex-direction: column; gap: var(--pcard-row-gap); }
+/* .seed-card = skin only; box + layout come from .pcard / .pcard-body. */
 .seed-card:hover { background: var(--cc-hover-soft); }
 .seed-card.is-selected {
   background: var(--cc-paper);
@@ -2239,12 +2244,9 @@ select {
 }
 .seed-card.is-selected .seed-star { color: var(--cc-warning); }
 .seed-card:hover .seed-star { color: var(--cc-ink-2); }
-/* seed title/meta geometry now comes from .pcard-title / .pcard-meta; these
-   keep only the seed-specific bits (the 22px indent that lines the meta up
-   under the title, past the star). */
-.seed-meta { padding-left: 22px; }
+/* seed meta comes from .pcard-meta now; the old 22px indent (which mis-aligned
+   against the ×-button width) is gone — the .pcard-body rail aligns the text. */
 .seed-meta-sep { opacity: 0.5; margin: 0 4px; }
-.seed-cites { color: var(--cc-ink-2); }
 
 .seeds-counter {
   margin: var(--pane-stack) var(--pane-x);
@@ -4399,14 +4401,8 @@ select.gp-v { cursor: pointer; }
 .accepted-scroll::-webkit-scrollbar { width: 8px; }
 .accepted-scroll::-webkit-scrollbar-thumb { background: var(--cc-rule); border-radius: var(--mono-r-xs); border: 2px solid var(--cc-chrome); }
 
-/* .acc-item = accepted row inner layout + skin; box comes from .pcard. Score
-   removed → title | trailing-chip. Rejected rows re-add a leading mark (below).*/
-.acc-item {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--pcard-row-gap) var(--pcard-col-gap);
-}
-.acc-item.is-reject { grid-template-columns: auto 1fr auto; }
+/* .acc-item = skin only; box + layout come from .pcard / .pcard-body. Score is
+   gone; depth (accepted) / category (rejected) ride the title row as a trail. */
 .acc-item:hover { background: var(--cc-hover-soft); }
 .acc-item.is-selected {
   background: var(--cc-paper);
@@ -4502,7 +4498,6 @@ select.gp-v { cursor: pointer; }
 
 /* ---------- Rejected rows (reuse the .acc-item grid) ---------- */
 .acc-reject-mark {
-  grid-row: 1 / 3; align-self: start;
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; margin-top: 1px;
   border-radius: var(--mono-r-pill);
@@ -5066,7 +5061,6 @@ select.gp-v { cursor: pointer; }
 /* .xp-item = explore row skin only; box comes from .pcard, title from
    .pcard-title. Separate gapped cards (no connecting borders) so every list
    reads the same. */
-.xp-item { display: flex; flex-direction: column; gap: var(--pcard-row-gap); }
 .xp-item:hover { background: var(--cc-hover-soft); }
 .xp-item.is-selected { background: var(--cc-paper); border-color: var(--cc-rule-strong); }
 .xp-seed-dot {

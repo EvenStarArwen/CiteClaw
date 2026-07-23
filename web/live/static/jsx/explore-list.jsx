@@ -318,16 +318,23 @@ function ExploreList({ papers, kind, selectedId, onSelect, sort, setSort,
                 ? "In the collection, but not in the network view — removed by the graph filters (min degree / edge weight / largest component)"
                 : undefined}
             >
-              <div className="xp-item-title pcard-title">
-                {p.seed && <span className="xp-seed-dot" title="Seed paper" />}
-                {p.title}
-              </div>
-              <div className="pcard-meta pcard-venue">{p.venue || "—"}</div>
-              <div className="pcard-meta">
-                {off && <Icon name="unlink" size={10} className="xp-offnet-ic" />}
-                {author
-                  ? [p.hIndex != null ? `h ${p.hIndex}` : null, `${(p.nPapers || 0).toLocaleString()}p`].filter(Boolean).join(" · ") || "—"
-                  : [p.authors, p.year || null, `${fmtK(p.cites || 0)} cites`].filter(Boolean).join(" · ")}
+              <div className="pcard-body">
+                <div className="pcard-headrow">
+                  <div className="xp-item-title pcard-title">
+                    {p.seed && <span className="xp-seed-dot" title="Seed paper" />}
+                    {p.title}
+                  </div>
+                </div>
+                <div className="pcard-meta pcard-venue">{p.venue || "—"}</div>
+                <div className="pcard-meta">
+                  {off && <Icon name="unlink" size={10} className="xp-offnet-ic" />}
+                  {author ? (p.affiliation || "—") : (p.authors || "—")}
+                </div>
+                <div className="pcard-meta">
+                  {author
+                    ? [p.hIndex != null ? `h ${p.hIndex}` : null, `${(p.nPapers || 0).toLocaleString()} papers`].filter(Boolean).join(" · ") || "—"
+                    : [p.year || null, `${fmtK(p.cites || 0)} cites`].filter(Boolean).join(" · ") || "—"}
+                </div>
               </div>
             </div>
           );

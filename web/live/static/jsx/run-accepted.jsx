@@ -221,15 +221,18 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
             }
             onClick={() => pick(p, false)}
           >
-            <div className="acc-title pcard-title">{p.title}</div>
-            <span className="acc-depth">d{p.depth}</span>
-            <div className="acc-meta pcard-meta pcard-venue" style={{ gridColumn: "1 / 3" }}>{p.venue || "—"}</div>
-            <div className="acc-meta pcard-meta" style={{ gridColumn: "1 / 3" }}>
-              <span>{p.authors}</span>
-              <span className="acc-meta-sep">·</span>
-              <span>{p.year}</span>
-              <span className="acc-meta-sep">·</span>
-              <span>{(p.cites || 0).toLocaleString()} cites</span>
+            <div className="pcard-body">
+              <div className="pcard-headrow">
+                <div className="acc-title pcard-title">{p.title}</div>
+                <span className="acc-depth pcard-trail">d{p.depth}</span>
+              </div>
+              <div className="acc-meta pcard-meta pcard-venue">{p.venue || "—"}</div>
+              <div className="acc-meta pcard-meta">{p.authors || "—"}</div>
+              <div className="acc-meta pcard-meta">
+                <span>{p.year || "—"}</span>
+                <span className="pcard-sep">·</span>
+                <span>{(p.cites || 0).toLocaleString()} cites</span>
+              </div>
             </div>
           </div>
         ))}
@@ -241,20 +244,23 @@ function RunAccepted({ selectedPaperId, onSelectPaper, detailOpen, onCloseDetail
             className={"acc-item is-reject pcard" + (selected === p.id ? " is-selected" : "")}
             onClick={() => pick(p, true)}
           >
-            <span className="acc-reject-mark" title="Rejected"><Icon name="x" size={12} /></span>
-            <div className="acc-title pcard-title">{p.title}</div>
-            <span className="acc-cat" title={p.category}>{fmtReason(p.category)}</span>
-            <div className="acc-meta pcard-meta pcard-venue" style={{ gridColumn: "2 / 4" }}>{p.venue || "—"}</div>
-            <div className="acc-meta pcard-meta" style={{ gridColumn: "2 / 4" }}>
-              <span>{p.authors || "—"}</span>
-              <span className="acc-meta-sep">·</span>
-              <span>{p.year || "—"}</span>
-              <span className="acc-meta-sep">·</span>
-              <span>{(p.cites || 0).toLocaleString()} cites</span>
+            <span className="acc-reject-mark pcard-lead" title="Rejected"><Icon name="x" size={12} /></span>
+            <div className="pcard-body">
+              <div className="pcard-headrow">
+                <div className="acc-title pcard-title">{p.title}</div>
+                <span className="acc-cat pcard-trail" title={p.category}>{fmtReason(p.category)}</span>
+              </div>
+              <div className="acc-meta pcard-meta pcard-venue">{p.venue || "—"}</div>
+              <div className="acc-meta pcard-meta">{p.authors || "—"}</div>
+              <div className="acc-meta pcard-meta">
+                <span>{p.year || "—"}</span>
+                <span className="pcard-sep">·</span>
+                <span>{(p.cites || 0).toLocaleString()} cites</span>
+              </div>
+              {p.reason && (
+                <div className="acc-reason" title={p.reason}>{p.reason}</div>
+              )}
             </div>
-            {p.reason && (
-              <div className="acc-reason" style={{ gridColumn: "2 / 4" }} title={p.reason}>{p.reason}</div>
-            )}
           </div>
         ))}
       </div>

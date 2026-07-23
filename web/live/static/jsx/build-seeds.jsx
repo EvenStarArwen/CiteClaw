@@ -212,7 +212,7 @@ function SeedCard({ paper, onOpen, onAction, mode }) {
   const accepted = mode === "accepted";
   return (
     <div className="seed-card pcard" onClick={() => onOpen(paper.id)} title="Click to read the abstract">
-      <div className="seed-card-head">
+      <span className="pcard-lead">
         <button
           className={accepted ? "seed-remove-btn" : "seed-star-btn"}
           onClick={e => { e.stopPropagation(); onAction(paper.id); }}
@@ -223,15 +223,18 @@ function SeedCard({ paper, onOpen, onAction, mode }) {
             <Icon name={accepted ? "x" : "star"} size={13} />
           </span>
         </button>
-        <span className="seed-title pcard-title">{paper.title}</span>
-      </div>
-      <div className="seed-meta pcard-meta pcard-venue">{paper.venue || "—"}</div>
-      <div className="seed-meta pcard-meta">
-        <span>{paper.authors}</span>
-        <span className="seed-meta-sep">·</span>
-        <span>{paper.year}</span>
-        <span className="seed-meta-sep">·</span>
-        <span className="seed-cites">{(paper.cites || 0).toLocaleString()} cites</span>
+      </span>
+      <div className="pcard-body">
+        <div className="pcard-headrow">
+          <span className="seed-title pcard-title">{paper.title}</span>
+        </div>
+        <div className="pcard-meta pcard-venue">{paper.venue || "—"}</div>
+        <div className="pcard-meta">{paper.authors || "—"}</div>
+        <div className="pcard-meta">
+          <span>{paper.year || "—"}</span>
+          <span className="pcard-sep">·</span>
+          <span>{(paper.cites || 0).toLocaleString()} cites</span>
+        </div>
       </div>
     </div>
   );
