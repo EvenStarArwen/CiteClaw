@@ -648,13 +648,6 @@ bright vegetable-green as primary accent/fill{
 :root[data-palette="mono"] .seed-card.is-selected .seed-star {
   color: #0a0a0a;
 }
-:root[data-palette="mono"] .seed-card.is-selected {
-  background: #ffffff;
-  border-color: transparent;
-  box-shadow: 0 0 0 1px var(--cc-rule), 0 1px 2px rgba(10,10,10,0.04);
-  border-radius: var(--mono-r-md);
-}
-
 /* ---------- Pipeline block selected: black featured card ---------- */
 :root[data-palette="mono"] .pblock.is-selected,
 :root[data-palette="mono"] .pblock.style-catalog.is-selected,
@@ -847,15 +840,6 @@ bright vegetable-green as primary accent/fill{
 
 /* Filter tree root spacing */
 :root[data-palette="mono"] .ft-tree { gap: 10px; }
-
-/* ---------- Accepted papers selected row ---------- */
-:root[data-palette="mono"] .acc-item.is-selected {
-  background: #ffffff;
-  border-color: transparent;
-  box-shadow: 0 0 0 1px var(--cc-rule), 0 2px 6px rgba(10,10,10,0.05);
-  border-radius: var(--mono-r-md);
-}
-
 /* ---------- Search box ---------- */
 :root[data-palette="mono"] .searchbox {
   border-radius: var(--mono-r-pill);
@@ -995,37 +979,7 @@ bright vegetable-green as primary accent/fill{
 :root[data-palette="mono"] .seed-card {
   background: transparent;
   transition: background 120ms, box-shadow 120ms;
-}
-/* Hover must be VISIBLE — #fff/near-white on the mono panel read as "no
-   hover at all". Light grey from the mono family instead. */
-:root[data-palette="mono"] .seed-card:hover {
-  background: #eceae5;
-}
-:root[data-palette="mono"] .seed-card.is-selected {
-  background: #ffffff;
-  box-shadow: 0 0 0 1px var(--cc-rule), 0 1px 2px rgba(10,10,10,0.03);
-}
-:root[data-palette="mono"] .seed-title {
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  -webkit-line-clamp: 2;
-}
-:root[data-palette="mono"] .seed-meta {
-  padding-left: 22px;
-}
-:root[data-palette="mono"] .seed-meta-sep { color: var(--cc-ink-faint); }
-:root[data-palette="mono"] .seed-cites {
-  color: var(--cc-ink-2);
-  white-space: nowrap;
-}
-
-/* Starred star — uses a warm amber (not green) so it reads as "starred" without
-   pulling in the old green that we've retired from the palette. */
-:root[data-palette="mono"] .seed-card.is-selected .seed-star {
-  color: #c4941c;
-}
-
-/* ---- SEED FILL variants (monoSeedFill tweak) ----
+}/* ---- SEED FILL variants (monoSeedFill tweak) ----
    All six are **Anthropic-orange tinted** treatments for the selected seed
    card. No greens, no mauves, no washed-out lavenders. The intent is to pick
    one that reads decisively as "this is the focused seed" without being loud.
@@ -1037,146 +991,21 @@ bright vegetable-green as primary accent/fill{
 :root[data-palette="mono"][data-mono-seedfill="orange-card"] .seed-card.is-selected {
   background: #D97757;
   box-shadow: 0 0 0 1px #c96644;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-card"] .seed-card.is-selected .seed-title,
-:root[data-palette="mono"][data-mono-seedfill="orange-card"] .seed-card.is-selected .seed-meta,
-:root[data-palette="mono"][data-mono-seedfill="orange-card"] .seed-card.is-selected .seed-cites {
-  color: #ffffff;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-card"] .seed-card.is-selected .seed-meta-sep {
-  color: rgba(255, 255, 255, 0.55);
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-card"] .seed-card.is-selected .seed-star {
-  color: #ffffff; opacity: 0.95;
-}
-
-/* orange-wash — pale orange wash with dark orange text (softer, editorial) */
+}/* orange-wash — pale orange wash with dark orange text (softer, editorial) */
 :root[data-palette="mono"][data-mono-seedfill="orange-wash"] .seed-card.is-selected {
   background: #fbeee6;
   box-shadow: inset 0 0 0 1px #f1d7c6;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-wash"] .seed-card.is-selected .seed-title {
-  color: #8a3f23; font-weight: 700;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-wash"] .seed-card.is-selected .seed-star {
-  color: #D97757;
-}
-
-/* orange-bar — clean white card + thick 4px Anthropic-orange left bar */
-:root[data-palette="mono"][data-mono-seedfill="orange-bar"] .seed-card.is-selected {
-  background: #ffffff;
-  box-shadow: inset 4px 0 0 #D97757, 0 0 0 1px var(--cc-rule-soft);
-  border-color: transparent;
-  padding-left: calc(12px + 4px);
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-bar"] .seed-card.is-selected .seed-star {
-  color: #D97757;
-}
-
-/* orange-ring — white card with a bold 2px orange outline */
-:root[data-palette="mono"][data-mono-seedfill="orange-ring"] .seed-card.is-selected {
-  background: #ffffff;
-  box-shadow: 0 0 0 2px #D97757;
-  border-color: transparent;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-ring"] .seed-card.is-selected .seed-star {
-  color: #D97757;
-}
-
-/* orange-underline — bold title with thick orange underline, hairline card */
+}/* orange-underline — bold title with thick orange underline, hairline card */
 :root[data-palette="mono"][data-mono-seedfill="orange-underline"] .seed-card.is-selected {
   background: #ffffff;
   box-shadow: 0 0 0 1px var(--cc-rule-soft);
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-underline"] .seed-card.is-selected .seed-title {
-  font-weight: 700;
-  background-image: linear-gradient(#D97757, #D97757);
-  background-repeat: no-repeat;
-  background-size: 100% 2px;
-  background-position: 0 100%;
-  padding-bottom: 2px;
-  display: inline;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-underline"] .seed-card.is-selected .seed-star {
-  color: #D97757;
-}
-
-/* orange-chip — small orange "selected" chip pinned bottom-right + subtle wash */
-:root[data-palette="mono"][data-mono-seedfill="orange-chip"] .seed-card.is-selected {
-  background: #fef8f4;
-  box-shadow: inset 0 0 0 1px #f1d7c6;
-  position: relative;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-chip"] .seed-card.is-selected::after {
-  content: "SEED";
-  position: absolute;
-  bottom: 8px; right: 10px;
-  font-family: var(--cc-font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: #ffffff;
-  background: #D97757;
-  padding: 2px 6px;
-  border-radius: var(--mono-r-xs);
-  line-height: 1;
-}
-:root[data-palette="mono"][data-mono-seedfill="orange-chip"] .seed-card.is-selected .seed-star {
-  color: #D97757;
-}
-
-/* Legacy inkcard / notch / bracket / bookrule / caret / underline — kept for
-   safety so old saved values don't crash; they behave same as before. */
-
-/* inkcard — solid black fill (matches accepted-paper selected row) */
-:root[data-palette="mono"][data-mono-seedfill="inkcard"] .seed-card.is-selected {
-  background: #0a0a0a;
-  box-shadow: 0 0 0 1px #0a0a0a;
-  position: relative;
-}
-:root[data-palette="mono"][data-mono-seedfill="inkcard"] .seed-card.is-selected .seed-title,
-:root[data-palette="mono"][data-mono-seedfill="inkcard"] .seed-card.is-selected .seed-meta,
-:root[data-palette="mono"][data-mono-seedfill="inkcard"] .seed-card.is-selected .seed-cites {
-  color: #fafafa;
-}
-:root[data-palette="mono"][data-mono-seedfill="inkcard"] .seed-card.is-selected .seed-meta-sep {
-  color: rgba(250, 250, 250, 0.40);
-}
-:root[data-palette="mono"][data-mono-seedfill="inkcard"] .seed-card.is-selected .seed-star {
-  color: #fafafa; opacity: 0.9;
-}
-
-/* notch — thick 4px black left bar, clean white card, no other border */
+}/* notch — thick 4px black left bar, clean white card, no other border */
 :root[data-palette="mono"][data-mono-seedfill="notch"] .seed-card.is-selected {
   background: #ffffff;
   box-shadow: inset 4px 0 0 #0a0a0a;
   border-color: transparent;
   padding-left: calc(12px + 4px);
 }
-
-/* bracket — two L-shaped crop marks (top-left + bottom-right) via background */
-:root[data-palette="mono"][data-mono-seedfill="bracket"] .seed-card.is-selected {
-  background: #ffffff;
-  border-color: transparent;
-  box-shadow: none;
-  background-image:
-    /* top-left L */
-    linear-gradient(#0a0a0a, #0a0a0a),
-    linear-gradient(#0a0a0a, #0a0a0a),
-    /* bottom-right L */
-    linear-gradient(#0a0a0a, #0a0a0a),
-    linear-gradient(#0a0a0a, #0a0a0a);
-  background-repeat: no-repeat;
-  background-size: 10px 1.5px, 1.5px 10px, 10px 1.5px, 1.5px 10px;
-  background-position:
-    4px 4px,          /* top-left horizontal */
-    4px 4px,          /* top-left vertical   */
-    calc(100% - 4px) calc(100% - 4px),
-    calc(100% - 4px) calc(100% - 4px);
-}
-
 /* bookrule — slim double hairlines top and bottom, no sides */
 :root[data-palette="mono"][data-mono-seedfill="bookrule"] .seed-card.is-selected {
   background: #ffffff;
@@ -1195,57 +1024,17 @@ bright vegetable-green as primary accent/fill{
 :root[data-palette="mono"][data-mono-seedfill="caret"] .seed-card.is-selected {
   background: #ffffff;
   box-shadow: 0 0 0 1px var(--cc-rule);
-}
-:root[data-palette="mono"][data-mono-seedfill="caret"] .seed-card.is-selected .seed-title {
-  font-weight: 700;
-}
-:root[data-palette="mono"][data-mono-seedfill="caret"] .seed-card.is-selected .seed-title::before {
-  content: "▸ ";
-  color: #0a0a0a;
-  font-weight: 700;
-  margin-right: 1px;
-}
-
-/* underline — bold title with a thick ink underline that extends under it */
-:root[data-palette="mono"][data-mono-seedfill="underline"] .seed-card.is-selected {
-  background: #ffffff;
-  box-shadow: 0 0 0 1px var(--cc-rule-soft);
-}
-:root[data-palette="mono"][data-mono-seedfill="underline"] .seed-card.is-selected .seed-title {
-  font-weight: 700;
-  background-image: linear-gradient(#0a0a0a, #0a0a0a);
-  background-repeat: no-repeat;
-  background-size: 100% 2px;
-  background-position: 0 100%;
-  padding-bottom: 2px;
-  display: inline;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
-/* ---- SEED variant: inline (tighter, no card) ---- */
+}/* ---- SEED variant: inline (tighter, no card) ---- */
 :root[data-palette="mono"][data-mono-seed="inline"] .seed-card.is-selected {
   /* base inline selected — chrome is controlled by data-mono-seedfill, not here */
   box-shadow: none;
 }
-:root[data-palette="mono"][data-mono-seed="inline"] .seed-meta { padding-left: 22px; }
-
 /* ---- SEED variant: list (numbered, no bg on hover) ---- */
 :root[data-palette="mono"][data-mono-seed="list"] .seed-card {
   padding: 8px 8px 8px 8px;
   border-radius: 0;
   border-bottom: 1px solid var(--cc-rule-soft);
-}
-:root[data-palette="mono"][data-mono-seed="list"] .seed-card:hover {
-  background: #eceae5;
-}
-:root[data-palette="mono"][data-mono-seed="list"] .seed-card.is-selected {
-  background: #ffffff;
-  box-shadow: inset 3px 0 0 var(--cc-accent-2);
-  border-bottom-color: var(--cc-rule);
-}
-
-/* ---- PRIMARY BUTTON variants ---- */
+}/* ---- PRIMARY BUTTON variants ---- */
 /* variant: green (rich forest green) */
 :root[data-palette="mono"][data-mono-primary="green"] .btn-primary,
 :root[data-palette="mono"][data-mono-primary="green"] .mode-btn.on {
@@ -1428,35 +1217,7 @@ bright vegetable-green as primary accent/fill{
   color: #0a0a0a; background: transparent;
   box-shadow: inset 0 0 0 1px #0a0a0a;
 }
-:root[data-palette="mono"][data-mono-trail="outline"] .acc-trail-step.is-pass b { color: #0a0a0a; font-weight: 700; }
-
-/* ---- Accepted-paper selected row (acc-item.is-selected) ---- */
-:root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected {
-  background: #0a0a0a; color: #ffffff;
-  border: 1px solid transparent; box-shadow: none;
-}
-:root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-title,
-:root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-meta,
-:root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-depth { color: #ffffff !important; }
-:root[data-palette="mono"][data-mono-acc="black"] .acc-item.is-selected .acc-depth {
-  background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.88) !important;
-}
-
-:root[data-palette="mono"][data-mono-acc="green"] .acc-item.is-selected {
-  background: var(--cc-accent-2-soft); color: var(--cc-accent-2);
-  border: 1px solid transparent; box-shadow: none;
-}
-
-:root[data-palette="mono"][data-mono-acc="outline"] .acc-item.is-selected {
-  background: #ffffff; color: #0a0a0a;
-  border: 1px solid #0a0a0a; box-shadow: none;
-}
-
-:root[data-palette="mono"][data-mono-acc="rail"] .acc-item.is-selected {
-  background: #ffffff; box-shadow: inset 3px 0 0 #0a0a0a; border: 1px solid transparent;
-}
-
-/* ---- Run status dot + pulse ---- */
+:root[data-palette="mono"][data-mono-trail="outline"] .acc-trail-step.is-pass b { color: #0a0a0a; font-weight: 700; }/* ---- Run status dot + pulse ---- */
 :root[data-palette="mono"][data-mono-rundot="green"] .sb-dot-run {
   background: var(--cc-accent-2);
   box-shadow: 0 0 0 3px rgba(10, 107, 68, 0.14);
@@ -1529,19 +1290,7 @@ bright vegetable-green as primary accent/fill{
 :root[data-palette="mono"] .pblock.style-chip-v2.is-selected {
   border-color: #0a0a0a !important;
   box-shadow: 0 0 0 2px #0a0a0a !important;
-}
-
-/* Accepted-papers row — default canvas; variant attr owns selected fill */
-:root[data-palette="mono"] .acc-item { border: 1px solid transparent; background: transparent; border-radius: var(--mono-r-md); }
-:root[data-palette="mono"] .acc-item:hover { background: #eceae5; }
-:root[data-palette="mono"] .acc-item + .acc-item.is-selected,
-:root[data-palette="mono"] .acc-item.is-selected + .acc-item { border-top-color: transparent; }
-
-/* Inline variant: chrome for selected state comes from data-mono-seedfill */
-:root[data-palette="mono"][data-mono-seed="inline"] .seed-card.is-selected {
-  border: 1px solid transparent;
-}
-/* Box geometry + inter-card spacing now come from .pcard / --pcard-gap. */
+}/* Box geometry + inter-card spacing now come from .pcard / --pcard-gap. */
 :root[data-palette="mono"][data-mono-seed="inline"] .seeds-list { gap: var(--pcard-gap); }
 
 /* Session chip in status bar — green accent on the v4 badge */
@@ -2169,21 +1918,7 @@ select {
 /* ---------- B: Seed search ---------- */
 .seeds-list { padding: 0 var(--list-x); display: flex; flex-direction: column; gap: var(--pcard-gap); }
 /* .seed-card = skin only; box + layout come from .pcard / .pcard-body. */
-.seed-card:hover { background: var(--cc-hover-soft); }
-.seed-card.is-selected {
-  background: var(--cc-paper);
-  border-color: var(--cc-rule-strong);
-}
-.seed-card-head { display: flex; align-items: flex-start; gap: 6px; }
-.seed-star {
-  flex: 0 0 auto; width: 16px; height: 16px;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--cc-ink-faint);
-  transition: color 120ms, transform 120ms;
-}
-.seed-card.is-selected .seed-star { color: var(--cc-warning); }
-.seed-card:hover .seed-star { color: var(--cc-ink-2); }
-/* seed meta comes from .pcard-meta now; the old 22px indent (which mis-aligned
+.seed-card:hover { background: var(--cc-hover-soft); }/* seed meta comes from .pcard-meta now; the old 22px indent (which mis-aligned
    against the ×-button width) is gone — the .pcard-body rail aligns the text. */
 .seed-meta-sep { opacity: 0.5; margin: 0 4px; }
 
@@ -4343,27 +4078,10 @@ select.gp-v { cursor: pointer; }
 /* .acc-item = skin only; box + layout come from .pcard / .pcard-body. Score is
    gone; depth (accepted) / category (rejected) ride the title row as a trail. */
 .acc-item:hover { background: var(--cc-hover-soft); }
-.acc-item.is-selected {
-  background: var(--cc-paper);
-  border-color: var(--cc-rule-strong);
-}
-
 /* Score removed from the accepted card. Title/meta geometry come from
    .pcard-title / .pcard-meta; .acc-title / .acc-meta stay only as skin hooks
    (mono paints them white when a row is selected on the black accent). */
 .acc-meta-sep { opacity: 0.5; margin: 0 4px; }
-.acc-depth {
-  font-family: var(--cc-font-mono); font-size: 9px;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--cc-ink-2);
-  padding: 1px 5px;
-  background: var(--cc-hover-soft);
-  border-radius: var(--mono-r-xs);
-  align-self: start;
-  padding-top: 2px;
-  white-space: nowrap;
-}
-
 .acc-foot {
   padding: 8px 12px;
   border-top: 1px solid var(--cc-rule);
@@ -4382,10 +4100,6 @@ select.gp-v { cursor: pointer; }
   0%   { background: rgba(90, 133, 112, 0.12); }
   100% { background: transparent; }
 }
-.acc-item.is-fresh {
-  animation: accFresh 1800ms ease-out;
-}
-
 /* ---------- Accepted / Rejected tabs (Run sidebar) ---------- */
 /* Same idiom as .dash-tab (transparent → hover-deep active) so it reads in
    both the light and mono skins, but stretched to two equal segments. */
@@ -4433,17 +4147,7 @@ select.gp-v { cursor: pointer; }
   background: var(--cc-hover-soft); color: var(--cc-ink-1); border-color: var(--cc-rule-strong);
 }
 .acc-page-btn:disabled { opacity: 0.4; cursor: default; }
-.acc-page-info { font-variant-numeric: tabular-nums; color: var(--cc-ink-3); }
-
-/* ---------- Rejected rows (reuse the .acc-item grid) ---------- */
-.acc-reject-mark {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; margin-top: 1px;
-  border-radius: var(--mono-r-pill);
-  color: var(--cc-danger);
-  background: rgba(139, 90, 90, 0.11);
-}
-.acc-cat {
+.acc-page-info { font-variant-numeric: tabular-nums; color: var(--cc-ink-3); }.acc-cat {
   align-self: start;
   font-family: var(--cc-font-mono); font-size: 9px;
   text-transform: uppercase; letter-spacing: 0.03em;
@@ -4454,19 +4158,6 @@ select.gp-v { cursor: pointer; }
   white-space: nowrap;
   max-width: 118px; overflow: hidden; text-overflow: ellipsis;
 }
-.acc-reason {
-  font-family: var(--cc-font-mono); font-size: 10px;
-  line-height: 1.4;
-  color: var(--cc-ink-2);
-  background: var(--cc-hover-soft);
-  border: 1px solid var(--cc-rule-soft);
-  border-radius: var(--mono-r-xs);
-  padding: 4px 7px;
-  margin-top: 2px;
-  overflow: hidden; text-overflow: ellipsis;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-}
-
 /* Rejected detail card (reuses .acc-detail scaffold) */
 .acc-detail-tag.is-reject { color: var(--cc-danger); }
 .acc-detail-reject {
@@ -4485,33 +4176,7 @@ select.gp-v { cursor: pointer; }
 /* Mono hover needs the explicit tone — the var-based hover is near-invisible
    on white cards (matches the existing mono .acc-item:hover). */
 :root[data-palette="mono"] .acc-tab:hover:not(.is-active),
-:root[data-palette="mono"] .acc-page-btn:hover:not(:disabled) { background: #eceae5; }
-
-/* ==========================================================================
-   SEED CARD — star-to-accept button + full-panel abstract detail
-   The star toggles accept; clicking the card body opens the abstract. Both
-   reuse existing seed / acc-detail tokens so the mono skin carries over.
-   ========================================================================== */
-
-/* Star is now an actual button. Keep the same 16px footprint as the old
-   .seed-star span so the title + meta stay aligned; extend the hit area with
-   a padded ::before that doesn't affect layout. */
-.seed-star-btn {
-  flex: 0 0 auto;
-  width: 16px; height: 16px; padding: 0; margin: 0;
-  border: none; background: transparent; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
-  position: relative;
-  border-radius: var(--mono-r-xs);
-}
-.seed-star-btn::before { content: ""; position: absolute; inset: -5px; border-radius: var(--mono-r-sm); }
-.seed-star-btn .seed-star { width: 100%; height: 100%; }
-.seed-star-btn:hover .seed-star { color: var(--cc-warning); transform: scale(1.08); }
-.seed-star-btn:active .seed-star { transform: scale(0.9); }
-/* Filled glyph once starred (colour is set by the existing is-selected rules) */
-.seed-card.is-selected .seed-star svg { fill: currentColor; }
-
-/* --- Full-panel abstract detail (replaces the list while reading) --- */
+:root[data-palette="mono"] .acc-page-btn:hover:not(:disabled) { background: #eceae5; }/* --- Full-panel abstract detail (replaces the list while reading) --- */
 .seed-detail { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .seed-detail-back {
   flex: 0 0 auto; align-self: flex-start;
@@ -4658,14 +4323,7 @@ select.gp-v { cursor: pointer; }
   box-shadow: 0 1px 2px rgba(20,20,20,0.15);
 }
 .dr input[type="range"]:active::-webkit-slider-thumb { cursor: grabbing; border-color: var(--cc-accent); }
-.seeds-empty { padding: 22px var(--pane-x); font-size: 12px; color: var(--cc-ink-3); text-align: center; line-height: 1.55; }
-.seed-remove-btn {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; padding: 0; border: none; background: transparent;
-  color: var(--cc-ink-3); cursor: pointer; border-radius: var(--mono-r-xs);
-}
-.seed-remove-btn:hover { color: var(--cc-danger); background: var(--cc-hover-soft); }
-.seed-cart { padding-top: 4px; }
+.seeds-empty { padding: 22px var(--pane-x); font-size: 12px; color: var(--cc-ink-3); text-align: center; line-height: 1.55; }.seed-cart { padding-top: 4px; }
 
 /* ==========================================================================
    BUILD MODE v2 — vertical pipeline, add-buttons, parallel branches, and the
@@ -5000,65 +4658,13 @@ select.gp-v { cursor: pointer; }
 /* .xp-item = explore row skin only; box comes from .pcard, title from
    .pcard-title. Separate gapped cards (no connecting borders) so every list
    reads the same. */
-.xp-item:hover { background: var(--cc-hover-soft); }
-.xp-item.is-selected { background: var(--cc-paper); border-color: var(--cc-rule-strong); }
-.xp-seed-dot {
-  display: inline-block; width: 7px; height: 7px; border-radius: var(--mono-r-circle);
-  background: var(--cc-net-seed);
-  margin-right: 5px;
-}
-.xp-item-meta {
-  display: flex; justify-content: space-between; gap: 8px;
-  font-size: 10.5px; color: var(--cc-ink-3);
-}
-.xp-item-sub {
-  min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.xp-item-cites {
-  flex: none;
-  font-family: var(--cc-font-mono); font-weight: 500;
-  color: var(--cc-ink-2);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Mono palette: selected row follows the accepted-list treatment */
-:root[data-palette="mono"] .xp-item { border: 1px solid transparent; background: transparent; border-radius: var(--mono-r-md); }
-:root[data-palette="mono"] .xp-item:hover { background: #eceae5; }
-:root[data-theme="dark"][data-palette="mono"] .xp-item:hover { background: var(--cc-hover-soft); }
-:root[data-palette="mono"] .xp-item.is-selected {
-  background: #ffffff; border-color: transparent;
-  box-shadow: 0 0 0 1px var(--cc-rule), 0 2px 6px rgba(10, 10, 10, 0.05);
-  border-radius: var(--mono-r-md);
-}
-:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected {
-  background: #0a0a0a; box-shadow: none;
-}
-:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-title,
+.xp-item:hover { background: var(--cc-hover-soft); }:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .xp-item-title,
 :root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .pcard-meta { color: #ffffff !important; }
-:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .pcard-venue { color: rgba(255, 255, 255, 0.82) !important; }
-:root[data-palette="mono"][data-mono-acc="outline"] .xp-item.is-selected {
-  background: #ffffff; box-shadow: none; border: 1px solid #0a0a0a;
-}
-:root[data-palette="mono"][data-mono-acc="rail"] .xp-item.is-selected {
-  background: #ffffff; box-shadow: inset 3px 0 0 #0a0a0a; border: 1px solid transparent;
-}
-:root[data-theme="dark"][data-palette="mono"] .xp-item.is-selected { background: var(--cc-paper); }
-
-/* In the collection but removed from the network view by graph filters
+:root[data-palette="mono"][data-mono-acc="black"] .xp-item.is-selected .pcard-venue { color: rgba(255, 255, 255, 0.82) !important; }/* In the collection but removed from the network view by graph filters
    (min degree / edge weight / largest component): stays listed, reads
    muted, and carries an unlink glyph next to the count. Opacity-based so
    it survives every theme/palette combination. */
-.xp-item.is-offnet { opacity: 0.55; }
-.xp-item.is-offnet:hover,
-.xp-item.is-offnet.is-selected { opacity: 0.8; }
-.xp-item.is-offnet .xp-item-title { color: var(--cc-ink-2); font-weight: 500; }
-.xp-offnet-ic {
-  display: inline-flex; vertical-align: -1px;
-  margin-right: 4px; color: var(--cc-ink-3);
-}
-
-/* ---- Dark mode for the mono skin's hardcoded white chrome ----------------
+.xp-item.is-offnet { opacity: 0.55; }/* ---- Dark mode for the mono skin's hardcoded white chrome ----------------
    The design's dark+mono block only flips tokens; its floating white cards
    (#ffffff literals) never got dark counterparts, so dark mode rendered
    light ink on white cards (invisible titles). Re-skin the structural
@@ -5080,15 +4686,7 @@ select.gp-v { cursor: pointer; }
   background: var(--cc-paper);
   border-color: var(--cc-ink-1);
   box-shadow: 0 0 0 2px var(--cc-ink-1), 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-:root[data-theme="dark"][data-palette="mono"] .seed-card:hover { background: var(--cc-hover-soft); }
-:root[data-theme="dark"][data-palette="mono"] .seed-card.is-selected { background: var(--cc-paper); }
-:root[data-theme="dark"][data-palette="mono"][data-mono-seedfill="orange-chip"] .seed-card.is-selected {
-  background: #2a2019;
-  box-shadow: inset 0 0 0 1px #4a3527;
-}
-
-/* Details panel */
+}/* Details panel */
 .xp-detail-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
   padding: 14px;
