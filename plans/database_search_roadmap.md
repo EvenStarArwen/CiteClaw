@@ -56,16 +56,16 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 ---
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
+- 2026-07-29 11:26 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval
+- 2026-07-28 22:09 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval
+- 2026-07-28 21:08 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval
+- 2026-07-28 16:52 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; no commits (plans/ gitignored per CLAUDE.md); awaiting user approval to proceed
+- 2026-07-28 15:51 ⛔ — reached Phase F human gate; no commits attempted (plans/ gitignored per CLAUDE.md conflicts with roadmap RESUME PROTOCOL line 40; prior run flagged blocker at 14:49; awaiting user intervention)
 - 2026-07-28 14:49 ⏭️ — cannot commit: plans/ is gitignored per CLAUDE.md, conflicts with roadmap's RESUME PROTOCOL (line 40: "always include this file"). File is local-only. Awaiting user clarification on whether roadmap should be committed or if the cron worker should operate on local-only state.
 - 2026-07-28 13:48 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 - 2026-07-28 12:47 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 - 2026-07-28 11:46 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 - 2026-07-28 10:45 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval — repeated stop, cron should be paused until Phase F is approved by the user)
-- 2026-07-27 21:29 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval — repeated stop, cron should be paused until Phase F is approved by the user)
-- 2026-07-27 18:14 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval — repeated stop, cron should be paused until Phase F is approved by the user)
-- 2026-07-27 17:14 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval — repeated stop, no roadmap changes this run; consider pausing this cron until Phase F is approved)
-- 2026-07-27 16:13 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
-- 2026-07-27 15:12 — reached Phase F human gate ⛔ (all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval)
 
 ---
 
