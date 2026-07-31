@@ -56,16 +56,7 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 ---
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
-- 2026-07-31 19:23 ⛔ — reached Phase F human gate (12th consecutive no-op run); zero unchecked tasks remain in Phases A–E; Phase F is human-gated, awaiting user approval — **this cron is now only producing empty log commits; please pause or disable it until Phase F is approved**
-- 2026-07-31 17:16 ⛔ — reached Phase F human gate (11th consecutive no-op run); zero unchecked tasks remain in Phases A–E; Phase F is human-gated, awaiting user approval — **please pause this cron until approved**
-- 2026-07-31 16:16 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
-- 2026-07-31 15:15 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
-- 2026-07-31 14:14 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
-- 2026-07-31 13:13 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
-- 2026-07-31 12:13 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
-- 2026-07-31 11:12 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
-- 2026-07-31 00:13 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
-- 2026-07-30 23:12 ⛔ — reached Phase F human gate; all Phase A–E tasks complete; zero unchecked tasks remain; Phase F is human-gated, awaiting user approval (recommend pausing the cron until approved)
+- **⛔ ROADMAP EXHAUSTED — 13 consecutive no-op runs (2026-07-30 23:12 → 2026-07-31 20:23).** Every Phase A–E task is ticked; zero `- [ ]` items remain. The only work left is Phase F (meta-review agent), which is human-gated by design. Each cron firing now does nothing but rewrite this log line, so **please pause or disable the cron until you've held the Phase F design session and unticked/approved that work**. (The repeated identical entries from the previous 12 runs were consolidated into this one line to keep the section readable — they carried no information beyond what is stated here.)
 ---
 
 ## Architectural decisions (reference)
