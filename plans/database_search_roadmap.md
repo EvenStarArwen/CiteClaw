@@ -56,8 +56,17 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 ---
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
-- 2026-08-06 14:10 — reached Phase F human gate, awaiting user approval ⏸️ (no-op run #123; roadmap remains exhausted — please pause the cron)
-- **⛔ ROADMAP EXHAUSTED — 123 consecutive no-op runs (2026-07-30 23:12 → 2026-08-06 14:10).** Every Phase A–E task is ticked (38/38); zero `- [ ]` items remain. The only work left is Phase F (meta-review agent), which is human-gated by design. Each cron firing now does nothing but rewrite this log line, so **please pause or disable the cron until you've held the Phase F design session and unticked/approved that work**. The cron is not registered in the Claude Code session scheduler (`CronList` → empty), so it is an external launchd/crontab entry or a claude.ai routine — check there to disable it. (Older identical entries are consolidated into this one line to keep the section readable.)
+- 2026-08-06 15:12 — reached Phase F human gate, awaiting user approval ⏸️ (no-op run #124; **found the cron** — see the disable command below)
+- **⛔ ROADMAP EXHAUSTED — 124 consecutive no-op runs (2026-07-30 23:12 → 2026-08-06 15:12).** Every Phase A–E task is ticked (38/38); zero `- [ ]` items remain. The only work left is Phase F (meta-review agent), which is human-gated by design. Each cron firing now does nothing but rewrite this log line.
+- **🔎 The cron is `~/Library/LaunchAgents/com.citeclaw.cron.plist`** (label `com.citeclaw.cron`, `StartInterval` 3600, runs `/Users/arwen/bin/citeclaw-cron.sh`, logs to `/tmp/citeclaw-cron.log`). It is NOT a `crontab` entry and NOT in the Claude Code session scheduler (`CronList` → empty), which is why earlier runs couldn't locate it. To stop the hourly no-ops:
+  ```bash
+  launchctl bootout gui/$(id -u)/com.citeclaw.cron     # stop now, survives until next login
+  # to also stop it coming back after a reboot:
+  launchctl disable gui/$(id -u)/com.citeclaw.cron
+  # re-enable later, after the Phase F design session:
+  launchctl enable gui/$(id -u)/com.citeclaw.cron && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.citeclaw.cron.plist
+  ```
+  Cron-Claude did NOT run these — disabling a scheduled job is the user's call, not an in-scope roadmap edit. (Older identical entries are consolidated into these lines to keep the section readable.)
 ---
 
 ## Architectural decisions (reference)
