@@ -56,8 +56,8 @@ If `git push` fails, do NOT force-push. Surface the error in the feedback log an
 ---
 
 ## Last run feedback (most recent first; keep ≤ 10 entries)
-- 2026-08-12 22:43 — reached Phase F human gate, awaiting user approval ⏸️ (no-op run #224; tally edited in place)
-- **⛔ ROADMAP EXHAUSTED — 224 consecutive no-op runs (2026-07-30 23:12 → 2026-08-12 22:43).** Every Phase A–E task is ticked (38/38); zero `- [ ]` items remain. The only work left is Phase F (meta-review agent), which is human-gated by design. Each cron firing now does nothing but rewrite this log line — from run #125 onward the tally above is edited in place rather than appended, so the log stops growing.
+- 2026-08-12 23:43 — reached Phase F human gate, awaiting user approval ⏸️ (no-op run #225; tally edited in place)
+- **⛔ ROADMAP EXHAUSTED — 225 consecutive no-op runs (2026-07-30 23:12 → 2026-08-12 23:43).** Every Phase A–E task is ticked (38/38); zero `- [ ]` items remain. The only work left is Phase F (meta-review agent), which is human-gated by design. Each cron firing now does nothing but rewrite this log line — from run #125 onward the tally above is edited in place rather than appended, so the log stops growing.
 - **🔎 The cron is `~/Library/LaunchAgents/com.citeclaw.cron.plist`** (label `com.citeclaw.cron`, `StartInterval` 3600, runs `/Users/arwen/bin/citeclaw-cron.sh`, logs to `/tmp/citeclaw-cron.log`). It is NOT a `crontab` entry and NOT in the Claude Code session scheduler (`CronList` → empty), which is why earlier runs couldn't locate it. To stop the hourly no-ops:
   ```bash
   launchctl bootout gui/$(id -u)/com.citeclaw.cron     # stop now, survives until next login
