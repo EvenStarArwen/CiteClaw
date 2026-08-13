@@ -1,0 +1,4 @@
+paper title,doi_url,ArXiv ID,PMID
+"Adaptive weight vectors for decomposition-based multi-objective optimization",https://doi.org/10.1001/omk.2015.00001,0202.10001,31234567
+"A survey of surrogate-assisted evolutionary algorithms for expensive problems",doi:10.1002/omk.2016.00002,arXiv:0303.10002,
+"Benchmarking many-objective optimizers on real-world engineering suites",10.1003/omk.2017.00003,,29876543

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "0000000000000000000000000000000000000000",
+    "title": "Hybridizing local search with decomposition for combinatorial problems",
+    "authors": "Tan et al.",
+    "year": 2021,
+    "venue": "Neurocomputing",
+    "cites": 100,
+    "externalIds": {
+      "DOI": "10.1150/omk.2021.00150",
+      "ArXiv": "0707.10150"
+    }
+  },
+  {
+    "id": "0000000000000000000000000000000000000001",
+    "title": "Scalable indicator-based selection with incremental hypervolume updates",
+    "authors": "Wang et al.",
+    "year": 2022,
+    "venue": "arXiv",
+    "cites": 137,
+    "externalIds": {
+      "DOI": "10.1151/omk.2022.00151",
+      "ArXiv": "0808.10151"
+    }
+  },
+  {
+    "id": "0000000000000000000000000000000000000002",
+    "title": "Dynamic multi-objective optimization with change-severity detection",
+    "authors": "Sato et al.",
+    "year": 2023,
+    "venue": "IEEE Transactions on Evolutionary Computation",
+    "cites": 174,
+    "externalIds": {
+      "DOI": "10.1152/omk.2023.00152",
+      "ArXiv": "0909.10152"
+    }
+  },
+  {
+    "id": "0000000000000000000000000000000000000003",
+    "title": "Weight vector generation on irregular Pareto fronts",
+    "authors": "Chugh et al.",
+    "year": 2024,
+    "venue": "Evolutionary Computation",
+    "cites": 211,
+    "externalIds": {
+      "DOI": "10.1153/omk.2024.00153",
+      "ArXiv": "1001.10153"
+    }
+  },
+  {
+    "id": "0000000000000000000000000000000000000004",
+    "title": "An empirical study of mating restriction in decomposition algorithms",
+    "authors": "Miettinen et al.",
+    "year": 2025,
+    "venue": "Swarm and Evolutionary Computation",
+    "cites": 248,
+    "externalIds": {
+      "DOI": "10.1154/omk.2025.00154",
+      "ArXiv": "1102.10154"
+    }
+  },
+  {
+    "id": "0000000000000000000000000000000000000005",
+    "title": "Bayesian preference elicitation for interactive optimization",
+    "authors": "Cheng et al.",
+    "year": 2026,
+    "venue": "ACM Computing Surveys",
+    "cites": 285,
+    "externalIds": {
+      "DOI": "10.1155/omk.2026.00155",
+      "ArXiv": "1203.10155"
+    }
+  }
+]

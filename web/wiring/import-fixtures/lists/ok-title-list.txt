@@ -1,0 +1,8 @@
+Adaptive weight vectors for decomposition-based multi-objective optimization
+A survey of surrogate-assisted evolutionary algorithms for expensive problems
+Benchmarking many-objective optimizers on real-world engineering suites
+Constraint handling in decomposition frameworks: a unified view
+Pareto front estimation with learned scalarizing functions
+Neighborhood adaptation strategies for large-scale variable interaction
+On the convergence of reference-point methods under noisy evaluations
+Transfer optimization across related multi-objective tasks

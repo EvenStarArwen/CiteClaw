@@ -1,0 +1,5 @@
+Title,Author,Year,DOI
+"A title with, a comma and
+an embedded newline","Zhang, Qingfu",2020,10.1109/omk.2020.00001
+"A title with ""internal quotes"" in it","Li, Hui",2021,10.1109/omk.2021.00002
+"Trailing field with a lone \ backslash","Deb, Kalyanmoy",2022,10.1109/omk.2022.00003

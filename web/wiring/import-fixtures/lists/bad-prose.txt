@@ -1,0 +1,1 @@
+These are my notes from the reading group. We talked about weight vectors and about whether crowding distance is still the right diversity measure. Nobody wrote down any DOIs.

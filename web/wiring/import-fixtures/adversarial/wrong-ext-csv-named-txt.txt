@@ -1,0 +1,11 @@
+Title,Author,Year,DOI
+"Adaptive weight vectors for decomposition-based multi-objective optimization","Zhang, Qingfu",2014,10.1000/omk.2014.00000
+"A survey of surrogate-assisted evolutionary algorithms for expensive problems","Li, Hui",2015,10.1001/omk.2015.00001
+"Benchmarking many-objective optimizers on real-world engineering suites","Deb, Kalyanmoy",2016,10.1002/omk.2016.00002
+"Constraint handling in decomposition frameworks: a unified view","Ishibuchi, Hisao",2017,10.1003/omk.2017.00003
+"Pareto front estimation with learned scalarizing functions","Coello, Carlos",2018,10.1004/omk.2018.00004
+"Neighborhood adaptation strategies for large-scale variable interaction","Jin, Yaochu",2019,10.1005/omk.2019.00005
+"On the convergence of reference-point methods under noisy evaluations","Tan, Kay Chen",2020,10.1006/omk.2020.00006
+"Transfer optimization across related multi-objective tasks","Wang, Handing",2021,10.1007/omk.2021.00007
+"A knee-point driven algorithm for preference-based optimization","Sato, Hiroyuki",2022,10.1008/omk.2022.00008
+"Diversity maintenance beyond crowding distance: a systematic study","Chugh, Tinkle",2023,10.1009/omk.2023.00009

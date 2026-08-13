@@ -1,0 +1,60 @@
+TY  - JOUR
+AU  - Zhang, Qingfu
+AU  - Jin, Yaochu
+TI  - Adaptive weight vectors for decomposition-based multi-objective optimization
+JO  - IEEE Transactions on Evolutionary Computation
+PY  - 2014
+VL  - 27
+IS  - 1
+SP  - 198
+EP  - 789
+DO  - 10.1000/omk.2014.00000
+ER  - 
+TY  - JOUR
+AU  - Li, Hui
+AU  - Sato, Hiroyuki
+TI  - A survey of surrogate-assisted evolutionary algorithms for expensive problems
+JO  - Evolutionary Computation
+PY  - 2015
+VL  - 12
+IS  - 6
+SP  - 328
+EP  - 654
+DO  - 10.1001/omk.2015.00001
+ER  - 
+TY  - JOUR
+AU  - Deb, Kalyanmoy
+AU  - Cheng, Ran
+TI  - Benchmarking many-objective optimizers on real-world engineering suites
+JO  - Swarm and Evolutionary Computation
+PY  - 2016
+VL  - 40
+IS  - 9
+SP  - 77
+EP  - 678
+DO  - 10.1002/omk.2016.00002
+ER  - 
+TY  - JOUR
+AU  - Ishibuchi, Hisao
+AU  - Deb, Kalyanmoy
+TI  - Constraint handling in decomposition frameworks: a unified view
+JO  - ACM Computing Surveys
+PY  - 2017
+VL  - 9
+IS  - 12
+SP  - 236
+EP  - 809
+DO  - 10.1003/omk.2017.00003
+ER  - 
+TY  - JOUR
+AU  - Coello, Carlos
+AU  - Jin, Yaochu
+TI  - Pareto front estimation with learned scalarizing functions
+JO  - Applied Soft Computing
+PY  - 2018
+VL  - 26
+IS  - 8
+SP  - 400
+EP  - 840
+DO  - 10.1004/omk.2018.00004
+ER  - 

@@ -1,0 +1,12 @@
+{
+  "version": 3,
+  "settings": {
+    "theme": "dark"
+  },
+  "windows": [
+    {
+      "w": 1280,
+      "h": 800
+    }
+  ]
+}

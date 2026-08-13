@@ -1,0 +1,156 @@
+TY  - JOUR
+AU  - Tan, Kay Chen
+AU  - Cheng, Ran
+TI  - Hybridizing local search with decomposition for combinatorial problems
+JO  - Neurocomputing
+PY  - 2018
+VL  - 38
+IS  - 11
+SP  - 195
+EP  - 708
+DO  - 10.1030/omk.2018.00030
+ER  - 
+
+TY  - CONF
+AU  - Wang, Handing
+AU  - Deb, Kalyanmoy
+TI  - Scalable indicator-based selection with incremental hypervolume updates
+JO  - arXiv
+PY  - 2019
+VL  - 23
+IS  - 2
+SP  - 212
+EP  - 511
+DO  - 10.1031/omk.2019.00031
+ER  - 
+
+TY  - CPAPER
+AU  - Sato, Hiroyuki
+AU  - Jin, Yaochu
+TI  - Dynamic multi-objective optimization with change-severity detection
+JO  - IEEE Transactions on Evolutionary Computation
+PY  - 2020
+VL  - 33
+IS  - 11
+SP  - 47
+EP  - 427
+DO  - 10.1032/omk.2020.00032
+ER  - 
+
+TY  - BOOK
+AU  - Chugh, Tinkle
+AU  - Sato, Hiroyuki
+TI  - Weight vector generation on irregular Pareto fronts
+JO  - Evolutionary Computation
+PY  - 2021
+VL  - 32
+IS  - 4
+SP  - 205
+EP  - 620
+DO  - 10.1033/omk.2021.00033
+ER  - 
+
+TY  - CHAP
+AU  - Miettinen, Kaisa
+AU  - Cheng, Ran
+TI  - An empirical study of mating restriction in decomposition algorithms
+JO  - Swarm and Evolutionary Computation
+PY  - 2022
+VL  - 39
+IS  - 10
+SP  - 163
+EP  - 697
+DO  - 10.1034/omk.2022.00034
+ER  - 
+
+TY  - THES
+AU  - Cheng, Ran
+AU  - Deb, Kalyanmoy
+TI  - Bayesian preference elicitation for interactive optimization
+JO  - ACM Computing Surveys
+PY  - 2023
+VL  - 2
+IS  - 3
+SP  - 217
+EP  - 589
+DO  - 10.1035/omk.2023.00035
+ER  - 
+
+TY  - RPRT
+AU  - Zhang, Qingfu
+AU  - Jin, Yaochu
+TI  - Robust optimization under decision-space perturbations
+JO  - Applied Soft Computing
+PY  - 2024
+VL  - 35
+IS  - 9
+SP  - 42
+EP  - 593
+DO  - 10.1036/omk.2024.00036
+ER  - 
+
+TY  - UNPB
+AU  - Li, Hui
+AU  - Sato, Hiroyuki
+TI  - Archive strategies for unbounded external populations
+JO  - Information Sciences
+PY  - 2025
+VL  - 8
+IS  - 4
+SP  - 98
+EP  - 657
+DO  - 10.1037/omk.2025.00037
+ER  - 
+
+TY  - ELEC
+AU  - Deb, Kalyanmoy
+AU  - Cheng, Ran
+TI  - Multi-task evolutionary optimization with shared representations
+JO  - Neurocomputing
+PY  - 2026
+VL  - 27
+IS  - 12
+SP  - 224
+EP  - 800
+DO  - 10.1038/omk.2026.00038
+ER  - 
+
+TY  - GEN
+AU  - Ishibuchi, Hisao
+AU  - Deb, Kalyanmoy
+TI  - Expensive constraint evaluation and feasibility-first ranking
+JO  - arXiv
+PY  - 2014
+VL  - 19
+IS  - 12
+SP  - 348
+EP  - 607
+DO  - 10.1039/omk.2014.00039
+ER  - 
+
+TY  - DATA
+AU  - Coello, Carlos
+AU  - Jin, Yaochu
+TI  - Adaptive weight vectors for decomposition-based multi-objective optimization
+JO  - IEEE Transactions on Evolutionary Computation
+PY  - 2015
+VL  - 3
+IS  - 8
+SP  - 400
+EP  - 443
+DO  - 10.1040/omk.2015.00040
+ER  - 
+
+TY  - PAT
+AU  - Jin, Yaochu
+AU  - Sato, Hiroyuki
+TI  - A survey of surrogate-assisted evolutionary algorithms for expensive problems
+JO  - Evolutionary Computation
+PY  - 2016
+VL  - 21
+IS  - 10
+SP  - 331
+EP  - 663
+DO  - 10.1041/omk.2016.00041
+ER  - 
+

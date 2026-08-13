@@ -1,0 +1,234 @@
+[
+  {
+    "id": "omk2014miettinen0130",
+    "type": "paper-conference",
+    "title": "Hybridizing local search with decomposition for combinatorial problems",
+    "author": [
+      {
+        "family": "Miettinen",
+        "given": "Kaisa"
+      },
+      {
+        "family": "Cheng",
+        "given": "Ran"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2014,
+          1
+        ]
+      ]
+    },
+    "container-title": "Swarm and Evolutionary Computation",
+    "volume": "17",
+    "issue": "11",
+    "page": "360-773",
+    "DOI": "10.1130/omk.2014.00130",
+    "URL": "https://doi.org/10.1130/omk.2014.00130"
+  },
+  {
+    "id": "omk2015cheng0131",
+    "type": "article-journal",
+    "title": "Scalable indicator-based selection with incremental hypervolume updates",
+    "author": [
+      {
+        "family": "Cheng",
+        "given": "Ran"
+      },
+      {
+        "family": "Deb",
+        "given": "Kalyanmoy"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2015,
+          2
+        ]
+      ]
+    },
+    "container-title": "ACM Computing Surveys",
+    "volume": "34",
+    "issue": "9",
+    "page": "268-471",
+    "DOI": "10.1131/omk.2015.00131",
+    "URL": "https://doi.org/10.1131/omk.2015.00131"
+  },
+  {
+    "id": "omk2016zhang0132",
+    "type": "paper-conference",
+    "title": "Dynamic multi-objective optimization with change-severity detection",
+    "author": [
+      {
+        "family": "Zhang",
+        "given": "Qingfu"
+      },
+      {
+        "family": "Jin",
+        "given": "Yaochu"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2016,
+          3
+        ]
+      ]
+    },
+    "container-title": "Applied Soft Computing",
+    "volume": "3",
+    "issue": "6",
+    "page": "130-417",
+    "DOI": "10.1132/omk.2016.00132",
+    "URL": "https://doi.org/10.1132/omk.2016.00132"
+  },
+  {
+    "id": "omk2017li0133",
+    "type": "article-journal",
+    "title": "Weight vector generation on irregular Pareto fronts",
+    "author": [
+      {
+        "family": "Li",
+        "given": "Hui"
+      },
+      {
+        "family": "Sato",
+        "given": "Hiroyuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2017,
+          4
+        ]
+      ]
+    },
+    "container-title": "Information Sciences",
+    "volume": "29",
+    "issue": "11",
+    "page": "267-639",
+    "DOI": "10.1133/omk.2017.00133",
+    "URL": "https://doi.org/10.1133/omk.2017.00133"
+  },
+  {
+    "id": "omk2018deb0134",
+    "type": "paper-conference",
+    "title": "An empirical study of mating restriction in decomposition algorithms",
+    "author": [
+      {
+        "family": "Deb",
+        "given": "Kalyanmoy"
+      },
+      {
+        "family": "Cheng",
+        "given": "Ran"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2018,
+          5
+        ]
+      ]
+    },
+    "container-title": "Neurocomputing",
+    "volume": "29",
+    "issue": "11",
+    "page": "175-626",
+    "DOI": "10.1134/omk.2018.00134",
+    "URL": "https://doi.org/10.1134/omk.2018.00134"
+  },
+  {
+    "id": "omk2019ishibuchi0135",
+    "type": "article-journal",
+    "title": "Bayesian preference elicitation for interactive optimization",
+    "author": [
+      {
+        "family": "Ishibuchi",
+        "given": "Hisao"
+      },
+      {
+        "family": "Deb",
+        "given": "Kalyanmoy"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2019,
+          6
+        ]
+      ]
+    },
+    "container-title": "arXiv",
+    "volume": "19",
+    "issue": "10",
+    "page": "137-715",
+    "DOI": "10.1135/omk.2019.00135",
+    "URL": "https://doi.org/10.1135/omk.2019.00135"
+  },
+  {
+    "id": "omk2020coello0136",
+    "type": "paper-conference",
+    "title": "Robust optimization under decision-space perturbations",
+    "author": [
+      {
+        "family": "Coello",
+        "given": "Carlos"
+      },
+      {
+        "family": "Jin",
+        "given": "Yaochu"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020,
+          7
+        ]
+      ]
+    },
+    "container-title": "IEEE Transactions on Evolutionary Computation",
+    "volume": "36",
+    "issue": "6",
+    "page": "354-448",
+    "DOI": "10.1136/omk.2020.00136",
+    "URL": "https://doi.org/10.1136/omk.2020.00136"
+  },
+  {
+    "id": "omk2021jin0137",
+    "type": "article-journal",
+    "title": "Archive strategies for unbounded external populations",
+    "author": [
+      {
+        "family": "Jin",
+        "given": "Yaochu"
+      },
+      {
+        "family": "Sato",
+        "given": "Hiroyuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021,
+          8
+        ]
+      ]
+    },
+    "container-title": "Evolutionary Computation",
+    "volume": "4",
+    "issue": "8",
+    "page": "233-836",
+    "DOI": "10.1137/omk.2021.00137",
+    "URL": "https://doi.org/10.1137/omk.2021.00137"
+  }
+]

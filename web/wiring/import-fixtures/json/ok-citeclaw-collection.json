@@ -1,0 +1,165 @@
+{
+  "summary": {
+    "total_accepted": 6,
+    "total_rejected": 0,
+    "total_seen": 6
+  },
+  "papers": [
+    {
+      "paper_id": "0000000000000000000000000000000000000000",
+      "title": "Hybridizing local search with decomposition for combinatorial problems",
+      "abstract": "Synthetic abstract for the import fixture corpus.",
+      "year": 2015,
+      "publication_date": "2015-06-01",
+      "venue": "Swarm and Evolutionary Computation",
+      "citation_count": 200,
+      "influential_citation_count": 10,
+      "references": [],
+      "depth": 0,
+      "source": "seed",
+      "llm_verdict": "accept",
+      "llm_reasoning": "",
+      "supporting_papers": [],
+      "expanded": false,
+      "pdf_url": null,
+      "authors": [
+        "Kalyanmoy Deb",
+        "Ran Cheng"
+      ],
+      "external_ids": {
+        "DOI": "10.1170/omk.2015.00170",
+        "ArXiv": "0309.10170"
+      }
+    },
+    {
+      "paper_id": "0000000000000000000000000000000000000001",
+      "title": "Scalable indicator-based selection with incremental hypervolume updates",
+      "abstract": "Synthetic abstract for the import fixture corpus.",
+      "year": 2016,
+      "publication_date": "2016-06-01",
+      "venue": "ACM Computing Surveys",
+      "citation_count": 189,
+      "influential_citation_count": 9,
+      "references": [],
+      "depth": 1,
+      "source": "forward",
+      "llm_verdict": "accept",
+      "llm_reasoning": "",
+      "supporting_papers": [],
+      "expanded": false,
+      "pdf_url": null,
+      "authors": [
+        "Hisao Ishibuchi",
+        "Kalyanmoy Deb"
+      ],
+      "external_ids": {
+        "DOI": "10.1171/omk.2016.00171",
+        "ArXiv": "0401.10171"
+      }
+    },
+    {
+      "paper_id": "0000000000000000000000000000000000000002",
+      "title": "Dynamic multi-objective optimization with change-severity detection",
+      "abstract": "Synthetic abstract for the import fixture corpus.",
+      "year": 2017,
+      "publication_date": "2017-06-01",
+      "venue": "Applied Soft Computing",
+      "citation_count": 178,
+      "influential_citation_count": 8,
+      "references": [],
+      "depth": 2,
+      "source": "forward",
+      "llm_verdict": "accept",
+      "llm_reasoning": "",
+      "supporting_papers": [],
+      "expanded": false,
+      "pdf_url": null,
+      "authors": [
+        "Carlos Coello",
+        "Yaochu Jin"
+      ],
+      "external_ids": {
+        "DOI": "10.1172/omk.2017.00172",
+        "ArXiv": "0502.10172"
+      }
+    },
+    {
+      "paper_id": "0000000000000000000000000000000000000003",
+      "title": "Weight vector generation on irregular Pareto fronts",
+      "abstract": "Synthetic abstract for the import fixture corpus.",
+      "year": 2018,
+      "publication_date": "2018-06-01",
+      "venue": "Information Sciences",
+      "citation_count": 167,
+      "influential_citation_count": 7,
+      "references": [],
+      "depth": 0,
+      "source": "forward",
+      "llm_verdict": "accept",
+      "llm_reasoning": "",
+      "supporting_papers": [],
+      "expanded": false,
+      "pdf_url": null,
+      "authors": [
+        "Yaochu Jin",
+        "Hiroyuki Sato"
+      ],
+      "external_ids": {
+        "DOI": "10.1173/omk.2018.00173",
+        "ArXiv": "0603.10173"
+      }
+    },
+    {
+      "paper_id": "0000000000000000000000000000000000000004",
+      "title": "An empirical study of mating restriction in decomposition algorithms",
+      "abstract": "Synthetic abstract for the import fixture corpus.",
+      "year": 2019,
+      "publication_date": "2019-06-01",
+      "venue": "Neurocomputing",
+      "citation_count": 156,
+      "influential_citation_count": 6,
+      "references": [],
+      "depth": 1,
+      "source": "forward",
+      "llm_verdict": "accept",
+      "llm_reasoning": "",
+      "supporting_papers": [],
+      "expanded": false,
+      "pdf_url": null,
+      "authors": [
+        "Kay Chen Tan",
+        "Ran Cheng"
+      ],
+      "external_ids": {
+        "DOI": "10.1174/omk.2019.00174",
+        "ArXiv": "0704.10174"
+      }
+    },
+    {
+      "paper_id": "0000000000000000000000000000000000000005",
+      "title": "Bayesian preference elicitation for interactive optimization",
+      "abstract": "Synthetic abstract for the import fixture corpus.",
+      "year": 2020,
+      "publication_date": "2020-06-01",
+      "venue": "arXiv",
+      "citation_count": 145,
+      "influential_citation_count": 5,
+      "references": [],
+      "depth": 2,
+      "source": "forward",
+      "llm_verdict": "accept",
+      "llm_reasoning": "",
+      "supporting_papers": [],
+      "expanded": false,
+      "pdf_url": null,
+      "authors": [
+        "Handing Wang",
+        "Kalyanmoy Deb"
+      ],
+      "external_ids": {
+        "DOI": "10.1175/omk.2020.00175",
+        "ArXiv": "0805.10175"
+      }
+    }
+  ]
+}

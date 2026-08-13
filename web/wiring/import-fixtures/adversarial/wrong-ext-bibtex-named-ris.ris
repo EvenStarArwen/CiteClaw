@@ -1,0 +1,122 @@
+% OmniKnowledge import fixture
+
+@inproceedings{omk2014zhang0000,
+  author    = {Zhang, Qingfu and Jin, Yaochu},
+  title     = {Adaptive weight vectors for decomposition-based multi-objective optimization},
+  booktitle = {IEEE Transactions on Evolutionary Computation},
+  year      = {2014},
+  volume    = {27},
+  number    = {1},
+  pages     = {198--789},
+  doi       = {10.1000/omk.2014.00000}
+}
+@article{omk2015li0001,
+  author    = {Li, Hui and Sato, Hiroyuki},
+  title     = {A survey of surrogate-assisted evolutionary algorithms for expensive problems},
+  journal   = {Evolutionary Computation},
+  year      = {2015},
+  volume    = {12},
+  number    = {6},
+  pages     = {328--654},
+  doi       = {10.1001/omk.2015.00001}
+}
+@article{omk2016deb0002,
+  author    = {Deb, Kalyanmoy and Cheng, Ran},
+  title     = {Benchmarking many-objective optimizers on real-world engineering suites},
+  journal   = {Swarm and Evolutionary Computation},
+  year      = {2016},
+  volume    = {40},
+  number    = {9},
+  pages     = {77--678},
+  doi       = {10.1002/omk.2016.00002}
+}
+@inproceedings{omk2017ishibuchi0003,
+  author    = {Ishibuchi, Hisao and Deb, Kalyanmoy},
+  title     = {Constraint handling in decomposition frameworks: a unified view},
+  booktitle = {ACM Computing Surveys},
+  year      = {2017},
+  volume    = {9},
+  number    = {12},
+  pages     = {236--809},
+  doi       = {10.1003/omk.2017.00003}
+}
+@article{omk2018coello0004,
+  author    = {Coello, Carlos and Jin, Yaochu},
+  title     = {Pareto front estimation with learned scalarizing functions},
+  journal   = {Applied Soft Computing},
+  year      = {2018},
+  volume    = {26},
+  number    = {8},
+  pages     = {400--840},
+  doi       = {10.1004/omk.2018.00004}
+}
+@article{omk2019jin0005,
+  author    = {Jin, Yaochu and Sato, Hiroyuki},
+  title     = {Neighborhood adaptation strategies for large-scale variable interaction},
+  journal   = {Information Sciences},
+  year      = {2019},
+  volume    = {9},
+  number    = {6},
+  pages     = {298--545},
+  doi       = {10.1005/omk.2019.00005}
+}
+@inproceedings{omk2020tan0006,
+  author    = {Tan, Kay Chen and Cheng, Ran},
+  title     = {On the convergence of reference-point methods under noisy evaluations},
+  booktitle = {Neurocomputing},
+  year      = {2020},
+  volume    = {38},
+  number    = {4},
+  pages     = {107--495},
+  doi       = {10.1006/omk.2020.00006}
+}
+@article{omk2021wang0007,
+  author    = {Wang, Handing and Deb, Kalyanmoy},
+  title     = {Transfer optimization across related multi-objective tasks},
+  journal   = {arXiv},
+  year      = {2021},
+  volume    = {21},
+  number    = {6},
+  pages     = {11--780},
+  doi       = {10.1007/omk.2021.00007}
+}
+@article{omk2022sato0008,
+  author    = {Sato, Hiroyuki and Jin, Yaochu},
+  title     = {A knee-point driven algorithm for preference-based optimization},
+  journal   = {IEEE Transactions on Evolutionary Computation},
+  year      = {2022},
+  volume    = {39},
+  number    = {9},
+  pages     = {367--621},
+  doi       = {10.1008/omk.2022.00008}
+}
+@inproceedings{omk2023chugh0009,
+  author    = {Chugh, Tinkle and Sato, Hiroyuki},
+  title     = {Diversity maintenance beyond crowding distance: a systematic study},
+  booktitle = {Evolutionary Computation},
+  year      = {2023},
+  volume    = {21},
+  number    = {2},
+  pages     = {388--569},
+  doi       = {10.1009/omk.2023.00009}
+}
+@article{omk2024miettinen0010,
+  author    = {Miettinen, Kaisa and Cheng, Ran},
+  title     = {Hybridizing local search with decomposition for combinatorial problems},
+  journal   = {Swarm and Evolutionary Computation},
+  year      = {2024},
+  volume    = {16},
+  number    = {7},
+  pages     = {374--635},
+  doi       = {10.1010/omk.2024.00010}
+}
+@article{omk2025cheng0011,
+  author    = {Cheng, Ran and Deb, Kalyanmoy},
+  title     = {Scalable indicator-based selection with incremental hypervolume updates},
+  journal   = {ACM Computing Surveys},
+  year      = {2025},
+  volume    = {25},
+  number    = {2},
+  pages     = {394--850},
+  doi       = {10.1011/omk.2025.00011}
+}

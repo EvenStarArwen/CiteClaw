@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:bib="http://purl.org/net/biblio#"
+         xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <bib:Article rdf:about="urn:doi:10.1109/omk.2020.00001">
+    <dc:title>Adaptive weight vectors for decomposition-based multi-objective optimization</dc:title>
+    <dc:date>2020</dc:date>
+  </bib:Article>
+</rdf:RDF>

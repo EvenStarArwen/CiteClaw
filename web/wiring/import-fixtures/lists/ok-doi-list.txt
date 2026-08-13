@@ -1,0 +1,9 @@
+# One DOI per line; comments and blank lines are ignored.
+10.1001/omk.2015.00001
+doi:10.1002/omk.2016.00002
+DOI: 10.1003/omk.2017.00003
+https://doi.org/10.1004/omk.2018.00004
+http://dx.doi.org/10.1005/omk.2019.00005
+
+  10.1006/omk.2020.00006  
+10.1007/omk.2021.00007.

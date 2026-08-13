@@ -1,0 +1,27 @@
+TY  - JOUR
+AU  - Zhang, Qingfu
+AU  - Li, Hui
+TI  - Adaptive weight vectors for decomposition-based multi-objective
+      optimization under noisy evaluations
+AB  - This synthetic abstract deliberately wraps across several physical
+      lines with a six-space hanging indent, which is how EndNote and
+      Web of Science emit long fields. A parser that treats every line
+      as "TAG  - value" will drop everything after the first line.
+
+      It even contains a blank line inside the folded block, which is
+      legal in some exporters and fatal in most naive parsers.
+JO  - IEEE Transactions on Evolutionary Computation
+PY  - 2019
+DO  - 10.1109/omk.2019.00301
+KW  - multi-objective
+KW  - decomposition
+ER  -
+
+TY  - CONF
+AU  - Deb, Kalyanmoy
+TI  - A knee-point driven algorithm
+	for preference-based optimization
+T2  - GECCO '19
+PY  - 2019
+DO  - 10.1145/omk.2019.00302
+ER  -
