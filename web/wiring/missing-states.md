@@ -217,3 +217,142 @@ off-centre and can be scrolled away from.
 There is no phone layout and no designed narrow state; the demo simply assumes
 the frame is at least iPad-wide. Worth a decision before anyone opens this on a
 phone.
+
+## Dissection lane (`MS-DIS-*`) — 2026-08-13
+
+Surfaces audited: the Build screen end to end (`Paper Card.dc.html`), plus the
+cross-screen chrome (top bar, page shell, Runs replay driver, Login). Companion
+documents: `demo-architecture.md`, `build-page-spec.md`, `state-inventory.md`.
+
+### MS-DIS-01 — the search error state exists but is unreachable
+
+`.sb-error` ("Couldn't load papers" / *"Something went wrong on our end. Check
+your connection and try again."* / **Retry**) is fully designed and present in
+the markup twice (`Paper Card.dc.html:1641–1648` and `1921–1928`).
+
+`apply()` renders it only when `sidebar.dataset.state === 'error'`
+(`Paper Card.dc.html:2799–2806`). The **only** writer of that value is a
+`.sb-demo` state switcher (`3065–3078`) — and `.sb-demo` does not exist in the
+shipped template (`grep sb-demo` returns one hit, in the JS). The demo therefore
+cannot show a failed Semantic Scholar search at all.
+
+Once the search is wired to a real backend this state becomes reachable, but its
+**trigger set is undefined**: no distinction between offline, timeout, 4xx
+(bad query / rate-limited) and 5xx, and `Retry` currently just re-applies the
+local filter (`3064`) rather than re-issuing the query.
+
+### MS-DIS-02 — `Run pipeline` has no busy, disabled, or failure state on Build
+
+`.tb-run` (`Paper Card.dc.html:1475`) has no handler at all (escalated as
+`E-DIS-06`). Beyond the missing behaviour, none of the states a real run-start
+needs are designed **on Build**:
+
+- pressed / busy (Runs has `btnBusy('Starting…')`, Build has nothing);
+- disabled because the pipeline is invalid, has no seed papers, or has an
+  unapplied filter draft;
+- start failed (engine unreachable, budget exceeded, key invalid);
+- a run is already running for this project.
+
+Runs designed *Starting…* and *Stopping…* hero phase rows; Build has no
+equivalent surface.
+
+### MS-DIS-03 — the pipeline canvas and config panel have no loading state
+
+The search list is the only Build surface with a loading treatment
+(`.sb-searching`, three skeleton cards, `Paper Card.dc.html:1612–1632`).
+
+The pipeline canvas renders from an in-memory model built synchronously in
+`plInit()`, and the config panel renders from the same model, so neither ever
+waits. Once both read a real project, there is a designed gap between "project
+selected" and "pipeline painted" — no skeleton, no spinner, and no rule about
+whether the previous project's pipeline stays on screen.
+
+Same gap for the project switcher: `applyProject` plays a 420 ms fade-through on
+`<main>` and then expects the new content to already be there.
+
+### MS-DIS-04 — no failure or partial state for the filter-config editor
+
+`validateEditor` (`Paper Card.dc.html:4550`) covers **field-level** validation
+only (`N issues to fix` / `Applied ✓`). There is no state for:
+
+- an LLM filter whose model list cannot be loaded (`llmModels`, 4106, is a
+  hard-coded array);
+- a cost estimate that cannot be computed (the re-screen flow on Runs
+  cost-confirms LLM/keyword edits — Build has no equivalent);
+- an apply that is rejected by the backend after passing client validation;
+- a config that was valid when opened and became invalid because the pipeline
+  changed underneath it.
+
+### MS-DIS-05 — the download menu has only an empty state
+
+`.tb-dl-menu` (`Paper Card.dc.html:1448–1474`) designs exactly two situations:
+items available, and `.tb-dl-none` ("No runs yet"). Missing:
+
+- export in progress (these are potentially large CSV/BibTeX/GraphML files);
+- export failed;
+- a run whose artefacts are incomplete because it was stopped;
+- per-item disabled with a reason (e.g. no graph because the run never expanded).
+
+On Explore the empty state does not exist at all (see `E-DIS-02`).
+
+### MS-DIS-06 — no offline or degraded state on Build
+
+The connection set (offline / server-unreachable-with-countdown / restored)
+lives entirely in `System Banners.dc.html` and is driven by the shell's
+`connection` prop. Build itself has **no** degraded behaviour: the search box
+stays enabled, the import dropzone stays enabled, `Run pipeline` looks
+identical. Nothing on the page tells the user which actions will fail while
+offline, and nothing is disabled.
+
+Related: the `connection` prop is deliberately **excluded** from the hidden
+demo-state switcher (a locked decision in `ipad-demo-audit.md`), so these states
+were never exercised on the demo device either.
+
+### MS-DIS-07 — the theme has no single source of truth
+
+`syncTheme` (`KnowledgeLab iPad Demo.dc.html:212–233`) mirrors `data-theme`
+between the seven mounted `.pc-root` elements with a `MutationObserver` and a
+`_themeLock` re-entrancy guard, re-attaching at 400 / 1200 / 2500 ms to catch
+late mounts. There is no stored preference, no `prefers-color-scheme` read, and
+no defined state for "a page mounted while the theme was dark".
+
+Not an error state, but an undefined one: the rewrite needs a decision on where
+theme lives and whether it persists (there is currently no storage key for it —
+the only `localStorage` key in the whole app is `kl-filter-groups`).
+
+### MS-DIS-08 — no state for a slow or failed module load
+
+Five of Build's dependencies load asynchronously: `paper-row.js` and
+`import-resolver.js` through the helmet `__resources` shim, and the viz engines
+through dynamic `import()` on other screens.
+
+`setupSidebar` (`Paper Card.dc.html:2526`) handles *late* by deferring on
+`kl-paper-row-ready`, but there is no timeout and no failure path — if
+`paper-row.js` never arrives, the sidebar simply stays as the 14 static template
+rows with no star lane and no wiring, silently. This is the exact failure the
+2026-08-11 bundle regression produced on device (recorded in
+`ipad-demo-audit.md` § Demo artifacts), and it produced no visible error.
+
+### MS-DIS-09 — the import flow has no state for "the resolver itself is down"
+
+`import-resolver.js` is a local deterministic mock, so the only failures it can
+express are per-entry (`Couldn't match`) and per-file (`Unsupported format`).
+Once resolution is a network call there is no designed state for the service
+being unavailable, timing out mid-batch, or partially resolving — i.e. the
+review screen has no "N of M resolved, retry the rest" shape.
+
+(The import lane's `MS-IMP-*` entries cover the per-file and per-entry gaps in
+detail; this entry is specifically about the transport.)
+
+### MS-DIS-10 — leaving a screen mid-flow is undefined
+
+Pages are never unmounted (`state-inventory.md` §1), so every partial state
+survives navigation with no designed treatment:
+
+- an open filter-config draft with unsaved edits, left by switching to Runs;
+- an import stuck in `review` with unresolved rows, left by switching projects;
+- a search in flight (the 850 ms window) when the project changes underneath it;
+- a run replaying on Runs while the user edits the pipeline on Build.
+
+There is no "you have unsaved changes" affordance anywhere in the demo, and no
+rule for whether a project switch should discard drafts.

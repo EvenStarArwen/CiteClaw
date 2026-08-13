@@ -254,3 +254,215 @@ the parity baseline.
 
 **Not changed.** Flagged because it is an accessibility regression that a
 reviewer would otherwise attribute to the rewrite rather than to the demo.
+
+---
+
+## Dissection lane (`E-DIS-*`) — 2026-08-13
+
+Found while producing `demo-architecture.md`, `build-page-spec.md`,
+`component-duplication.md` and `state-inventory.md`. Nothing below was changed.
+
+`component-duplication.md` uses short local ids for the duplication findings.
+Mapping:
+
+| duplication doc | here |
+| --- | --- |
+| `D-01` project switcher | `E-DIS-01` |
+| `D-02` download menu | `E-DIS-02` |
+| `D-06` `.tb-dl-run` / `rid()` | `E-DIS-03` |
+| `D-07` `sb-*` vs `rp-*` | `E-DIS-04` |
+| `D-08` abstract drill typography | `E-DIS-05` |
+| — (found in `build-page-spec.md` §9) | `E-DIS-06` `Run pipeline` |
+| §6 second sidebar | `E-DIS-07` |
+| §5 canvas chrome | `E-DIS-08` |
+| `D-03` / `D-04` / `D-05` | cosmetic — listed at the end, not escalated |
+
+### E-DIS-01 — the project switcher lists a different set of projects on Explore
+
+**What.** The six-row project menu is copy-pasted into three screens, and the
+copies disagree.
+
+| Slot | Build / Runs | Explore |
+| --- | --- | --- |
+| 1 | `AI agents for scientific discovery` **(current)** | `Bounded gaps between primes` |
+| 2 | `Evolutionary multi-objective optimization` | `AI agents for scientific discovery` **(current)** |
+| 3–6 | Hyper-parameter optimization / Combinatorial optimization / Search-based software engineering / Meta science | identical |
+
+Sources: `Paper Card.dc.html:1359–1435`, `Runs.dc.html:857–933`,
+`Explore.dc.html:306–382`.
+
+`Bounded gaps between primes` appears nowhere else in the app.
+`Evolutionary multi-objective optimization` — the project whose corpus Explore
+actually renders (`topic-data.js`, the 500-paper MOEA/D sample) — is missing
+from Explore's own list.
+
+**Why it is an escalation.** The rewrite has one project list; whichever we
+pick, one screen visibly changes. Note also that `CLAUDE.md` / `design-system.md`
+state *"Explore's top-bar project reads 'Evolutionary multi-objective
+optimization'"*, but the file statically renders `AI agents for scientific
+discovery` in `.tb-proj-name` (`Explore.dc.html:303`) with no runtime override —
+the written spec and the rendered truth already disagree.
+
+**Not changed.** Decision needed: canonical project list, and which project
+Explore is "in".
+
+---
+
+### E-DIS-02 — the Download menu is a different component on Explore
+
+**What.** `Paper Card.dc.html:1448–1474` and `Runs.dc.html:946–972` are
+byte-identical. `Explore.dc.html:395–424` is a different component.
+
+| Aspect | Build / Runs | Explore |
+| --- | --- | --- |
+| header | `Download · Run 6 · yesterday`, classed `.tb-dl-head` / `.tb-dl-sep` / `.tb-dl-run` / `.tb-dl-date` | `Download  Run 37  v3  what Explore reads`, **unclassed** (nothing can update it) |
+| items | Accepted papers (`CSV · 214 papers`), Full bundle (`CSVs · BibTeX · graph · stats`) | Corpus papers (`CSV  354 papers`), **Literature review** (`Markdown  the current draft`), Full bundle (`CSVs  BibTeX  graph  topics`) |
+| separators | literal `·`-style separators | `&nbsp;&nbsp;` |
+| empty state | `.tb-dl-none` — *"No runs yet / Results download per run. Start one with Run pipeline."* | **none** |
+
+**Why it is an escalation.** The item list differing by scope is defensible, but
+two things are not: the separator style contradicts § *Forbidden typography*
+(no `·` separators) — one of the two copies is wrong — and only Build/Runs have
+an empty state, so Explore's menu has no defined appearance before a corpus
+exists.
+
+**Not changed.** Decision needed: one separator convention; whether Explore
+gets an empty state.
+
+---
+
+### E-DIS-03 — `.tb-dl-run` is built two different ways, and Build's copy has a bug
+
+**What.**
+
+- `Paper Card.dc.html:5060` — `String(run.id).replace(/^RUN-0*/i, 'Run ')`
+- `Runs.dc.html:2705` — `this.rid(run.id)`, where
+  `Runs.dc.html:3849` is `rid(x) { return String(x ?? '').replace(/^RUN[-‑]0*/i, 'Run '); }`
+
+Build hand-rolled a copy of `rid()` that omits the non-breaking hyphen `U+2011`.
+A run id spelled `RUN‑0006` renders as `Run 6` on Runs and as the raw
+`RUN‑0006` on Build.
+
+**Why it is an escalation rather than a silent fix.** It changes what Build's
+download menu renders, and it contradicts the documented rule *"run ids display
+as `Run 37` via `rid()`"*.
+
+**Not changed.** Recommendation: one shared `rid()`.
+
+---
+
+### E-DIS-04 — the papers panel exists under two class prefixes
+
+**What.** The same component is implemented twice with disjoint class names and
+disjoint JS:
+
+- Build, `sb-*`: header `Paper Card.dc.html:1553–1585`, filter drawer
+  `1514–1551`, list `1587–1791`, wiring `wireSidebar` (2684–3081).
+- Runs / Explore, `rp-*`: `Runs.dc.html:1019–1122`, `Explore.dc.html:462–585`.
+
+They have diverged in capability: `sb-*` carries the `Search | Import` seg and
+the first-run invite; `rp-*` carries the selection bar, pager, drill and change
+markers.
+
+**Why it is an escalation.** The rewrite builds one component. Unifying means
+one screen gains or loses affordances unless we deliberately preserve both
+feature sets — which changes both.
+
+**Not changed.** Decision needed: unify (and accept the union of affordances),
+or keep two visually-identical but separate components.
+
+---
+
+### E-DIS-05 — the abstract drill uses different typography on Runs and Explore
+
+**What.** `Runs.dc.html:1123–1150` vs `Explore.dc.html:586–620`, plus a third,
+JS-generated copy on Build (`Paper Card.dc.html:3200–3220`).
+
+| Element | Runs (and Build) | Explore |
+| --- | --- | --- |
+| meta line (year / cites) | `font-size:11.5px` | `font-size:13px` |
+| `Abstract` section label | `10.5px; 600; letter-spacing .06em; uppercase; var(--muted2)` — a caps label | `13px; 600; var(--fg)` — a sentence-case heading |
+| provenance row | `margin-top:10px` | `margin-top:14px` |
+
+The same drill, opened from the same kind of row, looks different depending on
+which screen you opened it from.
+
+**Why it is an escalation.** One component in the rewrite ⇒ one typography.
+Either Runs/Build change, or Explore changes.
+
+**Not changed.** Today the demo renders 13 px + sentence-case on Explore, and
+11.5 px + caps label on Runs and Build.
+
+---
+
+### E-DIS-06 — `Run pipeline`, the Build screen's primary CTA, has no handler
+
+**What.** `.tb-run` is declared at `Paper Card.dc.html:1475–1478`. Grepping
+`tb-run` across the whole file returns **only that declaration** — no listener,
+no `querySelector`. The button is wired only on Runs (`Runs.dc.html:1852`,
+`2012`, `2042`). Explore carries the same dead button at `Explore.dc.html:425`.
+
+Build's own download empty state points at it: *"Start one with Run pipeline."*
+
+**Why it is an escalation.** Wiring has to give the most prominent button on the
+pilot screen a behaviour, and the demo never designed one. Candidates — start a
+run and navigate to Runs; start it in place with a status strip; open a
+pre-flight confirm — are each a new interaction needing its own busy, disabled
+and error states.
+
+**Not changed.** Decision needed: what `Run pipeline` does on Build, and whether
+it should exist on Explore at all.
+
+---
+
+### E-DIS-07 — the Build sidebar ships a second variant that never renders
+
+**What.** `Paper Card.dc.html` contains two `.sidebar` blocks inside one
+`.pc-drawer`: `[data-style="list"]` at 1513–1792 and `[data-style="cards"]` at
+1793–2075. A full diff is **7 changed lines** across 280 — the entire filter
+drawer, panel header, search field and filter/sort row (1514–1585 vs 1794–1865)
+are byte-identical.
+
+The shell pins `layout="List"`, so the `cards` copy is `display:none` forever —
+yet `setupSidebar` iterates every `.sidebar` (2528), so all listeners,
+ResizeObservers and scrims are installed twice.
+
+**Why it is a question rather than an obvious delete.** `layout` is a declared
+prop with a `Cards` option, and the locked-variant list does not mention it.
+Dropping the variant is a scope decision.
+
+**Not changed.** Recommendation: do not port `cards`.
+
+---
+
+### E-DIS-08 — two mutually-exclusive buttons share one absolute position on Explore
+
+**What.** `Explore.dc.html:850` (`.nv-hood`) and `Explore.dc.html:856`
+(`.cm-sub`, *View community subgraph*) are both
+`position:absolute; left:14px; bottom:12px; z-index:20`.
+
+They never overlap only because the JS guarantees at most one is visible.
+
+**Why it is here.** Flagged so nobody "fixes" the apparent collision by moving
+one of them during the rewrite — that would change the layout. The exclusivity
+is the contract.
+
+**Not changed.**
+
+---
+
+### Cosmetic copy-paste drift — recorded, not escalated
+
+No product decision needed; listed so a reviewer does not mistake them for
+rewrite defects.
+
+- `<span class="tt-label" style="display:none">` exists on Build
+  (`Paper Card.dc.html:1482`) and Runs (`Runs.dc.html:984`), is written by
+  `applyTheme` (3416 / 1935), is never displayed, and is absent from
+  Explore and Home.
+- `klFsRow` is duplicated four times; Explore's copy differs only by renaming a
+  local `const on` to `const on2` (`Explore.dc.html:3790–3812`).
+- `rp-pick-label` is present on Runs' filter drawer and absent from Explore's,
+  so Explore's JS cannot target that label.
+- `.nv-hood` carries `z-index:20` on Explore and none on Runs.
+- `.tb-download` sits one indentation level shallower on Explore.
