@@ -1,0 +1,22 @@
+// Topic-model descriptions keyed by topic id (semantic space). Separate from topic-data.js.
+export const TOPIC_DESC = {
+  0: "Generating machine-checked proofs in Lean and scoring them on math benchmarks.",
+  1: "Mutating and scoring candidate code to find faster heuristics and algorithms.",
+  2: "Measuring how well models sift abstracts, extract data and appraise clinical text.",
+  3: "Web-searching agents that gather evidence across many sources into one report.",
+  4: "Multimodal assistants reading scans and notes to reason toward a diagnosis.",
+  5: "Drafting and studying referee reports on submitted papers at conference scale.",
+  6: "Agents that write training code, tune models and climb Kaggle-style leaderboards.",
+  7: "Searching program space for symbolic laws that fit physical measurement data.",
+  8: "Benchmarking agents that load raw datasets, run analyses and defend the findings.",
+  9: "Systems that carry one idea through experiments to a finished manuscript.",
+  10: "Generating and ranking novel research ideas, then testing them against humans.",
+  11: "Surveying agents that carry the scientific method from hypothesis to result.",
+  12: "Agents proposing gene perturbations and driving biology experiments end to end.",
+  13: "Pretraining transformers on cell atlases to label cell types and gene states.",
+  14: "Tool-using agents that plan syntheses and drive robots through real reactions.",
+  15: "Training sequence models on proteins and genomes to predict biological function.",
+  16: "Translating between text and molecules to optimize and generate drug candidates.",
+  17: "Pulling structured synthesis and property records out of materials literature.",
+  18: "Coupling multi-agent graph reasoning to simulators to propose new materials.",
+};

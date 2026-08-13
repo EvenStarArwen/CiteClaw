@@ -356,3 +356,76 @@ survives navigation with no designed treatment:
 
 There is no "you have unsaved changes" affordance anywhere in the demo, and no
 rule for whether a project switch should discard drafts.
+
+---
+
+## Parity lane (`MS-PAR-*`) — 2026-08-13
+
+Surfaces audited: the frozen demo's runtime asset loading and its responsive
+folding behaviour, observed while building the pixel-parity harness
+(`web/parity`). Found by network tracing and by capturing the Build screen at
+six viewports.
+
+### MS-PAR-01 — six CDN scripts have no offline or load-failure state
+
+The bundle is almost self-contained — sibling `.js`/`.dc.html`, the Google Fonts
+CSS (woff2 payloads inlined as `data:` URIs), the touch icon and React 18.3.1
+UMD are all embedded. But `Paper Card.dc.html`, `Runs.dc.html` and
+`Explore.dc.html` still fetch six scripts from public CDNs at runtime:
+
+- `cdnjs …/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js`
+- `cdnjs …/smooth-scrollbar/8.8.4/plugins/overscroll.min.js`
+- `jsDelivr …/marked@12.0.2/marked.min.js`
+- `jsDelivr …/katex@0.16.11/dist/katex.min.js`
+- `jsDelivr …/turndown@7.2.0/dist/turndown.js`
+- `jsDelivr …/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js`
+
+There is no designed state for any of them failing. On a plane, behind a
+locked-down network, or during a CDN outage, smooth scrolling, markdown
+rendering, LaTeX rendering and markdown export degrade or break, and the only
+feedback is a bundler toast that the demo's own guard script deliberately hides
+(see MS-PAR-02). Note the design already has a home for connection state — the
+status-strip slot under the top bar (`.bn-sb`) — and a `connection` variant for
+*backend* reachability, but nothing covers *asset* reachability.
+
+- **Consequence for the rewrite:** `web/app` should bundle these locally rather
+  than inherit the CDN dependency. The harness refuses to depend on the live
+  internet: it mirrors these six URLs from version-pinned npm copies and aborts
+  (and records) any other external request — `web/parity/src/cdn-mirror.mjs`.
+
+### MS-PAR-02 — the `smooth-scrollbar` load race is silently swallowed
+
+`smooth-scrollbar.min.js` and its `overscroll` plugin are two independent
+`<script src>` tags with no ordering guarantee. The plugin frequently wins the
+race and throws `TypeError: Cannot read properties of undefined (reading
+'ScrollbarPlugin')`. The bundle's error hook turns that into a
+`[bundle] Script error.` toast, which a `MutationObserver` guard in the demo
+template then hides on purpose (documented in `ipad-demo-audit.md` as P2-14, an
+"opaque-origin inlining artifact, zero impact" — but this instance is a real
+race, not the masked artifact).
+
+Consequence: whether overscroll bounce is present becomes a coin flip per page
+load, for a behaviour the demo exposes as a prop (`overscroll-bounce`), and
+nothing in the UI says so. Reproduced on every unmirrored load during harness
+bring-up; with load order pinned, the demo loads with **zero console errors**.
+
+- **Consequence for the rewrite:** load order must come from a bundler import
+  graph, not two parallel script tags. The harness pins the order for capture
+  determinism only — that is not a product fix.
+
+### MS-PAR-03 — below landscape, the whole app is replaced by a rotate gate
+
+At 1024×1366, 900×1200 and 768×1024 the demo renders only the full-screen
+*"Rotate to landscape / This demo is laid out for the iPad held wide…"* panel
+(`.rot`). It is present-but-`display:none` at 1600×900, 1366×1024 and 1194×834.
+
+There is no designed narrow-width or portrait layout at all — not folded, not
+degraded — for any screen or state. There is also no designed state for a
+landscape window that is merely *narrow* (e.g. 900×600), as distinct from
+portrait.
+
+- This is likely a deliberate product decision to reproduce rather than a gap to
+  fill in silently, but it should be a conscious one.
+- The gate is part of the committed baseline:
+  `web/parity/baseline/design-demo/build/{ipad-portrait-1024x1366,w900-900x1200,w768-768x1024}.png`.
+- Related appearance question raised in `escalations.md` (**E-PAR-01**).

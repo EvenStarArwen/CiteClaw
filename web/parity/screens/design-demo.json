@@ -1,0 +1,13 @@
+{
+  "name": "design-demo",
+  "description": "Screens captured from the frozen design demo (web/design-reference). The same file, with `url` repointed at the rewrite's dev server, is what gates web/app.",
+  "screens": [
+    {
+      "name": "build",
+      "url": "/KnowledgeLab%20iPad%20Demo.html",
+      "script": "../scripts/nav-build.json",
+      "fullPage": false,
+      "note": "Build / pipeline screen. Locked variants: pipelineStyle='Flow chart (6d)', networkPalette='Neutral ink', collectionStyle='Cover rows' — these are the demo file's own defaults and are never flipped by the harness."
+    }
+  ]
+}

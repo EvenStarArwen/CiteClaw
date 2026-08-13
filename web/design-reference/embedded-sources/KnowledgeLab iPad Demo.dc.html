@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script>
+window.addEventListener('error', function(e){ try { console.error('[trace]', e.message, '|', e.filename||'?', '|', e.lineno+':'+e.colno, '|', e.error && (e.error.stack || e.error.message) || 'no-err-obj'); } catch(_){} }, true);
+window.addEventListener('unhandledrejection', function(e){ try { console.error('[trace-rej]', (e.reason && (e.reason.stack || e.reason.message)) || String(e.reason)); } catch(_){} });
+// bundle-toast-guard: hide the bundler's toast ONLY for the masked, detail-free
+// "Script error." (opaque-origin inlining artifact, zero impact — see ipad-demo-audit.md
+// P2-14). Real errors, which carry details, still toast and still hit the trace hooks.
+new MutationObserver(function(ms){ ms.forEach(function(m){ if (!m.addedNodes) return; for (var i=0;i<m.addedNodes.length;i++){ var n=m.addedNodes[i]; if (n && n.nodeType===1 && /^\[bundle\]\s*Script error\.?$/.test((n.textContent||'').trim())) n.style.display='none'; } }); }).observe(document.documentElement, {childList:true, subtree:true});
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="KnowledgeLab">
+<title>KnowledgeLab</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="ext-resource-dependency" content="./paper-row.js" data-resource-id="paperrow" />
+<meta name="ext-resource-dependency" content="./import-resolver.js" data-resource-id="importresolver" />
+<meta name="ext-resource-dependency" content="./run-mock.js" data-resource-id="runmock" />
+<meta name="ext-resource-dependency" content="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&amp;family=Hanken+Grotesk:wght@400;500;600&amp;display=swap" data-resource-id="fontsA" />
+<meta name="ext-resource-dependency" content="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&amp;family=Hanken+Grotesk:wght@400;500;600&amp;display=swap" data-resource-id="fontsB" />
+<meta name="ext-resource-dependency" content="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&amp;family=Hanken+Grotesk:wght@400..700&amp;display=swap" data-resource-id="fontsC" />
+<meta name="ext-resource-dependency" content="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;display=swap" data-resource-id="fontsD" />
+<meta name="ext-resource-dependency" content="./topic-data.js" data-resource-id="topicdata" />
+<meta name="ext-resource-dependency" content="./topic-desc.js" data-resource-id="topicdesc" />
+<meta name="ext-resource-dependency" content="./graph-data.js" data-resource-id="graphdata" />
+<meta name="ext-resource-dependency" content="./community-data.js" data-resource-id="commdata" />
+<meta name="ext-resource-dependency" content="./citation-context.js" data-resource-id="citctx" />
+<meta name="ext-resource-dependency" content="./network-viz.js" data-resource-id="netviz" />
+<meta name="ext-resource-dependency" content="./topic-viz.js" data-resource-id="topicviz" />
+<meta name="ext-resource-dependency" content="./stream-text.js" data-resource-id="streamtext" />
+<meta name="ext-resource-dependency" content="./review-draft.js" data-resource-id="reviewdraft" />
+<template id="__bundler_thumbnail" data-bg-color="#ece5d8">
+  <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <rect x="32" y="32" width="56" height="56" rx="13" fill="#cc785c"></rect>
+    <text x="60" y="71" text-anchor="middle" font-family="Georgia, serif" font-size="32" font-weight="600" fill="#f6efe2">K</text>
+  </svg>
+</template>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  html, body { height:100%; margin:0; background:#ece5d8; }
+  .pg { position:absolute; inset:0; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .22s ease, visibility 0s linear .22s; }
+  .pg[data-on="1"] { opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease, visibility 0s; }
+  a { color:#cc785c; text-decoration:none; }
+  a:hover { color:#b3624a; }
+  /* iPad demo hardening: no tap flash, no rubber-band, no double-tap zoom on controls */
+  html, body { overscroll-behavior:none; -webkit-text-size-adjust:100%; }
+  * { -webkit-tap-highlight-color:transparent; }
+  button, [role="button"], .tb-tab { touch-action:manipulation; }
+  /* landscape-only demo: a narrow frame gets a rotate invite instead of a broken layout */
+  .rot { position:absolute; inset:0; z-index:140; display:none; flex-direction:column; align-items:center; justify-content:center; gap:15px; padding:56px; text-align:center; background:#ece5d8; }
+  .rot .rot-t{ color:#1a1917; }
+  .rot .rot-s{ color:#7c776d; }
+  body:has(.pc-root[data-theme=dark]) .rot{ background:#161513; }
+  body:has(.pc-root[data-theme=dark]) .rot .rot-t{ color:#ece7db; }
+  body:has(.pc-root[data-theme=dark]) .rot .rot-s{ color:#948e81; }
+  [data-rot="1"] .rot { display:flex; }
+  /* hidden demo-state switcher (5 taps on the logo) */
+  .dsw { position:absolute; inset:0; z-index:200; display:none; align-items:center; justify-content:center; background:rgba(26,25,23,.34); }
+  .dsw[data-open="1"] { display:flex; }
+  .dsw-b { min-width:0; padding:9px 3px; border:none; background:none; border-radius:8px; font-family:inherit; font-size:11.5px; font-weight:500; color:#6f6a60; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; touch-action:manipulation; }
+  .dsw-b[data-on="1"] { background:#fbfaf7; color:#1a1917; font-weight:600; box-shadow:0 1px 3px rgba(26,25,23,.12); }
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:relative; width:{{ vpW }}; height:{{ vpH }}; min-width:1024px; margin:0 auto; box-shadow:0 0 0 1px rgba(20,19,17,.08);">
+  <div class="pg" data-pg="Login" data-screen-label="Login" data-on="0">
+    <dc-import name="Login" style="width:100%; height:100%;" color-scheme="{{ scheme }}" network-colors="Ink &amp; white" hint-size="100%,100%"></dc-import>
+  </div>
+  <div class="pg" data-pg="Home" data-screen-label="Home" data-on="0">
+    <dc-import name="Home" style="width:100%; height:100%;" color-scheme="{{ scheme }}" home-state="{{ homeState }}" library-layout="{{ libraryLayout }}" project-rows="{{ projectRows }}" collection-style="{{ collectionStyle }}" hint-size="100%,100%"></dc-import>
+  </div>
+  <div class="pg" data-pg="Build" data-screen-label="Build" data-on="1">
+    <dc-import name="Paper Card" card-emphasis="Muted" style="width:100%; height:100%;" color-scheme="{{ scheme }}" logo-style="Terracotta tile" layout="List" page-state="{{ buildState }}" pipeline-style="{{ pipelineStyle }}" overscroll-bounce="{{ bounce }}" hint-size="100%,100%"></dc-import>
+  </div>
+  <div class="pg" data-pg="Runs" data-screen-label="Runs" data-on="0">
+    <dc-import name="Runs" card-emphasis="Muted" seed-card-style="{{ seedCardStyle }}" style="width:100%; height:100%;" color-scheme="{{ scheme }}" logo-style="Terracotta tile" page-state="{{ runState }}" network-palette="{{ netPalette }}" overscroll-bounce="{{ bounce }}" run-phase="{{ runPhase }}" api-retries="{{ apiRetries }}" hint-size="100%,100%"></dc-import>
+  </div>
+  <div class="pg" data-pg="Explore" data-screen-label="Explore" data-on="0">
+    <dc-import name="Explore" style="width:100%; height:100%;" color-scheme="{{ scheme }}" logo-style="Terracotta tile" page-state="{{ exploreState }}" network-palette="{{ netPalette }}" hint-size="100%,100%"></dc-import>
+  </div>
+  <div data-screen-label="Settings" style="position:absolute; inset:0; z-index:60; pointer-events:none;">
+    <dc-import name="Settings" style="width:100%; height:100%;" color-scheme="{{ scheme }}" settings-style="Centered card" key-probe="{{ keyProbe }}" hint-size="100%,100%"></dc-import>
+  </div>
+  <div data-screen-label="System banners" style="position:absolute; inset:0; z-index:80; pointer-events:none;">
+    <dc-import name="System Banners" style="width:100%; height:100%;" color-scheme="{{ scheme }}" connection="{{ connection }}" hint-size="100%,100%"></dc-import>
+  </div>
+  <div class="rot" data-screen-label="Rotate notice">
+    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#c07a5c" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="17" height="11" rx="2.2"></rect><path d="M7.5 4.2A9 9 0 0 1 19 2.6"></path></svg>
+    <div class="rot-t" style="font-family:'Newsreader',serif; font-size:29px; font-weight:500; letter-spacing:-0.01em;">Rotate to landscape</div>
+    <div class="rot-s" style="max-width:330px; font-family:'Hanken Grotesk',-apple-system,sans-serif; font-size:14.5px; line-height:1.55; text-wrap:pretty;">This demo is laid out for the iPad held wide. Turn the device and it picks up where you left off.</div>
+  </div>
+  <div class="dsw" data-open="0" data-screen-label="Demo states">
+    <div style="width:352px; max-width:calc(100% - 48px); background:#faf9f5; border:1px solid #e6e2d6; border-radius:16px; box-shadow:0 24px 64px rgba(26,25,23,.26); padding:17px 18px 15px; font-family:'Hanken Grotesk',-apple-system,sans-serif;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <span style="font-family:'Newsreader',serif; font-size:19px; font-weight:500; color:#1a1917;">Demo states</span>
+        <button class="dsw-x" type="button" aria-label="Close" style="width:30px; height:30px; display:flex; align-items:center; justify-content:center; border:none; background:none; border-radius:8px; color:#8b867c; cursor:pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+        <div>
+          <div style="font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:#8b867c; margin-bottom:6px;">Build</div>
+          <div class="dsw-seg" data-k="build" style="display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:3px; background:#efece3; border-radius:11px;">
+            <button class="dsw-b" type="button" data-v="Before first run">Before first run</button>
+            <button class="dsw-b" type="button" data-v="Has results">Has results</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:#8b867c; margin-bottom:6px;">Runs</div>
+          <div class="dsw-seg" data-k="run" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:2px; padding:3px; background:#efece3; border-radius:11px;">
+            <button class="dsw-b" type="button" data-v="Before first run">Before first run</button>
+            <button class="dsw-b" type="button" data-v="Idle with history">Idle</button>
+            <button class="dsw-b" type="button" data-v="Running">Running</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:#8b867c; margin-bottom:6px;">Explore</div>
+          <div class="dsw-seg" data-k="explore" style="display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:3px; background:#efece3; border-radius:11px;">
+            <button class="dsw-b" type="button" data-v="Before first run">Before first run</button>
+            <button class="dsw-b" type="button" data-v="Has results">Has results</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; margin-top:16px; padding-top:13px; border-top:1px solid #ece8de;">
+        <button class="dsw-reset" type="button" style="flex:1; padding:10px; border:1px solid #e0dcd0; background:#fff; border-radius:10px; font-family:inherit; font-size:13px; font-weight:600; color:#3c3830; cursor:pointer;">Reset demo</button>
+        <button class="dsw-done" type="button" style="flex:1; padding:10px; border:1px solid #1a1917; background:#1a1917; border-radius:10px; font-family:inherit; font-size:13px; font-weight:600; color:#f7f4ec; cursor:pointer;">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;pipelineStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Flow chart (6d)&quot;,&quot;options&quot;:[&quot;Panel (default)&quot;,&quot;Flow chart (6d)&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Navigation&quot;,&quot;label&quot;:&quot;Build pipeline&quot;},&quot;viewport&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Fill the window&quot;,&quot;options&quot;:[&quot;Fill the window&quot;,&quot;Desktop 1600 × 900&quot;,&quot;MacBook Air 15 1440 × 932&quot;,&quot;MacBook Air 13 1280 × 832&quot;,&quot;iPad 12.9 1366 × 1024&quot;,&quot;iPad 11 1194 × 834&quot;,&quot;iPad 9.7 1024 × 768&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Viewport&quot;,&quot;label&quot;:&quot;Frame size&quot;},&quot;page&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Build&quot;,&quot;options&quot;:[&quot;Login&quot;,&quot;Home&quot;,&quot;Build&quot;,&quot;Runs&quot;,&quot;Explore&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Navigation&quot;,&quot;label&quot;:&quot;Active page&quot;},&quot;buildState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Has results&quot;,&quot;options&quot;:[&quot;Before first run&quot;,&quot;Has results&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Navigation&quot;,&quot;label&quot;:&quot;Build page state&quot;},&quot;seedCardStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Compact cards&quot;,&quot;options&quot;:[&quot;Compact cards&quot;,&quot;List rows&quot;,&quot;Cover tiles&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Page state&quot;,&quot;label&quot;:&quot;Seed card style&quot;},&quot;runState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Running&quot;,&quot;options&quot;:[&quot;Before first run&quot;,&quot;Idle with history&quot;,&quot;Running&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Navigation&quot;,&quot;label&quot;:&quot;Runs page state&quot;},&quot;exploreState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Has results&quot;,&quot;options&quot;:[&quot;Before first run&quot;,&quot;Has results&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Navigation&quot;,&quot;label&quot;:&quot;Explore page state&quot;},&quot;connection&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Online&quot;,&quot;options&quot;:[&quot;Online&quot;,&quot;Offline&quot;,&quot;Server unreachable&quot;,&quot;Restored&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Resilience&quot;,&quot;label&quot;:&quot;Connection state&quot;},&quot;apiRetries&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Resilience&quot;,&quot;label&quot;:&quot;Sustained API failure&quot;},&quot;keyProbe&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;All valid&quot;,&quot;options&quot;:[&quot;All valid&quot;,&quot;Invalid Gemini key&quot;,&quot;Rate-limited S2&quot;,&quot;OpenAI unreachable&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Resilience&quot;,&quot;label&quot;:&quot;Key verification result&quot;},&quot;networkPalette&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Neutral ink&quot;,&quot;options&quot;:[&quot;Neutral ink&quot;,&quot;Accent ink&quot;,&quot;Ochre → slate&quot;,&quot;Slate ink&quot;,&quot;Teal depth&quot;,&quot;Moss&quot;,&quot;Purple dusk&quot;,&quot;Rose clay&quot;,&quot;Gold ember&quot;,&quot;Teal → rose&quot;,&quot;Blue dawn&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;,&quot;label&quot;:&quot;Network year palette&quot;},&quot;homeState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Has projects&quot;,&quot;options&quot;:[&quot;Has projects&quot;,&quot;First visit&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Home&quot;,&quot;label&quot;:&quot;Home state&quot;},&quot;libraryLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Side by side&quot;,&quot;options&quot;:[&quot;Side by side&quot;,&quot;Tabs&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Home&quot;,&quot;label&quot;:&quot;Library placement&quot;},&quot;projectRows&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Preview cards&quot;,&quot;options&quot;:[&quot;Preview cards&quot;,&quot;Plain rows&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Home&quot;,&quot;label&quot;:&quot;Project rows&quot;},&quot;collectionStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Cover rows&quot;,&quot;options&quot;:[&quot;Cover rows&quot;,&quot;Mini tiles&quot;,&quot;Playlist cards&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Home&quot;,&quot;label&quot;:&quot;Collection style&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  _ov = {};
+  componentDidMount() {
+    // the status strip is chrome: it lands under the top bar and the pages inset their content by its height
+    this._bnInset = e => { const r = this.rootRef.current; if (r) r.style.setProperty('--bn-inset', ((e.detail && e.detail.h) || 0) + 'px'); };
+    document.addEventListener('kl-banner-inset', this._bnInset);
+    const root = this.rootRef.current;
+    if (!root) return;
+    this.show(this.props.page || 'Build', true);
+    this.syncTheme();
+    root.addEventListener('kl-open-filters', () => this.show('Build'));
+    root.addEventListener('kl-login', () => this.show('Home'));
+    root.addEventListener('kl-home', () => this.show('Home'));
+    root.addEventListener('kl-open-project', e => { this._buildOv = (e.detail && e.detail.fresh) ? 'Before first run' : null; this.forceUpdate(); this.show('Build'); });
+    root.addEventListener('kl-logout', () => this.logout());
+    root.addEventListener('click', e => {
+      const tab = e.target.closest && e.target.closest('.tb-tab');
+      if (!tab || !root.contains(tab)) return;
+      const name = (tab.textContent || '').trim();
+      if (name === 'Build' || name === 'Runs' || name === 'Explore') this.show(name);
+    });
+    // five quick taps on the logo tile open the hidden demo-state switcher
+    this._taps = [];
+    root.addEventListener('pointerdown', e => {
+      if (!(e.target.closest && e.target.closest('.tb-mark'))) return;
+      const now = Date.now();
+      this._taps = this._taps.filter(t => now - t < 2500).concat(now);
+      if (this._taps.length >= 5) { this._taps = []; this.dswOpen(true); }
+    });
+    const dsw = root.querySelector('.dsw');
+    if (dsw) dsw.addEventListener('click', e => {
+      if (e.target === dsw) { this.dswOpen(false); return; }
+      const b = e.target.closest && e.target.closest('.dsw-b');
+      if (b && b.parentNode.dataset.k) { this._ov[b.parentNode.dataset.k] = b.dataset.v; this.forceUpdate(); this.dswPaint(); return; }
+      if (e.target.closest('.dsw-reset')) { this.dswReset(); return; }
+      if (e.target.closest('.dsw-x, .dsw-done')) this.dswOpen(false);
+    });
+    // landscape only: portrait (or any frame under ~1160) gets the rotate invite
+    const rot = () => root.setAttribute('data-rot', root.clientWidth < 1160 ? '1' : '0');
+    this._rotRO = new ResizeObserver(rot);
+    this._rotRO.observe(root);
+    rot();
+  }
+  dswOpen(on) {
+    const el = this.rootRef.current && this.rootRef.current.querySelector('.dsw');
+    if (!el) return;
+    el.setAttribute('data-open', on ? '1' : '0');
+    if (on) this.dswPaint();
+  }
+  dswPaint() {
+    const root = this.rootRef.current; if (!root) return;
+    const cur = {
+      build: this._ov.build ?? this._buildOv ?? (this.props.buildState ?? 'Has results'),
+      run: this._ov.run ?? (this.props.runState ?? 'Running'),
+      explore: this._ov.explore ?? (this.props.exploreState ?? 'Has results'),
+    };
+    root.querySelectorAll('.dsw-seg').forEach(seg => {
+      seg.querySelectorAll('.dsw-b').forEach(b => b.setAttribute('data-on', b.dataset.v === cur[seg.dataset.k] ? '1' : '0'));
+    });
+  }
+  dswReset() {
+    this._ov = {}; this._buildOv = null;
+    this.forceUpdate();
+    this.dswPaint();
+    this.dswOpen(false);
+    this.show('Build');
+  }
+  componentDidUpdate(prev) {
+    if (prev.page !== this.props.page) this.show(this.props.page || 'Build');
+    if (prev.buildState !== this.props.buildState) this._buildOv = null;
+  }
+  syncTheme() {
+    const root = this.rootRef.current;
+    if (!root) return;
+    const seen = new WeakSet();
+    const attach = () => {
+      root.querySelectorAll('.pc-root').forEach(el => {
+        if (seen.has(el)) return;
+        seen.add(el);
+        new MutationObserver(() => {
+          if (this._themeLock) return;
+          this._themeLock = 1;
+          const t = el.getAttribute('data-theme') || 'light';
+          root.querySelectorAll('.pc-root').forEach(o => {
+            if (o !== el && o.getAttribute('data-theme') !== t) o.setAttribute('data-theme', t);
+          });
+          this._themeLock = 0;
+        }).observe(el, { attributes: true, attributeFilter: ['data-theme'] });
+      });
+    };
+    attach();
+    [400, 1200, 2500].forEach(ms => setTimeout(attach, ms));
+  }
+  logout() {
+    const root = this.rootRef.current;
+    if (!root || this._lo) return;
+    this._lo = 1;
+    const cur = root.querySelector('.pg[data-on="1"]');
+    if (cur && cur.dataset.pg !== 'Login') {
+      // the workspace settles out, then the login page crossfades in (Login plays its own arrival)
+      cur.style.transition = 'opacity .24s ease, transform .3s cubic-bezier(.22,.61,.36,1)';
+      cur.style.transform = 'scale(.988)';
+      cur.style.opacity = '0';
+      setTimeout(() => {
+        this.show('Login');
+        setTimeout(() => { cur.style.transition = ''; cur.style.transform = ''; cur.style.opacity = ''; this._lo = 0; }, 320);
+      }, 170);
+    } else { this.show('Login'); this._lo = 0; }
+  }
+  show(name, instant) {
+    const root = this.rootRef.current;
+    if (!root) return;
+    this._page = name;
+    root.querySelectorAll('[data-pg]').forEach(pg => {
+      pg.setAttribute('data-on', pg.dataset.pg === name ? '1' : '0');
+    });
+    try { document.dispatchEvent(new CustomEvent('kl-page-shown', { detail: { name: name } })); } catch (e) {}
+    setTimeout(() => {
+      root.querySelectorAll('.pc-root').forEach(r => {
+        const el = r.__dcHost || r;
+        const k = Object.keys(el).find(k => k.startsWith('__reactFiber$'));
+        let f = k && el[k]; while (f && !(f.type && f.type.name === 'StreamableComponent')) f = f && f.return;
+        const logic = f && f.stateNode && f.stateNode.logic;
+        if (logic && logic._ssbInit) logic._ssbInit();
+      });
+    }, 140);
+    root.querySelectorAll('.tb-tab').forEach(t => {
+      const n = (t.textContent || '').trim();
+      if (n === 'Build' || n === 'Runs' || n === 'Explore') {
+        if (n === name) t.setAttribute('data-active', '1');
+        else t.removeAttribute('data-active');
+      }
+    });
+  }
+  renderVals() {
+    const m = /(\d+)\s*×\s*(\d+)/.exec(this.props.viewport || '');
+    const vp = m ? [m[1] + 'px', m[2] + 'px'] : ['100%', '100dvh'];
+    return {
+      rootRef: this.rootRef,
+      vpW: vp[0], vpH: vp[1],
+      runState: this._ov.run ?? (this.props.runState ?? 'Running'),
+      seedCardStyle: this.props.seedCardStyle ?? 'Compact cards',
+      exploreState: this._ov.explore ?? (this.props.exploreState ?? 'Has results'),
+      buildState: this._ov.build ?? this._buildOv ?? (this.props.buildState ?? 'Has results'),
+      homeState: this.props.homeState ?? 'Has projects',
+      libraryLayout: this.props.libraryLayout ?? 'Side by side',
+      projectRows: this.props.projectRows ?? 'Preview cards',
+      collectionStyle: this.props.collectionStyle ?? 'Cover rows',
+      scheme: 'Warm paper',
+      netPalette: this.props.networkPalette ?? 'Neutral ink',
+      bounce: false,
+      connection: this.props.connection ?? 'Online',
+      runPhase: 'None',
+      apiRetries: this.props.apiRetries ?? false,
+      keyProbe: this.props.keyProbe ?? 'All valid',
+      pipelineStyle: this.props.pipelineStyle ?? 'Flow chart (6d)',
+    };
+  }
+}
+</script>
+</body>
+</html>

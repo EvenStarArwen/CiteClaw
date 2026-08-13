@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&amp;family=Hanken+Grotesk:wght@400..700&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{ height:100%; margin:0; background:#ece5d8; }
+  body:has(.pc-root[data-theme=dark]){ background:#131210; }
+  .pc-root button, .pc-root input, .pc-root textarea, .pc-root select{ font-family:inherit; }
+  .pc-root{--pin:16px;--pin-sc:calc(var(--pin) - var(--kl-sbw, 8px));--bg:#f1ebdd;--panel:#faf9f5;--canvas:#f8f5ee;--topbar-bg:var(--bg);--dock-bg:var(--panel);--dock-shadow:0 2px 12px rgba(var(--sh),.05);--card:#fff;--card2:#fdfcf9;--card-sel:#f5f1e8;--row-sel:#f1ece1;--row-hover:#f4f1e8;--border:#e4e1d6;--divider:#ece9df;--fg:#141413;--fg2:#57554e;--muted:#6c6a64;--muted2:#8e8b82;--accent:#cc785c;--accent-hover:#b3624a;--dot-sep:#c9c5b8;--scroll:#d8d4c7;--icon-bg:#f0ece1;--err-bg:#f6e6df;--star:#a09d96;--star-bg:#ece7da;--abstract-fg:#3f3d39;--chip-bg:#141413;--sh:31,30,29;--primary:#141413;--primary-fg:#fff;--primary-hover:#2e2d2a;--ring:rgba(31,30,29,.12);--success:#5db872;--warning:#d4a017;--error:#c64545;--error-bg:#f7e7e7;--success-bg:#e6f4ea;--warning-bg:#faf0da;--v-green:#6e7a4e;--v-green-dot:#8c9a6c;--v-purple:#7a6878;--v-purple-dot:#9b8899;--v-blue:#616f7d;--v-blue-dot:#8595a3;--v-gold:#96773a;--v-gold-dot:#b8995a;--v-teal:#5d7a62;--v-teal-dot:#7fa085;--v-rose:#9d6558;--v-rose-dot:#bd8b7f;--v-indigo:#6a6a94;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));--ghost-hover:color-mix(in oklab, var(--fg) 9%, var(--card));--group-bg:color-mix(in oklab, var(--bg) 72%, var(--panel));--well-hover:var(--card);}
+  .pc-root[data-theme=dark]{--bg:#1b1a17;--panel:#252320;--canvas:#282622;--topbar-bg:var(--bg);--dock-bg:var(--panel);--dock-shadow:0 2px 12px rgba(var(--sh),.05);--card:#2b2925;--card2:#252320;--card-sel:#3a352c;--row-sel:#36322a;--row-hover:#302d28;--border:#3f3b33;--divider:#312e28;--fg:#faf9f5;--fg2:#c8c3b8;--muted:#a09d96;--muted2:#8e8b82;--accent:#d3855f;--accent-hover:#e6a586;--dot-sep:#4c473e;--scroll:#464139;--icon-bg:#302d27;--err-bg:#3a2823;--star:#7d786d;--star-bg:#322e28;--abstract-fg:#d0cbc0;--chip-bg:#46423a;--sh:0,0,0;--primary:#faf9f5;--primary-fg:#181715;--primary-hover:#e9e6df;--ring:rgba(211,133,95,.35);--success:#7ecb90;--warning:#e0b64a;--error:#e07b7b;--error-bg:#3a2626;--success-bg:#23301f;--warning-bg:#332a1a;--v-green:#adb98a;--v-green-dot:#adb98a;--v-purple:#b4a3b1;--v-purple-dot:#b4a3b1;--v-blue:#9fb0bf;--v-blue-dot:#9fb0bf;--v-gold:#d3b46e;--v-gold-dot:#d3b46e;--v-teal:#8fbc97;--v-teal-dot:#8fbc97;--v-rose:#d0a094;--v-rose-dot:#d0a094;--v-indigo:#a9a9d2;}
+  .pc-root[data-color="Previous"]{--bg:#f0eee6;--canvas:#e6e2d6;--fg:#1f1e1d;--fg2:#6b6862;--muted:#87867f;--muted2:#a5a196;--star:#b0ac9f;--chip-bg:#1f1e1d;--primary:#1f1e1d;--primary-hover:#35322c;}
+  .pc-root[data-theme=dark][data-color="Previous"]{--bg:#1a1815;--panel:#211f1b;--canvas:#121110;--card:#2a2723;--card2:#242220;--card-sel:#322e27;--row-sel:#2f2b25;--row-hover:#2a2723;--border:#39352e;--divider:#2e2b25;--fg:#efece5;--fg2:#c2bdb1;--muted:#948f83;--muted2:#8b8578;--star:#726c60;--icon-bg:#2e2a24;--ring:rgba(255,255,255,.16);--primary:#efece5;--primary-fg:#1a1815;--primary-hover:#dedad0;}
+  .pc-root:not([data-theme=dark])[data-color="Oat & ink"]{--bg:#eceae4;--panel:#fbfaf7;--canvas:#f6f5f0;--card2:#fcfbf8;--border:#e0ded5;--divider:#eae8e1;--row-hover:#f2f0e9;--row-sel:#efede5;--icon-bg:#efede5;--star-bg:#eae8df;--dot-sep:#c6c3b9;--scroll:#d6d3c9;}
+  .pc-root:not([data-theme=dark])[data-color="Terracotta dusk"]{--bg:#f2e7da;--panel:#fbf8f4;--canvas:#f9f2e9;--card2:#fdfaf6;--border:#e7dbcc;--divider:#efe5d7;--row-hover:#f6ecdf;--row-sel:#f3e7d7;--icon-bg:#f2e7d8;--star-bg:#eee2d1;--dot-sep:#cfc2af;--scroll:#ddd0bd;}
+  .pc-root:not([data-theme=dark])[data-color="Sage library"]{--bg:#e9e9dc;--panel:#fafaf5;--canvas:#f4f5eb;--card2:#fbfcf6;--border:#dcded0;--divider:#e8ead9;--row-hover:#f0f1e4;--row-sel:#ecedde;--icon-bg:#edeedf;--star-bg:#e7e8d8;--dot-sep:#c2c4b2;--scroll:#d2d4c3;}
+  .pc-root[data-theme=dark][data-color="Oat & ink"]{--bg:#1c1b18;--panel:#232220;--canvas:#262524;--card:#2c2b28;--card2:#262523;--card-sel:#363430;--row-sel:#34322d;--row-hover:#2e2c29;--border:#3c3a35;--divider:#302e2a;--icon-bg:#2f2d29;--star-bg:#31302b;--dot-sep:#4a4842;--scroll:#454340;}
+  .pc-root[data-theme=dark][data-color="Terracotta dusk"]{--bg:#201a15;--panel:#27201a;--canvas:#2a231d;--card:#302822;--card2:#2a231d;--card-sel:#3c322a;--row-sel:#3a312a;--row-hover:#332b24;--border:#423830;--divider:#342c25;--icon-bg:#332b23;--star-bg:#362d25;--dot-sep:#52463c;--scroll:#4c4137;}
+  .pc-root[data-theme=dark][data-color="Sage library"]{--bg:#191c16;--panel:#20231d;--canvas:#242720;--card:#292d26;--card2:#232720;--card-sel:#353b31;--row-sel:#333830;--row-hover:#2c3028;--border:#383d34;--divider:#2d312a;--icon-bg:#2f342b;--star-bg:#31362d;--dot-sep:#474d41;--scroll:#42473d;}
+  .pc-root[data-theme=dark][data-color="Slate archive"]{--bg:#18191b;--panel:#1f2022;--canvas:#232425;--card:#2a2b2d;--card2:#242526;--card-sel:#37383b;--row-sel:#343538;--row-hover:#2d2e30;--border:#3a3b3e;--divider:#2e2f31;--icon-bg:#303134;--star-bg:#323336;--dot-sep:#4a4b4f;--scroll:#454649;}
+  .pc-root:not([data-theme=dark])[data-color="Slate archive"]{--bg:#e8e8e5;--panel:#fbfbfa;--canvas:#f4f4f1;--card2:#fbfbf9;--border:#dcdcd8;--divider:#e7e7e4;--row-hover:#f0f0ec;--row-sel:#ecece7;--icon-bg:#ededea;--star-bg:#e6e6e1;--dot-sep:#c1c1bc;--scroll:#d1d1cc;}
+  .pc-root:not([data-theme=dark])[data-color="Fern library"]{--bg:#e9e9dc;--panel:#fafaf5;--canvas:#f4f5eb;--card2:#fbfcf6;--border:#dcded0;--divider:#e8ead9;--row-hover:#f0f1e4;--row-sel:#ecedde;--icon-bg:#edeedf;--star-bg:#e7e8d8;--dot-sep:#c2c4b2;--scroll:#d2d4c3;--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e3efe4;--v-green:#61795d;--v-green-dot:#7d9479;--v-purple:#6b6683;--v-purple-dot:#8b86a5;--v-blue:#54708a;--v-blue-dot:#7b96ad;--v-gold:#8b7344;--v-gold-dot:#ab8f55;--v-teal:#4e7a73;--v-teal-dot:#6fa199;--v-rose:#985f6b;--v-rose-dot:#b8878f;--v-indigo:#5f65a0;}
+  .pc-root[data-theme=dark][data-color="Fern library"]{--bg:#191c16;--panel:#20231d;--canvas:#242720;--card:#292d26;--card2:#232720;--card-sel:#353b31;--row-sel:#333830;--row-hover:#2c3028;--border:#383d34;--divider:#2d312a;--icon-bg:#2f342b;--star-bg:#31362d;--dot-sep:#474d41;--scroll:#42473d;--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#9dbd93;--v-green-dot:#9dbd93;--v-purple:#b1a9cc;--v-purple-dot:#b1a9cc;--v-blue:#95b6d0;--v-blue-dot:#95b6d0;--v-gold:#cdb175;--v-gold-dot:#cdb175;--v-teal:#84bfb4;--v-teal-dot:#84bfb4;--v-rose:#d09fa9;--v-rose-dot:#d09fa9;--v-indigo:#a7a9dc;}
+  .pc-root:not([data-theme=dark])[data-color="Fern & ink"]{--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e5efe6;--v-green:#61795d;--v-green-dot:#7d9479;--v-purple:#6b6683;--v-purple-dot:#8b86a5;--v-blue:#54708a;--v-blue-dot:#7b96ad;--v-gold:#8b7344;--v-gold-dot:#ab8f55;--v-teal:#4e7a73;--v-teal-dot:#6fa199;--v-rose:#985f6b;--v-rose-dot:#b8878f;--v-indigo:#5f65a0;}
+  .pc-root[data-theme=dark][data-color="Fern & ink"]{--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#9dbd93;--v-green-dot:#9dbd93;--v-purple:#b1a9cc;--v-purple-dot:#b1a9cc;--v-blue:#95b6d0;--v-blue-dot:#95b6d0;--v-gold:#cdb175;--v-gold-dot:#cdb175;--v-teal:#84bfb4;--v-teal-dot:#84bfb4;--v-rose:#d09fa9;--v-rose-dot:#d09fa9;--v-indigo:#a7a9dc;}
+  .pc-root:not([data-theme=dark])[data-color="Fern & ochre"]{--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e5efe6;}
+  .pc-root[data-theme=dark][data-color="Fern & ochre"]{--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;}
+  a{ color:var(--accent, #cc785c); text-decoration:none; }
+  a:hover{ color:var(--accent-hover, #b3624a); }
+  * { box-sizing:border-box; }
+  .pc-root, .pc-root *{ transition:background-color .25s ease, border-color .25s ease, color .25s ease; }
+  .pc-root .tb-mark{ background:color-mix(in oklab, var(--fg) 82%, var(--bg)); color:var(--panel); box-shadow:none; }
+  .pc-root[data-logo="Terracotta tile"] .tb-mark{ background:var(--accent); color:#fdf6f1; }
+  .tb-mark svg{ stroke:currentColor; }
+  .tb-mark svg circle{ fill:currentColor; }
+  .pc-theme-toggle:hover{ color:var(--fg); }
+  .hm-scroll::-webkit-scrollbar, .hw-body::-webkit-scrollbar{ width:10px; }
+  .hm-scroll::-webkit-scrollbar-thumb, .hw-body::-webkit-scrollbar-thumb{ background:var(--scroll); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
+  .hm-compose:focus-within{ border-color:var(--fg2); box-shadow:0 0 0 3px var(--ring); }
+  .hm-topic{ width:100%; border:none; outline:none; background:none; resize:none; font-family:inherit; font-size:14.5px; line-height:1.5; color:var(--fg); padding:2px 2px 0; }
+  .hm-topic::placeholder{ color:var(--muted2); }
+  .hm-chip{ padding:4px 11px; border:1px solid var(--border); border-radius:999px; background:none; font-family:inherit; font-size:12px; font-weight:500; color:var(--fg2); cursor:pointer; transition:background .14s ease, border-color .14s ease; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; min-width:36px; }
+  .hm-chip:hover{ background:var(--row-hover); border-color:var(--muted2); }
+  .hm-start{ display:flex; align-items:center; gap:7px; padding:8px 16px; border:none; border-radius:9px; background:var(--primary); color:var(--primary-fg); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; flex:none; }
+  .hm-start:hover:not(:disabled){ background:var(--primary-hover); }
+  .hm-start:active{ transform:translateY(.5px); }
+  .hm-start:disabled{ opacity:.35; cursor:default; }
+  .hm-prow{ transition:background .14s ease; }
+  .hm-prow:hover{ background:var(--row-hover); }
+  .hm-prow:active:not(:has(:is(button,[role="button"]):active)), .hm-crow:active:not(:has(:is(button,[role="button"]):active)), .sb-opt:active{ background:color-mix(in oklab, var(--fg) 9%, transparent) !important; transition-duration:0s !important; }
+  .pc-root :is(button,[role="button"])[aria-expanded="true"]{ background:color-mix(in oklab, var(--fg) 10%, transparent) !important; }
+  .hm-prow + .hm-prow{ border-top:1px solid var(--divider); }
+  .hm-dots{ width:28px; height:28px; flex:none; display:flex; align-items:center; justify-content:center; border:none; background:none; border-radius:8px; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .14s ease, background .14s ease; }
+  .hm-prow:hover .hm-dots, .hm-crow:hover .hm-dots, .hm-dots[data-open="1"], .hm-ddots{ opacity:1; }
+  .hm-dots:hover{ background:var(--ghost-hover); color:var(--fg); }
+  .hm-dots:active{ transform:scale(.9); }
+  .hm-ptile{ display:none; width:22px; height:22px; border-radius:6px; background:var(--icon-bg); border:1px solid var(--border); align-items:center; justify-content:center; flex:none; font-family:'Newsreader',serif; font-size:12.5px; font-weight:500; color:var(--fg2); }
+  .pc-root[data-rows="Plain rows"] .hm-prev{ display:none; }
+  .pc-root[data-rows="Plain rows"] .hm-ptile{ display:flex; }
+  .pc-root[data-rows="Plain rows"] .hm-prow{ padding-top:11px; padding-bottom:11px; }
+  .hm-search{ position:relative; width:230px; flex:none; }
+  .hm-search svg{ position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--muted2); pointer-events:none; }
+  .hm-search input{ width:100%; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:12.5px; color:var(--fg); padding:7px 10px 7px 31px; outline:none; transition:border-color .16s ease, box-shadow .16s ease; }
+  .hm-search input::placeholder{ color:var(--muted2); }
+  .hm-search input:focus{ border-color:var(--fg2); box-shadow:0 0 0 3px var(--ring); }
+  .hm-seg{ display:none; align-items:center; gap:3px; padding:3px; background:color-mix(in oklab, var(--fg) 9%, var(--panel)); border-radius:11px; }
+  .hm-seg button, .hm-fseg button{ padding:5px 13px; border:none; border-radius:8px; font-family:inherit; font-size:12.5px; font-weight:500; background:none; color:var(--muted2); cursor:pointer; transition:color .15s ease, background .15s ease; }
+  .hm-seg button:hover, .hm-fseg button:hover{ color:var(--fg); }
+  .hm-seg button[data-on="1"], .hm-fseg button[data-on="1"]{ background:var(--card2); color:var(--fg); font-weight:600; box-shadow:0 1px 3px rgba(var(--sh),.12); }
+  .hm-fseg{ display:inline-flex; align-items:center; gap:3px; padding:3px; background:color-mix(in oklab, var(--fg) 9%, var(--panel)); border-radius:10px; }
+  .pc-root[data-lib="Tabs"] .hm-panelB{ display:none; }
+  .pc-root[data-lib="Tabs"] .hm-seg{ display:flex; }
+  .pc-root[data-lib="Tabs"] .hm-ttlA, .pc-root[data-lib="Tabs"] .hm-cntA{ display:none; }
+  .pc-root[data-lib="Tabs"][data-libtab="Library"] .hm-projbody{ display:none; }
+  .hm-tabhost{ display:none; }
+  .pc-root[data-lib="Tabs"][data-libtab="Library"] .hm-tabhost{ display:block; }
+  .hm-crow{ display:flex; align-items:center; gap:11px; padding:9px 10px; border:none; width:100%; border-radius:10px; background:none; font-family:inherit; cursor:pointer; transition:background .14s ease; position:relative; text-align:left; color:var(--fg); }
+  .hm-crow:hover{ background:var(--row-hover); }
+  .hm-cover{ position:relative; width:38px; height:38px; border-radius:8px; background:var(--icon-bg); border:1px solid var(--border); flex:none; overflow:hidden; }
+  .hm-cover i{ position:absolute; left:50%; top:50%; width:13px; height:17px; background:var(--card); border:1px solid var(--border); border-radius:2.5px; }
+  .hm-cover i:nth-child(1){ transform:translate(-50%,-50%) rotate(-10deg) translateX(-5px); opacity:.55; }
+  .hm-cover i:nth-child(2){ transform:translate(-50%,-50%) rotate(8deg) translateX(5px); opacity:.75; }
+  .hm-cover i:nth-child(3){ transform:translate(-50%,-50%); }
+  .hm-cover b{ display:block; height:1.5px; background:var(--border); margin:3.5px 2.5px 0; border-radius:1px; }
+  .hm-clist{ display:flex; flex-direction:column; gap:2px; }
+  .pc-root[data-cstyle="Mini tiles"] .hm-clist{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .pc-root[data-cstyle="Mini tiles"] .hm-clist .hm-crow{ flex-direction:column; align-items:flex-start; gap:9px; padding:11px; background:var(--card2); border:1px solid var(--divider); border-radius:10px; }
+  .pc-root[data-cstyle="Mini tiles"] .hm-clist .hm-crow:hover{ background:var(--card2); border-color:var(--muted2); box-shadow:0 3px 10px rgba(var(--sh),.09); }
+  .pc-root[data-cstyle="Mini tiles"] .hm-clist .hm-dots{ position:absolute; top:7px; right:7px; }
+  .pc-root[data-cstyle="Playlist cards"] .hm-clist{ gap:10px; }
+  .pc-root[data-cstyle="Playlist cards"] .hm-clist .hm-crow{ flex-direction:column; align-items:stretch; gap:10px; padding:10px 10px 12px; background:var(--card2); border:1px solid var(--divider); border-radius:12px; }
+  .pc-root[data-cstyle="Playlist cards"] .hm-clist .hm-crow:hover{ background:var(--card2); border-color:var(--muted2); box-shadow:0 3px 10px rgba(var(--sh),.09); }
+  .pc-root[data-cstyle="Playlist cards"] .hm-clist .hm-cover{ width:100%; height:56px; }
+  .pc-root[data-cstyle="Playlist cards"] .hm-clist .hm-cover i{ width:17px; height:22px; }
+  .pc-root[data-cstyle="Playlist cards"] .hm-clist .hm-dots{ position:absolute; top:16px; right:14px; background:var(--card); border:1px solid var(--border); }
+  .hm-newcoll{ display:flex; align-items:center; justify-content:center; gap:7px; width:100%; padding:9px 12px; margin-top:8px; border:1px dashed var(--border); border-radius:10px; background:none; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer; transition:background .14s ease, color .14s ease, border-color .14s ease; }
+  .hm-newcoll:hover{ background:var(--row-hover); color:var(--fg); border-color:var(--muted2); }
+  .hm-drill{ display:none; flex-direction:column; }
+  .pc-root[data-drill="1"] .hm-libbody{ display:none; }
+  .pc-root[data-drill="1"] .hm-drill{ display:flex; animation:hmIn .26s cubic-bezier(.22,.61,.36,1); }
+  @keyframes hmIn{ from{ opacity:0; transform:translateX(14px); } }
+  .hm-back{ flex:none; width:30px; height:30px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--card); border-radius:9px; color:var(--fg2); cursor:pointer; }
+  .hm-back:hover{ background:var(--row-hover); color:var(--fg); }
+  .hm-back:active{ transform:scale(.92); }
+  .hm-dlist .pr{ position:relative; padding:12px var(--pin); transition:background .14s ease; }
+  .hm-dlist .pr:hover{ background:var(--row-hover); }
+  .hm-dlist .pr + .pr{ border-top:1px solid var(--divider); }
+  .hm-seedbtn{ width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:9px 14px; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--fg); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; transition:background .15s ease, border-color .15s ease; }
+  .hm-seedbtn:hover{ background:var(--row-hover); border-color:var(--muted2); }
+  .hm-seedbtn:active{ transform:translateY(.5px); }
+  .hm-pop{ position:absolute; z-index:75; display:none; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 34px rgba(var(--sh),.16); padding:5px; width:198px; }
+  .hm-pop[data-open="1"]{ display:block; animation:hmPop .18s cubic-bezier(.22,1.1,.36,1); }
+  @keyframes hmPop{ from{ opacity:0; transform:translateY(-5px) scale(.97); } }
+  .hm-mi{ width:100%; display:flex; align-items:center; gap:9px; padding:8px 10px; border:none; background:none; border-radius:8px; font-family:inherit; font-size:13px; font-weight:500; color:var(--fg); cursor:pointer; text-align:left; transition:background .14s ease, color .14s ease; }
+  .hm-mi:hover{ background:var(--row-hover); }
+  .hm-mi svg{ flex:none; color:var(--muted); }
+  .hm-mi[data-danger="1"]:hover{ background:var(--error-bg); color:var(--error); }
+  .hm-mi[data-danger="1"]:hover svg{ color:var(--error); }
+  .hm-mhr{ height:1px; background:var(--divider); margin:4px 5px; }
+  .hm-cardpop{ width:246px; padding:14px; }
+  .hm-ghost{ padding:7px 12px; border:none; background:none; border-radius:9px; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--fg2); cursor:pointer; transition:background .14s ease, color .14s ease; }
+  .hm-ghost:hover{ background:var(--row-hover); color:var(--fg); }
+  .hm-act{ padding:7px 14px; border:none; border-radius:9px; background:var(--primary); color:var(--primary-fg); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; }
+  .hm-act:hover{ background:var(--primary-hover); }
+  .hm-act[data-danger="1"]{ background:var(--error); color:#fff; }
+  .hm-act[data-danger="1"]:hover{ background:color-mix(in oklab, var(--error) 86%, #000); }
+  .hm-input{ border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:13px; color:var(--fg); padding:7px 10px; outline:none; transition:border-color .16s ease, box-shadow .16s ease; font-variant-numeric:tabular-nums; }
+  .hm-input:focus{ border-color:var(--fg2); box-shadow:0 0 0 3px var(--ring); }
+  .hm-input::placeholder{ color:var(--muted2); }
+  .hm-empty{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; padding:48px 30px 54px; }
+  .hm-empty .t{ width:46px; height:46px; border-radius:12px; background:var(--icon-bg); display:flex; align-items:center; justify-content:center; color:var(--fg2); margin-bottom:8px; }
+  .hw-scrim{ position:absolute; inset:0; background:rgba(20,19,17,.34); opacity:0; pointer-events:none; transition:opacity .22s ease; }
+  .pc-root[data-theme=dark] .hw-scrim{ background:rgba(0,0,0,.52); }
+  .pc-root[data-wiz="1"] .hw-scrim{ opacity:1; pointer-events:auto; }
+  .hw-card{ position:absolute; left:50%; top:50%; width:648px; max-width:calc(100% - 60px); height:min(700px, calc(100% - 80px)); display:flex; flex-direction:column; background:var(--dock-bg); border:1px solid var(--border); border-radius:16px; box-shadow:0 28px 80px rgba(var(--sh),.3); transform:translate(-50%,-50%) translateY(14px) scale(.975); opacity:0; pointer-events:none; transition:opacity .18s ease, transform .24s cubic-bezier(.22,1.1,.36,1); }
+  .pc-root[data-wiz="1"] .hw-card{ opacity:1; pointer-events:auto; transform:translate(-50%,-50%); }
+  .hw-page{ display:none; }
+  .hw-card[data-step="1"] .hw-page[data-pg="1"], .hw-card[data-step="2"] .hw-page[data-pg="2"], .hw-card[data-step="3"] .hw-page[data-pg="3"]{ display:block; animation:hmIn .26s cubic-bezier(.22,.61,.36,1); }
+  .hw-card[data-step="1"] .hw-back{ visibility:hidden; }
+  .hw-dot{ width:5px; height:5px; border-radius:50%; background:var(--dot-sep); transition:background .2s ease; }
+  .hw-card[data-step="1"] .hw-dot[data-s="1"], .hw-card[data-step="2"] .hw-dot[data-s="2"], .hw-card[data-step="3"] .hw-dot[data-s="3"]{ background:var(--fg); }
+  .hw-lab{ font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--fg2); }
+  .hw-d{ font-size:11.5px; color:var(--muted); line-height:1.45; }
+  .hw-ghost{ padding:8px 14px; border:none; background:none; border-radius:9px; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--fg2); cursor:pointer; transition:background .14s ease, color .14s ease; }
+  .hw-ghost:hover{ background:var(--row-hover); color:var(--fg); }
+  .hw-next{ display:flex; align-items:center; justify-content:center; gap:7px; min-width:128px; padding:8px 16px; border:none; border-radius:9px; background:var(--primary); color:var(--primary-fg); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+  .hw-next:hover{ background:var(--primary-hover); }
+  .hw-next:active{ transform:translateY(.5px); }
+  .hw-next[data-busy="1"]{ pointer-events:none; opacity:.85; }
+  .hw-sp{ width:12px; height:12px; border:2px solid color-mix(in srgb, var(--primary-fg) 30%, transparent); border-top-color:var(--primary-fg); border-radius:50%; animation:hwSpin .7s linear infinite; display:none; }
+  .hw-next[data-busy="1"] .hw-sp{ display:block; }
+  @keyframes hwSpin{ to{ transform:rotate(360deg); } }
+  .hw-x{ width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center; border:none; background:none; border-radius:8px; color:var(--muted); cursor:pointer; transition:background .14s ease, color .14s ease; }
+  .hw-x:hover{ background:var(--ghost-hover); color:var(--fg); }
+  .hw-x:active{ transform:scale(.9); }
+  .hw-seed{ cursor:pointer; }
+  .hw-seed:hover{ background:var(--row-hover); }
+  .hw-seed + .hw-seed{ border-top:1px solid var(--divider); }
+  .hw-seed .pr-star{ opacity:0 !important; }
+  .hw-seed:hover .pr-star, .hw-seed[data-star="1"] .pr-star{ opacity:1 !important; }
+  .hw-seed .pr-star:hover{ background:var(--ghost-hover) !important; }
+  .hw-seed[data-star="1"] .pr-star svg{ animation:hmStar .38s cubic-bezier(.34,1.56,.64,1); }
+  .hw-seed[data-star="1"] .pr-star svg path{ fill:var(--accent); stroke:var(--accent); }
+  @keyframes hmStar{ 0%{ transform:scale(1); } 45%{ transform:scale(1.5); } 100%{ transform:scale(1); } }
+  @keyframes sbPulse{ 0%,100%{ opacity:.25; } 50%{ opacity:1; } }
+  @keyframes hmSkel{ 0%,100%{ opacity:1; } 50%{ opacity:.45; } }
+  @keyframes rnSpin{ to{ transform:rotate(360deg); } }
+
+  /* ——— touch hardening (iPad): anything actionable stays visible at rest, chrome
+     doesn't select or pop callouts, coarse pointers get real hit areas ——— */
+  .dr{ touch-action:none; }
+  .dr-h::after{ content:""; position:absolute; left:-9px; right:-9px; top:-9px; bottom:-9px; border-radius:50%; }
+  .pc-root, .pc-root *{ -webkit-tap-highlight-color:transparent; }
+  @media (hover:none){ .pc-root :is(.tb-project,.tb-settings,.pc-theme-toggle,.sb-filter-btn,.sb-sort-btn):hover{ background:transparent !important; } }
+  .tb-nav, .tb-tab, .fc-seg, .rp-pager, .rn-head, .gl-head, .sb-head{ -webkit-user-select:none; user-select:none; }
+  .pr, .rn-run, .rn-step, .rn-vrow, .hm-prow, .hm-crow, .tm-card, .cf-filter, .rsc-row, .mon-row, .cs-row, .lg-net{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  @media (hover:none){
+    .cf-tools, .rsc-tools, .rsc-drag, .cs-del, .pl-join-add, .v6d-fan, .rr-go, .rr-mn, .pr-act, .hm-dots, .th-hist-del, .cc-open{ opacity:.55 !important; pointer-events:auto !important; }
+    .pr-act, .rr-go{ transform:none !important; }
+    .rn-run[data-view="1"] .rr-go{ opacity:0 !important; }
+    .rn-run[data-view="1"] .rr-mn{ right:34px !important; }
+    .pr-star, .hw-seed .pr-star{ opacity:.55 !important; }
+    .pr-star[data-saved="1"], .hw-seed[data-star="1"] .pr-star{ opacity:1 !important; }
+  }
+  @media (pointer:coarse){
+    .nv-zoom, .nv-fitbtn, .tm-zoom, .tm-fitbtn{ width:36px !important; height:36px !important; }
+    .nv-lbl, .tm-lbl{ height:36px !important; }
+    .fc-seg button{ padding-top:9px !important; padding-bottom:9px !important; }
+    .tb-tab{ padding-top:10px !important; padding-bottom:10px !important; }
+    .pr-star{ padding:11px !important; }
+    .pr-act, .rr-mn, .hm-dots, .cf-tool, .rsc-del, .rsc-mv, .cs-del, .lg-eye, .sb-pgb{ min-width:34px !important; min-height:34px !important; }
+    .nv-num{ padding-top:9px !important; padding-bottom:9px !important; }
+  }
+</style>
+<script>(function(){var r=window.__resources||{};[['paperrow','./paper-row.js'],['importresolver','./import-resolver.js']].forEach(function(p){var s=document.createElement('script');s.src=r[p[0]]||p[1];document.head.appendChild(s);});})()</script>
+<script>(function(){if(window.__klTouchAid)return;window.__klTouchAid=1;
+/* 1. synthetic hover from a tap must not paint (or stick): one capture-phase guard,
+      keyed off the last pointer type, so trackpad/Magic-Keyboard hover still works */
+var t=false;var mark=function(e){t=(e.pointerType==='touch');};
+document.addEventListener('pointerdown',mark,true);document.addEventListener('pointermove',mark,true);
+var stop=function(e){if(t)e.stopPropagation();};
+document.addEventListener('mouseenter',stop,true);document.addEventListener('mouseleave',stop,true);
+/* 2. keyboard avoidance: if the on-screen keyboard covers the focused field, scroll its
+      own panel (never the page, never scrollIntoView) just far enough to clear it */
+var vv=window.visualViewport;
+if(vv){var fix=function(){var el=document.activeElement;
+  if(!el||!/^(INPUT|TEXTAREA)$/.test(el.tagName))return;
+  var r=el.getBoundingClientRect(),over=r.bottom+14-(vv.offsetTop+vv.height);
+  if(over<=0)return;var sc=el.parentNode;
+  while(sc&&sc.nodeType===1&&sc!==document.body){var oy=getComputedStyle(sc).overflowY;
+    if((oy==='auto'||oy==='scroll')&&sc.scrollHeight>sc.clientHeight+2){sc.scrollTop+=over;return;}
+    sc=sc.parentNode;}};
+  vv.addEventListener('resize',function(){setTimeout(fix,60);});
+  document.addEventListener('focusin',function(){setTimeout(fix,280);},true);}
+})();</script>
+</helmet>
+<div class="pc-root hm-root" ref="{{ rootRef }}" data-theme="light" data-scheme="Recessed canvas" data-color="{{ scheme }}" data-logo="Terracotta tile" data-hs="{{ hsAttr }}" data-lib="{{ libAttr }}" data-rows="{{ rowsAttr }}" data-cstyle="{{ cstyleAttr }}" data-libtab="{{ libTab }}" data-drill="{{ drillAttr }}" data-wiz="{{ wizAttr }}" style="width:100%; height:100%; background:var(--bg); font-family:'Hanken Grotesk',-apple-system,sans-serif; color:var(--fg); display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--border); position:relative;">
+
+  <header style="flex:none; height:58px; display:flex; align-items:center; gap:14px; padding:0 16px; border-bottom:1px solid var(--divider); background:var(--topbar-bg);">
+    <div style="flex:1; min-width:0; display:flex; align-items:center; gap:8px;">
+      <div class="tb-mark" style="width:30px; height:30px; margin-top:-2px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex:none;">
+        <svg width="22" height="22" viewBox="0 0 32 32" fill="none" stroke-width="2.4" stroke-linejoin="miter" stroke-linecap="butt">
+          <path d="M16 4.5 L26 10.5 L26 21.5 L16 27.5 L6 21.5 L6 10.5 Z"></path>
+          <path d="M16 4.5 L16 16 M16 16 L6 21.5 M16 16 L26 21.5"></path>
+          <circle cx="16" cy="4.5" r="3.4" fill="var(--primary-fg)" stroke="none"></circle>
+          <circle cx="26" cy="10.5" r="2.1" fill="var(--primary-fg)" stroke="none"></circle>
+          <circle cx="26" cy="21.5" r="3" fill="var(--primary-fg)" stroke="none"></circle>
+          <circle cx="16" cy="27.5" r="2.3" fill="var(--primary-fg)" stroke="none"></circle>
+          <circle cx="6" cy="21.5" r="3.6" fill="var(--primary-fg)" stroke="none"></circle>
+          <circle cx="6" cy="10.5" r="2.4" fill="var(--primary-fg)" stroke="none"></circle>
+          <circle cx="16" cy="16" r="3.2" fill="var(--primary-fg)" stroke="none"></circle>
+        </svg>
+      </div>
+      <span style="font-family:'Newsreader',serif; font-size:19px; font-weight:500; letter-spacing:-0.01em; color:var(--fg);">OmniKnowledge</span>
+    </div>
+    <div style="flex:none; display:flex; align-items:center; gap:8px;">
+      <button class="pc-theme-toggle" aria-label="Toggle color theme" style="width:36px; height:36px; flex:none; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--card); border-radius:9px; color:var(--fg2); cursor:pointer;" style-hover="background:var(--row-hover);">
+        <svg class="tt-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>
+        <svg class="tt-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+      </button>
+      <div class="tb-user-wrap" style="position:relative;">
+        <button class="tb-user" aria-haspopup="true" aria-label="Account" style="width:36px; height:36px; flex:none; display:flex; align-items:center; justify-content:center; padding:0; border:1px solid var(--border); background:var(--card); border-radius:9px; cursor:pointer;" style-hover="background:var(--row-hover);">
+          <span style="width:24px; height:24px; border-radius:50%; background:var(--icon-bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:600; letter-spacing:.05em; color:var(--fg2);">AL</span>
+        </button>
+        <div class="tb-user-menu" style="display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:70; width:224px; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 34px rgba(var(--sh),.16); padding:5px;">
+          <div style="display:flex; flex-direction:column; gap:2px; padding:7px 10px 8px;">
+            <span style="font-size:13px; font-weight:600; color:var(--fg);">Ada Lovelace</span>
+            <span style="font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">ada@lovelace.edu</span>
+          </div>
+          <div style="height:1px; background:var(--divider); margin:0 5px 4px;"></div>
+          <button class="tb-user-settings" type="button" style="width:100%; display:flex; align-items:center; gap:9px; padding:8px 10px; border:none; background:none; border-radius:8px; font-family:inherit; font-size:13px; color:var(--fg); cursor:pointer; text-align:left; transition:background .14s ease;" style-hover="background:var(--row-hover);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none; color:var(--muted);"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Settings
+          </button>
+          <button class="tb-user-logout" type="button" style="width:100%; display:flex; align-items:center; gap:9px; padding:8px 10px; border:none; background:none; border-radius:8px; font-family:inherit; font-size:13px; color:var(--fg); cursor:pointer; text-align:left; transition:background .14s ease;" style-hover="background:var(--row-hover);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none; color:var(--muted);"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg>
+            Log out
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div style="flex:none; height:var(--bn-inset, 0px);"></div>
+
+  <div class="hm-scroll" style="flex:1; min-height:0; overflow-y:auto; overscroll-behavior-y:contain; position:relative;">
+    <div style="max-width:1210px; margin:0 auto; padding:44px 40px 44px;">
+
+      <div data-screen-label="Start a project" style="display:flex; flex-direction:column; align-items:center; gap:20px;">
+        <div style="font-family:'Newsreader',serif; font-size:33px; font-weight:500; letter-spacing:-0.01em; color:var(--fg); text-align:center;">What are you researching?</div>
+        <div class="hm-compose" style="width:720px; max-width:100%; background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:0 2px 12px rgba(var(--sh),.05); padding:14px 14px 12px; display:flex; flex-direction:column; gap:10px; transition:border-color .16s ease, box-shadow .16s ease;">
+          <textarea class="hm-topic" ref="{{ topicRef }}" rows="2" onInput="{{ topicInput }}" placeholder="Describe your research topic: e.g. LLM-assisted screening for systematic reviews: reliability, bias and prompting strategies"></textarea>
+          <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+            <span style="font-size:11.5px; color:var(--muted2); flex:none;">Try:</span>
+            <button class="hm-chip" type="button" onClick="{{ chipFill }}">Prompt injection defenses in LLM agents</button>
+            <button class="hm-chip" type="button" onClick="{{ chipFill }}">Bounded prime gaps since Zhang 2013</button>
+            <span style="flex:1;"></span>
+            <button class="hm-start" type="button" onClick="{{ startWiz }}" disabled="{{ startDisabled }}">Start project</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hm-lists" style="display:flex; align-items:flex-start; gap:14px; margin-top:44px;">
+
+        <section class="hm-panelA" data-screen-label="Projects" style="flex:1; min-width:0; background:var(--dock-bg); border:1px solid var(--border); border-radius:16px; box-shadow:var(--dock-shadow); overflow:hidden; position:relative;">
+          <div style="height:56px; display:flex; align-items:center; gap:12px; padding:0 var(--pin); border-bottom:1px solid var(--divider);">
+            <span class="hm-ttlA" style="font-family:'Newsreader',serif; font-size:20px; font-weight:500; letter-spacing:-0.01em; color:var(--fg);">Projects</span>
+            <span class="hm-cntA" style="font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums;">{{ projCount }}</span>
+            <div class="hm-seg" role="tablist">
+              <button type="button" data-on="{{ segProjOn }}" onClick="{{ tabProjects }}">Projects</button>
+              <button type="button" data-on="{{ segLibOn }}" onClick="{{ tabLibrary }}">Library</button>
+            </div>
+            <span style="flex:1;"></span>
+            <div class="hm-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+              <input type="text" placeholder="Search projects &amp; library…" onInput="{{ qInput }}">
+            </div>
+          </div>
+          <div class="hm-projbody">
+            <sc-if value="{{ showProjList }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <sc-for list="{{ projects }}" as="p" hint-placeholder-count="4">
+                  <div class="hm-prow" data-id="{{ p.id }}" onClick="{{ projOpen }}" style="display:flex; align-items:center; gap:14px; padding:10px var(--pin); cursor:pointer;">
+                    <span class="hm-prev" style="position:relative; width:98px; height:60px; border-radius:8px; background:var(--card); border:1px solid var(--border); overflow:hidden; flex:none;">
+                      <canvas data-kind="{{ p.kind }}" data-seed="{{ p.seed }}" style="position:absolute; inset:0; width:100%; height:100%;"></canvas>
+                    </span>
+                    <span class="hm-ptile">{{ p.initial }}</span>
+                    <span style="display:flex; flex-direction:column; gap:3px; min-width:0; flex:1;">
+                      <span style="font-family:'Newsreader',serif; font-size:16.5px; font-weight:500; line-height:1.25; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</span>
+                      <span style="font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.topic }}</span>
+                    </span>
+                    <span style="display:flex; align-items:baseline; gap:5px; flex:none;">
+                      <span style="width:36px; text-align:right; font-size:12.5px; font-weight:600; color:var(--fg2); font-variant-numeric:tabular-nums;">{{ p.papersK }}</span>
+                      <span style="width:42px; font-size:11px; color:var(--muted2);">papers</span>
+                    </span>
+                    <span style="display:flex; align-items:baseline; gap:5px; flex:none;">
+                      <span style="width:20px; text-align:right; font-size:12.5px; font-weight:600; color:var(--fg2); font-variant-numeric:tabular-nums;">{{ p.runsN }}</span>
+                      <span style="width:28px; font-size:11px; color:var(--muted2);">runs</span>
+                    </span>
+                    <span style="width:64px; text-align:right; font-size:11.5px; color:var(--muted2); font-variant-numeric:tabular-nums; flex:none;">{{ p.opened }}</span>
+                    <button class="hm-dots" type="button" aria-label="Project actions" data-id="{{ p.id }}" onClick="{{ projMenu }}">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
+                    </button>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ showProjEmpty }}" hint-placeholder-val="{{ false }}">
+              <div class="hm-empty">
+                <span class="t"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path></svg></span>
+                <div style="font-family:'Newsreader',serif; font-size:17px; font-weight:500; color:var(--fg);">No projects yet</div>
+                <div style="font-size:13px; color:var(--muted); line-height:1.5; max-width:250px;">Describe a topic above: the agent scopes it into your first search pipeline.</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ showProjNomatch }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:34px 30px; text-align:center; font-size:13px; color:var(--muted);">No projects match “{{ q }}”.</div>
+            </sc-if>
+          </div>
+          <div class="hm-tabhost"></div>
+        </section>
+
+        <aside class="hm-panelB" data-screen-label="Library" style="flex:none; width:372px; background:var(--dock-bg); border:1px solid var(--border); border-radius:16px; box-shadow:var(--dock-shadow); overflow:hidden;">
+          <div style="height:56px; display:flex; align-items:center; gap:12px; padding:0 var(--pin); border-bottom:1px solid var(--divider);">
+            <span style="font-family:'Newsreader',serif; font-size:20px; font-weight:500; letter-spacing:-0.01em; color:var(--fg);">Library</span>
+            <span style="font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums;">{{ libCount }}</span>
+          </div>
+          <div class="hm-libslot"></div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="hm-libwrap" style="position:relative; display:flex; flex-direction:column;">
+    <div class="hm-libbody" style="padding:10px 12px 14px;">
+      <button class="hm-crow" type="button" onClick="{{ allOpen }}" style="margin-bottom:4px;">
+        <span style="width:38px; height:38px; border-radius:8px; background:var(--icon-bg); border:1px solid var(--border); flex:none; display:flex; align-items:center; justify-content:center; color:var(--fg2);">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5-9 5-9-5z"></path><path d="M3 12l9 5 9-5"></path><path d="M3 17l9 5 9-5"></path></svg>
+        </span>
+        <span style="display:flex; flex-direction:column; gap:2px; min-width:0; flex:1;">
+          <span style="font-family:'Newsreader',serif; font-size:15px; font-weight:500; color:var(--fg);">All papers</span>
+          <span style="font-size:11.5px; color:var(--muted); font-variant-numeric:tabular-nums;">{{ allSub }}</span>
+        </span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="M9 6l6 6-6 6"></path></svg>
+      </button>
+      <div style="height:1px; background:var(--divider); margin:6px 4px 9px;"></div>
+      <div style="padding:0 10px 7px; font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2);">Collections</div>
+      <sc-if value="{{ showCollList }}" hint-placeholder-val="{{ true }}">
+        <div class="hm-clist">
+          <sc-for list="{{ collections }}" as="c" hint-placeholder-count="3">
+            <button class="hm-crow" type="button" data-id="{{ c.id }}" onClick="{{ collOpen }}">
+              <span class="hm-cover"><i></i><i></i><i><b></b><b></b><b></b></i></span>
+              <span style="display:flex; flex-direction:column; gap:2px; min-width:0; flex:1;">
+                <span style="font-family:'Newsreader',serif; font-size:15px; font-weight:500; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ c.name }}</span>
+                <span style="font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums;">{{ c.sub }}</span>
+              </span>
+              <span class="hm-dots" role="button" tabindex="0" aria-label="Collection actions" data-id="{{ c.id }}" onClick="{{ collMenu }}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ showCollEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:10px 10px 12px; font-size:12.5px; color:var(--muted); line-height:1.5;">Collections group papers across projects: like playlists. Save from any paper list, or start one here.</div>
+      </sc-if>
+      <sc-if value="{{ showCollNomatch }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:16px 10px; font-size:12.5px; color:var(--muted); text-align:center;">No collections match “{{ q }}”.</div>
+      </sc-if>
+      <button class="hm-newcoll" type="button" onClick="{{ newColl }}">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+        New collection
+      </button>
+    </div>
+    <div class="hm-drill">
+      <div style="flex:none; display:flex; align-items:center; gap:11px; padding:11px 14px; border-bottom:1px solid var(--divider);">
+        <button class="hm-back" type="button" aria-label="Back to library" onClick="{{ drillClose }}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+        </button>
+        <span style="display:flex; flex-direction:column; gap:1px; min-width:0; flex:1;">
+          <span style="font-family:'Newsreader',serif; font-size:17px; font-weight:500; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ drillName }}</span>
+          <span style="font-size:11.5px; color:var(--muted); font-variant-numeric:tabular-nums;">{{ drillSub }}</span>
+        </span>
+        <button class="hm-dots hm-ddots" type="button" aria-label="Collection actions" onClick="{{ drillMenu }}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
+        </button>
+      </div>
+      <sc-if value="{{ drillSeedable }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:12px 14px 4px;">
+          <button class="hm-seedbtn" type="button" onClick="{{ drillSeed }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+            New project from collection
+          </button>
+        </div>
+      </sc-if>
+      <div class="hm-dlist" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="hm-pop hm-projmenu">
+    <button class="hm-mi" type="button" onClick="{{ pmRename }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"></path></svg>Rename</button>
+    <button class="hm-mi" type="button" onClick="{{ pmDup }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Duplicate</button>
+    <div class="hm-mhr"></div>
+    <button class="hm-mi" type="button" data-danger="1" onClick="{{ pmDel }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>Delete project</button>
+  </div>
+
+  <div class="hm-pop hm-collmenu">
+    <button class="hm-mi" type="button" onClick="{{ cmRename }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"></path></svg>Rename</button>
+    <button class="hm-mi" type="button" onClick="{{ cmSeed }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.6L12 17l-1.9-5.4L4.5 10l5.6-1.6z"></path></svg>Use as seed set</button>
+    <div class="hm-mhr"></div>
+    <button class="hm-mi" type="button" data-danger="1" onClick="{{ cmDel }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>Delete collection</button>
+  </div>
+
+  <div class="hm-pop hm-cardpop hm-renamepop">
+    <div class="hm-ren-lab" style="font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--fg2); margin-bottom:9px;">Rename</div>
+    <input class="hm-input hm-ren-input" type="text" style="width:100%;" placeholder="Name">
+    <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:12px;">
+      <button class="hm-ghost" type="button" onClick="{{ renCancel }}">Cancel</button>
+      <button class="hm-act hm-ren-save" type="button" onClick="{{ renSave }}">Save</button>
+    </div>
+  </div>
+
+  <div class="hm-pop hm-cardpop hm-confirmpop">
+    <div class="hm-conf-txt" style="font-size:12.5px; line-height:1.55; color:var(--fg);"></div>
+    <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:12px;">
+      <button class="hm-ghost" type="button" onClick="{{ confCancel }}">Cancel</button>
+      <button class="hm-act hm-conf-act" type="button" data-danger="1" onClick="{{ confDo }}">Delete</button>
+    </div>
+  </div>
+
+  <div data-screen-label="New project wizard" style="position:absolute; inset:0; z-index:60; pointer-events:none;">
+    <div class="hw-scrim" onClick="{{ wizClose }}"></div>
+    <div class="hw-card" role="dialog" aria-label="New project" data-step="{{ wizStep }}">
+      <div style="flex:none; height:56px; display:flex; align-items:center; gap:10px; padding:0 12px 0 22px; border-bottom:1px solid var(--divider);">
+        <span style="font-family:'Newsreader',serif; font-size:20px; font-weight:500; letter-spacing:-0.01em; color:var(--fg); flex:1;">New project</span>
+        <button class="hw-x" type="button" aria-label="Close" onClick="{{ wizClose }}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="hw-body" style="flex:1; min-height:0; overflow-y:auto; padding:20px 24px 24px;">
+
+        <div class="hw-page" data-pg="1">
+          <div style="margin-bottom:18px; padding:10px 13px 11px; background:var(--card2); border:1px solid var(--divider); border-radius:10px;">
+            <div style="font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2); margin-bottom:4px;">Your topic</div>
+            <div style="font-size:12.5px; color:var(--fg2); line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{ wizTopic }}</div>
+          </div>
+          <div style="font-family:'Newsreader',serif; font-size:17px; font-weight:500; color:var(--fg); margin-bottom:5px;">Scope the search</div>
+          <div style="font-size:12.5px; color:var(--muted); line-height:1.5; margin-bottom:20px;">Rough cuts first: each answer becomes a filter step you can edit any time in Build.</div>
+          <div style="margin-bottom:20px;">
+            <div class="hw-lab" style="margin-bottom:5px;">Publication years</div>
+            <div class="hw-d" style="margin-bottom:10px;">Leave blank to search all years.</div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input class="hm-input hw-y1" type="text" inputmode="numeric" placeholder="From" style="width:92px;">
+              <span style="color:var(--muted2);">–</span>
+              <input class="hm-input hw-y2" type="text" inputmode="numeric" placeholder="To" style="width:92px;">
+              <span style="width:8px;"></span>
+              <button class="hm-chip" type="button" data-chip="yr5">Last 5 years</button>
+              <button class="hm-chip" type="button" data-chip="yr2000">Since 2000</button>
+              <button class="hm-chip" type="button" data-chip="yrany">Any year</button>
+            </div>
+          </div>
+          <div style="margin-bottom:6px;">
+            <div class="hw-lab" style="margin-bottom:5px;">Citation momentum</div>
+            <div class="hw-d" style="margin-bottom:10px;">Minimum citations a paper gathers per year of age, clears low-impact papers early.</div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input class="hm-input hw-cpy" type="text" inputmode="numeric" placeholder="e.g. 10" style="width:92px;">
+              <span style="width:8px;"></span>
+              <button class="hm-chip" type="button" data-chip="cAny">Any</button>
+              <button class="hm-chip" type="button" data-chip="c10">10 / year</button>
+              <button class="hm-chip" type="button" data-chip="c30">30 / year</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="hw-page" data-pg="2">
+          <div style="font-family:'Newsreader',serif; font-size:17px; font-weight:500; color:var(--fg); margin-bottom:5px;">Anchor with seed papers</div>
+          <div style="font-size:12.5px; color:var(--muted); line-height:1.5; margin-bottom:13px;">The agent suggested likely anchors from your topic. Star the ones that belong, or import the collection you already keep.</div>
+          <div class="hm-fseg hw-iseg" style="margin-bottom:13px;"><button type="button" data-im="search" data-on="1">Search</button><button type="button" data-im="import">Import</button></div>
+          <div class="hw-impnote" style="display:none; margin-bottom:12px; align-items:flex-start; gap:8px; padding:9px 11px; border-radius:10px; background:color-mix(in oklab, var(--success) 10%, var(--card)); border:1px solid color-mix(in oklab, var(--success) 30%, var(--border)); font-size:12px; line-height:1.45; color:var(--fg2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="color-mix(in oklab, var(--success) 60%, var(--fg))" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none; margin-top:1px;"><path d="M5 12l5 5 9-10"></path></svg><span class="hw-impnote-t" style="min-width:0;"></span></div>
+          <div class="hw-msearch">
+          <div class="hm-search" style="width:100%;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+            <input class="hw-ss" type="text" placeholder="Search Semantic Scholar…">
+          </div>
+          <div style="margin-top:14px; border:1px solid var(--divider); border-radius:12px; overflow:hidden;">
+            <div style="display:flex; align-items:center; gap:8px; padding:9px 16px; background:var(--card2); border-bottom:1px solid var(--divider);">
+              <span style="font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2);">Suggested from your topic</span>
+              <span style="flex:1;"></span>
+              <span class="hw-starcnt" style="font-size:11.5px; color:var(--muted); font-variant-numeric:tabular-nums;">0 starred</span>
+            </div>
+            <div class="hw-searching" style="display:none; align-items:center; gap:8px; padding:11px 16px; border-bottom:1px solid var(--divider);">
+              <span style="width:6px; height:6px; border-radius:50%; background:var(--accent); animation:sbPulse 1s ease-in-out infinite;"></span>
+              <span style="font-size:12px; color:var(--muted);">Searching Semantic Scholar…</span>
+            </div>
+            <div class="hw-seedlist"></div>
+          </div>
+          <div class="hw-d" style="margin-top:12px;">Optional: you can also star seeds later in Build’s search panel.</div>
+          </div>
+          <div class="hw-mimport" style="display:none;">
+            <div class="hw-idrop" style="border:1.5px dashed var(--border); border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:11px; padding:30px 22px; transition:border-color .16s ease, background .16s ease;">
+              <div style="width:46px; height:46px; border-radius:12px; background:var(--icon-bg); display:flex; align-items:center; justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--muted2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M7 9l5-5 5 5"></path><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg></div>
+              <div style="font-family:'Newsreader',serif; font-size:16.5px; font-weight:500; color:var(--fg);">Drop the collection you already keep</div>
+              <div style="font-size:11.5px; color:var(--muted); line-height:1.55; max-width:330px;">BibTeX or RIS exports (Zotero, EndNote, Mendeley), CSV, a DOI list, or a folder of PDFs, .zip works too. Every entry is matched on Semantic Scholar; anything unmatched is reported, never added silently.</div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <button class="hw-ibrowse" type="button" style="border:1px solid var(--border); background:var(--card); border-radius:9px; padding:7px 14px; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--fg); cursor:pointer; transition:background .14s ease;" style-hover="background:var(--row-hover);">Browse files</button>
+                <button class="hw-isample" type="button" style="border:none; background:none; padding:2px 4px; font-family:inherit; font-size:11.5px; font-weight:600; color:var(--fg2); cursor:pointer; text-decoration:underline; text-underline-offset:2.5px; text-decoration-color:var(--dot-sep); transition:color .14s ease;" style-hover="color:var(--accent);">Or try a sample refs.bib</button>
+              </div>
+              <input class="hw-ifile" type="file" multiple style="display:none;">
+            </div>
+            <div class="hw-iparse" style="display:none; border:1px solid var(--divider); border-radius:12px; overflow:hidden; padding:5px 0;"></div>
+            <div class="hw-irev" style="display:none; border:1px solid var(--divider); border-radius:12px; overflow:hidden;">
+              <div class="hw-irev-list" style="max-height:282px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--scroll) transparent;"></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:1px solid var(--divider); background:var(--card2);">
+                <span class="hw-ierr" style="flex:1; min-width:0; font-size:11.5px; line-height:1.4; color:color-mix(in oklab, var(--error) 62%, var(--fg));"></span>
+                <button class="hw-iadd" type="button" style="flex:none; border:none; background:var(--primary); color:var(--primary-fg); border-radius:9px; padding:8px 14px; font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; transition:filter .14s ease, opacity .14s ease;" style-hover="filter:brightness(.94);">Add 0 to seed set</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hw-page" data-pg="3">
+          <div style="font-family:'Newsreader',serif; font-size:17px; font-weight:500; color:var(--fg); margin-bottom:5px;">Draw the boundary</div>
+          <div style="font-size:12.5px; color:var(--muted); line-height:1.5; margin-bottom:20px;">What counts as in-scope? The screening agent follows these rules when it reads titles and abstracts.</div>
+          <div style="margin-bottom:20px;">
+            <div class="hw-lab" style="margin-bottom:5px;">Paper types</div>
+            <div class="hw-d" style="margin-bottom:10px;">Application-only papers cite methods without extending them.</div>
+            <div class="hm-fseg" data-k="types"><button type="button" data-on="1">Methodological only</button><button type="button">Include applications</button></div>
+          </div>
+          <div style="margin-bottom:20px;">
+            <div class="hw-lab" style="margin-bottom:5px;">Preprints</div>
+            <div class="hw-d" style="margin-bottom:10px;">arXiv and bioRxiv versions count as sources when included.</div>
+            <div class="hm-fseg" data-k="preprints"><button type="button" data-on="1">Include</button><button type="button">Exclude</button></div>
+          </div>
+          <div style="margin-bottom:6px;">
+            <div class="hw-lab" style="margin-bottom:5px;">Surveys &amp; tutorials</div>
+            <div class="hw-d" style="margin-bottom:10px;">Surveys inflate citation counts but map the field quickly.</div>
+            <div class="hm-fseg" data-k="surveys"><button type="button" data-on="1">Include</button><button type="button">Exclude</button></div>
+          </div>
+        </div>
+
+      </div>
+      <div style="flex:none; display:flex; align-items:center; gap:10px; padding:12px var(--pin); border-top:1px solid var(--divider);">
+        <span style="display:flex; align-items:center; gap:5px;"><span class="hw-dot" data-s="1"></span><span class="hw-dot" data-s="2"></span><span class="hw-dot" data-s="3"></span></span>
+        <span style="font-size:11.5px; color:var(--muted); font-variant-numeric:tabular-nums;">Step {{ wizStep }} of 3</span>
+        <span style="flex:1;"></span>
+        <button class="hw-ghost hw-back" type="button" onClick="{{ wizBack }}">Back</button>
+        <button class="hw-next" type="button" data-busy="{{ creatingAttr }}" onClick="{{ wizNext }}">
+          <span class="hw-sp"></span>
+          <span>{{ wizNextLabel }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:900},&quot;homeState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Has projects&quot;,&quot;options&quot;:[&quot;Has projects&quot;,&quot;First visit&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;State&quot;,&quot;label&quot;:&quot;Home state&quot;},&quot;libraryLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Side by side&quot;,&quot;options&quot;:[&quot;Side by side&quot;,&quot;Tabs&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;,&quot;label&quot;:&quot;Library placement&quot;},&quot;projectRows&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Preview cards&quot;,&quot;options&quot;:[&quot;Preview cards&quot;,&quot;Plain rows&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;,&quot;label&quot;:&quot;Project rows&quot;},&quot;collectionStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Cover rows&quot;,&quot;options&quot;:[&quot;Cover rows&quot;,&quot;Mini tiles&quot;,&quot;Playlist cards&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;,&quot;label&quot;:&quot;Collection style&quot;},&quot;colorScheme&quot;:{&quot;editor&quot;:null,&quot;default&quot;:&quot;Warm paper&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  topicRef = React.createRef();
+  state = { q: '', libTab: 'Projects', drill: null, wiz: false, wizStep: 1, wizTopic: '', creating: false, hasTopic: false, projects: null, collections: null };
+
+  PAPERS = [
+    { title: 'MOEA/D: A multiobjective evolutionary algorithm based on decomposition', authors: 'Zhang, Q · Li, H', venue: 'IEEE Transactions on Evolutionary Computation', year: 2007, cites: 7800 },
+    { title: 'An evolutionary many-objective optimization algorithm using reference-point-based nondominated sorting', authors: 'Deb, K · Jain, H', venue: 'IEEE Transactions on Evolutionary Computation', year: 2014, cites: 5100 },
+    { title: 'Decomposition of a multiobjective optimization problem into a number of simple multiobjective subproblems', authors: 'Liu, HL · Gu, F · Zhang, Q', venue: 'IEEE Transactions on Evolutionary Computation', year: 2014, cites: 890 },
+    { title: 'Are all the subproblems equally important? Resource allocation in decomposition-based evolutionary algorithms', authors: 'Zhou, A · Zhang, Q', venue: 'IEEE Transactions on Evolutionary Computation', year: 2016, cites: 410 },
+    { title: 'Stable matching-based selection in evolutionary multiobjective optimization', authors: 'Li, K · Zhang, Q · Kwong, S · Li, M · Wang, R', venue: 'IEEE Transactions on Evolutionary Computation', year: 2014, cites: 620 },
+    { title: 'Balancing convergence and diversity in decomposition-based many-objective optimizers', authors: 'Yuan, Y · Xu, H · Wang, B · Yao, X', venue: 'IEEE Transactions on Evolutionary Computation', year: 2016, cites: 780 },
+    { title: 'A survey of multiobjective evolutionary algorithms based on decomposition', authors: 'Trivedi, A · Srinivasan, D · Sanyal, K · Ghosh, A', venue: 'IEEE Transactions on Evolutionary Computation', year: 2017, cites: 1300 },
+    { title: 'Multiobjective optimization problems with complicated Pareto sets, MOEA/D and NSGA-II', authors: 'Li, H · Zhang, Q', venue: 'IEEE Transactions on Evolutionary Computation', year: 2009, cites: 3400 },
+    { title: 'Adaptive replacement strategies for MOEA/D', authors: 'Wang, Z · Zhang, Q · Zhou, A · Gong, M · Jiao, L', venue: 'IEEE Transactions on Cybernetics', year: 2016, cites: 520 },
+    { title: 'An external archive guided multiobjective evolutionary algorithm based on decomposition for combinatorial optimization', authors: 'Cai, X · Li, Y · Fan, Z · Zhang, Q', venue: 'IEEE Transactions on Evolutionary Computation', year: 2015, cites: 460 }
+  ];
+  SEEDS = [
+    { title: 'Large language models for automated screening in systematic reviews: a benchmark', authors: 'Syriani, E · David, I · Kumar, G', venue: 'Systematic Reviews', year: 2024, cites: 210 },
+    { title: 'Sensitivity and specificity of GPT-based title–abstract screening', authors: 'Guo, E · Gupta, M · Deng, J', venue: 'Journal of Clinical Epidemiology', year: 2024, cites: 180 },
+    { title: 'Zero-shot screening prompts: instruction design and calibration', authors: 'Wang, S · Scells, H · Koopman, B · Zuccon, G', venue: 'SIGIR', year: 2023, cites: 340 },
+    { title: 'Human–machine agreement in citation screening: a systematic evaluation', authors: 'O’Mara-Eves, A · Thomas, J · McNaught, J', venue: 'Research Synthesis Methods', year: 2015, cites: 980 }
+  ];
+  EXTRA = [
+    { title: 'Automating risk-of-bias assessment with large language models', authors: 'Hasan, B · Saadi, S · Rajjoub, R', venue: 'BMJ Evidence-Based Medicine', year: 2025, cites: 96 },
+    { title: 'Calibrating LLM screeners against Cochrane gold standards', authors: 'Fraile Navarro, D · Coiera, E', venue: 'npj Digital Medicine', year: 2025, cites: 64 }
+  ];
+
+  _defProjects() {
+    return [
+      { id: 'p1', name: 'AI agents for scientific discovery', topic: 'Autonomous research agents, tool use and lab automation across the discovery cycle', papers: 354, runs: 8, opened: '2h ago', kind: 'net', seed: 11 },
+      { id: 'p2', name: 'Evolutionary multi-objective optimization', topic: 'Decomposition-based EMO: MOEA/D variants, weight adaptation and benchmarking', papers: 500, runs: 3, opened: 'yesterday', kind: 'net', seed: 7 },
+      { id: 'p3', name: 'LLM screening reliability', topic: 'Agreement between LLM and human screeners in systematic reviews', papers: 89, runs: 0, opened: '5d ago', kind: 'pipe', seed: 5 },
+      { id: 'p4', name: 'Hyper-parameter optimization', topic: 'Bayesian optimization, bandits and early-stopping for AutoML systems', papers: 2300, runs: 11, opened: 'Jul 30', kind: 'net', seed: 3 },
+      { id: 'p5', name: 'Combinatorial optimization', topic: 'Neural and hybrid solvers for routing, scheduling and packing problems', papers: 860, runs: 4, opened: 'Jul 22', kind: 'net', seed: 9 },
+      { id: 'p6', name: 'Search-based software engineering', topic: 'Test generation, program repair and refactoring driven by metaheuristics', papers: 1500, runs: 8, opened: 'Jul 18', kind: 'net', seed: 13 },
+      { id: 'p7', name: 'Meta science', topic: 'Reproducibility, peer review and research evaluation at scale', papers: 340, runs: 2, opened: 'Jul 9', kind: 'net', seed: 2 }
+    ];
+  }
+  _defCollections() {
+    return [
+      { id: 'c1', name: 'MOEA/D core set', papers: [0, 7, 2, 3, 4, 8, 9, 5], upd: '5h ago' },
+      { id: 'c2', name: 'To read', papers: [6, 1, 9, 3, 8, 0], upd: '2d ago' },
+      { id: 'c3', name: 'Reranking & diversity classics', papers: [5, 4, 9, 6, 2], upd: '3d ago' },
+      { id: 'c4', name: 'Preprint watchlist', papers: [1, 6, 8, 3], upd: '1w ago' },
+      { id: 'c5', name: 'Surveys & tutorials', papers: [6, 0, 7], upd: '2w ago' }
+    ];
+  }
+  _first() { return (this.props.homeState ?? 'Has projects') === 'First visit'; }
+  _projList() { return this.state.projects ?? (this._first() ? [] : this._defProjects()); }
+  _collList() { return this.state.collections ?? (this._first() ? [] : this._defCollections()); }
+  _kfmt(n) {
+    if (n == null) return '';
+    if (n < 1000) return String(n);
+    if (n < 999500) { const v = n / 1000; return (v < 10 ? v.toFixed(1).replace(/\.0$/, '') : String(Math.round(v))) + 'k'; }
+    const m = n / 1e6; return (m < 10 ? m.toFixed(1).replace(/\.0$/, '') : String(Math.round(m))) + 'M';
+  }
+  _esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+  componentDidMount() { this._init(); this._after(); }
+  componentDidUpdate(prevProps) {
+    if (prevProps && prevProps.homeState !== this.props.homeState) { this.setState({ projects: null, collections: null, drill: null, wiz: false, q: '' }); return; }
+    this._after();
+  }
+  _after() {
+    this._libPlace(); this._paintSoon();
+    // lifecycle-agnostic imperative renderers (older runtime doesn't deliver prevState reliably)
+    const seedKey = (this.state.wiz && this.state.wizStep === 2) ? '2:' + (this._wizFound ? 1 : 0) : '';
+    if (seedKey !== this._seedKey) { this._seedKey = seedKey; if (seedKey) this._renderSeeds(); }
+    const drillKey = this.state.drill ? JSON.stringify(this.state.drill) : '';
+    if (drillKey !== this._drillKey) { this._drillKey = drillKey; if (drillKey) this._renderDrill(); }
+  }
+
+  _init() {
+    const root = this.rootRef.current; if (!root || root._w) return; root._w = 1;
+    // standalone serving has no fixed-height host — pin the app frame so .hm-scroll can scroll
+    if (!root.closest('.pg')) root.style.height = '900px';
+    this._wireUserMenu(root);
+    const tt = root.querySelector('.pc-theme-toggle');
+    if (tt) tt.addEventListener('click', () => {
+      const dark = root.getAttribute('data-theme') === 'dark';
+      root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    });
+    new MutationObserver(() => { this._syncThemeIcon(); this._paintSoon(); }).observe(root, { attributes: true, attributeFilter: ['data-theme', 'data-color'] });
+    this._syncThemeIcon();
+    // topic textarea autosize
+    const ta = this.topicRef.current;
+    if (ta) ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 130) + 'px'; });
+    // delegated: boundary segs + wizard chips + seed rows
+    root.addEventListener('click', e => {
+      const sb = e.target.closest && e.target.closest('.hm-fseg button');
+      if (sb && root.contains(sb)) { sb.parentElement.querySelectorAll('button').forEach(b => b.removeAttribute('data-on')); sb.setAttribute('data-on', '1'); return; }
+      const ch = e.target.closest && e.target.closest('[data-chip]');
+      if (ch && root.contains(ch)) { this._chip(ch.dataset.chip); return; }
+      const seed = e.target.closest && e.target.closest('.hw-seed');
+      if (seed && root.contains(seed)) { this._toggleSeed(seed); return; }
+    });
+    const ss = root.querySelector('.hw-ss');
+    if (ss) ss.addEventListener('keydown', e => { if (e.key === 'Enter') this._wizSearch(ss.value.trim()); });
+    this._impWire(root);
+    // close floating pops on outside interaction / scroll / Esc
+    const sc = root.querySelector('.hm-scroll');
+    if (sc) sc.addEventListener('scroll', () => this._closePops(), { passive: true });
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || !root.isConnected) return;
+      if (root.querySelector('.hm-pop[data-open="1"]')) { this._closePops(); return; }
+      if (this.state.wiz) { this.setState({ wiz: false }); return; }
+      if (this.state.drill) this.setState({ drill: null });
+    });
+    document.addEventListener('kl-home', e => {
+      if (!root.isConnected) return;
+      if (e.detail && e.detail.new) setTimeout(() => { const t = this.topicRef.current; if (t) t.focus(); }, 300);
+    });
+  }
+  _wireUserMenu(root) {
+    const wrap = root.querySelector('.tb-user-wrap'); if (!wrap || wrap._w) return; wrap._w = 1;
+    const btn = wrap.querySelector('.tb-user'), menu = wrap.querySelector('.tb-user-menu');
+    if (!btn || !menu) return;
+    const closer = e => { if (wrap.contains(e.target)) return; close(); };
+    const close = () => { menu.style.display = 'none'; document.removeEventListener('click', closer); };
+    btn.addEventListener('click', () => {
+      if (menu.style.display === 'block') { close(); return; }
+      menu.style.display = 'block';
+      menu.animate([{ opacity: 0, transform: 'translateY(-5px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 180, easing: 'cubic-bezier(.22,1.1,.36,1)' });
+      setTimeout(() => document.addEventListener('click', closer), 0);
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+    const st = wrap.querySelector('.tb-user-settings');
+    if (st) st.addEventListener('click', () => { close(); st.dispatchEvent(new CustomEvent('kl-open-settings', { bubbles: true })); });
+    const lo = wrap.querySelector('.tb-user-logout');
+    if (lo) lo.addEventListener('click', () => { close(); lo.dispatchEvent(new CustomEvent('kl-logout', { bubbles: true, composed: true })); });
+    this.klFsRow(wrap, close);
+  }
+  // "Enter full screen" — touch-only row (a home-screen launch is already chrome-less)
+  klFsRow(wrap, close) {
+    const st = wrap && wrap.querySelector('.tb-user-settings');
+    if (!st || wrap._fsRow) return;
+    const de = document.documentElement;
+    const req = de.requestFullscreen || de.webkitRequestFullscreen;
+    let touch = false; try { touch = matchMedia('(hover:none)').matches; } catch (e) {}
+    if (!req || !touch || window.navigator.standalone) return;
+    wrap._fsRow = 1;
+    const row = st.cloneNode(true);
+    row.classList.add('tb-user-fs');
+    const ic = row.querySelector('svg');
+    if (ic) ic.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path>';
+    const txt = Array.prototype.slice.call(row.childNodes).reverse().filter(n => n.nodeType === 3)[0] || row.appendChild(document.createTextNode(''));
+    const sync = () => { txt.textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? ' Exit full screen ' : ' Enter full screen '; };
+    sync();
+    st.parentNode.insertBefore(row, st);
+    row.addEventListener('click', () => {
+      if (close) close();
+      const on = document.fullscreenElement || document.webkitFullscreenElement;
+      try { on ? (document.exitFullscreen || document.webkitExitFullscreen).call(document) : req.call(de); } catch (e) {}
+      setTimeout(sync, 500);
+    });
+  }
+  _syncThemeIcon() {
+    const root = this.rootRef.current; if (!root) return;
+    const dark = root.getAttribute('data-theme') === 'dark';
+    const m = root.querySelector('.tt-moon'), s = root.querySelector('.tt-sun');
+    if (m) m.style.display = dark ? 'none' : 'block';
+    if (s) s.style.display = dark ? 'block' : 'none';
+  }
+  _libPlace() {
+    const root = this.rootRef.current; if (!root) return;
+    const wrap = root.querySelector('.hm-libwrap');
+    const tabs = (this.props.libraryLayout ?? 'Side by side') === 'Tabs';
+    const target = root.querySelector(tabs ? '.hm-tabhost' : '.hm-libslot');
+    if (wrap && target && wrap.parentElement !== target) target.appendChild(wrap);
+  }
+
+  // ---------- previews ----------
+  _paintSoon() { if (this._pr) cancelAnimationFrame(this._pr); this._pr = requestAnimationFrame(() => this._paintPrevs()); }
+  _paintPrevs() {
+    const root = this.rootRef.current; if (!root) return;
+    const ink = getComputedStyle(root).getPropertyValue('--fg').trim() || '#141413';
+    root.querySelectorAll('.hm-prev canvas').forEach(c => {
+      const w = c.clientWidth || 96, h = c.clientHeight || 58;
+      if (!w || !h) return;
+      const d = Math.min(window.devicePixelRatio || 1, 2) * 2;
+      c.width = Math.round(w * d); c.height = Math.round(h * d);
+      const x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, h);
+      let s = (+c.dataset.seed || 1) * 7349 + 131;
+      const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+      if (c.dataset.kind === 'pipe') this._drawPipe(x, w, h, rnd, ink); else this._drawNet(x, w, h, rnd, ink);
+    });
+  }
+  _drawNet(x, w, h, rnd, ink) {
+    const cents = [[w * (0.24 + rnd() * 0.1), h * (0.34 + rnd() * 0.2)], [w * (0.52 + rnd() * 0.1), h * (0.6 + rnd() * 0.15)], [w * (0.74 + rnd() * 0.08), h * (0.3 + rnd() * 0.18)]];
+    const pts = [];
+    for (let i = 0; i < 44; i++) {
+      const c = cents[i % 3], a = rnd() * Math.PI * 2, r = (rnd() + rnd()) * h * 0.3;
+      pts.push([c[0] + Math.cos(a) * r * 1.3, c[1] + Math.sin(a) * r * 0.85, 0.7 + rnd() * 1.9]);
+    }
+    x.strokeStyle = ink; x.lineWidth = 0.55;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]; let best = -1, bd = 1e9;
+      for (let j = 0; j < pts.length; j++) { if (j === i) continue; const q = pts[j], dd = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2; if (dd < bd) { bd = dd; best = j; } }
+      if (best >= 0) { x.globalAlpha = 0.15; x.beginPath(); x.moveTo(p[0], p[1]); x.lineTo(pts[best][0], pts[best][1]); x.stroke(); }
+      if (rnd() > 0.62) { const j = (i * 7 + 3) % pts.length; x.globalAlpha = 0.08; x.beginPath(); x.moveTo(p[0], p[1]); x.lineTo(pts[j][0], pts[j][1]); x.stroke(); }
+    }
+    x.fillStyle = ink;
+    pts.forEach(p => { x.globalAlpha = 0.35 + rnd() * 0.5; x.beginPath(); x.arc(p[0], p[1], p[2], 0, 7); x.fill(); });
+    x.globalAlpha = 1;
+  }
+  _drawPipe(x, w, h, rnd, ink) {
+    const y = h / 2, two = rnd() > 0.4;
+    const dot = (cx, cy, r) => { x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); };
+    const diamond = (cx, cy, r) => { x.beginPath(); x.moveTo(cx, cy - r); x.lineTo(cx + r, cy); x.lineTo(cx, cy + r); x.lineTo(cx - r, cy); x.closePath(); x.stroke(); };
+    const star = (cx, cy, r) => { x.beginPath(); x.moveTo(cx, cy - r); x.quadraticCurveTo(cx, cy, cx + r, cy); x.quadraticCurveTo(cx, cy, cx, cy + r); x.quadraticCurveTo(cx, cy, cx - r, cy); x.quadraticCurveTo(cx, cy, cx, cy - r); x.fill(); };
+    x.strokeStyle = ink; x.fillStyle = ink; x.lineWidth = 1.1; x.globalAlpha = 0.28;
+    x.beginPath();
+    if (two) {
+      x.moveTo(20, y); x.lineTo(33, y);
+      x.moveTo(33, y); x.lineTo(43, y - 11); x.lineTo(56, y - 11);
+      x.moveTo(33, y); x.lineTo(43, y + 11); x.lineTo(56, y + 11);
+      x.moveTo(56, y - 11); x.lineTo(66, y); x.moveTo(56, y + 11); x.lineTo(66, y);
+      x.moveTo(66, y); x.lineTo(80, y);
+    } else { x.moveTo(20, y); x.lineTo(46, y); x.moveTo(46, y); x.lineTo(66, y); x.moveTo(66, y); x.lineTo(80, y); }
+    x.stroke();
+    x.globalAlpha = 0.85; star(20, y, 4.8);
+    x.globalAlpha = 0.5;
+    if (two) { dot(56, y - 11, 2.8); dot(56, y + 11, 2.8); } else { dot(46, y, 2.9); }
+    diamond(66, y, 3.4);
+    x.globalAlpha = 0.4; x.lineWidth = 1.2; x.beginPath(); x.arc(85, y, 3.1, 0, 7); x.stroke();
+    x.globalAlpha = 1;
+  }
+
+  // ---------- floating pops ----------
+  _popAt(pop, anchor, alignRight) {
+    const root = this.rootRef.current; if (!root || !pop || !anchor) return;
+    const rr = root.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+    const scale = rr.width / root.offsetWidth || 1;
+    pop.setAttribute('data-open', '1');
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let left = alignRight ? (ar.right - rr.left) / scale - pw : (ar.left - rr.left) / scale;
+    left = Math.max(10, Math.min(left, root.offsetWidth - pw - 10));
+    let top = (ar.bottom - rr.top) / scale + 6;
+    if (top + ph > root.offsetHeight - 10) top = (ar.top - rr.top) / scale - ph - 6;
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    setTimeout(() => {
+      const closer = e => { if (pop.contains(e.target)) return; this._closePops(); document.removeEventListener('click', closer); };
+      pop._closer = closer;
+      document.addEventListener('click', closer);
+    }, 0);
+  }
+  _closePops() {
+    const root = this.rootRef.current; if (!root) return;
+    root.querySelectorAll('.hm-pop[data-open="1"]').forEach(p => {
+      p.removeAttribute('data-open');
+      if (p._closer) { document.removeEventListener('click', p._closer); p._closer = null; }
+    });
+    root.querySelectorAll('.hm-dots[data-open="1"]').forEach(b => b.removeAttribute('data-open'));
+  }
+  _openMenu(sel, anchor, id) {
+    this._closePops();
+    const root = this.rootRef.current;
+    const pop = root.querySelector(sel);
+    this._menuFor = id;
+    if (anchor.classList && anchor.classList.contains('hm-dots')) anchor.setAttribute('data-open', '1');
+    this._popAt(pop, anchor, true);
+  }
+  _openRename(anchor, mode, label, value, saveLabel) {
+    this._closePops();
+    const root = this.rootRef.current;
+    const pop = root.querySelector('.hm-renamepop');
+    pop.querySelector('.hm-ren-lab').textContent = label;
+    const inp = pop.querySelector('.hm-ren-input');
+    inp.value = value || '';
+    pop.querySelector('.hm-ren-save').textContent = saveLabel || 'Save';
+    this._renameMode = mode;
+    this._popAt(pop, anchor, false);
+    inp.onkeydown = e => { if (e.key === 'Enter') this._renSave(); };
+    setTimeout(() => { inp.focus(); inp.select(); }, 30);
+  }
+  _openConfirm(anchor, html, actionLabel, fn) {
+    this._closePops();
+    const root = this.rootRef.current;
+    const pop = root.querySelector('.hm-confirmpop');
+    pop.querySelector('.hm-conf-txt').innerHTML = html;
+    pop.querySelector('.hm-conf-act').textContent = actionLabel;
+    this._confirmFn = fn;
+    this._popAt(pop, anchor, false);
+  }
+
+  // ---------- projects ----------
+  _openProject(name, fresh) {
+    document.dispatchEvent(new CustomEvent('kl-project', { detail: { name } }));
+    const root = this.rootRef.current;
+    if (root) root.dispatchEvent(new CustomEvent('kl-open-project', { bubbles: true, composed: true, detail: { fresh: !!fresh } }));
+  }
+  _banner(msg) {
+    document.dispatchEvent(new CustomEvent('kl-banner', { detail: { key: 'home-proj', tone: 'success', msg, ttl: 4500 } }));
+  }
+
+  // ---------- wizard ----------
+  _chip(k) {
+    const root = this.rootRef.current;
+    const y1 = root.querySelector('.hw-y1'), y2 = root.querySelector('.hw-y2'), cp = root.querySelector('.hw-cpy');
+    const yr = new Date().getFullYear();
+    if (k === 'yr5') { y1.value = String(yr - 5); y2.value = String(yr); }
+    if (k === 'yr2000') { y1.value = '2000'; y2.value = String(yr); }
+    if (k === 'yrany') { y1.value = ''; y2.value = ''; }
+    if (k === 'cAny') cp.value = '';
+    if (k === 'c10') cp.value = '10';
+    if (k === 'c30') cp.value = '30';
+  }
+  // ————— Import a file (Seed papers step  resolver flow; mock parse in import-resolver.js) —————
+  _impWire(root) {
+    if (root._impW) return; root._impW = 1;
+    const q = s => root.querySelector(s);
+    root.querySelectorAll('.hw-iseg button').forEach(b => b.addEventListener('click', () => this._impMode(b.dataset.im)));
+    const fi = q('.hw-ifile'), br = q('.hw-ibrowse'), sm = q('.hw-isample'), dz = q('.hw-idrop');
+    if (br) br.addEventListener('click', () => fi && fi.click());
+    if (fi) fi.addEventListener('change', () => { if (fi.files && fi.files.length) this._impGo(Array.prototype.slice.call(fi.files)); fi.value = ''; });
+    if (sm) sm.addEventListener('click', () => this._impGo(null));
+    if (dz) {
+      ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.style.borderColor = 'var(--accent)'; dz.style.background = 'var(--row-hover)'; }));
+      ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.style.borderColor = ''; dz.style.background = ''; }));
+      dz.addEventListener('drop', e => { const fs = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []); if (fs.length) this._impGo(fs); });
+    }
+    const rev = q('.hw-irev-list');
+    if (rev) rev.addEventListener('click', e => {
+      const sc = e.target.closest('.ki-sec');
+      if (sc) { this._impOpen = this._impOpen || {}; this._impOpen[sc.dataset.k] = sc.getAttribute('aria-expanded') !== 'true'; this._impRev(); return; }
+      const ck = e.target.closest('.ki-ck');
+      if (ck && this._impRes) { const en = this._impRes.entries[+ck.dataset.i]; if (en) { en.checked = !en.checked; this._impRev(); } return; }
+      const mu = e.target.closest('.ki-multi');
+      if (mu) { e.stopPropagation(); this._impCand(mu, +mu.dataset.i); }
+    });
+    const ab = q('.hw-iadd');
+    if (ab) ab.addEventListener('click', () => this._impAdd());
+  }
+  _impMode(m) {
+    const root = this.rootRef.current; if (!root) return;
+    root.querySelectorAll('.hw-iseg button').forEach(b => { if (b.dataset.im === m) b.setAttribute('data-on', '1'); else b.removeAttribute('data-on'); });
+    const imp = m === 'import';
+    const ms = root.querySelector('.hw-msearch'), mi = root.querySelector('.hw-mimport');
+    if (ms) ms.style.display = imp ? 'none' : '';
+    if (mi) mi.style.display = imp ? 'block' : 'none';
+    if (imp) this._impState(this._impRes ? 'review' : 'drop');
+  }
+  _impState(s) {
+    const root = this.rootRef.current; if (!root) return;
+    const q = c => root.querySelector(c);
+    if (q('.hw-idrop')) q('.hw-idrop').style.display = s === 'drop' ? 'flex' : 'none';
+    if (q('.hw-iparse')) q('.hw-iparse').style.display = s === 'parse' ? 'block' : 'none';
+    if (q('.hw-irev')) q('.hw-irev').style.display = s === 'review' ? 'block' : 'none';
+  }
+  _impGo(files) {
+    const K = window.KLImport; if (!K) return;
+    this._impRes = files && files.length ? K.parse(files) : K.sample();
+    this._impState('parse');
+    const root = this.rootRef.current; if (!root) return;
+    const host = root.querySelector('.hw-iparse'); if (!host) return;
+    host.innerHTML = '<div style="padding:6px 14px 4px; font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2);">Parsing ' + this._impRes.files.length + (this._impRes.files.length === 1 ? ' file' : ' files') + '</div>' + this._impRes.files.map((f, i) => K.fileRowHtml(f, i)).join('');
+    const gen = this._impGen = (this._impGen || 0) + 1;
+    const settle = i => {
+      if (this._impGen !== gen || !this.rootRef.current) return;
+      if (i >= this._impRes.files.length) { setTimeout(() => { if (this._impGen === gen) { this._impRev(); this._impState('review'); } }, 420); return; }
+      const f = this._impRes.files[i];
+      const st = host.querySelector('.ki-file[data-f="' + i + '"] .ki-fst');
+      if (st) {
+        if (f.err) st.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="2.2" stroke-linecap="round"><path d="M12 8v5"></path><path d="M12 16.5h.01"></path><circle cx="12" cy="12" r="9"></circle></svg><span style="color:color-mix(in oklab, var(--error) 62%, var(--fg)); white-space:normal;">' + f.err + '</span>';
+        else st.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--muted2)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>' + f.n + (f.n === 1 ? ' reference' : ' references');
+      }
+      setTimeout(() => settle(i + 1), 340 + Math.random() * 280);
+    };
+    setTimeout(() => settle(0), 420);
+  }
+  _impRev() {
+    const root = this.rootRef.current; if (!root) return;
+    const K = window.KLImport, R = this._impRes; if (!K || !R) return;
+    const list = root.querySelector('.hw-irev-list'); if (!list) return;
+    const gs = K.groups(R.entries, 'In your seed set');
+    this._impOpen = this._impOpen || {};
+    list.innerHTML = gs.map((g, gi) => {
+      const open = this._impOpen[g.key] != null ? this._impOpen[g.key] : (g.key === 'multi' || g.key === 'none');
+      return K.groupHtml(g, g.rows.map(i => K.rowHtml(R.entries[i], i, { pad: '10px 14px' })), { open: open, flat: true, first: gi === 0 });
+    }).join('');
+    this._impFoot();
+  }
+  _impFoot() {
+    const root = this.rootRef.current; if (!root) return;
+    const R = this._impRes; if (!R) return;
+    const n = R.entries.filter(e => e.checked && e.state === 'ok').length;
+    const bad = R.entries.filter(e => e.state === 'none').length;
+    const err = root.querySelector('.hw-ierr');
+    if (err) err.textContent = bad ? bad + (bad === 1 ? ' entry' : ' entries') + ' couldn\u2019t be matched: listed above, not added.' : '';
+    const ab = root.querySelector('.hw-iadd');
+    if (ab) {
+      ab.textContent = 'Add ' + n + ' to seed set';
+      ab.disabled = !n;
+      ab.style.opacity = n ? '1' : '.45';
+      ab.style.cursor = n ? 'pointer' : 'default';
+    }
+  }
+  _impCand(anchor, i) {
+    const root = this.rootRef.current; if (!root) return;
+    const K = window.KLImport, R = this._impRes; if (!K || !R) return;
+    const e = R.entries[i]; if (!e || !e.cand) return;
+    root.querySelectorAll('.hw-candpop').forEach(x => x.remove());
+    if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
+    const el = document.createElement('div');
+    el.className = 'hw-candpop';
+    el.style.cssText = 'position:absolute; z-index:90; width:228px; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 34px rgba(var(--sh),.18); padding:7px; opacity:0; transform:translateY(4px); transition:opacity .16s ease, transform .16s ease;';
+    el.innerHTML = K.candPopHtml(e);
+    root.appendChild(el);
+    const rr = root.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+    el.style.left = Math.round(Math.max(10, Math.min(rr.width - 238, ar.right - rr.left - 228))) + 'px';
+    const belowTop = ar.bottom - rr.top + 6, h = el.offsetHeight || 120;
+    el.style.top = Math.round(belowTop + h > rr.height - 10 ? ar.top - rr.top - h - 6 : belowTop) + 'px';
+    requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'none'; });
+    const close = () => { el.style.opacity = '0'; setTimeout(() => el.remove(), 170); document.removeEventListener('click', out); };
+    const out = ev => { if (!el.contains(ev.target)) close(); };
+    setTimeout(() => document.addEventListener('click', out), 0);
+    el.querySelectorAll('.ki-cand').forEach(b => {
+      b.addEventListener('mouseenter', () => { b.style.background = 'var(--row-hover)'; });
+      b.addEventListener('mouseleave', () => { b.style.background = 'none'; });
+      b.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const c = e.cand[+b.dataset.c];
+        if (c) { e.ve = c.ve; e.yr = c.yr; e.ci = c.ci; }
+        e.state = 'ok'; e.checked = true;
+        close();
+        this._impRev();
+      });
+    });
+  }
+  _impAdd() {
+    const R = this._impRes; if (!R) return;
+    const picks = R.entries.filter(e => e.checked && e.state === 'ok');
+    if (!picks.length) return;
+    const root = this.rootRef.current; if (!root) return;
+    const ab = root.querySelector('.hw-iadd');
+    if (ab) { ab.disabled = true; ab.textContent = 'Adding ' + picks.length + '\u2026'; ab.style.opacity = '.7'; }
+    const bad = R.entries.filter(e => e.state === 'none').length;
+    setTimeout(() => {
+      if (!this.rootRef.current) return;
+      this._impAdded = (this._impAdded || 0) + picks.length;
+      this._impRes = null;
+      this._seedCount();
+      const note = this.rootRef.current.querySelector('.hw-impnote');
+      const nt = this.rootRef.current.querySelector('.hw-impnote-t');
+      if (nt) nt.innerHTML = '<b style="font-weight:600; color:var(--fg);">' + picks.length + ' papers imported</b>, counted in your seed set.' + (bad ? ' ' + bad + ' unmatched ' + (bad === 1 ? 'entry was' : 'entries were') + ' skipped.' : '');
+      if (note) note.style.display = 'flex';
+      this._impMode('search');
+    }, 700);
+  }
+  _seedRows() { return this._wizFound ? this.SEEDS.concat(this.EXTRA) : this.SEEDS; }
+  _renderSeeds() {
+    const KL = window.KLPaperRow;
+    if (!KL) { document.addEventListener('kl-paper-row-ready', () => this._renderSeeds(), { once: true }); return; }
+    const root = this.rootRef.current; if (!root) return;
+    const host = root.querySelector('.hw-seedlist'); if (!host) return;
+    const rows = this._seedRows();
+    host.innerHTML = rows.map((p, i) => {
+      const on = this._wizStars && this._wizStars[i] ? '1' : '0';
+      const cap = (this._wizFound && i === this.SEEDS.length) ? '<div style="display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--card2); border-top:1px solid var(--divider); border-bottom:1px solid var(--divider);"><span style="font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2);">From Semantic Scholar</span></div>' : '';
+      return cap + '<div class="pr hw-seed" data-i="' + i + '" data-star="' + on + '" style="position:relative; padding:12px 46px 12px 16px;">' + KL.prCardInner(p, { emphasis: 'Muted', star: true }) + '</div>';
+    }).join('');
+    this._seedCount();
+  }
+  _toggleSeed(row) {
+    const i = +row.dataset.i;
+    this._wizStars = this._wizStars || {};
+    this._wizStars[i] = !this._wizStars[i];
+    row.setAttribute('data-star', this._wizStars[i] ? '1' : '0');
+    this._seedCount();
+  }
+  _seedCount() {
+    const root = this.rootRef.current; if (!root) return 0;
+    const stars = Object.values(this._wizStars || {}).filter(Boolean).length;
+    const n = stars + (this._impAdded || 0);
+    const el = root.querySelector('.hw-starcnt');
+    if (el) el.textContent = this._impAdded ? n + ' seeds\u00a0\u00a0' + this._impAdded + ' imported' : n + ' starred';
+    return n;
+  }
+  _wizSearch(qq) {
+    if (!qq || this._wizSearching || this._wizFound) return;
+    this._wizSearching = 1;
+    const root = this.rootRef.current;
+    const st = root.querySelector('.hw-searching');
+    if (st) st.style.display = 'flex';
+    setTimeout(() => {
+      this._wizSearching = 0; this._wizFound = 1;
+      if (st) st.style.display = 'none';
+      this._renderSeeds();
+    }, 900);
+  }
+  _deriveName(topic) {
+    let t = String(topic || '').replace(/\s+/g, ' ').trim();
+    if (!t) return 'Untitled project';
+    let out = '';
+    for (const w of t.split(' ')) { if ((out + ' ' + w).trim().length > 42) break; out = (out + ' ' + w).trim(); }
+    out = out.replace(/[\s:;,.\-, ]+$/, '');
+    return out.charAt(0).toUpperCase() + out.slice(1);
+  }
+  _renSave() {
+    const root = this.rootRef.current;
+    const inp = root.querySelector('.hm-ren-input');
+    const v = (inp.value || '').trim();
+    const m = this._renameMode || {};
+    this._closePops();
+    if (!v) return;
+    if (m.create) {
+      const list = [{ id: 'c' + Date.now(), name: v, papers: [], upd: 'just now' }].concat(this._collList());
+      this.setState({ collections: list });
+    } else if (m.type === 'proj') {
+      this.setState({ projects: this._projList().map(p => p.id === m.id ? { ...p, name: v } : p) });
+    } else if (m.type === 'coll') {
+      this.setState({ collections: this._collList().map(c => c.id === m.id ? { ...c, name: v } : c) });
+    }
+  }
+  _renderDrill() {
+    const KL = window.KLPaperRow;
+    if (!KL) { document.addEventListener('kl-paper-row-ready', () => this._renderDrill(), { once: true }); return; }
+    const root = this.rootRef.current; if (!root) return;
+    const host = root.querySelector('.hm-dlist'); if (!host) return;
+    const d = this.state.drill; if (!d) { host.innerHTML = ''; return; }
+    let idx, foot = '';
+    if (d.type === 'all') {
+      idx = this.PAPERS.map((_, i) => i);
+      foot = '<div style="padding:12px 16px 16px; font-size:11.5px; color:var(--muted2); border-top:1px solid var(--divider);">Showing 10 of 5.9k, open a project to search the rest.</div>';
+    } else {
+      const c = this._collList().find(c => c.id === d.id);
+      idx = c ? c.papers : [];
+    }
+    const rows = idx.map(i => '<div class="pr">' + KL.prCardInner(this.PAPERS[i], { emphasis: 'Muted' }) + '</div>').join('');
+    host.innerHTML = (rows || '<div style="padding:26px 16px; font-size:12.5px; color:var(--muted); text-align:center;">No papers yet. Save papers here from any paper list.</div>') + foot;
+  }
+
+  renderVals() {
+    const first = this._first();
+    const q = this.state.q.trim().toLowerCase();
+    const projAll = this._projList(), collAll = this._collList();
+    const projects = projAll.filter(p => !q || (p.name + ' ' + p.topic).toLowerCase().includes(q))
+      .map(p => ({ ...p, papersK: this._kfmt(p.papers), runsN: String(p.runs), initial: (p.name || '?').charAt(0).toUpperCase() }));
+    const collections = collAll.filter(c => !q || c.name.toLowerCase().includes(q))
+      .map(c => ({ ...c, sub: (c.papers.length === 0 ? 'Empty' : c.papers.length + ' papers') + '  updated ' + c.upd }));
+    const allTotal = first ? 0 : 5943;
+    const d = this.state.drill;
+    let drillName = '', drillSub = '';
+    if (d) {
+      if (d.type === 'all') { drillName = 'All papers'; drillSub = this._kfmt(allTotal) + ' papers  every project'; }
+      else {
+        const c = collAll.find(c => c.id === d.id);
+        if (c) { drillName = c.name; drillSub = c.papers.length + ' papers  updated ' + c.upd; }
+      }
+    }
+    const setTab = t => () => this.setState({ libTab: t });
+    return {
+      rootRef: this.rootRef, topicRef: this.topicRef,
+      scheme: this.props.colorScheme ?? 'Warm paper',
+      hsAttr: this.props.homeState ?? 'Has projects',
+      libAttr: this.props.libraryLayout ?? 'Side by side',
+      rowsAttr: this.props.projectRows ?? 'Preview cards',
+      cstyleAttr: this.props.collectionStyle ?? 'Cover rows',
+      libTab: this.state.libTab,
+      segProjOn: this.state.libTab === 'Projects' ? '1' : '0',
+      segLibOn: this.state.libTab === 'Library' ? '1' : '0',
+      tabProjects: setTab('Projects'), tabLibrary: setTab('Library'),
+      q: this.state.q,
+      qInput: e => this.setState({ q: e.target.value }),
+      projects, collections,
+      projCount: q ? projects.length + ' of ' + projAll.length : projAll.length + ' projects',
+      libCount: collAll.length + ' collections',
+      allSub: this._kfmt(allTotal) + ' papers  every project',
+      showProjList: projects.length > 0,
+      showProjEmpty: projAll.length === 0,
+      showProjNomatch: projAll.length > 0 && projects.length === 0,
+      showCollList: collections.length > 0,
+      showCollEmpty: collAll.length === 0,
+      showCollNomatch: collAll.length > 0 && collections.length === 0,
+      drillAttr: d ? '1' : '0',
+      drillName, drillSub,
+      drillSeedable: !!d && d.type !== 'all',
+      drillClose: () => { this._closePops(); this.setState({ drill: null }); },
+      drillMenu: e => { e.stopPropagation(); this._openMenu('.hm-collmenu', e.currentTarget, this.state.drill && this.state.drill.id); },
+      drillSeed: () => {
+        const c = this._collList().find(c => this.state.drill && c.id === this.state.drill.id); if (!c) return;
+        this._banner('<b>' + this._esc(c.name) + '</b> created: ' + c.papers.length + ' seed papers starred.');
+        this._openProject(c.name, true);
+      },
+      hasTopic: this.state.hasTopic,
+      startDisabled: !this.state.hasTopic,
+      topicInput: e => { const has = !!e.target.value.trim(); if (has !== this.state.hasTopic) this.setState({ hasTopic: has }); },
+      chipFill: e => {
+        const t = this.topicRef.current; if (!t) return;
+        t.value = e.currentTarget.textContent.trim();
+        t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 130) + 'px';
+        t.focus();
+        this.setState({ hasTopic: true });
+      },
+      startWiz: () => {
+        const t = this.topicRef.current, topic = t ? t.value.trim() : '';
+        if (!topic) return;
+        this._wizStars = {}; this._wizFound = 0; this._wizSearching = 0;
+        this.setState({ wiz: true, wizStep: 1, wizTopic: topic, creating: false });
+      },
+      wizAttr: this.state.wiz ? '1' : '0',
+      wizStep: String(this.state.wizStep),
+      wizTopic: this.state.wizTopic,
+      wizNextLabel: this.state.creating ? 'Creating…' : (this.state.wizStep < 3 ? 'Continue' : 'Create project'),
+      creatingAttr: this.state.creating ? '1' : '0',
+      wizClose: () => { if (!this.state.creating) this.setState({ wiz: false }); },
+      wizBack: () => { if (this.state.wizStep > 1) this.setState({ wizStep: this.state.wizStep - 1 }); },
+      wizNext: () => {
+        if (this.state.wizStep < 3) { this.setState({ wizStep: this.state.wizStep + 1 }); return; }
+        if (this.state.creating) return;
+        this.setState({ creating: true });
+        const name = this._deriveName(this.state.wizTopic);
+        const seeds = this._seedCount();
+        this._impAdded = 0; this._impRes = null;
+        const wr = this.rootRef.current;
+        if (wr) { const nt = wr.querySelector('.hw-impnote'); if (nt) nt.style.display = 'none'; }
+        this._impMode('search');
+        setTimeout(() => {
+          const proj = { id: 'p' + Date.now(), name, topic: this.state.wizTopic, papers: seeds, runs: 0, opened: 'just now', kind: 'pipe', seed: 1 + Math.floor(Math.random() * 40) };
+          this.setState({ projects: [proj].concat(this._projList()), wiz: false, creating: false, hasTopic: false });
+          const t = this.topicRef.current; if (t) { t.value = ''; t.style.height = ''; }
+          this._banner('<b>' + this._esc(name) + '</b> created: ' + seeds + ' seed papers starred.');
+          this._openProject(name, true);
+        }, 950);
+      },
+      projOpen: e => {
+        if (e.target.closest && e.target.closest('.hm-dots')) return;
+        const p = this._projList().find(p => p.id === e.currentTarget.dataset.id);
+        if (p) this._openProject(p.name, false);
+      },
+      projMenu: e => { e.stopPropagation(); this._openMenu('.hm-projmenu', e.currentTarget, e.currentTarget.dataset.id); },
+      collOpen: e => {
+        if (e.target.closest && e.target.closest('.hm-dots')) return;
+        this.setState({ drill: { type: 'coll', id: e.currentTarget.dataset.id } });
+      },
+      collMenu: e => { e.stopPropagation(); this._openMenu('.hm-collmenu', e.currentTarget, e.currentTarget.dataset.id); },
+      allOpen: () => this.setState({ drill: { type: 'all' } }),
+      newColl: e => { e.stopPropagation(); this._openRename(e.currentTarget, { create: true }, 'New collection', '', 'Create'); },
+      pmRename: e => {
+        e.stopPropagation();
+        const id = this._menuFor, p = this._projList().find(p => p.id === id); if (!p) return;
+        this._openRename(e.currentTarget.parentElement, { type: 'proj', id }, 'Rename project', p.name, 'Save');
+      },
+      pmDup: e => {
+        e.stopPropagation(); this._closePops();
+        const id = this._menuFor, list = this._projList(), i = list.findIndex(p => p.id === id); if (i < 0) return;
+        const c = { ...list[i], id: 'p' + Date.now(), name: list[i].name + ' copy', opened: 'just now' };
+        this.setState({ projects: list.slice(0, i + 1).concat([c], list.slice(i + 1)) });
+      },
+      pmDel: e => {
+        e.stopPropagation();
+        const id = this._menuFor, p = this._projList().find(p => p.id === id); if (!p) return;
+        this._openConfirm(e.currentTarget.parentElement,
+          'Delete <b>' + this._esc(p.name) + '</b>? Its ' + this._kfmt(p.papers) + ' papers and run history will be removed. This can’t be undone.',
+          'Delete project',
+          () => this.setState({ projects: this._projList().filter(x => x.id !== id) }));
+      },
+      cmRename: e => {
+        e.stopPropagation();
+        const id = this._menuFor, c = this._collList().find(c => c.id === id); if (!c) return;
+        this._openRename(e.currentTarget.parentElement, { type: 'coll', id }, 'Rename collection', c.name, 'Save');
+      },
+      cmSeed: e => {
+        e.stopPropagation(); this._closePops();
+        const c = this._collList().find(c => c.id === this._menuFor); if (!c) return;
+        this._banner('<b>' + this._esc(c.name) + '</b> created: ' + c.papers.length + ' seed papers starred.');
+        this._openProject(c.name, true);
+      },
+      cmDel: e => {
+        e.stopPropagation();
+        const id = this._menuFor, c = this._collList().find(c => c.id === id); if (!c) return;
+        this._openConfirm(e.currentTarget.parentElement,
+          'Delete <b>' + this._esc(c.name) + '</b>? Papers stay in their source projects. This can’t be undone.',
+          'Delete collection',
+          () => {
+            const st = { collections: this._collList().filter(x => x.id !== id) };
+            if (this.state.drill && this.state.drill.id === id) st.drill = null;
+            this.setState(st);
+          });
+      },
+      renCancel: () => this._closePops(),
+      renSave: () => this._renSave(),
+      confCancel: () => this._closePops(),
+      confDo: () => { const fn = this._confirmFn; this._closePops(); if (fn) fn(); },
+    };
+  }
+}
+</script>
+</body>
+</html>

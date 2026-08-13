@@ -466,3 +466,57 @@ rewrite defects.
   so Explore's JS cannot target that label.
 - `.nv-hood` carries `z-index:20` on Explore and none on Runs.
 - `.tb-download` sits one indentation level shallower on Explore.
+
+---
+
+## Parity lane (`E-PAR-*`) — 2026-08-13
+
+Found while building the pixel-parity harness (`web/parity`) and capturing the
+Build screen across the responsive sweep. Nothing was changed.
+
+### E-PAR-01 — the rotate gate is 1024 px wide inside a 900 px viewport
+
+**What.** At the `w900-900x1200` sweep viewport the `.rot` gate's box measures
+**1024 × 1200** in a 900-wide viewport (measured via `getBoundingClientRect`;
+the same element measures 1024 × 1024 at the 768-wide viewport). The gate's
+content is centred on the 1024 px box, not the viewport, so the icon, the
+"Rotate to landscape" heading and the body copy all sit visibly **right of
+centre**, and the document overflows horizontally. Visible in the committed
+baseline `web/parity/baseline/design-demo/build/w900-900x1200.png`.
+
+**Why it is here.** Correcting it means changing what the gate looks like at
+sub-1024 widths, which the hard rule forbids me from doing unilaterally. It also
+cannot be resolved by "just reproduce the demo" without a decision, because the
+rewrite has to choose deliberately between:
+
+1. reproducing the off-centre, overflowing gate byte-for-byte (parity gate
+   passes, the artefact ships), or
+2. centring the gate on the viewport (better looking, but a deliberate,
+   recorded divergence from the source of visual truth).
+
+**Needs from the product owner.** Which of the two. If (2), the baseline PNGs for
+`w900-900x1200` and `w768-768x1024` must be re-approved, since they are the
+reference the rewrite is gated against.
+
+**Not changed.**
+
+### E-PAR-02 — the demo's landscape/portrait switch is the only responsive rule below 1194 px
+
+**What.** Related to E-PAR-01 but distinct: the sweep shows the app renders at
+1600×900, 1366×1024 and 1194×834, and is entirely replaced by the rotate gate at
+1024×1366, 900×1200 and 768×1024. There is no intermediate folded layout
+anywhere. A narrow *landscape* window (e.g. 900×600) is undesigned territory —
+it is not portrait, so the gate's rule may or may not catch it depending on how
+the rewrite implements the condition.
+
+**Why it is here.** "Responsive layout behaviour of the demo MUST be preserved"
+is an explicit product requirement, but preserving it requires knowing whether
+the gate's trigger is orientation, aspect ratio, or a width threshold — the
+three agree on every viewport captured so far and disagree on narrow landscape.
+Picking one is a behaviour decision, not an implementation detail.
+
+**Needs from the product owner.** The intended rule (orientation vs aspect ratio
+vs min-width), and what a narrow landscape window should show.
+
+**Not changed.** The harness captures the observed behaviour as-is; see
+`web/wiring/missing-states.md` **MS-PAR-03**.

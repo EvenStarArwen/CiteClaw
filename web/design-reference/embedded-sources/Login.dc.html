@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&amp;family=Hanken+Grotesk:wght@400..700&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{ height:100%; margin:0; background:#ece5d8; }
+  body:has(.pc-root[data-theme=dark]){ background:#131210; }
+  .pc-root button, .pc-root input, .pc-root textarea, .pc-root select{ font-family:inherit; }
+  .pc-root{--pin:16px;--pin-sc:calc(var(--pin) - var(--kl-sbw, 8px));--bg:#f1ebdd;--panel:#faf9f5;--canvas:#f8f5ee;--topbar-bg:var(--bg);--dock-bg:var(--panel);--dock-shadow:0 2px 12px rgba(var(--sh),.05);--card:#fff;--card2:#fdfcf9;--card-sel:#f5f1e8;--row-sel:#f1ece1;--row-hover:#f4f1e8;--border:#e4e1d6;--divider:#ece9df;--fg:#141413;--fg2:#57554e;--muted:#6c6a64;--muted2:#8e8b82;--accent:#cc785c;--accent-hover:#b3624a;--dot-sep:#c9c5b8;--scroll:#d8d4c7;--icon-bg:#f0ece1;--err-bg:#f6e6df;--star:#a09d96;--star-bg:#ece7da;--abstract-fg:#3f3d39;--chip-bg:#141413;--sh:31,30,29;--primary:#141413;--primary-fg:#fff;--primary-hover:#2e2d2a;--ring:rgba(31,30,29,.12);--success:#5db872;--warning:#d4a017;--error:#c64545;--error-bg:#f7e7e7;--success-bg:#e6f4ea;--warning-bg:#faf0da;--v-green:#6e7a4e;--v-green-dot:#8c9a6c;--v-purple:#7a6878;--v-purple-dot:#9b8899;--v-blue:#616f7d;--v-blue-dot:#8595a3;--v-gold:#96773a;--v-gold-dot:#b8995a;--v-teal:#5d7a62;--v-teal-dot:#7fa085;--v-rose:#9d6558;--v-rose-dot:#bd8b7f;--v-indigo:#6a6a94;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));--ghost-hover:color-mix(in oklab, var(--fg) 9%, var(--card));--group-bg:color-mix(in oklab, var(--bg) 72%, var(--panel));--well-hover:var(--card);}
+  .pc-root[data-theme=dark]{--bg:#1b1a17;--panel:#252320;--canvas:#282622;--topbar-bg:var(--bg);--dock-bg:var(--panel);--dock-shadow:0 2px 12px rgba(var(--sh),.05);--card:#2b2925;--card2:#252320;--card-sel:#3a352c;--row-sel:#36322a;--row-hover:#302d28;--border:#3f3b33;--divider:#312e28;--fg:#faf9f5;--fg2:#c8c3b8;--muted:#a09d96;--muted2:#8e8b82;--accent:#d3855f;--accent-hover:#e6a586;--dot-sep:#4c473e;--scroll:#464139;--icon-bg:#302d27;--err-bg:#3a2823;--star:#7d786d;--star-bg:#322e28;--abstract-fg:#d0cbc0;--chip-bg:#46423a;--sh:0,0,0;--primary:#faf9f5;--primary-fg:#181715;--primary-hover:#e9e6df;--ring:rgba(211,133,95,.35);--success:#7ecb90;--warning:#e0b64a;--error:#e07b7b;--error-bg:#3a2626;--success-bg:#23301f;--warning-bg:#332a1a;--v-green:#adb98a;--v-green-dot:#adb98a;--v-purple:#b4a3b1;--v-purple-dot:#b4a3b1;--v-blue:#9fb0bf;--v-blue-dot:#9fb0bf;--v-gold:#d3b46e;--v-gold-dot:#d3b46e;--v-teal:#8fbc97;--v-teal-dot:#8fbc97;--v-rose:#d0a094;--v-rose-dot:#d0a094;--v-indigo:#a9a9d2;}
+  .pc-root[data-color="Previous"]{--bg:#f0eee6;--canvas:#e6e2d6;--fg:#1f1e1d;--fg2:#6b6862;--muted:#87867f;--muted2:#a5a196;--star:#b0ac9f;--chip-bg:#1f1e1d;--primary:#1f1e1d;--primary-hover:#35322c;}
+  .pc-root[data-theme=dark][data-color="Previous"]{--bg:#1a1815;--panel:#211f1b;--canvas:#121110;--card:#2a2723;--card2:#242220;--card-sel:#322e27;--row-sel:#2f2b25;--row-hover:#2a2723;--border:#39352e;--divider:#2e2b25;--fg:#efece5;--fg2:#c2bdb1;--muted:#948f83;--muted2:#8b8578;--star:#726c60;--icon-bg:#2e2a24;--ring:rgba(255,255,255,.16);--primary:#efece5;--primary-fg:#1a1815;--primary-hover:#dedad0;}
+  .pc-root:not([data-theme=dark])[data-color="Oat & ink"]{--bg:#eceae4;--panel:#fbfaf7;--canvas:#f6f5f0;--card2:#fcfbf8;--border:#e0ded5;--divider:#eae8e1;--row-hover:#f2f0e9;--row-sel:#efede5;--icon-bg:#efede5;--star-bg:#eae8df;--dot-sep:#c6c3b9;--scroll:#d6d3c9;}
+  .pc-root:not([data-theme=dark])[data-color="Terracotta dusk"]{--bg:#f2e7da;--panel:#fbf8f4;--canvas:#f9f2e9;--card2:#fdfaf6;--border:#e7dbcc;--divider:#efe5d7;--row-hover:#f6ecdf;--row-sel:#f3e7d7;--icon-bg:#f2e7d8;--star-bg:#eee2d1;--dot-sep:#cfc2af;--scroll:#ddd0bd;}
+  .pc-root:not([data-theme=dark])[data-color="Sage library"]{--bg:#e9e9dc;--panel:#fafaf5;--canvas:#f4f5eb;--card2:#fbfcf6;--border:#dcded0;--divider:#e8ead9;--row-hover:#f0f1e4;--row-sel:#ecedde;--icon-bg:#edeedf;--star-bg:#e7e8d8;--dot-sep:#c2c4b2;--scroll:#d2d4c3;}
+  .pc-root[data-theme=dark][data-color="Oat & ink"]{--bg:#1c1b18;--panel:#232220;--canvas:#262524;--card:#2c2b28;--card2:#262523;--card-sel:#363430;--row-sel:#34322d;--row-hover:#2e2c29;--border:#3c3a35;--divider:#302e2a;--icon-bg:#2f2d29;--star-bg:#31302b;--dot-sep:#4a4842;--scroll:#454340;}
+  .pc-root[data-theme=dark][data-color="Terracotta dusk"]{--bg:#201a15;--panel:#27201a;--canvas:#2a231d;--card:#302822;--card2:#2a231d;--card-sel:#3c322a;--row-sel:#3a312a;--row-hover:#332b24;--border:#423830;--divider:#342c25;--icon-bg:#332b23;--star-bg:#362d25;--dot-sep:#52463c;--scroll:#4c4137;}
+  .pc-root[data-theme=dark][data-color="Sage library"]{--bg:#191c16;--panel:#20231d;--canvas:#242720;--card:#292d26;--card2:#232720;--card-sel:#353b31;--row-sel:#333830;--row-hover:#2c3028;--border:#383d34;--divider:#2d312a;--icon-bg:#2f342b;--star-bg:#31362d;--dot-sep:#474d41;--scroll:#42473d;}
+  .pc-root[data-theme=dark][data-color="Slate archive"]{--bg:#18191b;--panel:#1f2022;--canvas:#232425;--card:#2a2b2d;--card2:#242526;--card-sel:#37383b;--row-sel:#343538;--row-hover:#2d2e30;--border:#3a3b3e;--divider:#2e2f31;--icon-bg:#303134;--star-bg:#323336;--dot-sep:#4a4b4f;--scroll:#454649;}
+  .pc-root:not([data-theme=dark])[data-color="Slate archive"]{--bg:#e8e8e5;--panel:#fbfbfa;--canvas:#f4f4f1;--card2:#fbfbf9;--border:#dcdcd8;--divider:#e7e7e4;--row-hover:#f0f0ec;--row-sel:#ecece7;--icon-bg:#ededea;--star-bg:#e6e6e1;--dot-sep:#c1c1bc;--scroll:#d1d1cc;}
+  .pc-root:not([data-theme=dark])[data-color="Fern library"]{--bg:#e9e9dc;--panel:#fafaf5;--canvas:#f4f5eb;--card2:#fbfcf6;--border:#dcded0;--divider:#e8ead9;--row-hover:#f0f1e4;--row-sel:#ecedde;--icon-bg:#edeedf;--star-bg:#e7e8d8;--dot-sep:#c2c4b2;--scroll:#d2d4c3;--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e3efe4;--v-green:#61795d;--v-green-dot:#7d9479;--v-purple:#6b6683;--v-purple-dot:#8b86a5;--v-blue:#54708a;--v-blue-dot:#7b96ad;--v-gold:#8b7344;--v-gold-dot:#ab8f55;--v-teal:#4e7a73;--v-teal-dot:#6fa199;--v-rose:#985f6b;--v-rose-dot:#b8878f;--v-indigo:#5f65a0;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));}
+  .pc-root[data-theme=dark][data-color="Fern library"]{--bg:#191c16;--panel:#20231d;--canvas:#242720;--card:#292d26;--card2:#232720;--card-sel:#353b31;--row-sel:#333830;--row-hover:#2c3028;--border:#383d34;--divider:#2d312a;--icon-bg:#2f342b;--star-bg:#31362d;--dot-sep:#474d41;--scroll:#42473d;--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#9dbd93;--v-green-dot:#9dbd93;--v-purple:#b1a9cc;--v-purple-dot:#b1a9cc;--v-blue:#95b6d0;--v-blue-dot:#95b6d0;--v-gold:#cdb175;--v-gold-dot:#cdb175;--v-teal:#84bfb4;--v-teal-dot:#84bfb4;--v-rose:#d09fa9;--v-rose-dot:#d09fa9;--v-indigo:#a7a9dc;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));}
+  .pc-root:not([data-theme=dark])[data-color="Fern & ink"]{--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e5efe6;--v-green:#61795d;--v-green-dot:#7d9479;--v-purple:#6b6683;--v-purple-dot:#8b86a5;--v-blue:#54708a;--v-blue-dot:#7b96ad;--v-gold:#8b7344;--v-gold-dot:#ab8f55;--v-teal:#4e7a73;--v-teal-dot:#6fa199;--v-rose:#985f6b;--v-rose-dot:#b8878f;--v-indigo:#5f65a0;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));}
+  .pc-root[data-theme=dark][data-color="Fern & ink"]{--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#9dbd93;--v-green-dot:#9dbd93;--v-purple:#b1a9cc;--v-purple-dot:#b1a9cc;--v-blue:#95b6d0;--v-blue-dot:#95b6d0;--v-gold:#cdb175;--v-gold-dot:#cdb175;--v-teal:#84bfb4;--v-teal-dot:#84bfb4;--v-rose:#d09fa9;--v-rose-dot:#d09fa9;--v-indigo:#a7a9dc;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));}
+  .pc-root:not([data-theme=dark])[data-color="Fern & ochre"]{--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e5efe6;--v-green:#6e7a4e;--v-green-dot:#8c9a6c;--v-purple:#7a6878;--v-purple-dot:#9b8899;--v-blue:#616f7d;--v-blue-dot:#8595a3;--v-gold:#96773a;--v-gold-dot:#b8995a;--v-teal:#5d7a62;--v-teal-dot:#7fa085;--v-rose:#9d6558;--v-rose-dot:#bd8b7f;--v-indigo:#6a6a94;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));}
+  .pc-root[data-theme=dark][data-color="Fern & ochre"]{--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#adb98a;--v-green-dot:#adb98a;--v-purple:#b4a3b1;--v-purple-dot:#b4a3b1;--v-blue:#9fb0bf;--v-blue-dot:#9fb0bf;--v-gold:#d3b46e;--v-gold-dot:#d3b46e;--v-teal:#8fbc97;--v-teal-dot:#8fbc97;--v-rose:#d0a094;--v-rose-dot:#d0a094;--v-indigo:#a9a9d2;--bar-g1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-g2:color-mix(in oklab, var(--fg) 30%, var(--panel));--bar-l1:color-mix(in oklab, var(--fg) 72%, var(--panel));--bar-l2:color-mix(in oklab, var(--fg) 52%, var(--panel));--bar-l3:color-mix(in oklab, var(--fg) 34%, var(--panel));--bar-l4:color-mix(in oklab, var(--fg) 18%, var(--panel));}
+  a{ color:var(--accent, #cc785c); text-decoration:none; }
+  a:hover{ color:var(--accent-hover, #b3624a); }
+  .lg-wrap{ position:absolute; inset:0; display:flex; pointer-events:none; }
+  .lg-net{ position:absolute; inset:0; opacity:.55; transition:opacity .5s ease; }
+  .lg-side{ flex:1; min-width:0; display:flex; align-items:center; justify-content:flex-end; padding-right:170px; }
+  .lg-box{ width:400px; display:flex; flex-direction:column; background:var(--dock-bg); border:1px solid var(--border); border-radius:16px; box-shadow:var(--dock-shadow); padding:30px 32px 22px; pointer-events:auto; transition:opacity .3s ease, transform .34s cubic-bezier(.4,0,.2,1); }
+  .lg-root[data-exit="1"] .lg-box{ opacity:0; transform:translateY(10px) scale(.985); }
+  .lg-root[data-exit="1"] .lg-net{ opacity:0; }
+  .lg-in{ transition:border-color .16s ease, box-shadow .16s ease; }
+  .lg-in::placeholder{ color:var(--muted2); }
+  .lg-in:focus{ border-color:var(--fg2) !important; box-shadow:0 0 0 3px var(--ring) !important; }
+  .lg-field[data-invalid="1"] .lg-in{ border-color:var(--error) !important; box-shadow:0 0 0 3px var(--error-bg) !important; }
+  .lg-err{ display:none; }
+  .lg-field[data-invalid="1"] .lg-err{ display:flex; animation:lgPop .18s cubic-bezier(.22,1.1,.36,1); }
+  .lg-banner{ display:none; }
+  .lg-root[data-state="Sign-in failed"] .lg-banner{ display:flex; animation:lgPop .18s cubic-bezier(.22,1.1,.36,1); }
+  .lg-banner a{ color:var(--error); text-decoration:underline; text-underline-offset:2px; }
+  .lg-banner a:hover{ color:var(--error); opacity:.75; }
+  .lg-cta:hover{ background:var(--primary-hover); }
+  .lg-cta:active{ transform:translateY(.5px); }
+  .lg-cta .lg-cta-busy, .lg-cta .lg-cta-ok{ display:none; }
+  .lg-root[data-state="Signing in"] .lg-cta, .lg-root[data-state="Signed in"] .lg-cta{ pointer-events:none; }
+  .lg-root[data-state="Signing in"] .lg-quiet{ pointer-events:none; opacity:.65; transition:opacity .2s ease; }
+  .lg-root[data-state="Signing in"] .lg-cta .lg-cta-idle{ display:none; }
+  .lg-root[data-state="Signing in"] .lg-cta .lg-cta-busy{ display:flex; }
+  .lg-root[data-state="Signed in"] .lg-cta{ background:var(--success); }
+  .lg-root[data-state="Signed in"] .lg-cta .lg-cta-idle{ display:none; }
+  .lg-root[data-state="Signed in"] .lg-cta .lg-cta-ok{ display:flex; animation:lgOk .42s cubic-bezier(.22,1.2,.36,1); }
+  .lg-spin{ width:13px; height:13px; flex:none; border-radius:50%; border:2px solid color-mix(in oklab, currentColor 30%, transparent); border-top-color:currentColor; animation:lgSpin .7s linear infinite; }
+  .lg-sso:hover{ background:var(--row-hover); border-color:var(--muted2); }
+  .lg-sso:active{ transform:translateY(.5px); }
+  .lg-eye:hover{ background:var(--ghost-hover); color:var(--fg); }
+  .lg-eye:active{ transform:scale(.9); }
+  .lg-eye .lg-i-off{ display:none; }
+  .lg-eye[data-show="1"] .lg-i-off{ display:block; }
+  .lg-eye[data-show="1"] .lg-i-on{ display:none; }
+  .lg-sw{ width:30px; height:17px; flex:none; position:relative; border:none; padding:0; border-radius:999px; background:var(--dot-sep); cursor:pointer; transition:background .18s ease; }
+  .lg-sw::after{ content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--card); box-shadow:0 1px 2px rgba(var(--sh),.25); transition:transform .18s cubic-bezier(.22,.61,.36,1); }
+  .lg-sw[data-on="1"]{ background:var(--fg); }
+  .lg-sw[data-on="1"]::after{ transform:translateX(13px); }
+  @keyframes lgSpin{ to{ transform:rotate(360deg); } }
+  @keyframes lgPop{ from{ opacity:0; transform:translateY(-5px) scale(.97); } }
+  @keyframes lgOk{ 0%{ transform:scale(.7); } 55%{ transform:scale(1.12); } 100%{ transform:scale(1); } }
+
+  /* ——— touch hardening (iPad): anything actionable stays visible at rest, chrome
+     doesn't select or pop callouts, coarse pointers get real hit areas ——— */
+  .dr{ touch-action:none; }
+  .dr-h::after{ content:""; position:absolute; left:-9px; right:-9px; top:-9px; bottom:-9px; border-radius:50%; }
+  .pc-root, .pc-root *{ -webkit-tap-highlight-color:transparent; }
+  @media (hover:none){ .pc-root :is(.tb-project,.tb-settings,.pc-theme-toggle,.sb-filter-btn,.sb-sort-btn):hover{ background:transparent !important; } }
+  .tb-nav, .tb-tab, .fc-seg, .rp-pager, .rn-head, .gl-head, .sb-head{ -webkit-user-select:none; user-select:none; }
+  .pr, .rn-run, .rn-step, .rn-vrow, .hm-prow, .hm-crow, .tm-card, .cf-filter, .rsc-row, .mon-row, .cs-row, .lg-net{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  @media (hover:none){
+    .cf-tools, .rsc-tools, .rsc-drag, .cs-del, .pl-join-add, .v6d-fan, .rr-go, .rr-mn, .pr-act, .hm-dots, .th-hist-del, .cc-open{ opacity:.55 !important; pointer-events:auto !important; }
+    .pr-act, .rr-go{ transform:none !important; }
+    .rn-run[data-view="1"] .rr-go{ opacity:0 !important; }
+    .rn-run[data-view="1"] .rr-mn{ right:34px !important; }
+    .pr-star, .hw-seed .pr-star{ opacity:.55 !important; }
+    .pr-star[data-saved="1"], .hw-seed[data-star="1"] .pr-star{ opacity:1 !important; }
+  }
+  @media (pointer:coarse){
+    .nv-zoom, .nv-fitbtn, .tm-zoom, .tm-fitbtn{ width:36px !important; height:36px !important; }
+    .nv-lbl, .tm-lbl{ height:36px !important; }
+    .fc-seg button{ padding-top:9px !important; padding-bottom:9px !important; }
+    .tb-tab{ padding-top:10px !important; padding-bottom:10px !important; }
+    .pr-star{ padding:11px !important; }
+    .pr-act, .rr-mn, .hm-dots, .cf-tool, .rsc-del, .rsc-mv, .cs-del, .lg-eye, .sb-pgb{ min-width:34px !important; min-height:34px !important; }
+    .nv-num{ padding-top:9px !important; padding-bottom:9px !important; }
+  }
+</style>
+<script>(function(){if(window.__klTouchAid)return;window.__klTouchAid=1;
+/* 1. synthetic hover from a tap must not paint (or stick): one capture-phase guard,
+      keyed off the last pointer type, so trackpad/Magic-Keyboard hover still works */
+var t=false;var mark=function(e){t=(e.pointerType==='touch');};
+document.addEventListener('pointerdown',mark,true);document.addEventListener('pointermove',mark,true);
+var stop=function(e){if(t)e.stopPropagation();};
+document.addEventListener('mouseenter',stop,true);document.addEventListener('mouseleave',stop,true);
+/* 2. keyboard avoidance: if the on-screen keyboard covers the focused field, scroll its
+      own panel (never the page, never scrollIntoView) just far enough to clear it */
+var vv=window.visualViewport;
+if(vv){var fix=function(){var el=document.activeElement;
+  if(!el||!/^(INPUT|TEXTAREA)$/.test(el.tagName))return;
+  var r=el.getBoundingClientRect(),over=r.bottom+14-(vv.offsetTop+vv.height);
+  if(over<=0)return;var sc=el.parentNode;
+  while(sc&&sc.nodeType===1&&sc!==document.body){var oy=getComputedStyle(sc).overflowY;
+    if((oy==='auto'||oy==='scroll')&&sc.scrollHeight>sc.clientHeight+2){sc.scrollTop+=over;return;}
+    sc=sc.parentNode;}};
+  vv.addEventListener('resize',function(){setTimeout(fix,60);});
+  document.addEventListener('focusin',function(){setTimeout(fix,280);},true);}
+})();</script>
+</helmet>
+<div ref="{{ rootRef }}" class="pc-root lg-root" data-theme="light" data-color="Warm paper" data-state="" data-screen-label="Login" style="position:relative; width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--fg); font-family:'Hanken Grotesk',-apple-system,system-ui,sans-serif; transition:background .25s ease, color .25s ease;">
+  <div class="lg-net"><canvas class="lg-net-c" style="position:absolute; inset:0; width:100%; height:100%; display:block; cursor:default;"></canvas></div>
+  <div class="lg-wrap">
+    <div class="lg-side">
+      <div class="lg-box">
+        <div class="lg-lockup" style="display:flex; align-items:center; gap:10px; margin-bottom:24px;">
+          <div style="width:36px; height:36px; border-radius:9px; background:var(--accent); color:#fdf6f1; display:flex; align-items:center; justify-content:center; flex:none;">
+            <svg width="26" height="26" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linejoin="miter" stroke-linecap="butt">
+              <path d="M16 4.5 L26 10.5 L26 21.5 L16 27.5 L6 21.5 L6 10.5 Z"></path>
+              <path d="M16 4.5 L16 16 M16 16 L6 21.5 M16 16 L26 21.5"></path>
+              <circle cx="16" cy="4.5" r="3.4" fill="currentColor" stroke="none"></circle>
+              <circle cx="26" cy="10.5" r="2.1" fill="currentColor" stroke="none"></circle>
+              <circle cx="26" cy="21.5" r="3" fill="currentColor" stroke="none"></circle>
+              <circle cx="16" cy="27.5" r="2.3" fill="currentColor" stroke="none"></circle>
+              <circle cx="6" cy="21.5" r="3.6" fill="currentColor" stroke="none"></circle>
+              <circle cx="6" cy="10.5" r="2.4" fill="currentColor" stroke="none"></circle>
+              <circle cx="16" cy="16" r="3.2" fill="currentColor" stroke="none"></circle>
+            </svg>
+          </div>
+          <span style="font-family:'Newsreader',serif; font-size:23px; font-weight:500; letter-spacing:-0.01em; color:var(--fg);">OmniKnowledge</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:22px;">
+          <span style="font-family:'Newsreader',serif; font-size:22px; font-weight:500; letter-spacing:-0.01em; color:var(--fg);">Welcome back</span>
+          <span style="font-size:13px; color:var(--muted); line-height:1.5;">Sign in to continue to your library and pipelines.</span>
+        </div>
+        <div class="lg-banner" style="align-items:flex-start; gap:8px; padding:10px 12px; margin-bottom:16px; border-radius:12px; background:var(--error-bg); border:1px solid color-mix(in oklab, var(--error) 30%, var(--border)); font-size:12.5px; line-height:1.45; color:var(--fg2);">
+          <svg style="flex:none; margin-top:1.5px;" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+          <span>That email and password don't match. Try again or <a href="#" data-noop>reset your password</a>.</span>
+        </div>
+        <form class="lg-form" novalidate="" style="display:flex; flex-direction:column;">
+          <div class="lg-quiet" style="display:flex; flex-direction:column; gap:15px;">
+            <div class="lg-field" data-f="email" style="display:flex; flex-direction:column; gap:7px;">
+              <label for="lg-em" style="font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--fg2);">Email</label>
+              <input class="lg-in" id="lg-em" type="email" autocomplete="email" spellcheck="false" placeholder="e.g. ada@lovelace.edu" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:14px; color:var(--fg); outline:none;">
+              <div class="lg-err" style="align-items:center; gap:5px; font-size:12px; font-weight:500; color:var(--error);"><svg style="flex:none;" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg><span class="lg-err-t"></span></div>
+            </div>
+            <div class="lg-field" data-f="pw" style="display:flex; flex-direction:column; gap:7px;">
+              <div style="display:flex; align-items:baseline; gap:8px;">
+                <label for="lg-pw" style="font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--fg2);">Password</label>
+                <a href="#" data-noop style="margin-left:auto; font-size:12px; font-weight:500;">Forgot password?</a>
+              </div>
+              <div style="position:relative; display:flex; align-items:center;">
+                <input class="lg-in" id="lg-pw" type="password" autocomplete="current-password" placeholder="Your password" style="width:100%; padding:9px 40px 9px 12px; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:14px; color:var(--fg); outline:none;">
+                <button type="button" class="lg-eye" data-show="0" aria-label="Show password" style="position:absolute; right:6px; width:26px; height:26px; display:flex; align-items:center; justify-content:center; border:none; background:none; border-radius:7px; color:var(--muted2); cursor:pointer; transition:background .15s ease, color .15s ease, transform .12s ease;">
+                  <svg class="lg-i-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  <svg class="lg-i-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.4 10.4 0 0 1 12 19c-6.5 0-10-7-10-7a17.6 17.6 0 0 1 4.06-4.94"></path><path d="M9.9 5.24A9.5 9.5 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-2.16 3.19"></path><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><path d="M2 2l20 20"></path></svg>
+                </button>
+              </div>
+              <div class="lg-err" style="align-items:center; gap:5px; font-size:12px; font-weight:500; color:var(--error);"><svg style="flex:none;" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg><span class="lg-err-t"></span></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:9px; margin-top:-2px;">
+              <button type="button" class="lg-sw" data-on="0" role="switch" aria-checked="false" aria-label="Keep me signed in"></button>
+              <span style="font-size:12.5px; color:var(--fg2);">Keep me signed in</span>
+            </div>
+          </div>
+          <button type="submit" class="lg-cta" style="margin-top:20px; height:38px; display:flex; align-items:center; justify-content:center; border:none; border-radius:9px; background:var(--primary); color:var(--primary-fg); font-family:inherit; font-size:13.5px; font-weight:600; cursor:pointer; transition:background .15s ease, transform .12s ease;">
+            <span class="lg-cta-idle">Sign in</span>
+            <span class="lg-cta-busy" style="align-items:center; gap:8px;"><span class="lg-spin"></span>Signing in…</span>
+            <span class="lg-cta-ok" style="align-items:center; gap:7px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>Signed in</span>
+          </button>
+        </form>
+        <div style="display:flex; align-items:center; gap:10px; margin:18px 0 14px;">
+          <span style="flex:1; height:1px; background:var(--divider);"></span>
+          <span style="font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2);">or continue with</span>
+          <span style="flex:1; height:1px; background:var(--divider);"></span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button type="button" class="lg-sso" style="height:36px; display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:13px; font-weight:600; color:var(--fg); cursor:pointer; transition:background .15s ease, border-color .15s ease, transform .12s ease;">Continue with Google</button>
+          <button type="button" class="lg-sso" style="height:36px; display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:13px; font-weight:600; color:var(--fg); cursor:pointer; transition:background .15s ease, border-color .15s ease, transform .12s ease;">Continue with your institution</button>
+        </div>
+        <div style="display:flex; justify-content:center; gap:5px; margin-top:20px; padding-top:15px; border-top:1px solid var(--divider); font-size:12.5px; color:var(--muted);">
+          <span>New to OmniKnowledge?</span>
+          <a href="#" data-noop style="font-weight:600;">Create an account</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:900},&quot;networkColors&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Ink &amp; white&quot;,&quot;options&quot;:[&quot;Ink &amp; white&quot;,&quot;Ink &amp; paper&quot;,&quot;Ink &amp; clay tint&quot;,&quot;Terracotta &amp; white&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;,&quot;label&quot;:&quot;Network colors&quot;},&quot;colorScheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Warm paper&quot;,&quot;options&quot;:[&quot;Warm paper&quot;,&quot;Fern &amp; ink&quot;,&quot;Fern &amp; ochre&quot;,&quot;Fern library&quot;,&quot;Oat &amp; ink&quot;,&quot;Terracotta dusk&quot;,&quot;Sage library&quot;,&quot;Slate archive&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;,&quot;label&quot;:&quot;Color scheme&quot;},&quot;screenState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Signed out&quot;,&quot;options&quot;:[&quot;Signed out&quot;,&quot;Signing in&quot;,&quot;Sign-in failed&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;State&quot;,&quot;label&quot;:&quot;Screen state&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  componentDidMount() {
+    const root = this.rootRef.current;
+    if (!root) return;
+    // logout arrival: replay the entrance (card rises in, camera pulls back — the sign-in dive reversed)
+    document.addEventListener('kl-logout', this._onLogout = () => setTimeout(() => this.arrive(), 160));
+    this.$ = s => root.querySelector(s);
+    this.nvInit();
+    this.applyColor();
+    this.applyState(this.props.screenState ?? 'Signed out');
+    root.addEventListener('click', e => {
+      const a = e.target.closest && e.target.closest('a[data-noop]');
+      if (a) e.preventDefault();
+    });
+    this.$('.lg-form').addEventListener('submit', e => { e.preventDefault(); this.submit(); });
+    root.querySelectorAll('.lg-in').forEach(inp => inp.addEventListener('input', () => this.setErr(inp.closest('.lg-field'), '')));
+    const eye = this.$('.lg-eye');
+    eye.addEventListener('click', () => {
+      const pw = this.$('#lg-pw');
+      const show = pw.type === 'password';
+      pw.type = show ? 'text' : 'password';
+      eye.setAttribute('data-show', show ? '1' : '0');
+      eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    });
+    const sw = this.$('.lg-sw');
+    sw.addEventListener('click', () => {
+      const on = sw.getAttribute('data-on') === '1';
+      sw.setAttribute('data-on', on ? '0' : '1');
+      sw.setAttribute('aria-checked', on ? 'false' : 'true');
+    });
+    root.querySelectorAll('.lg-sso').forEach(b => b.addEventListener('click', () => this.sso(b)));
+    // battery/heat: the shells dispatch kl-page-shown — the background sim stops once we leave Login
+    this._pgShown = e => { const on = (e.detail && e.detail.name) === 'Login'; this.pgVis(on); };
+    document.addEventListener('kl-page-shown', this._pgShown);
+    // standalone previews have no .pg ancestor — stay visible; inside a shell, adopt the mount-time state
+    const lpg = root.closest && root.closest('.pg[data-pg]');
+    this.pgVis(!lpg || lpg.getAttribute('data-on') === '1');
+  }
+  pgVis(on) { this._pgOff = !on; if (this._nv) this._nv.setVisible(on); }
+  componentDidUpdate(prev) {
+    if (prev.colorScheme !== this.props.colorScheme) this.applyColor();
+    if (prev.networkColors !== this.props.networkColors && this._nv) this._nv.setPalette(this.netAnchors());
+    if (prev.screenState !== this.props.screenState) this.applyState(this.props.screenState ?? 'Signed out');
+  }
+  arrive() {
+    const root = this.rootRef.current;
+    if (!root) return;
+    const box = root.querySelector('.lg-box');
+    if (box) {
+      box.style.transition = 'none';
+      box.style.opacity = '0';
+      box.style.transform = 'translateY(12px) scale(.985)';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        box.style.transition = 'opacity .42s ease, transform .52s cubic-bezier(.22,.61,.36,1)';
+        box.style.opacity = '';
+        box.style.transform = '';
+        setTimeout(() => { box.style.transition = ''; }, 560);
+      }));
+    }
+    const nv = this._nv;
+    if (nv && nv.cam && nv.camTween) {
+      const to = { x: nv.cam.x, y: nv.cam.y, k: nv.cam.k };
+      nv.cam = { x: to.x, y: to.y, k: to.k * 1.26 };
+      nv.dirty = true;
+      nv.camTween(to, 720);
+    }
+  }
+  componentWillUnmount() {
+    if (this._pgShown) document.removeEventListener('kl-page-shown', this._pgShown);
+    if (this._onLogout) document.removeEventListener('kl-logout', this._onLogout);
+    if (this._nv) { this._nv.destroy(); this._nv = null; }
+    if (this._thObs) this._thObs.disconnect();
+    clearInterval(this._nvFitI);
+    clearTimeout(this._nvCapT);
+  }
+  nvInit() {
+    const root = this.rootRef.current;
+    const body = root && root.querySelector('.lg-net');
+    if (!body || this._nvLoading) return;
+    this._nvLoading = true;
+    import('./network-viz.js').catch(function(){return import((window.__resources||{})['netviz'])}).then(mod => {
+      if (this._nv || !this.rootRef.current) return;
+      const nv = this._nv = new mod.CitationNetwork({
+        canvas: body.querySelector('.lg-net-c'),
+        host: body,
+        anchors: this.netAnchors(),
+        zoom: false, pan: false, nodeAlpha: 1
+      });
+      // binary year color: recompute node fills as a hard two-color split (old = paper tint, recent = ink)
+      const rt = nv.refreshTheme.bind(nv);
+      const lerp = (a, b, f) => a + (b - a) * f;
+      nv.refreshTheme = () => {
+        rt();
+        const T = nv.T, lo = T.ramp[0], hi = T.ramp[T.ramp.length - 1];
+        T.ramp = T.ramp.map((c, i) => i <= 5 ? lo : hi);
+        // ink = newest quartile only (~25% of nodes), everything else pure white
+        const ys = nv.nodes.map(n => n.year).sort((a, b) => a - b);
+        const th = ys.length ? ys[Math.floor(ys.length * .75)] : 0;
+        nv.nodes.forEach(n => {
+          const c = n.year >= th ? hi : lo;
+          n.fillS = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',';
+          n.strokeS = 'rgba(' + T.fg[0] + ',' + T.fg[1] + ',' + T.fg[2] + ',';
+        });
+        nv.dirty = true;
+      };
+      // fixed camera: fit the cluster into the region left of the card, generous margins
+      nv.fit = animate => {
+        if (!nv.w || !nv.shown.length) return;
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        nv.shown.forEach(n => {
+          if (n.x - n.r < x0) x0 = n.x - n.r;
+          if (n.x + n.r > x1) x1 = n.x + n.r;
+          if (n.y - n.r < y0) y0 = n.y - n.r;
+          if (n.y + n.r > y1) y1 = n.y + n.r;
+        });
+        // deliberately oversized: the graph bleeds past the top/bottom/left edges and passes under the card
+        const bw = Math.max(80, x1 - x0), bh = Math.max(80, y1 - y0);
+        const k = Math.max(.3, Math.min(1.5, Math.max(nv.w * .96 / bw, nv.h * 1.26 / bh) * (this._lookK || 1)));
+        const to = { x: (x0 + x1) / 2 + (nv.w / 2 - nv.w * .39) / k, y: (y0 + y1) / 2, k: k };
+        nv.didFit = true;
+        if (!animate) { nv.cam = to; nv._camT = null; nv.dirty = true; return; }
+        nv.camTween(to, 520);
+      };
+      nv.setParams({ dissuade: true, scaling: 2.4 });
+      // quieter presence: smaller nodes, hairline edges (plus .55 layer opacity in CSS)
+      nv.setAppearance({ sizeMin: 4, sizeMax: 15, edgeMin: .5, edgeMax: 1.5, stroke: 1.1 });
+      nv.setLabelScale(0);
+      nv.setFilters({ largest: true });
+      this.applyLook();
+      // keep re-framing until the layout actually settles (never mid-drag);
+      // resumes by itself if a drag reheats the sim and the bbox drifts again
+      this._nvFitI = setInterval(() => {
+        try {
+          const v = this._nv;
+          if (!v || v._dragN || !v.shown.length) return;
+          let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+          v.shown.forEach(n => { if (n.x < x0) x0 = n.x; if (n.x > x1) x1 = n.x; if (n.y < y0) y0 = n.y; if (n.y > y1) y1 = n.y; });
+          const bb = { w: x1 - x0, h: y1 - y0, x: (x0 + x1) / 2, y: (y0 + y1) / 2 }, p = this._nvBB;
+          this._nvBB = bb;
+          if (p && Math.abs(bb.w - p.w) < Math.max(8, bb.w * .03) && Math.abs(bb.h - p.h) < Math.max(8, bb.h * .03) && Math.abs(bb.x - p.x) < 9 && Math.abs(bb.y - p.y) < 9) this._nvCalm = (this._nvCalm || 0) + 1;
+          else this._nvCalm = 0;
+          if (this._nvCalm <= 6) v.fit(true);
+        } catch (e) {}
+      }, 650);
+      if (!this._thObs) {
+        this._thObs = new MutationObserver(() => { if (this._nv) { this._nv.refreshTheme(); this._nv.dirty = true; this._nv.wake(); } });
+        this._thObs.observe(root, { attributes: true, attributeFilter: ['data-theme', 'data-color'] });
+      }
+    }).catch(e => console.error('network-viz failed to load', e));
+  }
+  netAnchors() {
+    // [lo = other 75%, hi = newest 25%] — binary pairs tuned to the warm-paper identity
+    const m = {
+      'Ink & white': ['#ffffff', 'var(--fg)'],
+      'Ink & paper': ['color-mix(in oklab, var(--bg) 42%, var(--card))', 'var(--fg)'],
+      'Ink & clay tint': ['color-mix(in oklab, var(--accent) 14%, var(--card))', 'var(--fg)'],
+      'Terracotta & white': ['#ffffff', 'var(--accent)']
+    };
+    return m[this.props.networkColors] || m['Ink & white'];
+  }
+  applyLook() {
+    // locked choice: Seed A, full fit scale
+    const nv = this._nv;
+    if (!nv) return;
+    this._lookK = 1;
+    const g = this.lgGraph(24601);
+    nv.setData({ nodes: g.nodes, edges: g.edges });
+    // pre-warm the force layout synchronously so on-screen settling is short
+    const t0 = performance.now();
+    let i = 0;
+    while (nv.hot && i < 1600 && performance.now() - t0 < 260) { nv.step(); if (i % 6 === 5) nv.collide(1); i++; }
+    nv.collide(2);
+    nv.didFit = true;
+    this._nvBB = null;
+    this._nvCalm = 0;
+    nv.fit(true);
+    // hard cap: force the sim asleep if it is still churning after 4.5s
+    clearTimeout(this._nvCapT);
+    this._nvCapT = setTimeout(() => {
+      const v = this._nv;
+      if (v && v.hot) { v.hot = false; v.calm = 99; v.fit(true); }
+    }, 4500);
+    // the instance is created async, after the mount-time seed — adopt the stored page state now
+    nv.setVisible(!this._pgOff);
+  }
+  lgGraph(seed) {
+    this._lgGs = this._lgGs || {};
+    if (this._lgGs[seed]) return this._lgGs[seed];
+    let s = seed;
+    const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const K = 5, N = 118, STRAY = 6, centers = [];
+    for (let c = 0; c < K; c++) { const a = c / K * Math.PI * 2 - .6; centers.push([Math.cos(a) * 230, Math.sin(a) * 205]); }
+    const g = () => (rnd() + rnd() + rnd() - 1.5) * 62;
+    const nodes = [], cl = [];
+    for (let i = 0; i < N; i++) {
+      const c = Math.floor(rnd() * K);
+      cl.push(c);
+      nodes.push({ id: i, label: 'Paper ' + (i + 1), year: 1998 + Math.floor(rnd() * 29), cites: Math.floor(Math.pow(rnd(), 2.6) * 900) + 2, x: centers[c][0] + g(), y: centers[c][1] + g() });
+    }
+    for (let i = N - STRAY; i < N; i++) { const a = rnd() * Math.PI * 2; nodes[i].x = Math.cos(a) * 480; nodes[i].y = Math.sin(a) * 430; }
+    const seen = new Set(), edges = [];
+    const add = (a, b) => {
+      if (a === b) return;
+      const k = a < b ? a * 1000 + b : b * 1000 + a;
+      if (seen.has(k)) return;
+      seen.add(k);
+      edges.push({ s: a, t: b, w: Math.max(.05, Math.min(1, .18 + rnd() * .5)) });
+    };
+    const members = Array.from({ length: K }, () => []);
+    for (let i = 0; i < N - STRAY; i++) members[cl[i]].push(i);
+    const wpick = (arr, not) => {
+      let tot = 0;
+      const ws = arr.map(j => { const w = j === not ? 0 : nodes[j].cites + 30; tot += w; return w; });
+      let r = rnd() * tot;
+      for (let k = 0; k < arr.length; k++) { r -= ws[k]; if (r <= 0) return arr[k]; }
+      return arr[arr.length - 1];
+    };
+    for (let i = 0; i < N - STRAY; i++) {
+      const pool = members[cl[i]];
+      const m = 2 + Math.floor(rnd() * 2.4);
+      for (let k = 0; k < m && pool.length > 1; k++) add(i, wpick(pool, i));
+      if (rnd() < .32) {
+        const oc = (cl[i] + 1 + Math.floor(rnd() * (K - 1))) % K;
+        if (members[oc].length) add(i, wpick(members[oc], i));
+      }
+    }
+    add(N - 6, N - 5); add(N - 4, N - 3); add(N - 3, N - 2);
+    return (this._lgGs[seed] = { nodes: nodes, edges: edges });
+  }
+  applyColor() {
+    this.rootRef.current.setAttribute('data-color', this.props.colorScheme ?? 'Warm paper');
+  }
+  applyState(s) {
+    const root = this.rootRef.current;
+    root.setAttribute('data-state', s === 'Signed out' ? '' : s);
+    if (s === 'Signing in' || s === 'Sign-in failed') {
+      const em = this.$('#lg-em'), pw = this.$('#lg-pw');
+      if (!em.value) em.value = 'ada@lovelace.edu';
+      if (!pw.value) pw.value = 'correct horse battery';
+    }
+  }
+  setErr(field, msg) {
+    if (!field) return;
+    field.setAttribute('data-invalid', msg ? '1' : '0');
+    field.querySelector('.lg-err-t').textContent = msg;
+  }
+  submit() {
+    const root = this.rootRef.current;
+    const st = root.getAttribute('data-state');
+    if (st === 'Signing in' || st === 'Signed in') return;
+    const em = this.$('#lg-em'), pw = this.$('#lg-pw');
+    let bad = false;
+    const v = em.value.trim();
+    if (!v) { this.setErr(em.closest('.lg-field'), 'Enter your email.'); bad = true; }
+    else if (!/^\S+@\S+\.\S+$/.test(v)) { this.setErr(em.closest('.lg-field'), 'Enter a valid email address.'); bad = true; }
+    if (!pw.value) { this.setErr(pw.closest('.lg-field'), 'Enter your password.'); bad = true; }
+    if (bad) return;
+    root.setAttribute('data-state', 'Signing in');
+    clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3); clearTimeout(this._t4);
+    this._t1 = setTimeout(() => {
+      root.setAttribute('data-state', 'Signed in');
+      this._t2 = setTimeout(() => {
+        // exit: card settles out, camera dives into the graph, then the shell takes over
+        root.setAttribute('data-exit', '1');
+        const nv = this._nv;
+        if (nv) nv.camTween({ x: nv.cam.x, y: nv.cam.y, k: nv.cam.k * 1.5 }, 620);
+        this._t3 = setTimeout(() => {
+          root.dispatchEvent(new CustomEvent('kl-login', { bubbles: true, composed: true }));
+          this._t4 = setTimeout(() => {
+            root.removeAttribute('data-exit');
+            root.setAttribute('data-state', '');
+            pw.value = '';
+            if (this._nv) { this._nv.fit(false); this._nvBB = null; this._nvCalm = 0; this._nv.wake(); }
+          }, 800);
+        }, 430);
+      }, 750);
+    }, 1300);
+  }
+  sso(b) {
+    if (b.dataset.busy) return;
+    b.dataset.busy = '1';
+    const orig = b.innerHTML;
+    b.style.minWidth = b.offsetWidth + 'px';
+    b.innerHTML = '<span class="lg-spin" style="margin-right:8px;"></span>Redirecting…';
+    setTimeout(() => { b.innerHTML = orig; delete b.dataset.busy; b.style.minWidth = ''; }, 1400);
+  }
+  renderVals() {
+    return { rootRef: this.rootRef };
+  }
+}
+</script>
+</body>
+</html>

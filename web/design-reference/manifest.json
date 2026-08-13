@@ -1,0 +1,252 @@
+{
+  "generatedAt": "2026-08-13T17:41:37.214Z",
+  "sourceDir": "/private/tmp/claude-501/-Users-arwen-Downloads/1080a093-8b62-4b36-a8d0-32beaa09e80a/scratchpad/ui_design",
+  "fileCount": 31,
+  "totalBytes": 12013319,
+  "sourceMap": {
+    "embedded-sources/Explore.dc.html": "Explore.dc.html",
+    "embedded-sources/Home.dc.html": "Home.dc.html",
+    "embedded-sources/KnowledgeLab iPad Demo.dc.html": "KnowledgeLab iPad Demo.dc.html",
+    "embedded-sources/Login.dc.html": "Login.dc.html",
+    "embedded-sources/Paper Card.dc.html": "Paper Card.dc.html",
+    "embedded-sources/Runs.dc.html": "Runs.dc.html",
+    "embedded-sources/Settings.dc.html": "Settings.dc.html",
+    "embedded-sources/System Banners.dc.html": "System Banners.dc.html",
+    "embedded-sources/citation-context.js": "citation-context.js",
+    "embedded-sources/community-data.js": "community-data.js",
+    "embedded-sources/graph-data.js": "graph-data.js",
+    "embedded-sources/import-resolver.js": "import-resolver.js",
+    "embedded-sources/network-viz.js": "network-viz.js",
+    "embedded-sources/paper-row.js": "paper-row.js",
+    "embedded-sources/review-draft.js": "review-draft.js",
+    "embedded-sources/run-mock.js": "run-mock.js",
+    "embedded-sources/stream-text.js": "stream-text.js",
+    "embedded-sources/topic-data.js": "topic-data.js",
+    "embedded-sources/topic-desc.js": "topic-desc.js",
+    "embedded-sources/topic-viz.js": "topic-viz.js",
+    "docs/design-system.md": "design-system.md",
+    "docs/ipad-demo-audit.md": "ipad-demo-audit.md",
+    "uploads/run37/accepted.csv": "uploads/run37/accepted.csv",
+    "uploads/run37/communities_leiden.csv": "uploads/run37/communities_leiden.csv",
+    "uploads/run37/community_methods.csv": "uploads/run37/community_methods.csv",
+    "uploads/run37/corpus.json": "uploads/run37/corpus.json",
+    "uploads/run37/graph.json": "uploads/run37/graph.json",
+    "uploads/run37/stats.json": "uploads/run37/stats.json",
+    "uploads/run37/topics.csv": "uploads/run37/topics.csv"
+  },
+  "purpose": "Frozen, verbatim copy of the design hand-off. SOLE SOURCE OF VISUAL TRUTH for the OmniKnowledge rewrite. Never edit anything in this directory; re-copy from the design workspace and regenerate this manifest instead.",
+  "entryPoint": "KnowledgeLab iPad Demo.html",
+  "lockedVariantDefaults": {
+    "pipelineStyle": "Flow chart (6d)",
+    "networkPalette": "Neutral ink",
+    "collectionStyle": "Cover rows",
+    "note": "These are the demo file's own defaults. The harness never flips a variant switch."
+  },
+  "runtimeLoading": {
+    "summary": "The entry file is a self-contained Claude-Design bundle: every sibling .js/.dc.html, the Google Fonts CSS (woff2 payloads inlined as data: URIs), the apple-touch-icon and React 18.3.1 UMD are embedded in the <script type=\"__bundler/manifest\"> blob as gzip+base64 and re-served to the page as blob: URLs. NO sibling file on disk is fetched at runtime.",
+    "siblingFilesFetchedAtRuntime": [],
+    "externalRequestsAtRuntime": [
+      "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js",
+      "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js",
+      "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
+      "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js",
+      "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"
+    ],
+    "externalRequestNote": "Six scripts are NOT inlined and are still fetched from public CDNs by Paper Card.dc.html, Runs.dc.html and Explore.dc.html. The parity harness serves them from version-pinned npm copies (web/parity/src/cdn-mirror.mjs) so captures are offline and order-deterministic; see web/wiring/missing-states.md for the product-level consequence."
+  },
+  "directories": {
+    ".": "The demo entry file + apple-touch-icon.png, byte-identical to the design workspace.",
+    "embedded-sources/": "The sibling .js/.dc.html files whose content the bundle embeds. Copied verbatim for READING (the rewrite's source of truth for component markup/CSS/behaviour); the running demo does not load them from disk.",
+    "docs/": "design-system.md and ipad-demo-audit.md from the design workspace — reference documentation, not loaded at runtime.",
+    "uploads/run37/": "The run-37 fixture data set the demo's Build/Runs/Explore screens are populated from."
+  },
+  "files": [
+    {
+      "path": "apple-touch-icon.png",
+      "bytes": 3592,
+      "sha256": "8b97a41fc5899d312d84c780b93adb15ea8d5756c1d1f830016bc2e6212c27d6",
+      "matchesSource": true
+    },
+    {
+      "path": "docs/design-system.md",
+      "bytes": 163130,
+      "sha256": "96f6629795afa2717631b39de7b94bfa0bd64cf58c164788ef048174cfe5d72a",
+      "matchesSource": true
+    },
+    {
+      "path": "docs/ipad-demo-audit.md",
+      "bytes": 31551,
+      "sha256": "759f66c4faff7cb9e08e5ecfdfa73a1d16f65f3233ec37d883696bbdac7a9b6e",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/citation-context.js",
+      "bytes": 64987,
+      "sha256": "a0bedf1459e947d721d9c4fc7b6908075c60cb4ea2f9384dd846657f6aaaee26",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/community-data.js",
+      "bytes": 5454,
+      "sha256": "2046f551e38e0738f583ad6bcde2fa517123fbb39fd50a498e9340be2986743f",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/Explore.dc.html",
+      "bytes": 480062,
+      "sha256": "33a475eda8fc8ea2252059c0c0cb37874995eb63a2803d6b1eb8542ac7aedc78",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/graph-data.js",
+      "bytes": 13721,
+      "sha256": "7e0ff85d3cd25adbd361a84bf6265d9c7f52ca0e348a00d1412c473f528b3e7d",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/Home.dc.html",
+      "bytes": 107598,
+      "sha256": "dd4c1b1b7264e14a4ec5867b05b0f6d4a19c25695eacc67c98384f71a1b7f947",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/import-resolver.js",
+      "bytes": 16056,
+      "sha256": "1c3e634cf563a1e11c72745edcf5140d9295657985af2d13dba77157030afc6d",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/KnowledgeLab iPad Demo.dc.html",
+      "bytes": 24990,
+      "sha256": "f08aa88c1ed83d12ffb912f53a31e7876d5e0b945dd038e1310e6392efbd7914",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/Login.dc.html",
+      "bytes": 42923,
+      "sha256": "a4dcfe0bc5fc0db2ddf45edb147648254ce95e0a986c3d332509d534a2410c1f",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/network-viz.js",
+      "bytes": 53529,
+      "sha256": "dff834c9b6dbea929b77ffcd9dcefdb485a8b38d9798e8942037a28c2e31aaed",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/Paper Card.dc.html",
+      "bytes": 593353,
+      "sha256": "22a6692c8fe39880ae04a874ac2c95bb8ecf01a0675847a5134a44457b6a3e14",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/paper-row.js",
+      "bytes": 15582,
+      "sha256": "ba027ba63f36c1aa0d385a5c2528f4b0788e281c766e0e455a525721e9d8631c",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/review-draft.js",
+      "bytes": 9532,
+      "sha256": "0c945af8a86eed60b3826d745a93d1ed0437fb21129873eb03fdabee0c1db74f",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/run-mock.js",
+      "bytes": 48940,
+      "sha256": "c6c30408b4c3b79faf4c99d97b034276bf2ac41ce0d8bcf67c22b5d06d51f88c",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/Runs.dc.html",
+      "bytes": 575993,
+      "sha256": "cdacd79b608f64adba992227e6940ce8fe05d23fea42647775b72667a84b6d86",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/Settings.dc.html",
+      "bytes": 49925,
+      "sha256": "fd4308cf5f394a9bc89fe0fbecf9dc4ea597d4aa04389085ae9324b064c3b387",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/stream-text.js",
+      "bytes": 2699,
+      "sha256": "0cfc01b94715d13e66c556bd3ec8a52fcccdbd5df3abb02ff8a6d6f0f696035d",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/System Banners.dc.html",
+      "bytes": 23630,
+      "sha256": "4dc5fe731a7af9dc65efc76a0b916c2da710fb68f9a17d066c2d3cf7fba45f70",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/topic-data.js",
+      "bytes": 651453,
+      "sha256": "00e5835e6e7b966c36d2da62e6ecde5ffb6183fc8233873589903f1c2521631b",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/topic-desc.js",
+      "bytes": 1786,
+      "sha256": "3b20460e8aabe75b98f5ee3eec5ed2545ed6c4872404631bfae7b7cddb8e05bf",
+      "matchesSource": true
+    },
+    {
+      "path": "embedded-sources/topic-viz.js",
+      "bytes": 26406,
+      "sha256": "76bd90fb20a128b0890b492ef6ff7d688d2d5a81689c0e75d24dcb442e01feb5",
+      "matchesSource": true
+    },
+    {
+      "path": "KnowledgeLab iPad Demo.html",
+      "bytes": 6764730,
+      "sha256": "cae0e6f7fa1b69d2457f3caf09b40eaf15f0ad851a116cbc0b1dc531cbe54d6d",
+      "matchesSource": true
+    },
+    {
+      "path": "uploads/run37/accepted.csv",
+      "bytes": 156541,
+      "sha256": "9fb947784509046ece7b2258ea1ed349553ede240975abe83f2181942bdb6aca",
+      "matchesSource": true
+    },
+    {
+      "path": "uploads/run37/communities_leiden.csv",
+      "bytes": 7778,
+      "sha256": "33cf96cb777688d2b66f1794aca4b3d1c2975198e4077f353df5657de97531b9",
+      "matchesSource": true
+    },
+    {
+      "path": "uploads/run37/community_methods.csv",
+      "bytes": 383,
+      "sha256": "db521aa55269032310a9e6cba4b845a7c169e5ae352f4b3289faffe23dfcd59e",
+      "matchesSource": true
+    },
+    {
+      "path": "uploads/run37/corpus.json",
+      "bytes": 1856912,
+      "sha256": "a3f3df8c7fab74d7946c0d44dcb26e15f070434bf9fe0f1e69e215d7c021131d",
+      "matchesSource": true
+    },
+    {
+      "path": "uploads/run37/graph.json",
+      "bytes": 204073,
+      "sha256": "d4679b39e1117b2865fa8ed6026e3677b68a9d922066078dafca722826c448f8",
+      "matchesSource": true
+    },
+    {
+      "path": "uploads/run37/stats.json",
+      "bytes": 2569,
+      "sha256": "6ce6632038922a4f171c499b2efeebcc15c8d28ad84ea319373d72f983057e47",
+      "matchesSource": true
+    },
+    {
+      "path": "uploads/run37/topics.csv",
+      "bytes": 13441,
+      "sha256": "6e2e0f5e16dd7cc4c171c0ad0eec1a30e203cc6f66548325b6d77ad3f254ee15",
+      "matchesSource": true
+    }
+  ]
+}

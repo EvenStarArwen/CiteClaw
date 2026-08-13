@@ -1,0 +1,372 @@
+{
+  "label": "design-demo-baseline",
+  "target": "design",
+  "baseUrl": "http://127.0.0.1:55246",
+  "capturedAt": "2026-08-13T17:37:32.514Z",
+  "determinism": {
+    "epochMs": 1767225600000,
+    "timezoneId": "UTC",
+    "locale": "en-US",
+    "warmupVirtualMs": 12000,
+    "virtualTickMs": 250,
+    "realTickMs": 12,
+    "randomSeed": 1592594996,
+    "stableFrames": 2,
+    "stablePollMs": 120,
+    "stableMaxPolls": 40,
+    "deviceScaleFactor": 1
+  },
+  "cdnMirror": [
+    {
+      "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js",
+      "localFile": "node_modules/smooth-scrollbar/dist/smooth-scrollbar.js",
+      "present": true,
+      "bytes": 50508,
+      "sha256": "72db24a58aec3a5eaea41daa7b25ab1320a653085c63ee023239484000b75757"
+    },
+    {
+      "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js",
+      "localFile": "node_modules/smooth-scrollbar/dist/plugins/overscroll.js",
+      "present": true,
+      "bytes": 11951,
+      "sha256": "ee6da5393bea9497b4d8ea5581192c8a6c97042ab7bdb2cc3954639614fa344f"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js",
+      "localFile": "node_modules/marked/marked.min.js",
+      "present": true,
+      "bytes": 35479,
+      "sha256": "15fabce5b65898b32b03f5ed25e9f891a729ad4c0d6d877110a7744aa847a894"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
+      "localFile": "node_modules/katex/dist/katex.min.js",
+      "present": true,
+      "bytes": 275414,
+      "sha256": "e6bfe5deebd4c7ccd272055bab63bd3ab2c73b907b6e6a22d352740a81381fd4"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css",
+      "localFile": "node_modules/katex/dist/katex.min.css",
+      "present": true,
+      "bytes": 23335,
+      "sha256": "717bc9ae7853b61f0f76455dddf0ecd4f527a783f42de2ac24684899c1c46258"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js",
+      "localFile": "node_modules/turndown/dist/turndown.js",
+      "present": true,
+      "bytes": 26759,
+      "sha256": "ae3605eb07ab920a2d181008ace692ec560fa6cd67d2e291f77cbc5c4322cd38"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js",
+      "localFile": "node_modules/turndown-plugin-gfm/dist/turndown-plugin-gfm.js",
+      "present": true,
+      "bytes": 4191,
+      "sha256": "cf744cc1b7580f06d64ce236a4ff2630a53d389eccf2133a09d71ca443511912"
+    }
+  ],
+  "viewports": [
+    {
+      "name": "desktop-1600x900",
+      "width": 1600,
+      "height": 900,
+      "note": "Baseline desktop"
+    },
+    {
+      "name": "ipad-pro-12.9-landscape-1366x1024",
+      "width": 1366,
+      "height": 1024,
+      "note": "Baseline iPad Pro 12.9 landscape"
+    },
+    {
+      "name": "ipad-portrait-1024x1366",
+      "width": 1024,
+      "height": 1366,
+      "note": "iPad Pro 12.9 portrait"
+    },
+    {
+      "name": "ipad-11-1194x834",
+      "width": 1194,
+      "height": 834,
+      "note": "iPad 11 landscape"
+    },
+    {
+      "name": "w900-900x1200",
+      "width": 900,
+      "height": 1200,
+      "note": "Narrow tablet / split view"
+    },
+    {
+      "name": "w768-768x1024",
+      "width": 768,
+      "height": 1024,
+      "note": "iPad 9.7 portrait / fold boundary"
+    }
+  ],
+  "screens": [
+    {
+      "screen": "build",
+      "viewport": "desktop-1600x900",
+      "width": 1600,
+      "height": 900,
+      "fullPage": false,
+      "script": "../scripts/nav-build.json",
+      "file": "build/desktop-1600x900.png",
+      "bytes": 196721,
+      "sha256": "d280afe268e59f9df9d8c7dd9db48558bc29f8c4cc1942d4a06477047f805d81",
+      "pixelStable": true,
+      "settlePolls": 2
+    },
+    {
+      "screen": "build",
+      "viewport": "ipad-pro-12.9-landscape-1366x1024",
+      "width": 1366,
+      "height": 1024,
+      "fullPage": false,
+      "script": "../scripts/nav-build.json",
+      "file": "build/ipad-pro-12.9-landscape-1366x1024.png",
+      "bytes": 209947,
+      "sha256": "85ac559e503854548d8b10a90dd0ec482c92e6221094720c3c463ab0d2336df0",
+      "pixelStable": true,
+      "settlePolls": 2
+    },
+    {
+      "screen": "build",
+      "viewport": "ipad-portrait-1024x1366",
+      "width": 1024,
+      "height": 1366,
+      "fullPage": false,
+      "script": "../scripts/nav-build.json",
+      "file": "build/ipad-portrait-1024x1366.png",
+      "bytes": 23114,
+      "sha256": "3835a2a210614b21ba40900e95cbaced9503ede02d606ec232342c61c396e750",
+      "pixelStable": true,
+      "settlePolls": 2
+    },
+    {
+      "screen": "build",
+      "viewport": "ipad-11-1194x834",
+      "width": 1194,
+      "height": 834,
+      "fullPage": false,
+      "script": "../scripts/nav-build.json",
+      "file": "build/ipad-11-1194x834.png",
+      "bytes": 103842,
+      "sha256": "f6f44d69089e82b6f227ef1321c0669efa3524f0529ea71c61faafa7476a0e9b",
+      "pixelStable": true,
+      "settlePolls": 2
+    },
+    {
+      "screen": "build",
+      "viewport": "w900-900x1200",
+      "width": 900,
+      "height": 1200,
+      "fullPage": false,
+      "script": "../scripts/nav-build.json",
+      "file": "build/w900-900x1200.png",
+      "bytes": 21571,
+      "sha256": "27c6f468600d385f4d08e10c0e5b3a9eb4b401378e68c726bcd4247da53c9b10",
+      "pixelStable": true,
+      "settlePolls": 2
+    },
+    {
+      "screen": "build",
+      "viewport": "w768-768x1024",
+      "width": 768,
+      "height": 1024,
+      "fullPage": false,
+      "script": "../scripts/nav-build.json",
+      "file": "build/w768-768x1024.png",
+      "bytes": 20255,
+      "sha256": "5dec48c908f84dafb914e2e1f850ab6df106997306ee60332a6ac907b675fb79",
+      "pixelStable": true,
+      "settlePolls": 2
+    }
+  ],
+  "mirroredExternalRequests": [
+    {
+      "screen": "build",
+      "viewport": "desktop-1600x900",
+      "requests": [
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"
+        }
+      ]
+    },
+    {
+      "screen": "build",
+      "viewport": "ipad-pro-12.9-landscape-1366x1024",
+      "requests": [
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"
+        }
+      ]
+    },
+    {
+      "screen": "build",
+      "viewport": "ipad-portrait-1024x1366",
+      "requests": [
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"
+        }
+      ]
+    },
+    {
+      "screen": "build",
+      "viewport": "ipad-11-1194x834",
+      "requests": [
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"
+        }
+      ]
+    },
+    {
+      "screen": "build",
+      "viewport": "w900-900x1200",
+      "requests": [
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"
+        }
+      ]
+    },
+    {
+      "screen": "build",
+      "viewport": "w768-768x1024",
+      "requests": [
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/smooth-scrollbar.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/smooth-scrollbar/8.8.4/plugins/overscroll.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"
+        },
+        {
+          "method": "GET",
+          "url": "https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"
+        }
+      ]
+    }
+  ],
+  "unmirroredExternalRequests": [],
+  "consoleErrors": []
+}

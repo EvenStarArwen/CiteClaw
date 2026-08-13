@@ -1,0 +1,164 @@
+{
+ "id": "RUN-37",
+ "status": "completed",
+ "outcome": "Completed",
+ "startedAt": 1785970699.3869572,
+ "endedAt": 1785971480.713522,
+ "elapsed": 781,
+ "accepted": 354,
+ "rejected": 17440,
+ "steps": [
+  {
+   "code": "SED-01",
+   "name": "Seed Set",
+   "st": "done",
+   "in": 0,
+   "out": 7,
+   "found": 7,
+   "kept": 7,
+   "rej": 0,
+   "stats": {
+    "calls": 0,
+    "graph": 0,
+    "reco": 0,
+    "tokens": 0
+   }
+  },
+  {
+   "code": "FWD-02",
+   "name": "Forward Searcher",
+   "st": "done",
+   "in": 7,
+   "out": 45,
+   "found": 341,
+   "kept": 45,
+   "rej": 296,
+   "stats": {
+    "calls": 2,
+    "graph": 2,
+    "reco": 0,
+    "tokens": 17975
+   }
+  },
+  {
+   "code": "BWD-03",
+   "name": "Backward Searcher",
+   "st": "done",
+   "in": 7,
+   "out": 8,
+   "found": 171,
+   "kept": 8,
+   "rej": 163,
+   "stats": {
+    "calls": 1,
+    "graph": 1,
+    "reco": 0,
+    "tokens": 5505
+   }
+  },
+  {
+   "code": "FWD-04",
+   "name": "Forward Searcher",
+   "st": "done",
+   "in": 53,
+   "out": 57,
+   "found": 2634,
+   "kept": 57,
+   "rej": 2577,
+   "stats": {
+    "calls": 7,
+    "graph": 7,
+    "reco": 0,
+    "tokens": 28764
+   }
+  },
+  {
+   "code": "BWD-05",
+   "name": "Backward Searcher",
+   "st": "done",
+   "in": 53,
+   "out": 102,
+   "found": 2767,
+   "kept": 102,
+   "rej": 2665,
+   "stats": {
+    "calls": 3,
+    "graph": 3,
+    "reco": 0,
+    "tokens": 55982
+   }
+  },
+  {
+   "code": "BWD-06",
+   "name": "Backward Searcher",
+   "st": "done",
+   "in": 159,
+   "out": 62,
+   "found": 5223,
+   "kept": 62,
+   "rej": 5161,
+   "stats": {
+    "calls": 5,
+    "graph": 5,
+    "reco": 0,
+    "tokens": 40459
+   }
+  },
+  {
+   "code": "FWD-07",
+   "name": "Forward Searcher",
+   "st": "done",
+   "in": 159,
+   "out": 73,
+   "found": 6651,
+   "kept": 73,
+   "rej": 6582,
+   "stats": {
+    "calls": 298,
+    "graph": 298,
+    "reco": 0,
+    "tokens": 46236
+   }
+  }
+ ],
+ "stats": {
+  "rejections": {
+   "year": 4359,
+   "citation": 10328,
+   "abstract_keyword": 1537,
+   "llm_f_n3_4": 377,
+   "llm_f_n3_5": 14,
+   "llm_f_n4_4": 27,
+   "llm_f_n4_5": 4,
+   "llm_f_n616_4": 136,
+   "llm_f_n616_5": 14,
+   "llm_f_n6_4": 291,
+   "llm_f_n6_5": 19,
+   "llm_f_n802_4": 325,
+   "llm_f_n802_5": 9,
+   "merged_duplicate": 4
+  },
+  "perStep": {},
+  "budget": {
+   "llmTokens": 194921,
+   "llmIn": 153561,
+   "llmOut": 41360,
+   "llmCalls": 103,
+   "s2Requests": 316,
+   "s2CacheHits": 14675,
+   "usd": null,
+   "maxTokens": 50000000
+  },
+  "llm": {
+   "title": 36166,
+   "abs": 117395,
+   "db": 0,
+   "out": 41360
+  },
+  "calls": {
+   "total": 316,
+   "graph": 316,
+   "reco": 0
+  }
+ }
+}

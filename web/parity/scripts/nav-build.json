@@ -1,0 +1,54 @@
+{
+  "name": "nav-build",
+  "description": "Navigate to the Build / pipeline screen and park the UI in its resting state. Recorded against the design demo, but written to be portable: it drives the UI the way a user would (click the Build tab) rather than relying on the demo's default page prop, so the identical script can be replayed against web/app.",
+  "notes": [
+    "The demo's locked variant defaults already land on Build with pipelineStyle='Flow chart (6d)'; the explicit tab click is a no-op there and a real navigation in the rewrite.",
+    "Selectors are the demo's own: .tb-tab for the top-level tabs, [data-pg]/[data-on] for page visibility. web/app must expose equivalent hooks or this script needs a per-target selector map.",
+    "Portrait viewports (1024x1366, 900w, 768w) are covered by the demo's designed 'Rotate to landscape' gate (.rot). Steps that touch the app chrome carry skipIfVisible: '.rot' so those viewports still produce a baseline of the gate itself instead of a click timeout."
+  ],
+  "steps": [
+    {
+      "action": "waitFor",
+      "selector": ".tb-tab",
+      "text": "Build",
+      "state": "visible",
+      "name": "00-app-mounted",
+      "note": "App shell has mounted and the top nav is interactive. (Do not wait on [data-pg] alone: every page host exists in the DOM from the start and the first one, Login, is hidden.)",
+      "shot": false,
+      "skipIfVisible": ".rot"
+    },
+    {
+      "action": "click",
+      "selector": ".tb-tab",
+      "text": "Build",
+      "name": "01-click-build-tab",
+      "note": "Top nav: Build | Runs | Explore.",
+      "skipIfVisible": ".rot"
+    },
+    {
+      "action": "waitFor",
+      "selector": "[data-pg=\"Build\"][data-on=\"1\"]",
+      "state": "visible",
+      "name": "02-build-page-active",
+      "note": "Build page host is the active one.",
+      "skipIfVisible": ".rot"
+    },
+    {
+      "action": "moveMouse",
+      "x": 2,
+      "y": 2,
+      "name": "03-park-cursor",
+      "note": "No hover state may be baked into a baseline."
+    },
+    {
+      "action": "blur",
+      "name": "04-drop-focus",
+      "note": "No focus ring may be baked into a baseline."
+    },
+    {
+      "action": "settle",
+      "name": "05-settled",
+      "note": "Burn the fixed virtual-time budget again so streaming/animated content lands on its deterministic end state."
+    }
+  ]
+}

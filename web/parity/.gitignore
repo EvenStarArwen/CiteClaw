@@ -1,0 +1,8 @@
+node_modules/
+runs/
+
+# The repo root .gitignore has a blanket `build/` rule (meant for compiled
+# output). Our baseline gallery stores screens as <run>/<screen-name>/, and the
+# demo's pipeline screen is legitimately named "build" — without this negation
+# the entire committed baseline disappears silently. Do not remove.
+!baseline/**
