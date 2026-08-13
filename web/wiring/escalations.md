@@ -629,3 +629,215 @@ listener, ResizeObserver and scrim — exactly as in the demo — and zero pixel
 **Needs from the product owner.** The `E-DIS-07` answer. If the `cards` variant
 is dead, deleting it is a one-line change to `BuildSidebar.tsx` plus a re-run of
 the parity gate (which should stay green).
+
+---
+
+## 复盘日志 lane (`E-LOG-*`) — 2026-08-13
+
+### E-LOG-01 — 运行配置快照里的 mirror 密钥没被脱敏，且随下载包发给每个租户
+
+**严重度：安全（密钥泄漏）。建议优先于 B7 提案本身处理。**
+
+**What.** `web/live/backend/run_manager.py:1053` 每个 run 都往 run 目录写一份
+`pipeline_config.json`（`Settings.model_dump(mode="json")`）。脱敏靠
+`run_manager.py:28` 的正则：
+
+```python
+_SECRET_KEY_RE = re.compile(r"(api_key|secret|token|password)$", re.I)
+```
+
+实测该正则对 `Settings` 各字段的判定：
+
+| 字段 | 脱敏？ |
+|---|---|
+| `s2_api_key` / `gemini_api_key` / `openai_api_key` / `openalex_api_key` / `llm_api_key` | ✅ 是 |
+| **`s2_mirror_key`** | ❌ **否** |
+| **`s2orc_mirror_key`** | ❌ **否** |
+
+这两个字段确实是密钥，engine 自己就是这么定性的——`src/citeclaw/config.py:297-313`
+的 `_FORBIDDEN_YAML_KEYS` 把 `s2_mirror_key` / `s2orc_mirror_key` 和其他 API key
+并列，明令**禁止出现在 YAML 里、只能走环境变量**（`config.py:324, 326` 读
+`S2_MIRROR_KEY` / `S2ORC_MIRROR_KEY`）。
+
+**为什么这次比较糟。** 泄漏面不止本地文件：
+
+1. `web/public/backend/runs_fs.py:29` 把 `pipeline_config.json` 登记为可下载 artifact
+   （key `"config"`），`_ZIP_NAMES` 把它打进 run bundle 的 zip。
+2. 该 zip 的 README（`runs_fs.py:45`）写的是
+   `pipeline_config.json    The exact pipeline config used (API keys redacted).`
+   —— **对使用者是一句错误的安全承诺。**
+3. `web/public` 是**邀请码多租户**部署（`PublicRunManager` 直接继承
+   `web.live.backend.run_manager.RunManager`），mirror key 是**服务端自有的、全租户共享的**
+   基础设施凭据（`CLAUDE.md` 记录其部署形态为 Modal secret）。也就是说：任意租户跑一个
+   run、点一次 Download，就拿到服务器的 S2 mirror 凭据。
+
+本地 `.env.local` 目前只设了 `S2_API_KEY`，所以**本机 CLI 复现不到**；
+触发条件是部署环境按 `CLAUDE.md` 的说明设了 `S2_MIRROR_KEY` / `S2ORC_MIRROR_KEY`
+（公开版正是这么配的）。
+
+**Not changed.** 本 lane 是 docs-only，且 `web/live/backend` 不在本 lane 的提交范围内，
+按 bug policy 这也不是"孤立小 bug"（影响面是多租户凭据），所以**没有动手**。
+
+**Needs from the product owner.** 一个修复授权。修法很短，建议同时做三件：
+
+1. 把正则放宽到 `(api_key|_key|secret|token|password)$`（注意 `*_env` 字段
+   `run_manager.py:36` 已有的白名单要保留——它存的是环境变量**名**不是值）；
+   或者改成白名单式：以 `Settings` 上明确标注的 secret 字段集合为准
+   （`config.py:_FORBIDDEN_YAML_KEYS` 已经是现成的那张表，两处应该共用一个来源，
+   免得下次加字段再漏一个）。
+2. 加一条单测钉住"`_FORBIDDEN_YAML_KEYS` 里的每个字段都必须被 `_scrub_secrets` 命中"。
+3. 已经生成过的 `runs/webui/*/pipeline_config.json` 需要排查/清理（若部署环境曾设过
+   mirror key），且 mirror key 视情况轮换。
+
+---
+
+### E-LOG-02 — 下载包 README 承诺 `rejections.json` 含"人话原因"，实际不含
+
+**What.** `web/public/backend/runs_fs.py:39-41` 的 bundle README：
+
+```
+rejections.json    Every rejected paper, with the filter/category
+                   and the human reason it was screened out.
+```
+
+实际 `_write_rejections_json`（`src/citeclaw/steps/finalize.py:25-70`）读的是
+`ctx.rejection_ledger`，只有**桶名**：
+
+```json
+"795dc87b…": {"categories": ["year"], "title": "UniRef clusters: …", "year": 2014}
+```
+
+人话 `reason`（如 `"year 2014 < min 2018"`）确实存在，但只写进
+`ctx.rejection_details`（`filters/runner.py:302-314`），**只喂给 live 侧的 Rejected 面板**
+（`web/live/backend/snapshots.py:143-194`），从不落盘。README 描述的是内存里那份，
+不是文件里那份。
+
+**Not changed.** 两个修法方向互斥，是产品决策不是 bug 修复：
+(a) 改 README 措辞使其属实；(b) 让 `rejections.json` 真的带上 reason —— 也就是
+`runlog-proposal.md` 的 **R3**。若 R3 获批，本条自动消失，README 反而变成正确的。
+
+**Needs from the product owner.** 与 R3 一并裁决即可；若 R3 不批，则需要单独授权改
+README 文案（`runs_fs.py` 不在本 lane 提交范围内）。
+
+---
+
+## Backend lane (`E-BE-*`) — 2026-08-13
+
+Raised while writing `backend-architecture.md` and `api-contract.md`. This lane
+wrote documentation only; no code was written or changed anywhere.
+
+### E-BE-01 — the new server needs a dev proxy entry in `web/app/vite.config.ts`
+
+**What.** `backend-architecture.md` DECISION-A5 serves the built SPA from the
+Python server on one origin in production (no CORS, the one genuinely good
+property of the old `web/live` setup). In development the front end runs on
+Vite at 5273 and the API lives on 8788, which are different origins. The clean
+fix is a `server.proxy` entry in `web/app/vite.config.ts` mapping `/api` and
+the WebSocket path to `http://localhost:8788`.
+
+**Not changed.** `web/app/**` is owned by the frontend lane and this lane is
+forbidden from touching it. The file also carries a comment pinning the ports
+for the parity harness, so an uncoordinated edit could break screenshot
+tooling.
+
+**Needs from the product owner / frontend lane.** Permission for the frontend
+lane to add the proxy block, and confirmation of the API port (8788 proposed).
+The alternative — enabling CORS on the server for the dev origin only — works
+but means the dev and production request paths differ, which is exactly how
+"works in dev, 404 in production" bugs are born.
+
+### E-BE-02 — the Settings screen has no Anthropic key row, but the model menu offers two Claude models
+
+**What.** `Settings.dc.html` has exactly three key fields: OpenAI, Gemini,
+Semantic Scholar. The default-screening-model dropdown lists an Anthropic group
+containing `claude-haiku-4` and `claude-sonnet-4`. As designed, selecting either
+can never work — there is nowhere to put the credential. The decisions ledger
+Q12 chose "wire Anthropic in", which makes the missing row blocking rather than
+cosmetic.
+
+**Not changed.** Adding a fourth key row changes the Settings panel's
+appearance.
+
+**Needs from the product owner.** Approval for a fourth key row (`Anthropic API
+key`, placeholder in the same style as the others, same eye toggle and status
+chip), routed through the design batch so it matches the existing three. The
+contract already reserves `keys.anthropic` (`api-contract.md` §3.1) so the
+server side is ready either way.
+
+### E-BE-03 — the new-project wizard's third step has no mechanical translation
+
+**What.** Wizard step 3 asks three questions: `Paper types`
+(Methodological only / Include applications), `Preprints` (Include / Exclude),
+`Surveys & tutorials` (Include / Exclude). Two of them map cleanly onto engine
+features — preprints are a venue predicate the engine already has as a preset.
+The other two are prose intentions with no metadata equivalent: deciding whether
+a paper is "methodological" or "a survey" is an LLM screening judgement, so the
+wizard answers have to become generated LLM criteria text.
+
+**Not changed.** No wording was invented. `api-contract.md` DECISION-B8 records
+the mapping as proposed but explicitly unresolved.
+
+**Needs from the product owner.** Sign-off on the generated criteria text, since
+it silently shapes every run started from the wizard, and a ruling on whether
+that text is visible and editable in Build afterwards (the honest option) or
+hidden (the tidy one).
+
+### E-BE-04 — both Semantic Scholar keys are net-negative, and the citation feature is planned around that
+
+**What.** The citation-statement feasibility work measured both of the user's S2
+API keys against anonymous access, A/B/A, same URL, same interval. Anonymous
+won by roughly two to one: 15/15 successes keyless at a 1.05 s interval against
+11/20 with the key, and the 429 rate was non-monotonic in the interval, which
+indicates a congested or over-quota bucket rather than a clean rate limiter.
+Neither key returns 403, so neither is invalid. `api-contract.md` DECISION-B30
+therefore specifies the citation fetch runs **keyless**, which is a workaround
+that will look like a mistake to anyone reading the code later.
+
+**Not changed.** No key was modified, and no key material appears in any file
+this lane wrote.
+
+**Needs from the product owner.** Two things: (a) take both keys to the Semantic
+Scholar dashboard to check quota status or request new ones, and (b) a decision
+on the medium-term move to the `citations` bulk dataset, which is the same data
+with no rate limit and an ODC-BY licence that permits redistribution. Until one
+of those happens, the corpus-wide citation fetch for a 354-paper run takes
+roughly three minutes of wall clock at one request per second, done once and
+cached.
+
+### E-BE-05 — Explore's Download menu offers a Literature review export that cannot exist
+
+**What.** The Explore download menu has three items: `Corpus papers` (CSV),
+`Literature review` (Markdown, "the current draft"), `Full bundle`. The
+literature review is produced by the agent panel, which the ledger's Q5 rules
+out of scope for this phase. The item therefore points at a document that is
+never created.
+
+**Not changed.** Hiding or disabling a menu item is an appearance change.
+
+**Needs from the product owner.** Whether the item is hidden this phase, or
+shown disabled with an explanation. Returning an empty file is not offered as an
+option: the demo's downloads already flash "Preparing download" and produce
+nothing, and repeating that against a real download route would be worse than
+the demo.
+
+### E-BE-06 — the front end's DataSource contract forbids pagination, and two panels need it
+
+**What.** `web/app/src/data/types.ts` states as a design rule that provider
+methods return whole collections, because *"The demo has no pagination anywhere;
+inventing it here would be designing UI that does not exist."* That is right for
+topics, communities and graph edges. It is not right for the two paper panels:
+the demo's Runs screen synthesises 17,440 rejected papers at startup and pages
+them in memory, and both the Runs and Build lists have real pagers on screen
+(`.rp-pager`, `.sb-pgmore`). Serving 17,440 rows with abstracts over HTTP to
+populate a client-side pager is the one place where following the rule literally
+would hurt.
+
+**Not changed.** `web/app/**` is not this lane's to edit, and the rule as written
+is a good rule.
+
+**Needs from the product owner / frontend lane.** Agreement that
+`getRejected(...)` and `getCorpusPapers(...)` may take `{offset, limit, sort,
+query}` and return the standard `{items, total, offset, limit}` envelope
+(`api-contract.md` §1.3), with the existing whole-collection methods left as they
+are. No pixel changes: the pagers already exist and already show
+`1–8 of 343`-style counts.
