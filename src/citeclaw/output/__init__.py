@@ -1,9 +1,10 @@
-"""Output writers: JSON / BibTeX / GraphML."""
+"""Output writers: JSON / BibTeX / GraphML / group tables."""
 
 from __future__ import annotations
 
 from citeclaw.output.bibtex_writer import write_bibtex
 from citeclaw.output.graphml_writer import export_graphml
+from citeclaw.output.groups import write_group_artifacts
 from citeclaw.output.json_writer import (
     build_output,
     with_iteration_suffix,
@@ -18,4 +19,5 @@ __all__ = [
     "with_iteration_suffix",
     "write_bibtex",
     "export_graphml",
+    "write_group_artifacts",
 ]

@@ -14,6 +14,7 @@ from citeclaw.output import (
     export_graphml,
     with_iteration_suffix,
     write_bibtex,
+    write_group_artifacts,
     write_json,
     write_run_state,
 )
@@ -283,6 +284,17 @@ class Finalize:
 
         dash.begin_phase("write graphs · citation + collab", total=1)
         write_graphs(ctx, suffix="")
+        dash.tick_inner(1)
+
+        # Topic-map coordinates + topic / community tables. A no-op when
+        # the pipeline had no Cluster step; wrapped like rejections.json
+        # because a group-artifact failure must not cost the user the
+        # collection + graphml that already made it to disk.
+        dash.begin_phase("write group artifacts", total=1)
+        try:
+            write_group_artifacts(ctx)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("group artifact write failed: %s", exc)
         dash.tick_inner(1)
 
         dash.begin_phase("write rejections", total=1)

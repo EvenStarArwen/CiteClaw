@@ -12,6 +12,13 @@ dependencies = [
     "pydantic>=2.5,<3",
     "pydantic-settings>=2.1,<3",
     "python-igraph>=0.11,<1",
+    # Reference Leiden implementation (Traag et al.) behind the ``leiden``
+    # clusterer. Core, not an extra: Leiden is the default community
+    # algorithm the Explore UI groups papers by, and it is a thin C++
+    # extension on top of python-igraph, which is already a core dep.
+    # Verified against 0.11.0 — that build reproduces the design
+    # hand-off fixture's community assignment exactly (seed=42).
+    "leidenalg>=0.10,<1",
     "tenacity>=8.2,<10",
     "openai>=1.10,<2",
     "google-genai>=1.0,<2",

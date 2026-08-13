@@ -11,7 +11,13 @@ The registry is a flat string ↔ class mapping consumed by
 
 from __future__ import annotations
 
-from citeclaw.cluster.base import Clusterer, ClusterMetadata, ClusterResult
+from citeclaw.cluster.base import (
+    Clusterer,
+    ClusterMetadata,
+    ClusterResult,
+    relabel_by_size,
+)
+from citeclaw.cluster.leiden import LeidenClusterer
 from citeclaw.cluster.louvain import LouvainClusterer
 from citeclaw.cluster.topic_model import TopicModelClusterer
 from citeclaw.cluster.walktrap import WalktrapClusterer
@@ -19,6 +25,7 @@ from citeclaw.cluster.walktrap import WalktrapClusterer
 CLUSTERER_REGISTRY: dict[str, type] = {
     "walktrap":    WalktrapClusterer,
     "louvain":     LouvainClusterer,
+    "leiden":      LeidenClusterer,
     "topic_model": TopicModelClusterer,
 }
 
@@ -54,7 +61,9 @@ __all__ = [
     "ClusterResult",
     "WalktrapClusterer",
     "LouvainClusterer",
+    "LeidenClusterer",
     "TopicModelClusterer",
     "CLUSTERER_REGISTRY",
     "build_clusterer",
+    "relabel_by_size",
 ]

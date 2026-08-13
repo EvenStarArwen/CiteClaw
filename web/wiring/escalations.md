@@ -841,3 +841,78 @@ query}` and return the standard `{items, total, offset, limit}` envelope
 (`api-contract.md` §1.3), with the existing whole-collection methods left as they
 are. No pixel changes: the pagers already exist and already show
 `1–8 of 343`-style counts.
+
+---
+
+## Status ledger — rollout 前置整备 (2026-08-14)
+
+The file's rule is *append, never rewrite*, so the product owner's rulings on
+open entries are recorded here rather than edited into the entries above. An
+entry not listed here is still open.
+
+| id | status (2026-08-14) | ruling |
+|---|---|---|
+| `E-IMP-02` — file input / folder drop | **approved-keep** (the `multiple` attribute) | Round 4, decisions-ledger: *"文件多选：保留 multiple（用户认可'做得对'）"*. The **folder** half of E-IMP-02 (options a/b/c) is still open. |
+| `E-DIS-06` — `Run pipeline` has no handler | **confirmed bug; gets real behaviour in the wiring phase** | Round 4, decisions-ledger: the product owner confirms the dead CTA is a demo bug, not a design intent. Wiring must make it start a run. Its busy / disabled / failure states are **design states pending** — they go to the design batch, and until they exist the wiring phase has nothing to render for them (`missing-states.md` MS-BLD-03). |
+
+### E-IMP-02 addendum — `multiple` is not a rewrite deviation (measured 2026-08-14)
+
+The Build pilot's independent verification flagged `<input type="file" multiple>`
+in `BuildSidebar.tsx` as an unapproved behaviour change. It is not: the attribute
+is in the demo's own template, twice —
+
+```
+web/design-reference/embedded-sources/Paper Card.dc.html:1603
+web/design-reference/embedded-sources/Paper Card.dc.html:1883
+  <input class="sbi-file" type="file" multiple style="display:none;">
+```
+
+(two occurrences because the sidebar ships in two variants, `E-BLD-04`/`E-DIS-07`).
+The generator emits it as `multiple={true}` because `multiple` is a boolean
+attribute. So the rewrite is verbatim here, and the approved-keep ruling records
+a decision that also happens to be the faithful one. No code change was needed.
+
+### E-BLD-05 — the dc-runtime's per-element `data-dc-tpl` bookkeeping is not reproduced
+
+**What.** The dc-runtime stamps `data-dc-tpl="<pre-order index>"` onto **every**
+element it renders (`support.js` `compileTemplate`), and wraps every mounted
+component in a `<div class="sc-host" data-sc-name="<component>" data-dc-tpl="…">`
+(`support.js:1031-1038`). The rewrite now reproduces the **wrapper** nodes
+verbatim (`BuildScreen.tsx`), but not the per-element index on the ~4 000
+transplanted elements.
+
+**Why it is recorded rather than done.** The index is the compiler's own
+bookkeeping: it is not selected by any stylesheet (grepped across all seven
+screens' `<style>` blocks and the shell's), not read by any page script, and its
+value is meaningful only inside a dc-runtime template. Reproducing it would add
+one attribute to every generated line for no observable behaviour. It is
+recorded because it is the one remaining **DOM** difference between the demo and
+the rewrite on a rewritten screen, and a future DOM-level (rather than pixel-
+level) parity check has to know it is deliberate.
+
+**Not changed.** No appearance or behaviour difference; zero pixels.
+
+### E-ENG-01 — 分支上有 2 个**先于本次改动**就红的 pytest（ExpandByPDF 提取器）
+
+**What.** `wiring/omniknowledge-0813` 上 `pytest` 当前不是全绿：
+
+```
+FAILED tests/test_expand_by_pdf.py::TestExtractPdfReferences::test_skips_entries_without_title
+FAILED tests/test_expand_by_pdf.py::TestExpandByPDFWithScreener::test_screener_rejects_some
+```
+
+**Why it is pre-existing, not B5's.** `git diff HEAD` 对
+`src/citeclaw/steps/_pdf_reference_extractor.py`、`src/citeclaw/steps/expand_by_pdf.py`、
+`tests/test_expand_by_pdf.py` 三者**均为空**（B5 一个字节没碰）。失败原因是产品语义
+被改过而测试没跟：`_pdf_reference_extractor.py:358-363` 现在有明确注释
+"Empty title is tolerated —— 某些参考文献样式没有独立标题，改用 `reference_text`
+去 S2 检索"，但测试仍断言空标题条目应被丢弃（`assert len(...) == 1`，实际 2）。
+应是 `5f7e1ad`（extraction 重构）一带的遗留。
+
+**Why escalated rather than self-fixed.** 不符合「孤立小 bug」标准：要判定的是
+"空标题参考文献到底该不该保留"这一产品语义，属 ExpandByPDF 工作项的裁决范围；
+改测试还是改实现是两种相反的结论，B5 无权替它选。
+
+**Impact.** 任何要求「pytest 必须全绿」的 agent 都会被这两条挡住，需要知道它们是
+既有红灯。B5 自己新增的 4 个测试文件全绿，且未使既有测试变红
+（1416 passed / 2 failed / 1 skipped，两条 failed 均为上述）。

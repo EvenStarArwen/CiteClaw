@@ -14,6 +14,13 @@ The imports are deferred to :meth:`cluster` so the package keeps loading
 on installs that don't have them — only constructing and *running* the
 clusterer fails.
 
+Two reductions run, deliberately: HDBSCAN clusters in ``n_components=5``
+(density estimation behaves better there), and a *second*, display-only
+UMAP fit projects the same vectors to 2D for the topic map. The 2D
+coordinates ride back on ``ClusterResult.coords_2d`` and are persisted by
+:mod:`citeclaw.output.groups`; the 5D clustering path is unchanged, so
+cluster assignments are identical to before coordinates existed.
+
 Topic *naming* (label, summary, top keywords) is intentionally not part of
 this clusterer. The :class:`~citeclaw.steps.cluster.Cluster` step runs an
 algorithm-agnostic naming pipeline (c-TF-IDF + optional LLM call) over any
@@ -100,6 +107,122 @@ def _compute_cluster_params(n: int, *, size_factor: float = 1.0) -> dict[str, in
         "min_samples": max(1, int(0.2 * mcs)),
         "n_neighbors": max(5, min(30, n // 50)),
     }
+
+
+#: Side length of the square the 2D topic map is normalised into, and the
+#: margin kept clear on every edge. Reverse-engineered from the design
+#: hand-off fixture ``web/design-reference/uploads/run37/accepted.csv``,
+#: whose ``x`` spans exactly [25.0, 975.0] and whose ``y`` is centred on
+#: 500.0 with a shorter span — i.e. a single aspect-preserving scale, not
+#: a per-axis min-max stretch. Matching it means engine output drops
+#: straight into the UI's coordinate space with no rescaling shim.
+COORD_BOX = 1000.0
+COORD_PAD = 25.0
+
+
+def normalize_to_box(
+    points: list[tuple[float, float]],
+    *,
+    box: float = COORD_BOX,
+    pad: float = COORD_PAD,
+    ndigits: int = 2,
+) -> list[tuple[float, float]]:
+    """Scale 2D points into a ``[pad, box - pad]`` square, aspect preserved.
+
+    One shared scale factor is applied to both axes (so the projection is
+    not sheared) and the result is centred on ``box / 2``. The longer axis
+    therefore exactly fills the padded square while the shorter axis sits
+    centred inside it — the geometry the run37 fixture exhibits.
+
+    Degenerate inputs are handled rather than divided by: a single point,
+    or a set with zero extent on both axes, collapses to the box centre.
+    Values are rounded to ``ndigits`` so the CSV is stable byte-for-byte
+    across platforms with different float repr.
+    """
+    if not points:
+        return []
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    span = max(max(xs) - min(xs), max(ys) - min(ys))
+    centre = box / 2.0
+    if span <= 0:
+        return [(round(centre, ndigits), round(centre, ndigits)) for _ in points]
+    scale = (box - 2 * pad) / span
+    cx = (max(xs) + min(xs)) / 2.0
+    cy = (max(ys) + min(ys)) / 2.0
+    return [
+        (
+            round(centre + (x - cx) * scale, ndigits),
+            round(centre + (y - cy) * scale, ndigits),
+        )
+        for x, y in points
+    ]
+
+
+def project_2d(
+    ids: list[str],
+    vectors: list[list[float]],
+    *,
+    n_neighbors: int = 15,
+    min_dist: float = 0.0,
+    metric: str = "cosine",
+    random_state: int = 42,
+    box: float = COORD_BOX,
+    pad: float = COORD_PAD,
+) -> dict[str, tuple[float, float]]:
+    """UMAP-project ``vectors`` to 2D display coordinates keyed by paper id.
+
+    This is deliberately a *separate* reduction from the one that feeds
+    HDBSCAN. Clustering runs in 5D (``n_components=5``) because density
+    estimation is better behaved there; a 2D map is what the user looks
+    at. Running one UMAP and reusing its output for both would change
+    every existing cluster assignment, so the 5D path is untouched and
+    this adds a second, display-only fit (~1 s on a 354-paper corpus).
+
+    ``random_state`` is pinned, which forces UMAP single-threaded and
+    therefore reproducible — the same corpus always lands on the same
+    map, so a user's mental picture of "the cluster over there on the
+    right" survives a re-run.
+
+    Returns ``{}`` — never raises — when the extras are missing, when
+    there are too few points to embed (< 3), or when UMAP itself trips
+    on a degenerate corpus; the caller treats an empty dict as "no topic
+    map this run" and the artifact writer omits the coordinate columns.
+    """
+    if len(ids) < 3:
+        log.info("project_2d: %d points is too few to embed; no coordinates", len(ids))
+        return {}
+    try:
+        import numpy as np
+        import umap
+    except ImportError:
+        log.warning("project_2d: %s; no 2D coordinates emitted", _EXTRAS_HINT)
+        return {}
+    try:
+        reducer = umap.UMAP(
+            n_neighbors=min(n_neighbors, max(2, len(ids) - 1)),
+            n_components=2,
+            min_dist=min_dist,
+            metric=metric,
+            random_state=random_state,
+        )
+        raw = reducer.fit_transform(np.asarray(vectors, dtype=np.float32))
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "project_2d: UMAP 2D projection failed (%s); no coordinates emitted", exc,
+        )
+        return {}
+    pts = [(float(r[0]), float(r[1])) for r in raw]
+    if not all(_is_finite(p) for p in pts):
+        log.warning("project_2d: UMAP returned non-finite coordinates; discarding")
+        return {}
+    return dict(zip(ids, normalize_to_box(pts, box=box, pad=pad)))
+
+
+def _is_finite(point: tuple[float, float]) -> bool:
+    """True when both components are neither NaN nor +/-inf."""
+    x, y = point
+    return x == x and y == y and abs(x) != float("inf") and abs(y) != float("inf")
 
 
 def cluster_embeddings(
@@ -232,6 +355,11 @@ class TopicModelClusterer:
         # size_factor < 1 shrinks adaptive min_cluster_size + min_samples;
         # ExpandBySearch passes 0.5. Ignored when min_cluster_size is pinned.
         size_factor: float = 1.0,
+        # Emit a display-only 2D UMAP projection alongside the 5D
+        # clustering reduction (see :func:`project_2d`). Costs one extra
+        # UMAP fit; set False on hot paths (e.g. ExpandBySearch's inline
+        # clustering) that only need membership.
+        emit_coords_2d: bool = True,
     ) -> None:
         self.n_neighbors = n_neighbors
         self.n_components = n_components
@@ -243,11 +371,12 @@ class TopicModelClusterer:
         self.hdbscan_metric = hdbscan_metric
         self.cluster_selection_method = cluster_selection_method
         self.size_factor = size_factor
+        self.emit_coords_2d = emit_coords_2d
 
     def cluster(self, signal, ctx) -> ClusterResult:
         """Fetch SPECTER2 embeddings and cluster them via UMAP → HDBSCAN.
 
-        Seven-step pipeline: (1) batch-fetch embeddings from the S2
+        Eight-step pipeline: (1) batch-fetch embeddings from the S2
         client (cache-warm — only newly-seen IDs hit the network),
         (2) split papers by embedding availability, (3) short-circuit
         to all-noise when there are fewer papers than
@@ -255,7 +384,8 @@ class TopicModelClusterer:
         dims, (5) HDBSCAN with the effective parameters resolved from
         adaptive + caller overrides, (6) build the ``paper_id → cid``
         map (``-1`` for noise and papers without embeddings), (7)
-        derive per-cluster sizes (excluding noise).
+        derive per-cluster sizes (excluding noise), (8) run the
+        display-only 2D UMAP and attach ``coords_2d``.
         """
         try:
             import numpy as np
@@ -351,14 +481,33 @@ class TopicModelClusterer:
             sizes[cid] = sizes.get(cid, 0) + 1
         metadata = {cid: ClusterMetadata(size=n) for cid, n in sizes.items()}
 
+        # 8. Display-only 2D projection. Separate UMAP fit from the 5D
+        #    clustering reduction above (see project_2d's docstring) —
+        #    the 5D path and therefore every cluster assignment is
+        #    byte-identical to what this clusterer produced before.
+        #    Papers with no SPECTER2 vector get no coordinate at all
+        #    rather than a fake one; the artifact writer leaves their
+        #    x/y cells empty.
+        coords_2d: dict[str, tuple[float, float]] = {}
+        if self.emit_coords_2d:
+            coords_2d = project_2d(
+                kept_ids, kept_vectors,
+                n_neighbors=n_neighbors,
+                min_dist=self.min_dist,
+                metric=self.umap_metric,
+                random_state=self.random_state,
+            )
+
         log.info(
-            "topic_model: %d papers, %d clusters, %d noise",
+            "topic_model: %d papers, %d clusters, %d noise, %d 2D coords",
             len(kept_ids),
             len(sizes),
             sum(1 for cid in membership.values() if cid == -1),
+            len(coords_2d),
         )
         return ClusterResult(
             membership=membership,
             metadata=metadata,
             algorithm=self.name,
+            coords_2d=coords_2d,
         )
