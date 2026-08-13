@@ -170,3 +170,50 @@ error branch: with a real backend, a failed or partially-failed add has no
 design. Nor is there a state for a partial add (12 of 15 accepted).
 
 ---
+
+## Scaffold lane (`MS-SCAF-*`) — 2026-08-13
+
+Noticed while standing up `web/app/`.
+
+### MS-SCAF-01 — fonts come from a remote CDN and there is no state for them not arriving
+
+Every screen loads its typefaces from `fonts.googleapis.com` /
+`fonts.gstatic.com` with `display=swap`. The demo has no offline, blocked or
+slow-CDN state.
+
+This one is sharper than it looks, because the agreed deployment for this phase
+is **local only** (decisions ledger Q16). On a machine without internet — or
+behind a network that blocks Google Fonts, which is the normal case in parts of
+the world this will run in — the entire UI silently falls back to
+`-apple-system` and a default serif. Nothing is broken enough to notice at a
+glance; the layout just quietly stops matching the design, because Newsreader
+and Hanken Grotesk have different metrics from the fallbacks.
+
+There is no design for: fonts still loading, fonts failed, running with
+fallbacks. Related hardening item: self-hosting the two families, in
+`hardening-todo.md` (H-SCAF-01).
+
+### MS-SCAF-02 — no state for "the screen itself is still arriving"
+
+The demo preloads all seven screens into one document, so switching screens is
+instant and no loading state was ever needed. The rewrite necessarily
+code-splits per screen (and, once wired, waits on the backend for the data the
+screen renders). There is no designed state for the gap between "user tapped
+Runs" and "Runs can paint" — neither a skeleton, nor a spinner, nor a rule that
+says the old screen stays until the new one is ready.
+
+The scaffold currently renders `null` during that gap, which is a placeholder,
+not a decision.
+
+### MS-SCAF-03 — nothing is designed below the shell's minimum width
+
+The shell root is `min-width:1024px`, and the rotate invite appears when the
+root's own width drops under 1160 px. Between 1024 and 1160 the invite covers
+the screen, which is the designed behaviour. **Below** 1024 px the root stops
+shrinking and the page scrolls horizontally instead — the invite is still
+displayed, but it is now inside a box wider than the window, so it is
+off-centre and can be scrolled away from.
+
+There is no phone layout and no designed narrow state; the demo simply assumes
+the frame is at least iPad-wide. Worth a decision before anyone opens this on a
+phone.
