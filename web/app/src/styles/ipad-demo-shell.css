@@ -1,0 +1,23 @@
+
+  html, body { height:100%; margin:0; background:#ece5d8; }
+  .pg { position:absolute; inset:0; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .22s ease, visibility 0s linear .22s; }
+  .pg[data-on="1"] { opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease, visibility 0s; }
+  a { color:#cc785c; text-decoration:none; }
+  a:hover { color:#b3624a; }
+  /* iPad demo hardening: no tap flash, no rubber-band, no double-tap zoom on controls */
+  html, body { overscroll-behavior:none; -webkit-text-size-adjust:100%; }
+  * { -webkit-tap-highlight-color:transparent; }
+  button, [role="button"], .tb-tab { touch-action:manipulation; }
+  /* landscape-only demo: a narrow frame gets a rotate invite instead of a broken layout */
+  .rot { position:absolute; inset:0; z-index:140; display:none; flex-direction:column; align-items:center; justify-content:center; gap:15px; padding:56px; text-align:center; background:#ece5d8; }
+  .rot .rot-t{ color:#1a1917; }
+  .rot .rot-s{ color:#7c776d; }
+  body:has(.pc-root[data-theme=dark]) .rot{ background:#161513; }
+  body:has(.pc-root[data-theme=dark]) .rot .rot-t{ color:#ece7db; }
+  body:has(.pc-root[data-theme=dark]) .rot .rot-s{ color:#948e81; }
+  [data-rot="1"] .rot { display:flex; }
+  /* hidden demo-state switcher (5 taps on the logo) */
+  .dsw { position:absolute; inset:0; z-index:200; display:none; align-items:center; justify-content:center; background:rgba(26,25,23,.34); }
+  .dsw[data-open="1"] { display:flex; }
+  .dsw-b { min-width:0; padding:9px 3px; border:none; background:none; border-radius:8px; font-family:inherit; font-size:11.5px; font-weight:500; color:#6f6a60; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; touch-action:manipulation; }
+  .dsw-b[data-on="1"] { background:#fbfaf7; color:#1a1917; font-weight:600; box-shadow:0 1px 3px rgba(26,25,23,.12); }

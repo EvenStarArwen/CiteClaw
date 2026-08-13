@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Viewport + PWA metas: copied verbatim from the iPad Demo's shell template
+     (bundle __bundler/template). Do not "improve" these — maximum-scale=1 /
+     user-scalable=no are part of the demo's touch behaviour and therefore part
+     of the parity baseline. Logged in web/wiring/hardening-todo.md. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="KnowledgeLab">
+<title>KnowledgeLab</title>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     FONTS — byte-for-byte the same remote refs the iPad Demo resolves.
+
+     The demo mounts all seven screens into ONE document: support.js's helmet
+     manager (createHelmetManager -> compile) appends every screen's <link>
+     into the single document <head>, deduped by href. So the demo's live font
+     environment is the UNION of the four distinct Google Fonts stylesheets
+     below, inserted in screen mount order (Login, Home, Build, Runs, Explore,
+     Settings, System Banners).
+
+     That order is load-bearing: the Build/Runs/Explore links declare Hanken
+     Grotesk as three fixed faces (400;500;600) while the Login/Home/Settings/
+     Banners links declare the variable range (400..700). Those screens do use
+     font-weight:700 (Runs 38x, Explore 42x, Build 13x) and resolve it against
+     the 400..700 face. Dropping any one of these four links changes rendered
+     weights. See src/design-fonts/manifest.ts for the per-screen mapping.
+
+     Kept as REMOTE refs on purpose (the demo's own source refs). Self-hosting
+     is tracked in web/wiring/hardening-todo.md.
+     ───────────────────────────────────────────────────────────────────────── -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400..700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

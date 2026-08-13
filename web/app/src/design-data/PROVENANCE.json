@@ -1,0 +1,136 @@
+{
+  "$comment": "Provenance of every file copied verbatim into web/app. All four sha256 columns must agree; if a copy ever diverges, the copy is wrong. Fix by re-copying, never by editing the copy.",
+  "generatedAt": "2026-08-13",
+  "sourceOfTruth": "KnowledgeLab iPad Demo.html — script[type=\"__bundler/manifest\"], gzip+base64 per asset",
+  "crossChecks": {
+    "designWorkspace": "READ-ONLY session scratchpad ui_design/ (ephemeral)",
+    "inRepoReference": "web/design-reference/embedded-sources/ (durable)",
+    "demoBundleAsset": "decoded from the demo HTML by uuid"
+  },
+  "files": [
+    {
+      "name": "run-mock.js",
+      "destination": "web/app/src/design-data/run-mock.js",
+      "sha256": "c6c30408b4c3b79faf4c99d97b034276bf2ac41ce0d8bcf67c22b5d06d51f88c",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "20766298-7434-479a-b9f2-d2cb05c5ed5a.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "topic-data.js",
+      "destination": "web/app/src/design-data/topic-data.js",
+      "sha256": "00e5835e6e7b966c36d2da62e6ecde5ffb6183fc8233873589903f1c2521631b",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "93739b59-7159-4f55-97cf-e302e1424440.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "graph-data.js",
+      "destination": "web/app/src/design-data/graph-data.js",
+      "sha256": "7e0ff85d3cd25adbd361a84bf6265d9c7f52ca0e348a00d1412c473f528b3e7d",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "3cd772ab-8d9a-440f-a17c-8f1fa6b6c6c9.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "community-data.js",
+      "destination": "web/app/src/design-data/community-data.js",
+      "sha256": "2046f551e38e0738f583ad6bcde2fa517123fbb39fd50a498e9340be2986743f",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "2c004b8c-8045-4160-95c8-1ffcf78116ab.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "citation-context.js",
+      "destination": "web/app/src/design-data/citation-context.js",
+      "sha256": "a0bedf1459e947d721d9c4fc7b6908075c60cb4ea2f9384dd846657f6aaaee26",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "0edca80e-068c-4024-9dd8-d2a3d71879f7.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "paper-row.js",
+      "destination": "web/app/src/design-data/paper-row.js",
+      "sha256": "ba027ba63f36c1aa0d385a5c2528f4b0788e281c766e0e455a525721e9d8631c",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "32514b82-e2eb-4a5e-918b-4b1451885250.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "review-draft.js",
+      "destination": "web/app/src/design-data/review-draft.js",
+      "sha256": "0c945af8a86eed60b3826d745a93d1ed0437fb21129873eb03fdabee0c1db74f",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "f0f5a4e1-8eb2-44a0-b724-c767f7c0475f.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "topic-desc.js",
+      "destination": "web/app/src/design-data/topic-desc.js",
+      "sha256": "3b20460e8aabe75b98f5ee3eec5ed2545ed6c4872404631bfae7b7cddb8e05bf",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": "63d35f9c-6ea7-43ab-9344-2cf995bf21fd.js",
+      "matchesDemoBundle": true
+    },
+    {
+      "name": "explorations-tokens.css",
+      "destination": "web/app/src/styles/explorations-tokens.css",
+      "sha256": "9a4421edffcf4f85e6d0b401b9a739c25ed23782943bd34606b1cb74c62ce306",
+      "matchesAppCopy": true,
+      "matchesDesignReference": "absent",
+      "bundleAsset": null,
+      "matchesDemoBundle": "not-bundled"
+    },
+    {
+      "name": "apple-touch-icon.png",
+      "destination": "web/app/public/apple-touch-icon.png",
+      "sha256": "8b97a41fc5899d312d84c780b93adb15ea8d5756c1d1f830016bc2e6212c27d6",
+      "matchesAppCopy": true,
+      "matchesDesignReference": "absent",
+      "bundleAsset": "624f4a7b-7d8c-4d04-80ba-8d43138671a8.png",
+      "matchesDemoBundle": true
+    }
+  ],
+  "presentInDemoButNotCopiedHere": [
+    {
+      "name": "topic-viz.js",
+      "sha256": "76bd90fb20a128b0890b492ef6ff7d688d2d5a81689c0e75d24dcb442e01feb5",
+      "bundleAsset": "99639a6d-3cd8-4dc2-9000-34219eb05df3.js",
+      "matchesDemoBundle": true,
+      "note": "Screen-level module. A rewrite agent brings it over with the screen that needs it."
+    },
+    {
+      "name": "network-viz.js",
+      "sha256": "dff834c9b6dbea929b77ffcd9dcefdb485a8b38d9798e8942037a28c2e31aaed",
+      "bundleAsset": "1cba74d9-1783-4b41-b2b2-1ab0f029d533.js",
+      "matchesDemoBundle": true,
+      "note": "Screen-level module. A rewrite agent brings it over with the screen that needs it."
+    },
+    {
+      "name": "stream-text.js",
+      "sha256": "0cfc01b94715d13e66c556bd3ec8a52fcccdbd5df3abb02ff8a6d6f0f696035d",
+      "bundleAsset": "27d729f5-3090-43d0-9241-1e87b20152d5.js",
+      "matchesDemoBundle": true,
+      "note": "Screen-level module. A rewrite agent brings it over with the screen that needs it."
+    },
+    {
+      "name": "import-resolver.js",
+      "sha256": "1c3e634cf563a1e11c72745edcf5140d9295657985af2d13dba77157030afc6d",
+      "bundleAsset": "2ecf9128-1a84-435c-b387-00446a358c26.js",
+      "matchesDemoBundle": true,
+      "note": "Screen-level module. A rewrite agent brings it over with the screen that needs it."
+    }
+  ],
+  "notes": [
+    "explorations-tokens.css is NOT carried by the demo bundle and is NOT in web/design-reference/. The demo inlines an equivalent-but-not-identical token block in every screen <style>. See web/app/src/styles/README.md and escalations E-SCAF-01.",
+    "apple-touch-icon.png is bundled by the demo shell and is byte-identical in the workspace."
+  ]
+}
