@@ -15,31 +15,44 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
 <!-- ─────────────────────────────────────────────────────────────────────────
-     FONTS — byte-for-byte the same remote refs the iPad Demo resolves.
+     FONTS — byte-for-byte the same four stylesheets the iPad Demo resolves.
 
      The demo mounts all seven screens into ONE document: support.js's helmet
      manager (createHelmetManager -> compile) appends every screen's <link>
-     into the single document <head>, deduped by href. So the demo's live font
-     environment is the UNION of the four distinct Google Fonts stylesheets
-     below, inserted in screen mount order (Login, Home, Build, Runs, Explore,
-     Settings, System Banners).
+     into the single document <head>, deduped by href, and the bundler rewrites
+     each one into an inline <style>. So the demo's live font environment is the
+     UNION of the four distinct Google Fonts stylesheets below, inserted in
+     screen mount order (Login, Home, Build, Runs, Explore, Settings, System
+     Banners). Verified against the running demo's head: sheets at head indices
+     5, 8, 11 and 15, in that order.
 
      That order is load-bearing: the Build/Runs/Explore links declare Hanken
      Grotesk as three fixed faces (400;500;600) while the Login/Home/Settings/
      Banners links declare the variable range (400..700). Those screens do use
      font-weight:700 (Runs 38x, Explore 42x, Build 13x) and resolve it against
-     the 400..700 face. Dropping any one of these four links changes rendered
-     weights. See src/design-fonts/manifest.ts for the per-screen mapping.
+     the 400..700 face. Dropping any one of these four sheets, or reordering
+     them, changes rendered weights. See src/design-fonts/manifest.ts for the
+     per-screen mapping.
 
-     Kept as REMOTE refs on purpose (the demo's own source refs). Self-hosting
-     is tracked in web/wiring/hardening-todo.md.
+     SELF-HOSTED, and that is not a style decision. The demo does not fetch
+     these at runtime either: its bundler inlined all four stylesheets - woff2
+     payloads and all, as data: URIs - into <style> blocks in the document head.
+     The files under public/design-fonts/ are those four blocks, extracted from
+     the running demo byte-for-byte, in the demo's own head order. Keeping
+     remote <link>s here would have made the rewrite depend on fonts.googleapis
+     .com when the demo does not: every capture would vary with the network,
+     an offline/blocked deployment would silently fall back to system fonts
+     (MS-SCAF-01), and the parity harness - which aborts unmirrored external
+     requests - renders the whole screen in fallback metrics. Measured: with
+     remote links the sidebar laid out 4px shorter than the demo.
+
+     Do not re-point these at Google, and do not merge or reorder the four
+     files. Regenerate them from the demo, never edit them.
      ───────────────────────────────────────────────────────────────────────── -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400..700&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/design-fonts/newsreader-roman__hanken-variable.css">
+<link rel="stylesheet" href="/design-fonts/newsreader-roman__hanken-fixed.css">
+<link rel="stylesheet" href="/design-fonts/newsreader-italic__hanken-fixed.css">
+<link rel="stylesheet" href="/design-fonts/hanken-variable.css">
 </head>
 <body>
 <div id="root"></div>

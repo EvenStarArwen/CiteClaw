@@ -1,0 +1,23 @@
+/* demo-style-hover.css — GENERATED, do not hand-edit.
+ *
+ * The dc-runtime directive `style-hover="…"` on an element in a demo template
+ * is compiled away by support.js: the element gets a generated class and the
+ * runtime inserts `.<class>:hover { …!important }` into the CSSOM. Nothing in
+ * the rewrite reads the attribute, so the rule has to exist as real CSS.
+ *
+ * The declarations below are transplanted verbatim from the demo templates;
+ * only the class names differ (hash of the declaration text instead of
+ * support.js's global scp0/scp1/… counter, so the same declaration collapses to
+ * the same class across screens without a shared counter).
+ *
+ * `!important` is load-bearing: every one of these elements sets the same
+ * property in its own inline `style`, which a plain `:hover` rule would lose to.
+ *
+ * Regenerate with scripts/generate-build-jsx.mjs.
+ */
+.dsh-1c12969d:hover{background:var(--primary-hover) !important;}
+.dsh-2b56a642:hover{background:var(--row-hover) !important;}
+.dsh-719f347d:hover{background:var(--row-hover) !important;color:var(--fg) !important;border-color:var(--muted2) !important;}
+.dsh-a31ff225:hover{background:var(--error-bg) !important;color:var(--error) !important;}
+.dsh-bc26f658:hover{background:var(--row-hover) !important;color:var(--fg) !important;}
+.dsh-ccb3a0e3:hover{border-color:var(--fg2) !important;box-shadow:0 6px 18px rgba(var(--sh),.07) !important;}

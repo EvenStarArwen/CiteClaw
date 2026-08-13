@@ -16,6 +16,7 @@
 import { Suspense } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { DemoViewport } from '../components/DemoViewport';
+import { applyDemoCrossScreenState } from '../parity/demoCrossScreenState';
 import { useDataSource } from '../data';
 import {
   PARITY_SCREENS,
@@ -55,6 +56,10 @@ export default function ParityRoute() {
 
   if (screen) {
     const Screen = screen.component;
+    // The demo mounts all seven screens in one document and some of them talk
+    // to each other; the playground mounts one. See parity/demoCrossScreenState
+    // for what this publishes and why it must not live inside a screen.
+    applyDemoCrossScreenState();
     return (
       <DemoViewport size={size}>
         <Suspense fallback={null}>

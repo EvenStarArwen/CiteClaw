@@ -3,3 +3,10 @@ dist/
 .vite/
 *.tsbuildinfo
 .DS_Store
+
+# The repo root .gitignore has a bare `build/` rule (for Python/packaging build
+# output). It matches src/screens/build/ — the entire Build SCREEN — and silently
+# drops it from every commit. Re-include it explicitly. Same trap the parity lane
+# hit with its `baseline/design-demo/build/` directory; see web/parity/.gitignore.
+# Do not delete this, and add a sibling line for any future screen called `build`.
+!src/screens/build/

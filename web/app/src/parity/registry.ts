@@ -9,6 +9,7 @@
  * screens' CSS into the document and quietly change the cascade.
  */
 
+import { lazy } from 'react';
 import type { ComponentType, LazyExoticComponent } from 'react';
 import type { DemoScreen } from '../design-fonts/manifest';
 
@@ -27,21 +28,24 @@ export interface ParityScreen {
   component: LazyExoticComponent<ComponentType>;
 }
 
-/**
- * Empty until the first screen is rewritten. The pilot is Build (the demo
- * component named "Paper Card").
- *
- * Example of the shape an entry takes:
- *
- *   {
- *     id: 'build',
- *     label: 'Build',
- *     demoScreen: 'Paper Card',
- *     lockedVariants: { pipelineStyle: 'Flow chart (6d)' },
- *     component: lazy(() => import('../screens/build/BuildScreen')),
- *   }
- */
-export const PARITY_SCREENS: readonly ParityScreen[] = [];
+export const PARITY_SCREENS: readonly ParityScreen[] = [
+  {
+    id: 'build',
+    label: 'Build',
+    demoScreen: 'Paper Card',
+    // The demo file's own defaults. Never flipped; see design-reference/manifest.json.
+    lockedVariants: {
+      pipelineStyle: 'Flow chart (6d)',
+      cardLayout: 'Inline index',
+      layout: 'List',
+      cardEmphasis: 'Muted',
+      logoStyle: 'Terracotta tile',
+      colorScheme: 'Warm paper',
+      pageState: 'Has results',
+    },
+    component: lazy(() => import('../screens/build/BuildScreen')),
+  },
+];
 
 export function findParityScreen(id: string | undefined): ParityScreen | undefined {
   return id ? PARITY_SCREENS.find((s) => s.id === id) : undefined;

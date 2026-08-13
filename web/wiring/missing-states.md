@@ -429,3 +429,51 @@ portrait.
 - The gate is part of the committed baseline:
   `web/parity/baseline/design-demo/build/{ipad-portrait-1024x1366,w900-900x1200,w768-768x1024}.png`.
 - Related appearance question raised in `escalations.md` (**E-PAR-01**).
+
+---
+
+## Build rewrite lane (`MS-BLD-*`) — 2026-08-13
+
+Found while transplanting the Build screen; each was reachable in the demo and
+is reachable in the rewrite, and each has no designed failure/latency state.
+
+### MS-BLD-01 — the sidebar's `Searching…` window is the only latency state on the screen
+
+`searchNow` shows `.sb-searching` skeletons for a fixed 850 ms and then always
+succeeds. Nothing else on Build has a loading state at all: the pipeline canvas,
+the config panel's parameter controls and the seed-papers group all appear fully
+formed on mount. Against a real backend every one of those is an async fetch.
+(`build-page-spec.md` §9.2 records the same gap from the analysis side; this
+entry records that the rewrite has now shipped it.)
+
+### MS-BLD-02 — `.sb-error` "Couldn't load papers" is still unreachable after the rewrite
+
+`apply()` renders it only when `sidebar.dataset.state === 'error'`, and the only
+writer is a `.sb-demo` switcher that does not exist in the template. The markup
+is transplanted, so the state exists in `BuildSidebar.tsx` and can be reached by
+setting the attribute — but no product path sets it. A failed Semantic Scholar
+query currently renders as an ordinary empty list.
+
+### MS-BLD-03 — `Run pipeline` is still inert, and now inert in production code
+
+`.tb-run` has no handler on Build (`E-DIS-06`). The rewrite transplants the
+button, so the pilot ships a primary CTA that does nothing, with no disabled,
+busy, or failed state designed for it. This is the single most visible thing on
+the screen.
+
+### MS-BLD-04 — no state for "the demo modules failed to load"
+
+The screen's behaviour depends on two side-effect modules that assign globals
+(`paper-row.js` → `window.KLPaperRow`, `import-resolver.js` → `window.KLImport`).
+The transplanted logic's fallback for a missing `KLPaperRow` is to wait forever
+for a `kl-paper-row-ready` event. If the chunk 404s or the network drops
+mid-load, the sidebar simply never paints its rows and nothing is reported —
+silent, indefinite, and indistinguishable from an empty corpus.
+
+### MS-BLD-05 — cross-screen inputs have no "unknown" state
+
+Build's Runs-activity dot is painted from `window.__klRunAct`, which the **Runs**
+screen writes. Before Runs has ever mounted the global is absent and the dot is
+simply hidden — the same appearance as "no run is active". There is no designed
+difference between *nothing is running* and *we do not know yet*, which is
+exactly the state a freshly loaded page is in while it asks the backend.

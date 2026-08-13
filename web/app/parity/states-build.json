@@ -1,0 +1,29 @@
+{
+  "name": "build-states",
+  "description": "States of the Build screen that are reachable WITHOUT any backend: drawers, menus, hover paint, selection, the JS-built abstract drill, import mode and the pipeline/config popovers. Numbered against web/wiring/build-page-spec.md section 8. Replayed identically against the demo and against web/app; each entry is compared by SHA256 of the settled screenshot.",
+  "viewport": "desktop-1600x900",
+  "states": [
+    { "id": "S01", "name": "default", "steps": [] },
+    { "id": "S02", "name": "dark-theme", "steps": [{ "click": ".pc-theme-toggle" }] },
+    { "id": "S06", "name": "project-menu", "steps": [{ "click": ".tb-project" }] },
+    { "id": "S08", "name": "download-menu", "steps": [{ "click": ".tb-download" }] },
+    { "id": "S10", "name": "account-menu", "steps": [{ "click": ".tb-user" }] },
+    { "id": "S18", "name": "row-hover", "steps": [{ "hover": ".sb-list .pr", "nth": 2 }] },
+    { "id": "S19", "name": "row-selected-abstract-drill", "steps": [{ "click": ".sb-list .pr", "nth": 2 }] },
+    { "id": "S28", "name": "sort-menu", "steps": [{ "click": ".sb-sort-btn" }] },
+    { "id": "S29", "name": "sort-title-az", "steps": [{ "click": ".sb-sort-btn" }, { "click": ".sb-opt[data-value=title]" }] },
+    { "id": "S30", "name": "filter-drawer", "steps": [{ "click": ".sb-filter-btn" }] },
+    { "id": "S33", "name": "filter-text-typed", "steps": [{ "click": ".sb-filter-btn" }, { "fill": ".ff-input[data-key=venue]", "value": "arXiv" }] },
+    { "id": "S37", "name": "import-dropzone", "steps": [{ "click": ".sb-imode button[data-sm=import]" }] },
+    { "id": "S40", "name": "import-sample-parsed", "steps": [{ "click": ".sb-imode button[data-sm=import]" }, { "click": ".sbi-sample" }, { "wait": 6000 }] },
+    { "id": "S50", "name": "pipeline-step-selected", "steps": [{ "click": ".v6d-node", "nth": 3 }] },
+    { "id": "S51", "name": "pipeline-node-hover", "steps": [{ "hover": ".v6d-node", "nth": 2 }] },
+    { "id": "S52", "name": "add-step-after-menu", "steps": [{ "click": ".v6d-plus" }] },
+    { "id": "S61", "name": "presets-menu", "steps": [{ "click": ".plh-preset" }] },
+    { "id": "S66", "name": "filter-row-hover", "steps": [{ "hover": ".cf-filter", "nth": 1 }] },
+    { "id": "S67", "name": "filter-focus-editor", "steps": [{ "click": ".cf-filter", "nth": 1 }] },
+    { "id": "S68", "name": "llm-filter-editor", "steps": [{ "click": ".cf-filter[data-type=llm]" }] },
+    { "id": "S76", "name": "add-filter-menu", "steps": [{ "click": ".cfg-add" }] },
+    { "id": "S79", "name": "filters-copied-toast", "steps": [{ "click": ".cfg-fp-tools button", "nth": 0 }, { "wait": 1200 }] }
+  ]
+}

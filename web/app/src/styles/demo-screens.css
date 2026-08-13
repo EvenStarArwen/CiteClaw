@@ -1,0 +1,50 @@
+/* demo-screens.css — the iPad Demo's CSS environment, reproduced in its own order.
+ *
+ * READ THIS BEFORE SPLITTING ANYTHING OUT OF IT.
+ *
+ * The demo mounts all seven screens into ONE document. support.js's helmet
+ * manager hoists each screen's <style> into the single document <head>, in
+ * screen mount order, and every one of those blocks is a COMPLETE stylesheet:
+ * the shared `.pc-root` token block plus that screen's own component rules,
+ * all unscoped. So the last screen to define a selector wins for every screen.
+ *
+ * That is not theoretical. Measured on the demo's Build screen at 1600x900:
+ *
+ *   .cf-filter   Build (03) says `border-radius:10px` with no bottom border;
+ *                Runs (04) redefines it WITH `border-bottom:1px solid …`.
+ *                Runs loads later, so each of Build's five filter rows renders
+ *                57px tall, not 56px.
+ *   .cf-rail     Build (03) says `top:7px; bottom:7px` (a 42px rail);
+ *                Runs (04) says `top:0; bottom:0` (a 56px rail). Runs wins.
+ *   .cf-idx-col  renders in Hanken Grotesk, not the UA monospace default,
+ *                because a later sheet supplies a font-family the Build sheet
+ *                does not.
+ *
+ * Load only 03-paper-card.css and the Build screen is 2 693 pixels (0.19% of
+ * the frame) away from the demo — five filter rows drifting 1px each. Load all
+ * seven in this order and it matches.
+ *
+ * The consequence is a product-level problem, not a rewrite decision, and it is
+ * filed as E-BLD-01 in web/wiring/escalations.md: no screen in this app can
+ * have its CSS code-split, because a screen's appearance depends on which OTHER
+ * screens' stylesheets are in the document. Until the product owner rules on a
+ * canonical `.cf-filter` (and on the rest of the 133 shared class names in
+ * web/wiring/component-duplication.md), the only safe thing is to keep the
+ * demo's whole environment loaded, in the demo's order, on every screen.
+ *
+ * Every file below is a byte-for-byte copy of one screen's `<helmet><style>`
+ * inner text from web/design-reference/embedded-sources/*.dc.html. Never edit
+ * them, never reorder these imports, never "deduplicate the shared tokens" —
+ * the blocks are not identical, so a merge would silently drop overrides.
+ * The KaTeX sheet the demo also carries (head index 12, between Runs and
+ * Explore) is deliberately NOT here: its selectors are all `.katex*` and it
+ * matches nothing on Build. The Explore rewrite will need it.
+ */
+
+@import './demo-screen-css/01-login.css';
+@import './demo-screen-css/02-home.css';
+@import './demo-screen-css/03-paper-card.css';
+@import './demo-screen-css/04-runs.css';
+@import './demo-screen-css/05-explore.css';
+@import './demo-screen-css/06-settings.css';
+@import './demo-screen-css/07-system-banners.css';

@@ -520,3 +520,112 @@ vs min-width), and what a narrow landscape window should show.
 
 **Not changed.** The harness captures the observed behaviour as-is; see
 `web/wiring/missing-states.md` **MS-PAR-03**.
+
+---
+
+## Build rewrite lane (`E-BLD-*`) — 2026-08-13
+
+Raised while building the static Build rewrite (`web/app/src/screens/build`).
+Every one of these was found by measurement against the demo, not by reading.
+Nothing in the UI was changed to work around any of them.
+
+### E-BLD-01 — Build's appearance depends on the **Runs** stylesheet
+
+**What.** The demo mounts all seven screens into one document, and support.js's
+helmet manager hoists each screen's `<style>` into the single `<head>` in mount
+order: `Login, Home, Build, Runs, Explore, Settings, System Banners`. Every one
+of those blocks is a complete, unscoped stylesheet. So on the **Build** screen,
+rules from **Runs** (and Explore, Settings, Banners) load *after* Build's own
+and win at equal specificity.
+
+Measured, at 1600×900, on the Build screen's five filter rows:
+
+| selector | Build's own rule (03) | Runs' rule (04) | what the demo actually renders |
+|---|---|---|---|
+| `.cf-filter` | radius 10px, no bottom border | adds `border-bottom: 1px solid …` | **Runs'** — every row is 57px, not 56px |
+| `.cf-rail` | `top:7px; bottom:7px` (42px rail) | `top:0; bottom:0` (56px rail) | **Runs'** — 56px |
+
+With only Build's stylesheet loaded, the rewrite was 2 693 px (0.19% of the
+frame) away from the baseline. With all seven loaded in the demo's order it is
+byte-identical.
+
+**Why this needs the product owner, not us.** Two things follow, and both are
+product decisions:
+
+1. **No screen's CSS can be code-split.** Loading Build alone gives a different
+   Build than loading Build after having visited Runs. Any lazy per-route CSS —
+   the default in every bundler — introduces a visual difference that depends on
+   navigation history. `web/app` therefore loads all seven verbatim blocks on
+   every screen (`src/styles/demo-screens.css`), which is faithful but ships
+   ~300 kB of CSS to render one screen.
+2. **Which `.cf-filter` is canonical?** The demo shows Runs' version everywhere
+   because of load order, not because anyone chose it. `component-duplication.md`
+   D-07/`E-DIS-04` already asks this question for the papers panel's `sb-*` vs
+   `rp-*` prefixes; this is the same question one layer down, for rules that
+   silently override each other rather than living in separate components.
+
+**Needs from the product owner.** Confirmation that the *rendered* Build screen
+(i.e. with Runs' overrides applied) is the intended design — the product owner's
+"what I see in THIS file is what I want" reading says yes, and that is what has
+been built. Then a decision on whether the eventual single token/component sheet
+should bake Runs' values in, or Build's.
+
+**Not changed.** The rewrite reproduces the demo's whole CSS environment, in the
+demo's order, verbatim.
+
+### E-BLD-02 — `explorations-tokens.css` invents rules the demo does not have
+
+**What.** `web/app/src/styles/explorations-tokens.css` is a verbatim copy of a
+file in the design workspace that **no demo screen loads** (already noted in
+`E-SCAF-01`, left undecided). The scaffold imported it from `main.tsx` as a
+baseline. Measured consequence on the Build pilot:
+
+```
+tokens file : .cfg-pipe[data-number="Column"] .cf-idx-col { font-family: ui-monospace, monospace; … }
+              .cf-num { font-family: ui-monospace, monospace; … }
+demo (03/04): the same two rules, WITHOUT font-family
+```
+
+Because no demo stylesheet declares `font-family` on those elements, nothing
+overrode the tokens file and the config panel's five row numbers rendered in a
+monospace face the design never used — 51 wrong pixels, invisible to review,
+caught only by the harness. There will be more of these on the screens still to
+be rewritten; the file is 450 lines of near-miss.
+
+**Action taken.** `main.tsx` no longer imports it. The file is left in place
+because it may yet be regenerated *from* the demo, but nothing references it.
+
+**Needs from the product owner / design lane.** A ruling on the file's status:
+regenerate it from the demo and make it the one token sheet, or retire it. Until
+then no screen may import it. This supersedes the open question in `E-SCAF-01`.
+
+### E-BLD-03 — `.sidebar` overflows itself by 14px, and the overflow is reachable
+
+**What.** In the demo *and* in the rewrite, the papers sidebar has
+`scrollWidth 372` against `clientWidth 358` — a 14px horizontal overflow inside
+`overflow:hidden`, caused by `.sb-sort-menu` (`position:absolute; right:0`)
+poking past the panel edge. Nothing shows it at rest, but anything that calls
+`scrollIntoView` on an element inside the menu — keyboard focus, a screen
+reader, browser autoscroll, test automation — scrolls the panel 14px left and
+there is no scrollbar or gesture to bring it back. Reproduced with Playwright's
+own actionability scroll; the panel then renders 14px off for the rest of the
+session.
+
+**Not changed.** Fixing it means changing the sort menu's geometry.
+
+**Needs from the product owner.** Whether the menu is allowed to extend past
+the panel (and the panel should therefore not be `overflow:hidden`), or the menu
+should be clamped inside it.
+
+### E-BLD-04 — the dead `cards` sidebar was transplanted anyway
+
+`component-duplication.md` §6 recommends **not** porting `.sidebar[data-style="cards"]`
+(283 lines that never render because `layout="List"` is pinned), and it is
+already open as `E-DIS-07`. The rewrite ported it, because this pass's rule is
+"markup is transplanted, not authored" and dropping it is an editorial decision
+about the design, not a mechanical conversion. It costs a second copy of every
+listener, ResizeObserver and scrim — exactly as in the demo — and zero pixels.
+
+**Needs from the product owner.** The `E-DIS-07` answer. If the `cards` variant
+is dead, deleting it is a one-line change to `BuildSidebar.tsx` plus a re-run of
+the parity gate (which should stay green).

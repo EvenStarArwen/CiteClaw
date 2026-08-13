@@ -1,0 +1,13 @@
+{
+  "name": "app-rewrite",
+  "description": "The same screen list as web/parity/screens/design-demo.json, repointed at web/app's parity playground. Capture it with --target http://localhost:5273 (dev) or :5274 (preview) and diff it against web/parity/baseline/design-demo. Lives here, not in web/parity, so the harness lane owns its own directory.",
+  "screens": [
+    {
+      "name": "build",
+      "url": "/parity/build",
+      "script": "../../parity/scripts/nav-build.json",
+      "fullPage": false,
+      "note": "Rewritten Build screen. Uses the harness's own recorded navigation script unchanged — the rewrite exposes the demo's .tb-tab / [data-pg][data-on] hooks verbatim, so no per-target selector map is needed."
+    }
+  ]
+}

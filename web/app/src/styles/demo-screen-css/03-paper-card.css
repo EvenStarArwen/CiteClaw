@@ -1,0 +1,1287 @@
+
+  html,body{ height:100%; margin:0; background:#ece5d8; }
+  .pc-root{ --sbw:360px; --gut:14px; }
+  .pc-root:is([data-vp="compact"],[data-vp="narrow"]){ --sbw:320px; --gut:10px; }
+  .pc-root:not([data-vp-ready="1"]) .pc-drawer{ transition:none !important; }
+  .pc-root[data-vp="narrow"] .pc-drawer{ position:relative !important; width:100% !important; flex:1 1 0 !important; min-height:0; }
+  .pc-root[data-vp="narrow"] .sidebar{ border:none !important; border-radius:0 !important; box-shadow:none !important; background:none !important; }
+  .pc-root[data-vp="narrow"] .sb-head-row{ display:none !important; }
+  .pc-root[data-vp="narrow"][data-src="1"]:not([data-first="1"]) .cfg-src-wrap{ display:flex !important; }
+  .pc-root[data-vp="narrow"][data-first="1"] :is(.cfg-first,.cfg-head){ display:none !important; }
+  .pc-root[data-vp="narrow"]:is([data-first="1"],[data-src="1"][data-srcpage="search"]) .cfg-scroll{ display:none !important; }
+  .pc-root[data-vp="narrow"]:is([data-first="1"],[data-src="1"][data-srcpage="search"]) .cfg-shost{ display:flex !important; }
+  .cfg-detail-title{ min-width:0; }
+  .cfg-detail-title .s{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pc-root:is([data-vp="compact"],[data-vp="narrow"]) .cfg-tool{ padding:4px 6px; }
+  body:has(.pc-root[data-theme=dark]){ background:#131210; }
+  .pc-root button, .pc-root input, .pc-root textarea, .pc-root select{ font-family:inherit; }
+  .pc-root{--pin:16px;--pin-sc:calc(var(--pin) - var(--kl-sbw, 8px));--bg:#f1ebdd;--panel:#faf9f5;--canvas:#f8f5ee;--topbar-bg:var(--bg);--dock-bg:var(--panel);--dock-shadow:0 2px 12px rgba(var(--sh),.05);--card:#fff;--card2:#fdfcf9;--card-sel:#f5f1e8;--row-sel:#f1ece1;--row-hover:#f4f1e8;--border:#e4e1d6;--divider:#ece9df;--fg:#141413;--fg2:#57554e;--muted:#6c6a64;--muted2:#8e8b82;--accent:#cc785c;--accent-hover:#b3624a;--dot-sep:#c9c5b8;--scroll:#d8d4c7;--icon-bg:#f0ece1;--err-bg:#f6e6df;--star:#a09d96;--star-bg:#ece7da;--abstract-fg:#3f3d39;--chip-bg:#141413;--sh:31,30,29;--primary:#141413;--primary-fg:#fff;--primary-hover:#2e2d2a;--ring:rgba(31,30,29,.12);--success:#5db872;--warning:#d4a017;--error:#c64545;--error-bg:#f7e7e7;--success-bg:#e6f4ea;--warning-bg:#faf0da;--v-green:#6e7a4e;--v-green-dot:#8c9a6c;--v-purple:#7a6878;--v-purple-dot:#9b8899;--v-blue:#616f7d;--v-blue-dot:#8595a3;--v-gold:#96773a;--v-gold-dot:#b8995a;--v-teal:#5d7a62;--v-teal-dot:#7fa085;--v-rose:#9d6558;--v-rose-dot:#bd8b7f;--v-indigo:#6a6a94;--ghost-hover:color-mix(in oklab, var(--fg) 9%, var(--card));--group-bg:color-mix(in oklab, var(--bg) 72%, var(--panel));--well-hover:var(--card);}
+  .pc-root[data-theme=dark]{--bg:#1b1a17;--panel:#252320;--canvas:#282622;--topbar-bg:var(--bg);--dock-bg:var(--panel);--dock-shadow:0 2px 12px rgba(var(--sh),.05);--card:#2b2925;--card2:#252320;--card-sel:#3a352c;--row-sel:#36322a;--row-hover:#302d28;--border:#3f3b33;--divider:#312e28;--fg:#faf9f5;--fg2:#c8c3b8;--muted:#a09d96;--muted2:#8e8b82;--accent:#d3855f;--accent-hover:#e6a586;--dot-sep:#4c473e;--scroll:#464139;--icon-bg:#302d27;--err-bg:#3a2823;--star:#7d786d;--star-bg:#322e28;--abstract-fg:#d0cbc0;--chip-bg:#46423a;--sh:0,0,0;--primary:#faf9f5;--primary-fg:#181715;--primary-hover:#e9e6df;--ring:rgba(211,133,95,.35);--success:#7ecb90;--warning:#e0b64a;--error:#e07b7b;--error-bg:#3a2626;--success-bg:#23301f;--warning-bg:#332a1a;--v-green:#adb98a;--v-green-dot:#adb98a;--v-purple:#b4a3b1;--v-purple-dot:#b4a3b1;--v-blue:#9fb0bf;--v-blue-dot:#9fb0bf;--v-gold:#d3b46e;--v-gold-dot:#d3b46e;--v-teal:#8fbc97;--v-teal-dot:#8fbc97;--v-rose:#d0a094;--v-rose-dot:#d0a094;--v-indigo:#a9a9d2;}
+  .pc-root[data-color="Previous"]{--bg:#f0eee6;--canvas:#e6e2d6;--fg:#1f1e1d;--fg2:#6b6862;--muted:#87867f;--muted2:#a5a196;--star:#b0ac9f;--chip-bg:#1f1e1d;--primary:#1f1e1d;--primary-hover:#35322c;}
+  .pc-root[data-theme=dark][data-color="Previous"]{--bg:#1a1815;--panel:#211f1b;--canvas:#121110;--card:#2a2723;--card2:#242220;--card-sel:#322e27;--row-sel:#2f2b25;--row-hover:#2a2723;--border:#39352e;--divider:#2e2b25;--fg:#efece5;--fg2:#c2bdb1;--muted:#948f83;--muted2:#8b8578;--star:#726c60;--icon-bg:#2e2a24;--ring:rgba(255,255,255,.16);--primary:#efece5;--primary-fg:#1a1815;--primary-hover:#dedad0;}
+  .pc-root:not([data-theme=dark])[data-color="Oat & ink"]{--bg:#eceae4;--panel:#fbfaf7;--canvas:#f6f5f0;--card2:#fcfbf8;--border:#e0ded5;--divider:#eae8e1;--row-hover:#f2f0e9;--row-sel:#efede5;--icon-bg:#efede5;--star-bg:#eae8df;--dot-sep:#c6c3b9;--scroll:#d6d3c9;}
+  .pc-root:not([data-theme=dark])[data-color="Terracotta dusk"]{--bg:#f2e7da;--panel:#fbf8f4;--canvas:#f9f2e9;--card2:#fdfaf6;--border:#e7dbcc;--divider:#efe5d7;--row-hover:#f6ecdf;--row-sel:#f3e7d7;--icon-bg:#f2e7d8;--star-bg:#eee2d1;--dot-sep:#cfc2af;--scroll:#ddd0bd;}
+  .pc-root:not([data-theme=dark])[data-color="Sage library"]{--bg:#e9e9dc;--panel:#fafaf5;--canvas:#f4f5eb;--card2:#fbfcf6;--border:#dcded0;--divider:#e8ead9;--row-hover:#f0f1e4;--row-sel:#ecedde;--icon-bg:#edeedf;--star-bg:#e7e8d8;--dot-sep:#c2c4b2;--scroll:#d2d4c3;}
+  .pc-root[data-theme=dark][data-color="Oat & ink"]{--bg:#1c1b18;--panel:#232220;--canvas:#262524;--card:#2c2b28;--card2:#262523;--card-sel:#363430;--row-sel:#34322d;--row-hover:#2e2c29;--border:#3c3a35;--divider:#302e2a;--icon-bg:#2f2d29;--star-bg:#31302b;--dot-sep:#4a4842;--scroll:#454340;}
+  .pc-root[data-theme=dark][data-color="Terracotta dusk"]{--bg:#201a15;--panel:#27201a;--canvas:#2a231d;--card:#302822;--card2:#2a231d;--card-sel:#3c322a;--row-sel:#3a312a;--row-hover:#332b24;--border:#423830;--divider:#342c25;--icon-bg:#332b23;--star-bg:#362d25;--dot-sep:#52463c;--scroll:#4c4137;}
+  .pc-root[data-theme=dark][data-color="Sage library"]{--bg:#191c16;--panel:#20231d;--canvas:#242720;--card:#292d26;--card2:#232720;--card-sel:#353b31;--row-sel:#333830;--row-hover:#2c3028;--border:#383d34;--divider:#2d312a;--icon-bg:#2f342b;--star-bg:#31362d;--dot-sep:#474d41;--scroll:#42473d;}
+  .pc-root[data-theme=dark][data-color="Slate archive"]{--bg:#18191b;--panel:#1f2022;--canvas:#232425;--card:#2a2b2d;--card2:#242526;--card-sel:#37383b;--row-sel:#343538;--row-hover:#2d2e30;--border:#3a3b3e;--divider:#2e2f31;--icon-bg:#303134;--star-bg:#323336;--dot-sep:#4a4b4f;--scroll:#454649;}
+  .pc-root:not([data-theme=dark])[data-color="Slate archive"]{--bg:#e8e8e5;--panel:#fbfbfa;--canvas:#f4f4f1;--card2:#fbfbf9;--border:#dcdcd8;--divider:#e7e7e4;--row-hover:#f0f0ec;--row-sel:#ecece7;--icon-bg:#ededea;--star-bg:#e6e6e1;--dot-sep:#c1c1bc;--scroll:#d1d1cc;}
+  .pc-root:not([data-theme=dark])[data-color="Fern library"]{--bg:#e9e9dc;--panel:#fafaf5;--canvas:#f4f5eb;--card2:#fbfcf6;--border:#dcded0;--divider:#e8ead9;--row-hover:#f0f1e4;--row-sel:#ecedde;--icon-bg:#edeedf;--star-bg:#e7e8d8;--dot-sep:#c2c4b2;--scroll:#d2d4c3;--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e3efe4;--v-green:#61795d;--v-green-dot:#7d9479;--v-purple:#6b6683;--v-purple-dot:#8b86a5;--v-blue:#54708a;--v-blue-dot:#7b96ad;--v-gold:#8b7344;--v-gold-dot:#ab8f55;--v-teal:#4e7a73;--v-teal-dot:#6fa199;--v-rose:#985f6b;--v-rose-dot:#b8878f;--v-indigo:#5f65a0;}
+  .pc-root[data-theme=dark][data-color="Fern library"]{--bg:#191c16;--panel:#20231d;--canvas:#242720;--card:#292d26;--card2:#232720;--card-sel:#353b31;--row-sel:#333830;--row-hover:#2c3028;--border:#383d34;--divider:#2d312a;--icon-bg:#2f342b;--star-bg:#31362d;--dot-sep:#474d41;--scroll:#42473d;--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#9dbd93;--v-green-dot:#9dbd93;--v-purple:#b1a9cc;--v-purple-dot:#b1a9cc;--v-blue:#95b6d0;--v-blue-dot:#95b6d0;--v-gold:#cdb175;--v-gold-dot:#cdb175;--v-teal:#84bfb4;--v-teal-dot:#84bfb4;--v-rose:#d09fa9;--v-rose-dot:#d09fa9;--v-indigo:#a7a9dc;}
+  .pc-root:not([data-theme=dark])[data-color="Fern & ink"]{--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e5efe6;--v-green:#61795d;--v-green-dot:#7d9479;--v-purple:#6b6683;--v-purple-dot:#8b86a5;--v-blue:#54708a;--v-blue-dot:#7b96ad;--v-gold:#8b7344;--v-gold-dot:#ab8f55;--v-teal:#4e7a73;--v-teal-dot:#6fa199;--v-rose:#985f6b;--v-rose-dot:#b8878f;--v-indigo:#5f65a0;}
+  .pc-root[data-theme=dark][data-color="Fern & ink"]{--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#9dbd93;--v-green-dot:#9dbd93;--v-purple:#b1a9cc;--v-purple-dot:#b1a9cc;--v-blue:#95b6d0;--v-blue-dot:#95b6d0;--v-gold:#cdb175;--v-gold-dot:#cdb175;--v-teal:#84bfb4;--v-teal-dot:#84bfb4;--v-rose:#d09fa9;--v-rose-dot:#d09fa9;--v-indigo:#a7a9dc;}
+  .pc-root:not([data-theme=dark])[data-color="Fern & ochre"]{--accent:#55916b;--accent-hover:#457b59;--success:#55916b;--success-bg:#e5efe6;--v-green:#6e7a4e;--v-green-dot:#8c9a6c;--v-purple:#7a6878;--v-purple-dot:#9b8899;--v-blue:#616f7d;--v-blue-dot:#8595a3;--v-gold:#96773a;--v-gold-dot:#b8995a;--v-teal:#5d7a62;--v-teal-dot:#7fa085;--v-rose:#9d6558;--v-rose-dot:#bd8b7f;--v-indigo:#6a6a94;}
+  .pc-root[data-theme=dark][data-color="Fern & ochre"]{--accent:#8bc4a0;--accent-hover:#a5d5b6;--ring:rgba(139,196,160,.35);--success:#8bc4a0;--success-bg:#243527;--v-green:#adb98a;--v-green-dot:#adb98a;--v-purple:#b4a3b1;--v-purple-dot:#b4a3b1;--v-blue:#9fb0bf;--v-blue-dot:#9fb0bf;--v-gold:#d3b46e;--v-gold-dot:#d3b46e;--v-teal:#8fbc97;--v-teal-dot:#8fbc97;--v-rose:#d0a094;--v-rose-dot:#d0a094;--v-indigo:#a9a9d2;}
+  .tb-nav{ display:flex; align-items:center; gap:3px; padding:3px; background:var(--bg); border:1px solid var(--border); border-radius:11px; }
+  .tb-tab{ padding:6px 15px; border:1px solid transparent; border-radius:8px; font-family:inherit; font-size:13px; font-weight:500; cursor:pointer; background:none; color:var(--muted2); transition:color .14s ease, background .14s ease; }
+  .tb-tab:hover{ color:var(--fg2); }
+  .tb-tab[data-active="1"]{ background:var(--card2); color:var(--fg); font-weight:600; box-shadow:0 1px 3px rgba(var(--sh),.12); }
+  .pc-root[data-tabs="No track"] .tb-nav{ background:none; border-color:transparent; }
+  .pc-root[data-tabs="Ink chip"] .tb-tab[data-active="1"]{ background:var(--fg); color:var(--panel); box-shadow:none; }
+  .pc-root[data-tabs="Ink chip"] .tb-tab:hover:not([data-active="1"]){ color:var(--fg); }
+  .pc-root[data-scheme="Unified flat"]{--topbar-bg:var(--panel);--canvas:var(--bg);--dock-shadow:0 1px 2px rgba(var(--sh),.03);}
+  .pc-root[data-seg="Recessed shade"] .tb-nav{ background:color-mix(in oklab, var(--fg) 9%, var(--topbar-bg)); border-color:transparent; }
+  .pc-root[data-seg="Recessed shade"] .fc-seg:not([data-variant="Pills"]):not([data-variant="Underline"]){ background:color-mix(in oklab, var(--fg) 9%, var(--panel)); border-color:transparent; }
+  .pc-root[data-seg="Recessed shade"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Recessed shade"] .fc-seg:not([data-variant="Pills"]):not([data-variant="Underline"]) button[data-on="1"]{ background:var(--panel); border-color:transparent; color:var(--fg); box-shadow:0 1px 3px rgba(var(--sh),.16); }
+  .pc-root[data-seg="Ink chip"] .tb-nav,
+  .pc-root[data-seg="Ink chip"] .fc-seg[data-variant="Segmented"]{ background:var(--card); border-color:var(--border); }
+  .pc-root[data-seg="Ink chip"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Ink chip"] .fc-seg[data-variant="Segmented"] button[data-on="1"]{ background:var(--fg); border-color:var(--fg); color:var(--panel); box-shadow:none; }
+  .pc-root[data-seg="Ink chip  accent"] .tb-nav,
+  .pc-root[data-seg="Ink chip  accent"] .fc-seg[data-variant="Segmented"]{ background:var(--card); border-color:var(--border); }
+  .pc-root[data-seg="Ink chip  accent"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Ink chip  accent"] .fc-seg[data-variant="Segmented"] button[data-on="1"]{ background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:none; }
+  .pc-root[data-seg="Ink chip  soft"] .tb-nav,
+  .pc-root[data-seg="Ink chip  soft"] .fc-seg[data-variant="Segmented"]{ background:var(--card); border-color:var(--border); }
+  .pc-root[data-seg="Ink chip  soft"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Ink chip  soft"] .fc-seg[data-variant="Segmented"] button[data-on="1"]{ background:color-mix(in oklab, var(--accent) 16%, var(--card)); border-color:color-mix(in oklab, var(--accent) 32%, var(--card)); color:color-mix(in oklab, var(--accent) 65%, var(--fg)); box-shadow:none; }
+  .pc-root[data-seg="Soft grey"] .tb-nav,
+  .pc-root[data-seg="Soft grey"] .fc-seg[data-variant="Segmented"]{ background:color-mix(in oklab, var(--fg) 7%, #fff); border-color:transparent; }
+  .pc-root[data-seg="Soft grey"] .tb-tab,
+  .pc-root[data-seg="Soft grey"] .fc-seg[data-variant="Segmented"] button{ color:color-mix(in oklab, var(--fg) 55%, transparent); }
+  .pc-root[data-seg="Soft grey"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Soft grey"] .fc-seg[data-variant="Segmented"] button[data-on="1"]{ background:#fff; border-color:color-mix(in oklab, var(--fg) 10%, #fff); color:var(--fg); box-shadow:0 1px 2px rgba(var(--sh),.14); }
+  .pc-root[data-seg="Accent tint"] .tb-nav,
+  .pc-root[data-seg="Accent tint"] .fc-seg[data-variant="Segmented"]{ background:color-mix(in oklab, var(--accent) 16%, var(--panel)); border-color:color-mix(in oklab, var(--accent) 30%, var(--border)); }
+  .pc-root[data-seg="Accent tint"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Accent tint"] .fc-seg[data-variant="Segmented"] button[data-on="1"]{ background:var(--card); border-color:transparent; color:var(--accent); box-shadow:0 1px 3px rgba(var(--sh),.14); }
+  .pc-root[data-seg="Ghost outline"] .tb-nav,
+  .pc-root[data-seg="Ghost outline"] .fc-seg[data-variant="Segmented"]{ background:none; border-color:var(--border); }
+  .pc-root[data-seg="Ghost outline"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Ghost outline"] .fc-seg[data-variant="Segmented"] button[data-on="1"]{ background:var(--card); border-color:var(--fg2); color:var(--fg); box-shadow:none; }
+  .pc-root[data-seg="Quiet underline"] .tb-nav,
+  .pc-root[data-seg="Quiet underline"] .fc-seg[data-variant="Segmented"]{ background:none; border-color:transparent; gap:14px; padding:2px 0; }
+  .pc-root[data-seg="Quiet underline"] .tb-tab[data-active="1"],
+  .pc-root[data-seg="Quiet underline"] .fc-seg[data-variant="Segmented"] button[data-on="1"]{ background:none; border-color:transparent; border-bottom:2px solid var(--accent); border-radius:0; color:var(--fg); box-shadow:none; }
+  .cfg-seed{ display:flex; flex-direction:column; gap:10px; }
+  /* seed list = the same full-bleed paper cards as the search sidebar (no inner well) */
+  .cfg-seed-list{ display:flex; flex-direction:column; margin:0 calc(-1 * var(--pin-sc)) 0 calc(-1 * var(--pin)); }
+  .cfg-seed-list .cs-row:hover{ background:var(--row-hover); }
+  .cs-row{ transition:background .16s ease; }
+  .cs-del{ position:absolute; right:14px; top:50%; transform:translateY(-50%); width:30px; height:30px; display:flex; align-items:center; justify-content:center; border:none; background:none; border-radius:8px; color:var(--muted2); cursor:pointer; opacity:0; transition:opacity .16s ease, background .16s ease; }
+  .cs-row:hover .cs-del{ opacity:1; }
+  .cs-del:hover{ background:var(--error-bg); color:var(--error); }
+  .cfg-seed-empty{ padding:20px 14px; border:1px dashed var(--border); border-radius:10px; font-size:12.5px; line-height:1.55; color:var(--muted); text-align:center; }
+  .cfg-params{ display:flex; flex-direction:column; gap:12px; }
+  .cfg-params-body{ display:flex; flex-direction:column; gap:14px; }
+  .cfg-params-div{ height:1px; background:var(--divider); margin:6px 0 2px; }
+  .cfg-pgroup{ display:flex; align-items:center; gap:8px; margin-top:2px; }
+  .cfg-pgroup .g-n{ font-size:10.5px; font-weight:600; color:var(--muted); }
+  .cfg-pgroup .g-t{ font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--fg2); }
+  .cfg-pgroup::after{ content:''; flex:1; height:1px; background:var(--divider); }
+  .cfg-pipe{ display:flex; flex-direction:column; background:var(--group-bg); border-radius:12px; padding:4px 6px 6px; }
+  .pl-flow{ display:flex; flex-direction:column; align-items:center; width:max-content; margin:0 auto; }
+  .pl-wire{ display:block; flex:none; color:var(--muted); }
+  .pl-group{ position:relative; background:var(--group-bg); border-radius:18px; padding:36px 24px 24px; }
+  .pl-tag{ position:absolute; top:14px; left:20px; font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--muted2); }
+  .pl-branches{ display:flex; gap:48px; align-items:flex-start; }
+  .pl-branch{ display:flex; flex-direction:column; align-items:center; }
+  .pb-card{ position:relative; width:240px; text-align:left; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 1px 3px rgba(var(--sh),.06); cursor:pointer; transition:border-color .16s ease, box-shadow .16s ease; }
+  .pb-card:hover{ border-color:var(--muted2); box-shadow:0 3px 10px rgba(var(--sh),.09); }
+  .pb-card[data-sel="1"]{ border-color:var(--fg); background:var(--card); box-shadow:0 0 0 4px var(--ring); }
+  .pb-card[data-sel="1"] .pb-div > span{ width:58px; height:3px; top:-1.5px; }
+  .pb-card[data-sel="1"] .pb-code{ color:var(--fg); }
+  .pb-div > span{ transition:width .2s cubic-bezier(.22,.61,.36,1), height .2s ease; }
+  .pb-card, .v6d-node{ touch-action:none; }
+  @media (hover:none){ .pb-card:hover:not([data-sel="1"]){ border-color:var(--border); box-shadow:0 1px 3px rgba(var(--sh),.06); } }
+  .pc-root[data-theme=dark] .pb-card[data-sel="1"]{ border-color:var(--fg); box-shadow:0 0 0 4px rgba(255,255,255,.16); }
+  .pc-root[data-theme=dark] .pb-link{ color:var(--fg); }
+  .pb-link[data-off="1"], .pc-root[data-theme=dark] .pb-link[data-off="1"]{ color:color-mix(in oklab, var(--primary-fg) 70%, transparent); background:var(--chip-bg); box-shadow:none; }
+  .pc-root[data-theme=dark] .pl-wire{ color:var(--muted2); }
+  .pb-card[data-kind="database"]{ --pb-c:var(--v-teal); --pb-c-dot:var(--v-teal-dot); }
+  .pb-card[data-kind="network"]{ --pb-c:var(--v-gold); --pb-c-dot:var(--v-gold-dot); }
+  .pb-card[data-kind="semantics"]{ --pb-c:var(--v-purple); --pb-c-dot:var(--v-purple-dot); }
+  .pb-card[data-kind="reranker"]{ --pb-c:var(--v-rose); --pb-c-dot:var(--v-rose-dot); }
+  .pb-head{ display:flex; align-items:center; gap:8px; padding:12px 16px 0; }
+  .pb-dot{ width:6px; height:6px; border-radius:50%; flex:none; background:var(--pb-c-dot); }
+  .pb-ico{ width:13px; height:13px; flex:none; display:flex; align-items:center; color:var(--pb-c-dot); }
+  .pb-kind{ flex:1; font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--pb-c); }
+  .pb-no{ font-size:11.5px; color:var(--muted2); }
+  .pb-title{ font-family:'Newsreader',serif; font-size:18px; font-weight:500; line-height:1.18; color:var(--fg); padding:0 16px; margin-top:7px; }
+  .pb-div{ height:1px; background:var(--divider); position:relative; margin-top:11px; }
+  .pb-div > span{ position:absolute; left:16px; top:-1px; width:26px; height:2px; background:var(--pb-c-dot); }
+  .pb-foot{ display:flex; align-items:center; gap:8px; padding:9px 16px 11px; min-height:20px; }
+  .pb-code{ flex:1; font-size:11.5px; font-weight:600; letter-spacing:.03em; color:var(--muted); }
+  .pb-chip{ white-space:nowrap; font-size:11.5px; font-weight:600; color:var(--fg2); background:var(--icon-bg); border:1px solid var(--border); border-radius:999px; padding:2.5px 9px; }
+  .pc-root[data-chip="Neutral"] .pb-chip{ color:var(--fg2); background:var(--icon-bg); border-color:var(--border); }
+  .pc-root[data-chip="Match kind"] .pb-chip{ color:var(--pb-c); background:color-mix(in srgb, var(--pb-c) 12%, transparent); border-color:color-mix(in srgb, var(--pb-c) 30%, transparent); }
+  .pc-root[data-chip="Quiet mono"] .pb-chip{ color:var(--muted); background:none; border-color:var(--border); }
+  .pc-root[data-chip="Ink"] .pb-chip{ color:var(--panel); background:var(--fg); border-color:transparent; }
+  .pb-link{ position:absolute; top:-9px; right:12px; display:flex; align-items:center; gap:5px; font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--primary-fg); background:var(--chip-bg); border-radius:999px; padding:3px 9px; }
+  .pb-add{ position:absolute; z-index:6; display:none; align-items:center; justify-content:center; width:26px; height:26px; padding:0; color:var(--fg2); background:var(--card); border:1px solid var(--border); border-radius:50%; cursor:pointer; box-shadow:0 2px 6px rgba(var(--sh),.12); transition:background .14s ease, color .14s ease, border-color .14s ease; }
+  .pb-add:hover{ background:var(--primary); color:var(--primary-fg); border-color:var(--primary); }
+  .pb-add svg, .pl-join-add svg{ width:13px; height:13px; stroke-width:2.6; shape-rendering:geometricPrecision; }
+  .pb-card[data-sel="1"] .pb-add{ display:flex; }
+  .pb-add-s{ left:50%; bottom:-1px; transform:translate(-50%,50%); }
+  .pb-add-p{ right:-1px; top:50%; transform:translate(50%,-50%); }
+  .pl-branches .pb-add-p{ display:none !important; }
+  .pl-addmenu{ position:absolute; z-index:30; display:none; width:214px; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 34px rgba(var(--sh),.16); padding:5px; }
+  .pl-addmenu > span{ display:block; padding:7px 10px 4px; font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted2); }
+  .pl-addmenu > button{ width:100%; text-align:left; display:flex; align-items:center; gap:9px; padding:8px 10px; border:none; background:none; border-radius:8px; cursor:pointer; font-family:inherit; font-size:13px; color:var(--fg); }
+  .pl-addmenu > button:hover{ background:var(--row-hover); }
+.pc-root[data-addbtn="Hairline"] .pb-add, .pc-root[data-addbtn="Hairline"] .pl-join-add{ width:auto; height:auto; gap:6px; padding:5px 12px; border-radius:999px; border:1px dashed var(--muted2); color:var(--muted); box-shadow:none; font-family:inherit; font-size:11.5px; font-weight:600; white-space:nowrap; }
+  .pc-root[data-addbtn="Hairline"] .pb-add::after, .pc-root[data-addbtn="Hairline"] .pl-join-add::after{ content:"Add step"; }
+  .pc-root[data-addbtn="Hairline"] .pb-add{ background:var(--card); }
+  .pc-root[data-addbtn="Hairline"] .pl-join-add{ background:var(--canvas); }
+  .pc-root[data-addbtn="Hairline"] .pb-add:hover, .pc-root[data-addbtn="Hairline"] .pl-join-add:hover{ background:var(--row-hover); border:1px solid var(--fg2); color:var(--fg); }
+  .pc-root[data-addbtn="Ink dot"] .pb-add, .pc-root[data-addbtn="Ink dot"] .pl-join-add{ width:21px; height:21px; background:var(--fg); border-color:transparent; color:var(--panel); }
+  .pc-root[data-addbtn="Ink dot"] .pb-add:hover, .pc-root[data-addbtn="Ink dot"] .pl-join-add:hover{ background:var(--accent); border-color:transparent; color:var(--panel); }
+  .pc-root[data-addbtn="Notch"] .pb-add, .pc-root[data-addbtn="Notch"] .pl-join-add{ width:26px; height:19px; border-radius:6px; background:var(--card); border:1px solid var(--border); color:var(--fg2); box-shadow:0 1px 2px rgba(var(--sh),.08); }
+  .pc-root[data-addbtn="Notch"] .pb-add:hover, .pc-root[data-addbtn="Notch"] .pl-join-add:hover{ background:var(--fg); border-color:var(--fg); color:var(--panel); }
+  .pc-root[data-addbtn="Bare glyph"] .pb-add, .pc-root[data-addbtn="Bare glyph"] .pl-join-add{ width:20px; height:20px; background:none; border:none; box-shadow:none; color:var(--muted2); transition:color .14s ease, transform .14s ease; }
+  .pc-root[data-addbtn="Bare glyph"] .pb-add:hover, .pc-root[data-addbtn="Bare glyph"] .pl-join-add:hover{ background:none; color:var(--fg); }
+  .pc-root[data-addbtn="Bare glyph"] .pb-add-s:hover{ transform:translate(-50%,50%) scale(1.3); }
+  .pc-root[data-addbtn="Bare glyph"] .pb-add-p:hover{ transform:translate(50%,-50%) scale(1.3); }
+  .pc-root[data-addbtn="Bare glyph"] .pl-join-add:hover{ transform:translate(-50%,-50%) scale(1.3); }
+  .pc-root[data-addbtn="Soft pill"] .pb-add, .pc-root[data-addbtn="Soft pill"] .pl-join-add{ width:34px; height:20px; border-radius:999px; background:var(--card); border:1px solid var(--border); color:var(--fg2); box-shadow:0 2px 5px rgba(var(--sh),.12); }
+  .pc-root[data-addbtn="Soft pill"] .pb-add:hover, .pc-root[data-addbtn="Soft pill"] .pl-join-add:hover{ background:var(--row-hover); border-color:var(--fg2); color:var(--fg); }
+  .pl-seq{ display:flex; flex-direction:column; align-items:center; width:max-content; }
+  .pl-par{ display:flex; flex-direction:column; align-items:stretch; position:relative; }
+  .pl-fork, .pl-join{ position:relative; display:flex; justify-content:center; color:var(--muted); }
+  .pl-joinsvg{ display:block; }
+  .pl-par-row{ display:flex; align-items:flex-start; justify-content:center; gap:10px; }
+  .pl-tailadd{ display:flex; align-items:center; gap:6px; padding:5px 12px; border:1px dashed var(--muted2); border-radius:999px; background:var(--canvas); font-family:inherit; font-size:11.5px; font-weight:600; color:var(--fg2); cursor:pointer; white-space:nowrap; }
+  .pl-tailadd:hover{ background:var(--row-hover); border-style:solid; border-color:var(--fg2); color:var(--fg); }
+  .pl-join-add{ position:absolute; left:50%; top:17px; transform:translate(-50%,-50%); z-index:6; display:flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; border:1px solid var(--border); border-radius:50%; background:var(--card); color:var(--fg2); cursor:pointer; opacity:0; transition:opacity .16s ease; }
+  .pl-par:hover > .pl-join > .pl-join-add, .pl-par[data-has-sel] > .pl-join > .pl-join-add{ opacity:1; }
+  .pl-join-add:hover{ background:var(--primary); color:var(--primary-fg); border-color:var(--primary); }
+  .pl-tail{ display:flex; flex-direction:column; align-items:center; }
+  .pl-tailadd{ margin:2px 0; }
+  .pl-addmenu .m-txt{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .pl-addmenu .m-sub{ font-size:10.5px; font-weight:500; color:var(--muted2); }
+  .pl-addmenu .m-dot{ width:6px; height:6px; border-radius:50%; flex:none; }
+  .cf-filter{ position:relative; width:100%; text-align:left; display:flex; align-items:center; gap:11px; padding:11px 12px; font-family:inherit; color:var(--fg); cursor:pointer; --cf-bg:var(--card); background:var(--cf-bg); border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:background .16s ease, border-color .16s ease; }
+  .cf-filter:hover{ --cf-bg:var(--row-hover); background:var(--cf-bg); border-color:var(--border); }
+  .cf-filter[data-sel="1"]{ --cf-bg:var(--row-sel); background:var(--cf-bg); border-color:var(--border); box-shadow:inset 3px 0 0 var(--accent); }
+  .pc-root{--f1:#5f63a8;--f1d:#7b7fc4;--f2:#6f7a3a;--f2d:#8b9752;--f3:#4f6b82;--f3d:#6f92a8;--f4:#3a7285;--f4d:#5a95a8;--f5:#5f7a56;--f5d:#7a9471;--f6:#5f6874;--f6d:#828d9b;--f7:#3f4d7a;--f7d:#6570a0;}
+  .pc-root[data-theme=dark]{--f1:#9a9ee6;--f1d:#9a9ee6;--f2:#b6c06e;--f2d:#b6c06e;--f3:#8fb2c9;--f3d:#8fb2c9;--f4:#69b6c9;--f4d:#69b6c9;--f5:#96b68c;--f5d:#96b68c;--f6:#a1abb8;--f6d:#a1abb8;--f7:#8f9ad2;--f7d:#8f9ad2;}
+  .cf-rail{ position:absolute; left:0; top:7px; bottom:7px; width:3px; border-radius:2px; background:var(--accent); opacity:0; transition:opacity .16s ease; }
+  .cf-node{ position:relative; width:27px; height:27px; flex:none; border-radius:8px; background:var(--panel); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--fg2); }
+  .cf-filter[data-type="year"]{ --cf-c:var(--f1); }
+  .cf-filter[data-type="citation"]{ --cf-c:var(--f2); }
+  .cf-filter[data-type="keyword"]{ --cf-c:var(--f3); }
+  .cf-filter[data-type="author"]{ --cf-c:var(--f4); }
+  .cf-filter[data-type="venue"]{ --cf-c:var(--f5); }
+  .cf-filter[data-type="llm"]{ --cf-c:var(--f6); }
+  .cf-filter[data-type="similarity"]{ --cf-c:var(--f7); }
+  .cf-filter[data-type="year"] .cf-node, .cf-filter[data-type="year"] .cf-type{ color:var(--f1); }
+  .cf-filter[data-type="citation"] .cf-node, .cf-filter[data-type="citation"] .cf-type{ color:var(--f2); }
+  .cf-filter[data-type="keyword"] .cf-node, .cf-filter[data-type="keyword"] .cf-type{ color:var(--f3); }
+  .cf-filter[data-type="author"] .cf-node, .cf-filter[data-type="author"] .cf-type{ color:var(--f4); }
+  .cf-filter[data-type="venue"] .cf-node, .cf-filter[data-type="venue"] .cf-type{ color:var(--f5); }
+  .cf-filter[data-type="llm"] .cf-node, .cf-filter[data-type="llm"] .cf-type{ color:var(--f6); }
+  .cf-filter[data-type="similarity"] .cf-node, .cf-filter[data-type="similarity"] .cf-type{ color:var(--f7); }
+  .cf-num{ display:none; font-size:12px; font-weight:600; }
+  .cfg-pipe[data-marker="Number"] .cf-icon{ display:none; }
+  .cfg-pipe[data-marker="Number"] .cf-num{ display:block; }
+  .cf-idx-col{ display:none; }
+  .cf-idx-lbl{ display:none; }
+  .cfg-pipe[data-number="Column"] .cf-idx-col{ display:flex; align-items:center; justify-content:center; flex:none; width:13px; margin-right:-3px; font-size:11px; font-weight:600; color:var(--muted); }
+  .cfg-pipe[data-number="Inline"] .cf-idx-lbl{ display:inline; }
+  .cf-tool[data-act="delete"]:hover{ background:var(--error-bg); color:var(--error); }
+  .panel-config{ position:relative; display:flex; flex-direction:column; }
+  .fc-body{ display:flex; flex-direction:column; gap:20px; }
+  .fc-label{ font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2); }
+  .fc-fields{ display:flex; align-items:flex-end; gap:10px; }
+  .fc-field{ display:flex; flex-direction:column; gap:0; flex:1; min-width:0; }
+  .fc-field > span{ display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--fg2); margin-bottom:9px; }
+  .fc-field > span:has(+ .fc-d){ margin-bottom:5px; }
+  .fc-field > .fc-d{ display:block; font-size:11.5px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--muted); line-height:1.45; margin-bottom:11px; }
+  .q-info{ flex:none; width:15px; height:15px; display:inline-flex; align-items:center; justify-content:center; padding:0; border:none; background:none; color:var(--muted2); cursor:pointer; }
+  .q-info:hover{ color:var(--fg2); }
+  .fc-field input{ width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:14px; color:var(--fg); outline:none; font-variant-numeric:tabular-nums; }
+  .fc-field input:focus{ border-color:var(--fg2); box-shadow:0 0 0 3px var(--ring); }
+  .fc-dash{ padding-bottom:9px; color:var(--muted2); }
+  .fc-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+  .fc-chips button{ padding:5px 10px; border:1px solid var(--border); border-radius:999px; background:var(--card); font-family:inherit; font-size:12px; font-weight:500; color:var(--fg2); cursor:pointer; }
+  .fc-chips button:hover{ background:var(--row-hover); border-color:var(--muted2); }
+  .fc-hint{ font-size:11.5px; color:var(--muted); line-height:1.45; }
+  .fc-err{ display:flex; align-items:flex-start; gap:6px; margin-top:8px; font-size:12px; font-weight:500; color:var(--error); line-height:1.45; }
+  .fc-err > svg{ margin-top:2.5px; }
+  
+  button + .fc-err{ margin-top:11px; }
+  .fc-err[data-show="0"]{ display:none; }
+  .fc-err > svg{ flex:none; }
+  .fc-field input[data-invalid="1"]{ border-color:var(--error) !important; box-shadow:0 0 0 3px var(--error-bg) !important; }
+  .fc-seg{ display:flex; gap:3px; padding:3px; background:var(--bg); border:1px solid var(--border); border-radius:9px; }
+  .fc-seg button{ flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:6px 10px; border:1px solid transparent; border-radius:6px; background:none; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer; transition:color .14s ease; }
+  .fc-seg button:hover{ color:var(--fg); }
+  .fc-seg button[data-on="1"]{ background:var(--card2); border-color:transparent; color:var(--fg); box-shadow:0 1px 3px rgba(var(--sh),.12); }
+  .fc-seg[data-variant="Pills"]{ background:none; border:none; padding:0; gap:7px; }
+  .fc-seg[data-variant="Pills"] button{ flex:0 0 auto; padding:6px 15px; border:1px solid var(--border); border-radius:999px; background:var(--card); }
+  .fc-seg[data-variant="Pills"] button[data-on="1"]{ background:var(--fg); border-color:var(--fg); color:var(--bg); box-shadow:none; }
+  .fc-seg[data-variant="Underline"]{ background:none; border:none; border-bottom:1px solid var(--border); padding:0; gap:18px; border-radius:0; }
+  .fc-seg[data-variant="Underline"] button{ flex:0 0 auto; padding:6px 2px; border:none; border-radius:0; box-shadow:none; margin-bottom:-1px; border-bottom:2px solid transparent; }
+  .fc-seg[data-variant="Underline"] button[data-on="1"]{ background:none; border-bottom-color:var(--fg); color:var(--fg); box-shadow:none; }
+  .fc-ta{ width:100%; min-height:76px; max-height:280px; resize:vertical; padding:10px 12px 16px; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:13.5px; line-height:1.55; color:var(--fg); outline:none; }
+  .fc-ta:focus{ border-color:var(--fg2); box-shadow:0 0 0 3px var(--ring); }
+  .fc-ta::placeholder{ color:var(--muted2); }
+  .fc-dd{ position:relative; }
+  .fc-dd-btn{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 11px; border:1px solid var(--border); border-radius:9px; background:var(--card); font-family:inherit; font-size:13px; color:var(--fg); cursor:pointer; transition:border-color .14s ease; }
+  .fc-dd-btn:hover{ border-color:var(--muted2); }
+  .fc-dd-btn > span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fc-dd-btn > svg{ flex:none; color:var(--muted); }
+  .fc-dd-menu{ display:none; position:absolute; z-index:50; top:calc(100% + 5px); left:0; right:0; max-height:264px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 34px rgba(var(--sh),.16); padding:5px; }
+  .fc-dd-grp{ padding:8px 9px 3px; font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted2); }
+  .fc-dd-opt{ width:100%; text-align:left; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:none; background:none; border-radius:8px; font-family:inherit; font-size:13px; color:var(--fg); cursor:pointer; }
+  .fc-dd-opt:hover{ background:var(--row-hover); }
+  .fc-dd-opt[data-on="1"]{ color:var(--fg); }
+  .fc-dd-opt[data-on="1"]::after{ content:'✓'; flex:none; font-weight:600; color:var(--accent); }
+  .fc-dd-price{ flex:none; color:var(--muted); font-variant-numeric:tabular-nums; font-size:12px; }
+  .fc-dd-opt2{ align-items:center; }
+  .fc-dd-txt{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1.5px; }
+  .fc-dd-nm{ font-size:13px; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fc-dd-sub{ font-size:11.5px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .fc-qs{ display:flex; flex-direction:column; gap:8px; }
+  .fc-item{ display:flex; align-items:flex-start; gap:7px; }
+  .fc-gut{ flex:none; width:46px; padding-top:5px; }
+  .fc-opw{ position:relative; }
+  .fc-op{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:3px; padding:6px 6px 6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--card); font-family:inherit; font-size:12px; font-weight:600; line-height:1.1; color:var(--fg2); cursor:pointer; transition:border-color .12s, color .12s; }
+  .fc-op:hover{ border-color:var(--fg2); color:var(--fg); }
+  .fc-op > svg{ flex:none; color:var(--muted2); }
+  .fc-opm{ position:absolute; z-index:40; top:calc(100% + 4px); left:0; min-width:86px; display:none; flex-direction:column; gap:1px; padding:4px; border:1px solid var(--border); border-radius:9px; background:var(--card); box-shadow:0 10px 26px rgba(var(--sh),.16); }
+  .fc-opm[data-open="1"]{ display:flex; }
+  .fc-opm button{ display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:5px 9px; border:none; border-radius:6px; background:none; font-family:inherit; font-size:12.5px; color:var(--fg2); text-align:left; cursor:pointer; }
+  .fc-opm button:hover{ background:var(--row-hover); color:var(--fg); }
+  .fc-opm button[data-on="1"]{ color:var(--fg); }
+  .fc-opm button[data-on="1"]::after{ content:'✓'; flex:none; font-weight:600; color:var(--accent); font-size:12px; }
+  .fc-opm button[data-on="1"]::after{ content:' ✓'; }
+  .fc-qbody{ flex:1; min-width:0; display:flex; align-items:flex-start; gap:5px; }
+  .fc-qbody .fc-ta{ min-height:44px; padding:8px 10px 12px; overflow:hidden; }
+  .fc-group{ flex:1; min-width:0; padding:8px 9px 9px; border:1px solid var(--border); border-radius:11px; background:var(--bg); }
+  .fc-ghead{ display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:7px; }
+  .fc-gtag{ font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .fc-glist{ display:flex; flex-direction:column; gap:8px; }
+  .fc-gfoot{ display:flex; margin-top:8px; }
+  .fc-mini{ display:flex; align-items:center; gap:5px; padding:4px 9px; border:1px dashed var(--muted2); border-radius:8px; background:none; font-family:inherit; font-size:11.5px; font-weight:600; color:var(--fg2); cursor:pointer; }
+  .fc-mini:hover{ background:var(--row-hover); }
+  .fc-addrow{ display:flex; gap:8px; margin-top:13px; }
+  .fc-q-rm{ flex:none; margin-top:7px; width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:none; background:none; border-radius:6px; color:var(--muted2); cursor:pointer; }
+  .fc-ghead .fc-q-rm{ margin-top:0; width:20px; height:20px; }
+  .fc-q-rm:hover{ background:var(--error-bg); color:var(--error); }
+  .fc-addq{ align-self:flex-start; display:flex; align-items:center; gap:6px; margin-top:2px; padding:6px 12px; border:1px dashed var(--muted2); border-radius:9px; background:none; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--fg2); cursor:pointer; }
+  .fc-addq:hover{ background:var(--row-hover); }
+  .fc-ta[data-invalid="1"]{ border-color:var(--error) !important; box-shadow:0 0 0 3px var(--error-bg) !important; }
+  .cfg-foot{ flex:none; display:none; align-items:center; justify-content:space-between; gap:12px; padding:11px var(--pin); border-top:1px solid var(--border); background:var(--dock-bg); }
+  .cfg-foot[data-show="1"]{ display:flex; }
+  .cfg-foot-status{ font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  .cfg-foot-status[data-state="err"]{ color:var(--error); font-weight:600; }
+  .cfg-foot-status[data-state="ok"]{ color:var(--success); font-weight:600; display:inline-flex; transform-origin:left center; animation:ccPop .42s cubic-bezier(.22,1.2,.36,1); }
+  @keyframes ccPop{ 0%{ transform:scale(.7); opacity:.2; } 55%{ transform:scale(1.14); } 100%{ transform:scale(1); opacity:1; } }
+  .cfg-apply{ padding:8px 16px; border:none; border-radius:9px; background:var(--primary); color:var(--primary-fg); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s ease; }
+  .cfg-apply:hover{ background:var(--primary-hover); }
+  .cfg-apply:active{ transform:translateY(.5px); }
+  .cfg-foot-btns{ display:flex; align-items:center; gap:8px; }
+  .cfg-cancel{ padding:8px 14px; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--fg2); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s ease, color .15s ease; }
+  .cfg-cancel:hover{ background:var(--row-hover); color:var(--fg); }
+  .cfg-cancel:active{ transform:translateY(.5px); }
+  
+  
+  .pc-root .tb-mark{ background:color-mix(in oklab, var(--fg) 82%, var(--bg)); color:var(--panel); box-shadow:none; }
+  .pc-root[data-logo="Ink tile"] .tb-mark{ background:var(--primary); color:var(--primary-fg); }
+  .pc-root[data-logo="Terracotta tile"] .tb-mark{ background:var(--accent); color:#fdf6f1; }
+  .pc-root[data-logo="Paper tile"] .tb-mark{ background:var(--icon-bg); color:var(--fg); }
+  .pc-root[data-logo="Outlined"] .tb-mark{ background:var(--card); color:var(--fg2); box-shadow:inset 0 0 0 1px var(--border); }
+  .pc-root[data-logo="Bare ink"] .tb-mark{ background:transparent; color:var(--fg); }
+  .pc-root[data-logo="Bare terracotta"] .tb-mark{ background:transparent; color:var(--accent); }
+  .tb-mark svg{ stroke:currentColor; }
+  .tb-mark svg circle{ fill:currentColor; }
+  .cfg-detail-head{ flex:none; height:56px; display:flex; align-items:center; gap:11px; padding:0 var(--pin); border-bottom:1px solid var(--divider); }
+  .cfg-back{ flex:none; width:32px; height:32px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--card); border-radius:9px; color:var(--fg2); cursor:pointer; transition:background .14s ease, color .14s ease; }
+  .cfg-back:hover{ background:var(--row-hover); color:var(--fg); }
+  .cfg-detail-node{ flex:none; width:30px; height:30px; border-radius:8px; background:var(--panel); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
+  .cfg-detail-title{ min-width:0; display:flex; flex-direction:column; gap:1px; }
+  .cfg-detail-title .t{ font-family:'Newsreader',serif; font-size:18px; font-weight:500; color:var(--fg); line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cfg-detail-title .s{ font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted2); }
+  .cfg-detail-body{ flex:1; overflow-y:auto; padding:18px var(--pin-sc) 22px var(--pin); scrollbar-gutter:stable; }
+  .cfg-detail{ position:absolute; inset:0; z-index:35; background:var(--dock-bg); display:flex; flex-direction:column; opacity:0; transform:translateX(12px); pointer-events:none; transition:opacity .2s ease, transform .26s cubic-bezier(.22,.61,.36,1); }
+  .cfg-detail[data-open="1"]{ opacity:1; transform:translateX(0); pointer-events:auto; }
+  .cfg-pop{ position:absolute; z-index:38; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 34px rgba(var(--sh),.16); padding:14px; opacity:0; transform:translateY(-6px); pointer-events:none; transition:opacity .16s ease, transform .18s ease; }
+  .cfg-pop[data-open="1"]{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  .cfg-undo:disabled{ opacity:.35; cursor:default; }
+  .cfg-undo:not(:disabled):hover{ color:var(--fg); background:var(--ghost-hover); }
+  .cfg-undo:not(:disabled):active{ background:var(--divider); transform:translateY(.5px); }
+  .panel-canvas, .panel-config{ position:relative; }
+  .cfg-fp-tools{ display:flex; align-items:center; gap:2px; margin:-6px -8px -2px; }
+  .cfg-tool{ display:flex; align-items:center; gap:5px; white-space:nowrap; padding:4px 8px; border:none; background:none; border-radius:7px; font-family:inherit; font-size:12px; font-weight:600; color:var(--fg2); cursor:pointer; transition:background .15s ease, color .15s ease; }
+  .cfg-tool:not(:disabled):hover{ color:var(--fg); background:var(--ghost-hover); }
+  .cfg-tool:not(:disabled):active{ background:var(--divider); transform:translateY(.5px); }
+  .cfg-tool:disabled{ opacity:.35; cursor:default; }
+  .pc-toast{ position:absolute; left:50%; bottom:14px; z-index:44; display:flex; align-items:center; gap:9px; width:max-content; max-width:calc(100% - 28px); padding:10px 13px; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 34px rgba(var(--sh),.16); font-size:12.5px; color:var(--fg); opacity:0; transform:translate(-50%, 8px); pointer-events:none; transition:opacity .22s ease, transform .22s ease; }
+  .pc-toast[data-show="1"]{ opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+  .pc-toast-undo{ flex:none; border:none; background:none; padding:3px 7px; margin:-3px -5px -3px 2px; border-radius:7px; font-family:inherit; font-size:12px; font-weight:600; color:var(--fg); cursor:pointer; }
+  .pc-toast-undo:hover{ background:var(--ghost-hover); }
+  .plh-pre-opt{ width:100%; text-align:left; display:flex; gap:9px; padding:9px 10px; border:none; background:none; border-radius:8px; cursor:pointer; font-family:inherit; color:var(--fg); transition:background .15s ease; }
+  .plh-pre-opt:hover{ background:var(--row-hover); }
+  .pl-first, .cfg-first, .sb-first{ display:none; }
+  .pc-root[data-first="1"] .pl-first{ display:flex; }
+  .pc-root[data-first="1"] .cfg-first{ display:flex; }
+  .pc-root[data-first="1"] .plh-count, .pc-root[data-first="1"] .plh-preset-wrap, .pc-root[data-first="1"] .panel-canvas [aria-label="Undo last pipeline change"]{ display:none !important; }
+  .sidebar[data-first="1"]:not([data-searched="1"]) > .sb-list{ display:flex; flex-direction:column; }
+  .sidebar[data-first="1"]:not([data-searched="1"]) > .sb-list .pr{ display:none !important; }
+  .sidebar[data-first="1"]:not([data-searched="1"]) .sb-first{ display:flex; }
+  .sidebar[data-first="1"]:not([data-searched="1"]) .sb-empty, .sidebar[data-first="1"]:not([data-searched="1"]) .sb-error, .sidebar[data-first="1"]:not([data-searched="1"]) .sb-pager{ display:none !important; }
+  .sb-imp{ display:none; }
+  .sidebar[data-sm="import"] .sb-qwrap, .sidebar[data-sm="import"] .sb-qwrap + div, .sidebar[data-sm="import"] .sb-pager, .sidebar[data-sm="import"] .sb-first, .sidebar[data-sm="import"] .sb-empty, .sidebar[data-sm="import"] .sb-error, .sidebar[data-sm="import"] .sb-searching{ display:none !important; }
+  .sidebar[data-sm="import"] > .sb-list > *:not(.sb-imp){ display:none !important; }
+  .sidebar[data-sm="import"] .sb-imp{ display:flex; flex-direction:column; min-height:100%; }
+  @keyframes rnSpin{ to{ transform:rotate(360deg); } }
+  .sb-searching{ display:none; }
+  .sidebar[data-searching="1"] .sb-searching{ display:flex; flex-direction:column; }
+  .sidebar[data-searching="1"] > .sb-list .pr, .sidebar[data-searching="1"] .sb-first, .sidebar[data-searching="1"] .sb-empty, .sidebar[data-searching="1"] .sb-error, .sidebar[data-searching="1"] .sb-pager{ display:none !important; }
+  @keyframes sbSkel{ 0%,100%{ opacity:.45; } 50%{ opacity:.9; } }
+  .sb-sk{ animation:sbSkel 1.15s ease-in-out infinite; }
+  .sb-sk-b{ background:var(--icon-bg); border-radius:4px; flex:none; }
+  .cf-body{ min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
+  .cf-type{ font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2); }
+  .cf-val{ font-size:13.5px; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cf-tools{ position:absolute; right:5px; top:50%; transform:translateY(-50%); flex:none; display:flex; align-items:center; gap:1px; padding-left:28px; background:linear-gradient(90deg, rgba(0,0,0,0), var(--cf-bg) 28px); opacity:0; pointer-events:none; transition:opacity .14s ease; }
+  .cf-filter:hover .cf-tools{ opacity:1; pointer-events:auto; }
+  .cf-tool{ width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:none; background:none; border-radius:6px; color:var(--muted2); cursor:pointer; transition:background .14s ease, color .14s ease; }
+  .cf-tool:hover{ background:var(--ghost-hover); color:var(--fg); }
+  .cf-tool:active{ transform:scale(.86); }
+  .cf-tool:disabled{ opacity:.3; cursor:default; }
+  .cf-conn{ width:2px; height:12px; background:var(--border); align-self:center; flex:none; }
+  .cfg-pipe[data-layout="Seamless"] .cf-filter{ --cf-bg:transparent; border:none; border-radius:10px; background:none; }
+  .cfg-pipe[data-layout="Seamless"] .cf-filter:hover{ --cf-bg:var(--well-hover); background:var(--cf-bg); }
+  /* selection inside a rounded well: rounded card lift + the filter's own ink as a soft
+     ring — never a square band with a left rail (§ Section wells: nested radii, no rails) */
+  .cfg-pipe[data-layout="Seamless"] .cf-filter[data-sel="1"]{ --cf-bg:var(--card); background:var(--cf-bg); border-radius:9px; box-shadow:0 1px 3px rgba(var(--sh),.09), inset 0 0 0 1.5px color-mix(in oklab, var(--cf-c, var(--accent)) 45%, transparent); }
+  .cfg-pipe[data-layout="Seamless"] .cf-filter[data-sel="1"] .cf-rail{ opacity:0; }
+  .cfg-pipe[data-layout="Seamless"] .cf-conn{ display:none; }
+  .cfg-add-wrap{ position:relative; align-self:center; margin-top:6px; }
+  .cfg-add{ display:flex; align-items:center; justify-content:center; gap:7px; padding:8px 14px; border:1px dashed var(--muted2); border-radius:10px; background:none; color:var(--fg2); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s ease, border-color .15s ease; }
+  .cfg-add:hover{ background:var(--row-hover); }
+  .cfg-add .ca-plus{ display:flex; align-items:center; justify-content:center; flex:none; }
+  .cfg-add .ca-chev{ flex:none; opacity:.7; }
+  .cfg-add-wrap[data-add="Full width"]{ align-self:stretch; }
+  .cfg-add-wrap[data-add="Full width"] .cfg-add{ width:100%; padding:11px; }
+  .cfg-add-wrap[data-add="Solid"] .cfg-add{ border:1px solid var(--border); background:var(--card); box-shadow:0 1px 2px rgba(var(--sh),.05); }
+  .cfg-add-wrap[data-add="Solid"] .cfg-add:hover{ background:var(--row-hover); border-color:var(--muted2); }
+  .cfg-add-wrap[data-add="Solid"] .ca-plus{ color:var(--accent); }
+  .cfg-add-wrap[data-add="Step node"]{ align-self:stretch; }
+  .cfg-add-wrap[data-add="Step node"] .cfg-add{ width:100%; justify-content:flex-start; gap:11px; padding:10px 12px; border-radius:12px; }
+  .cfg-add-wrap[data-add="Step node"] .ca-plus{ width:27px; height:27px; border:1px dashed var(--muted2); border-radius:8px; }
+  .cfg-add-wrap[data-add="Step node"] .ca-label{ flex:1; text-align:left; }
+  .cfg-scroll::-webkit-scrollbar{ width:9px; }
+  .cfg-scroll::-webkit-scrollbar-thumb{ background:var(--scroll); border-radius:5px; border:2px solid var(--dock-bg); }
+  .cfg-scroll::-webkit-scrollbar-track{ background:transparent; }
+  .pc-root ::-webkit-scrollbar{ width:9px; height:9px; }
+  .pc-root ::-webkit-scrollbar-thumb{ background:var(--scroll); border-radius:5px; }
+  .pc-root ::-webkit-scrollbar-track{ background:transparent; }
+  .pc-root input[type=number]{ color-scheme:light; }
+  .pc-root[data-theme=dark] input[type=number]{ color-scheme:dark; }
+  .anc{ display:flex; align-items:flex-start; gap:9px; padding:9px 11px; border-radius:10px; font-size:12px; line-height:1.45; background:var(--icon-bg); color:var(--fg2); }
+  .anc > svg{ flex:none; width:15px; height:15px; margin-top:.5px; color:var(--muted); }
+  .anc b{ color:var(--fg); font-weight:600; }
+  .anc .anc-x{ flex:none; margin:-2px -3px auto auto; padding:2px; display:flex; border:none; background:none; color:var(--muted); cursor:pointer; border-radius:5px; }
+  .anc .anc-x:hover{ background:var(--ghost-hover); color:var(--fg); }
+  .anc[data-tone="accent"]{ background:var(--err-bg); }
+  .anc[data-tone="accent"] > svg{ color:var(--accent); }
+  .anc[data-tone="flat"]{ background:none; border:1px solid var(--border); }
+  .anc[data-tone="info"], .anc[data-tone="mute"]{ --anc-amber:var(--warning); background:color-mix(in oklab, var(--anc-amber) 12%, var(--card)); border:1px solid color-mix(in oklab, var(--anc-amber) 32%, var(--border)); border-radius:12px; padding:11px 14px; gap:10px; font-size:12.5px; color:var(--fg); box-shadow:none; }
+  .anc[data-tone="info"] > svg, .anc[data-tone="mute"] > svg{ color:var(--anc-amber); width:14px; height:14px; margin-top:1.5px; }
+  .anc[data-tone="mute"]{ background:var(--icon-bg); border-color:var(--border); }
+  .anc[data-tone="mute"] > svg{ color:var(--muted); }
+  .anc .anc-slash{ opacity:0; }
+  .anc[data-tone="mute"] .anc-slash{ opacity:1; }
+  .pc-root[data-theme="dark"] .anc[data-tone="info"]{ background:color-mix(in oklab, var(--anc-amber) 16%, var(--card)); }
+  .anc[data-tone="error"]{ background:color-mix(in oklab, var(--error) 10%, var(--card)); border:1px solid color-mix(in oklab, var(--error) 32%, var(--border)); }
+  .anc[data-tone="error"] > svg{ color:var(--error); width:14px; height:14px; margin-top:1.5px; }
+  .pc-root[data-theme="dark"] .anc[data-tone="error"]{ background:color-mix(in oklab, var(--error) 16%, var(--card)); }
+  @keyframes dlPop{ from{ opacity:0; transform:translateY(-5px) scale(.97); } to{ opacity:1; transform:none; } }
+  .anc-a{ display:inline; margin-left:3px; padding:0; border:none; background:none; font:inherit; font-weight:600; color:var(--fg); text-decoration:underline; text-underline-offset:2.5px; text-decoration-thickness:1px; cursor:pointer; }
+  .anc-a:hover{ color:var(--accent); }
+  .sb-filter-btn, .sb-sort-btn, .tb-settings, .pc-theme-toggle, .tb-project{ transition:background .15s ease, border-color .15s ease, color .15s ease; }
+  .sb-filter-btn:hover, .sb-sort-btn:hover{ color:var(--fg); background:var(--row-hover); }
+  .tb-settings:hover, .pc-theme-toggle:hover{ color:var(--fg); }
+  .om-tip{ position:fixed; z-index:9999; background:var(--fg); color:var(--bg); font-family:'Hanken Grotesk',-apple-system,system-ui,sans-serif; font-size:11.5px; font-weight:500; letter-spacing:.01em; padding:6px 10px; border-radius:7px; max-width:244px; white-space:normal; text-align:left; line-height:1.5; pointer-events:none; opacity:0; transform:translateY(3px); transition:opacity .12s ease, transform .12s ease; box-shadow:0 6px 18px rgba(0,0,0,.24); }
+  .om-tip[data-show="1"]{ opacity:1; transform:translateY(0); }
+  
+  .om-tip[data-style="Contrast"]{ background:#211f1c; color:#f7f5f0; border:1px solid rgba(255,255,255,.10); box-shadow:0 8px 22px rgba(0,0,0,.34); }
+  .om-tip[data-style="Card"]{ background:var(--card); color:var(--fg); border:1px solid var(--border); box-shadow:0 10px 26px rgba(var(--sh),.20); }
+  .om-tip[data-style="Accent"]{ background:var(--accent); color:#fff; border:1px solid rgba(0,0,0,.10); box-shadow:0 8px 22px rgba(var(--sh),.24); }
+  .om-tip[data-style="Outline"]{ background:var(--panel); color:var(--fg); border:1px solid var(--fg2); box-shadow:0 6px 16px rgba(var(--sh),.14); }
+  .pc-root, .pc-root *{ transition:background-color .25s ease, border-color .25s ease, color .25s ease; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-hover); }
+  .sb-list::-webkit-scrollbar { width: 9px; }
+  .sb-list::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 5px; border: 2px solid var(--panel); }
+  .sb-list::-webkit-scrollbar-thumb:hover { background: var(--dot-sep); }
+  .sb-list::-webkit-scrollbar-track { background: transparent; }
+  .sb-list, .pl-scroll, .cfg-scroll, .cfg-detail-body, .sb-filter-panel { overscroll-behavior-y: contain; }
+  .scrollbar-track{ background:transparent !important; }
+  .scrollbar-track-y{ width:9px !important; }
+  .scrollbar-thumb-y{ background:var(--scroll) !important; border-radius:5px !important; border:2px solid transparent !important; }
+  .sb-search:focus { border-color: var(--fg2) !important; box-shadow: 0 0 0 3px var(--ring); }
+  .ff-input:focus { border-color: var(--fg2) !important; box-shadow: 0 0 0 3px var(--ring); }
+  .sb-opt:hover { background: var(--row-hover); }
+  .sb-pgb { transition: background .14s ease, color .14s ease, border-color .14s ease; }
+  .sb-pgb:hover:not([data-on="1"]):not([disabled]) { background: var(--row-hover); color: var(--fg); }
+  .sb-pgb[disabled] { opacity: .35; cursor: default; }
+  .sb-pgmore:hover { background: var(--row-hover) !important; border-color: var(--fg2) !important; }
+  @keyframes sbPulse { 0%,100% { opacity:.25; } 50% { opacity:1; } }
+  /* Star / save control: visibility is CSS STATE, never a JS-toggled inline opacity
+     (design-system.md § Star / save control). Hidden at rest, revealed by row hover,
+     keyboard focus, or a saved verdict — so no repaint or re-wire can lose it. */
+  .pr .pr-star{ opacity:0; }
+  .pr:hover .pr-star, .pr .pr-star:focus-visible, .pr .pr-star[data-saved="1"]{ opacity:1; }
+  .dr input[type=range] { position:absolute; top:5px; left:0; width:100%; height:16px; margin:0; background:none; -webkit-appearance:none; appearance:none; pointer-events:none; }
+  .dr input[type=range]::-webkit-slider-runnable-track { background:none; border:none; }
+  .dr input[type=range]::-moz-range-track { background:none; border:none; }
+  .dr input[type=range]::-webkit-slider-thumb { background:transparent !important; border:none !important; box-shadow:none !important; }
+  .dr input[type=range]::-moz-range-thumb { background:transparent !important; border:none !important; box-shadow:none !important; }
+  .dr .dr-h { background:none !important; border:none !important; border-radius:0 !important; box-shadow:none !important; overflow:visible; margin-left:-8px; }
+  .dr .dr-h::after { content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); box-shadow:0 1px 2px rgba(var(--sh),.3); width:3px; height:14px; border-radius:2px; background:var(--fg2); }
+  .pc-root[data-handle="Bar"] .dr-h::after { width:5px; height:15px; border-radius:3px; }
+  .pc-root[data-handle="Ring"] .dr-h::after { width:12px; height:12px; border-radius:50%; background:var(--card); border:2px solid var(--fg2); }
+  .pc-root[data-handle="Dot"] .dr-h::after { width:9px; height:9px; border-radius:50%; }
+  .pc-root[data-handle="Diamond"] .dr-h::after { width:7px; height:7px; border-radius:0; background:var(--card); border:2px solid var(--fg2); transform:translate(-50%,-50%) rotate(45deg); }
+  .dr input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; pointer-events:auto; width:16px; height:16px; border-radius:50%; background:var(--card); border:2px solid var(--fg2); box-shadow:0 1px 3px rgba(var(--sh),.2); cursor:pointer; margin-top:0; }
+  .dr input[type=range]::-moz-range-thumb { pointer-events:auto; width:14px; height:14px; border-radius:50%; background:var(--card); border:2px solid var(--fg2); box-shadow:0 1px 3px rgba(var(--sh),.2); cursor:pointer; }
+
+  /* ===== 6d flow-chart pipeline (Build canvas alt style) ===== */
+  .pf6{ --shadow-panel:0 2px 12px rgba(var(--sh),.05); --shadow-card-hover:0 3px 10px rgba(var(--sh),.09); --shadow-node-sel:0 0 0 4px var(--ring); --shadow-add:0 2px 6px rgba(var(--sh),.12); --r-panel:16px; --r-item:8px; --r-pill:999px; --r-tool-sm:6px; --font-serif:'Newsreader', serif; --font-sans:'Hanken Grotesk', -apple-system, sans-serif; --font-mono:'Hanken Grotesk', -apple-system, sans-serif; --font-mono-unused:ui-monospace, monospace; --ease-out:cubic-bezier(.22,.61,.36,1); }
+
+.pf6, .pf6 *, .pf6 *::before, .pf6 *::after { box-sizing:border-box; }
+
+/* ===================== CHASSIS — do not edit ============================== */
+
+.pf6{
+  /* ---- the one geometry contract everything else derives from ---------- */
+  --v6d-nw:   232px;                       /* node width  */
+  --v6d-bgap:  52px;                       /* gap between branch columns */
+  --v6d-fpad:  20px;                       /* subgraph frame inner padding */
+  --v6d-fw:    558px;                      /* = 2*nw + bgap + 2*fpad + 2*border */
+  --v6d-zone:  56px;                       /* fork zone == merge zone height */
+  --v6d-r:      9px;                       /* THE elbow radius. one value, everywhere. */
+  --v6d-w:    1.5px;                       /* THE stroke weight. one value, everywhere. */
+  --v6d-port: 7px;                         /* THE port diameter, inlet, outlet, side */
+  --v6d-pr:   calc(var(--v6d-port)/2);     /* port radius = every wire's end clearance */
+  --v6d-ah:   7px;                         /* arrowhead square */
+  --v6d-ab:   calc(var(--v6d-ah)*.7071);   /* arrowhead centre->tip depth */
+  --v6d-seat: calc(var(--v6d-w)*1.4142);   /* line stops this far above a tip (inner vertex) */
+  --v6d-plus: 24px;                        /* insertion node diameter */
+  --v6d-junc: 26px;                        /* merge diamond square */
+  --v6d-jr:   calc(var(--v6d-junc)*.7071); /* diamond centre->tip (straddles the edge) */
+  --v6d-mzone: 36px;                       /* merge zone: bus + stem + diamond tip.
+                                              tail(20) + (mzone-1) = 55 = fork-side pad */
+  --v6d-bite:  1px;                        /* arrow tips sink this far into a rim (stroke
+                                              corners taper; flush would read as a gap) */
+  --v6d-air:   3px;                        /* min air: plus <-> any port/edge.
+                                              CONTRACT: a wire hosting a plus must be
+                                              >= wt + wb + plus + 2*air tall. */
+
+  --v6d-wire:  var(--muted);
+  --v6d-frame: color-mix(in oklab, var(--fg) 21%, var(--canvas));
+  --v6d-hole:  var(--canvas);
+  --v6d-gbg:   color-mix(in srgb, var(--fg) 3.5%, var(--canvas));
+
+  width:824px; max-width:100%; margin:0 auto;
+  font-family:var(--font-sans, 'Hanken Grotesk', -apple-system, sans-serif);
+  font-size:13px; color:var(--fg);
+  background:var(--canvas);
+  border:1px solid var(--border); border-radius:var(--r-panel,16px);
+  box-shadow:var(--shadow-panel);
+  display:flex; flex-direction:column; overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  container-type:inline-size; container-name:v6d;
+}
+/* Compact tiers — GEOMETRY ONLY. Because every elbow is expressed as calc()
+   against the frame's own content box, re-declaring four numbers re-routes the
+   entire graph: no re-measurement, no SVG rewrite, no horizontal scroll at
+   520px. Card-internal tier behaviour lives inside the CARD fence. */
+@container v6d (max-width:700px){
+  .v6d-canvas{ --v6d-nw:214px; --v6d-bgap:32px; --v6d-fpad:16px; --v6d-fw:494px;
+               padding:28px var(--pin) 38px; }
+}
+@container v6d (max-width:560px){
+  .v6d-canvas{ --v6d-nw:206px; --v6d-bgap:16px; --v6d-fpad:12px; --v6d-fw:454px;
+               padding:24px 14px 34px; }
+}
+.pf6 button{ font:inherit; color:inherit; padding:0; cursor:pointer; }
+
+/* ---- panel header -------------------------------------------------------- */
+.v6d-head{ flex:none; height:56px; display:flex; align-items:center; gap:11px;
+           padding:0 var(--pin); border-bottom:1px solid var(--border); }
+.v6d-head-t{ font-family:var(--font-serif,'Newsreader',serif); font-size:18px;
+             font-weight:500; letter-spacing:-.005em; }
+.v6d-head-c{ font-size:11.5px;
+             color:var(--muted); font-variant-numeric:tabular-nums; }
+.v6d-head-sp{ flex:1; }
+.v6d-ghost{ display:flex; align-items:center; gap:5px; padding:5px 10px;
+            background:transparent; border:0;
+            border-radius:var(--r-item,8px); font-size:12px; font-weight:600;
+            color:var(--fg2); }
+.v6d-ghost:hover{ background:var(--row-hover); }
+.v6d-ghost .chev{ color:var(--muted); }
+
+/* ---- canvas + flow ------------------------------------------------------- */
+.v6d-canvas{ flex:1; position:relative; padding:34px 40px 44px; }
+.v6d-flow{ width:var(--v6d-fw); margin:0 auto;
+           display:flex; flex-direction:column; align-items:center; }
+.v6d-slot{ width:var(--v6d-nw,232px); max-width:100%; display:flex;
+           flex-direction:column; align-items:center;
+           padding-bottom:6px; margin-bottom:-6px; }
+/* the contact-sheet specimen is a specimen: it always shows the block at its
+   design size, never at a compact tier the crop width happens to trigger */
+[data-pf-swatch]{ --v6d-nw:232px; }
+
+/* ============================ WIRES =======================================
+   One primitive. A stretched box that paints a 1.5px vertical rule between
+   --wt and --wb, and seats a 90deg chevron whose tip lands exactly on --wb.
+   --wb is the INLET CLEARANCE and equals the inlet port's radius (10px port
+   → 5px). Change the port and every one of these numbers is wrong.
+   ========================================================================= */
+.v6d-wire{ position:relative; align-self:stretch; flex:none; height:40px;
+           --wt:0px; --wb:var(--v6d-pr); --seat:var(--v6d-seat); }
+.v6d-wire:not(.is-inked)::before{ content:''; position:absolute; left:50%; transform:translateX(-50%);
+                   width:var(--v6d-w,1.5px); top:var(--wt);
+                   bottom:calc(var(--wb) + var(--seat));
+                   background:var(--v6d-wire,#6c6a64); }
+.v6d-wire:not(.is-inked)::after{ content:''; position:absolute; left:50%;
+                  width:var(--v6d-ah); height:var(--v6d-ah);
+                  border-right:var(--v6d-w,1.5px) solid var(--v6d-wire,#6c6a64);
+                  border-bottom:var(--v6d-w,1.5px) solid var(--v6d-wire,#6c6a64);
+                  bottom:calc(var(--wb) + var(--v6d-ab) - var(--v6d-bite));
+                  transform:translate(-50%,50%) rotate(45deg); }
+.v6d-wire--pre { height:38px; --wb:0px; }    /* trunk -> group frame          */
+.v6d-wire--post{ height:38px; --wt:16px; }   /* merge diamond -> trunk        */
+.v6d-wire--link{ height:34px; --wt:16px; --wb:0px; } /* merge diamond -> next group */
+.v6d-wire--tail{ height:30px; --wb:0px; }    /* trunk -> dashed append pill   */
+.v6d-wire--tailm{ height:30px; --wb:0px; }  /* merge diamond -> merge pill   */
+.v6d-wire--end { height:24px; --wt:0px; --wb:0px; }
+.v6d-wire--tail::after, .v6d-wire--end::after,
+.v6d-wire--pre::after, .v6d-wire--link::after{ display:none; }
+.v6d-wire--tail, .v6d-wire--end, .v6d-wire--pre, .v6d-wire--link{ --seat:0px; }
+
+/* the insertion affordance lives ON the connection, 17px below the outlet.
+   NOTE: this is the OTHER circle. It is why the ordinal may not be one. */
+.v6d-plus{ position:absolute; left:50%;
+           top:calc(var(--wt,0px) + (100% - var(--wt,0px) - var(--wb,0px))/2);
+           transform:translate(-50%,-50%);
+           z-index:6; width:var(--v6d-plus); height:var(--v6d-plus); border-radius:50%;
+           display:flex; align-items:center; justify-content:center;
+           background:var(--card); border:1px solid var(--border);
+           color:var(--fg2); box-shadow:var(--shadow-add);
+           opacity:0; transition:opacity .14s ease, background .14s ease,
+                                 color .14s ease, border-color .14s ease; }
+.v6d-plus:hover{ background:var(--primary); color:var(--primary-fg);
+                 border-color:var(--primary); }
+.v6d-wire:hover > .v6d-plus,
+.v6d-wire.is-plus > .v6d-plus,
+.v6d-tail.is-plus > .v6d-plus,
+.v6d-node:hover + .v6d-wire > .v6d-plus,
+.v6d-node.is-hover + .v6d-wire > .v6d-plus,
+.v6d-branch:has(.v6d-node.is-sel) > .v6d-tail > .v6d-plus{ opacity:1; }
+
+/* ---- terminus ------------------------------------------------------------ */
+.v6d-term{ width:13px; height:13px; border-radius:50%;
+           border:var(--v6d-w) solid var(--v6d-wire);
+           display:flex; align-items:center; justify-content:center; }
+.v6d-term::after{ content:''; width:5px; height:5px; border-radius:50%;
+                  background:var(--v6d-wire); }
+
+/* ---- INK — the measured connector renderer (pl6Ink). The live flow is
+   drawn by ONE SVG pass from laid-out geometry; the CSS pseudo wires above
+   only serve static specimens (style-picker swatches). ---- */
+.v6d-ink{ position:absolute; inset:0; width:100%; height:100%; display:block;
+          color:var(--v6d-wire); overflow:visible; pointer-events:none; }
+.v6d-fork.is-inked > i, .v6d-merge.is-inked > i{ display:none; }
+
+/* ---- dashed tail append -------------------------------------------------- */
+.v6d-tailadd{ display:flex; align-items:center; gap:6px; padding:5px 13px;
+              border:1px dashed var(--muted2); border-radius:var(--r-pill,999px);
+              background:var(--canvas); font-size:11.5px; font-weight:600;
+              color:var(--fg2); white-space:nowrap; }
+.v6d-tailadd:hover{ background:var(--row-hover); border-style:solid;
+                    border-color:var(--fg2); color:var(--fg); }
+.v6d-group .v6d-tailadd{ background:transparent; }
+
+/* ============================ PORTS =======================================
+   The three points where the wire system touches the card. They are pseudo-
+   elements OF `.v6d-node`, so the card element must stay `position:relative`
+   and must not claim `::before` / `::after` for itself.
+   inlet : hollow 10px socket, centre on the card's TOP edge at x=50%
+   outlet: filled 9px boss,    centre on the card's BOTTOM edge at x=50%
+   side  : hollow 9px socket,  centre on the card's RIGHT edge at y=50%
+   ========================================================================= */
+.v6d-node::before{ content:''; position:absolute; left:50%; top:0; z-index:4;
+                   transform:translate(-50%,-50%); box-sizing:border-box;
+                   width:var(--v6d-port); height:var(--v6d-port);
+                   border-radius:50%; background:var(--v6d-hole,#f8f5ee);
+                   border:var(--v6d-w,1.5px) solid var(--v6d-wire,#6c6a64); }
+.v6d-node::after{ content:''; position:absolute; left:50%; bottom:0; z-index:4;
+                  transform:translate(-50%,50%); box-sizing:border-box;
+                  width:var(--v6d-port); height:var(--v6d-port);
+                  border-radius:50%; background:var(--v6d-wire,#6c6a64); }
+.v6d-node.is-sel::before{ border-color:var(--fg); }
+.pl-flow > .v6d-node:first-child::before,
+.v6d-flow > .v6d-slot:first-child .v6d-node::before{ display:none; }
+.v6d-node.is-sel::after { background:var(--fg); }
+
+/* SIDE OUTLET + FAN-OUT — "run alongside" is spatially to the RIGHT, never
+   below. The user froze this button. Trunk cards only. */
+.v6d-side{ position:absolute; right:0; top:50%; transform:translate(50%,-50%);
+           z-index:4; box-sizing:border-box;
+           width:var(--v6d-port); height:var(--v6d-port); border-radius:50%;
+           background:var(--v6d-hole); border:var(--v6d-w) solid var(--dot-sep);
+           transition:border-color .14s ease; }
+.v6d-node:hover .v6d-side, .v6d-node.is-hover .v6d-side{ border-color:var(--v6d-wire); }
+.v6d-fan{ position:absolute; right:-38px; top:50%; transform:translateY(-50%);
+          z-index:6; width:26px; height:26px; border-radius:50%;
+          display:flex; align-items:center; justify-content:center;
+          background:var(--card); border:1px solid var(--border);
+          color:var(--fg2); box-shadow:var(--shadow-add);
+          opacity:0; transition:opacity .14s ease, background .14s ease,
+                                color .14s ease, border-color .14s ease; }
+.v6d-fan::before{ content:''; position:absolute; left:-12px; top:50%; margin-top:-.75px;
+                  width:12px; height:var(--v6d-w); background:var(--v6d-wire); }
+.v6d-fan:hover{ background:var(--primary); color:var(--primary-fg);
+                border-color:var(--primary); }
+.v6d-node:hover .v6d-fan, .v6d-node.is-hover .v6d-fan{ opacity:1; }
+
+/* ============================ SUBGRAPH FRAME ==============================
+   padding-top 55px == fork leg tip (y=51) + the inlet port's 5px radius, so a
+   fork arrow lands exactly on the port rim. padding-bottom 55px does the same
+   job for the merge bus. Both are functions of the port size.
+   ========================================================================= */
+.v6d-group{ position:relative; width:var(--v6d-fw);
+            /* default style's treatment: the frame is a FILL, not a line.
+               border stays for geometry (every elbow is a function of it). */
+            border:1px solid transparent; border-radius:18px;
+            background:var(--v6d-gbg); --v6d-hole:var(--v6d-gbg);
+            padding:55px var(--v6d-fpad) calc(var(--v6d-mzone) - 1px); }
+.v6d-tab{ display:none; }
+
+.v6d-branches{ display:flex; gap:var(--v6d-bgap); align-items:stretch; }
+.v6d-branch{ flex:1 1 0; min-width:0; display:flex; flex-direction:column;
+             align-items:center; }
+/* the join tail: grows to whatever the uneven branch needs, and starts at the
+   node's real outlet port rather than at the frame's bottom edge */
+.v6d-tail{ position:relative; align-self:stretch; flex:1 1 auto; min-height:20px;
+           --wt:0px; --wb:0px; }
+.v6d-tail > .v6d-plus{ top:calc(var(--v6d-pr) + var(--v6d-air) + var(--v6d-plus)/2); }
+.v6d-tail:not(.is-inked)::before{ content:''; position:absolute; left:50%; transform:translateX(-50%);
+                   width:var(--v6d-w); top:var(--v6d-pr); bottom:0px;
+                   background:var(--v6d-wire); }
+
+/* fork + merge routing: CSS elbows, so the frame can be any width ---------- */
+.v6d-fork, .v6d-merge{ position:absolute; left:var(--v6d-fpad); right:var(--v6d-fpad);
+                       height:var(--v6d-zone); pointer-events:none; }
+.v6d-merge{ height:var(--v6d-mzone); }
+.v6d-fork { top:-1px; }
+.v6d-merge{ bottom:-1px; }
+.v6d-stem{ position:absolute; left:50%; transform:translateX(-50%); width:var(--v6d-w);
+           background:var(--v6d-wire); }
+.v6d-fork  > .v6d-stem{ top:0; height:30px; }
+.v6d-merge > .v6d-stem{ top:14px; height:calc(var(--v6d-mzone) - 14px); }
+.v6d-bus{ position:absolute;
+          left:calc((100% - var(--v6d-bgap))/4 - var(--v6d-w)/2);
+          right:calc((100% - var(--v6d-bgap))/4 - var(--v6d-w)/2);
+          border:0 solid var(--v6d-wire); }
+.v6d-fork > .v6d-bus{ top:30px;
+                      /* legs end at the arrow's inner vertex; tip lands on the
+                         branch inlet's rim: 55px pad - port radius */
+                      height:calc(25px - var(--v6d-pr) - var(--v6d-seat));
+                      border-top-width:var(--v6d-w);
+                      border-left-width:var(--v6d-w);
+                      border-right-width:var(--v6d-w);
+                      border-radius:var(--v6d-r) var(--v6d-r) 0 0; }
+.v6d-merge > .v6d-bus{ top:0; height:14px;
+                       border-bottom-width:var(--v6d-w);
+                       border-left-width:var(--v6d-w);
+                       border-right-width:var(--v6d-w);
+                       border-radius:0 0 var(--v6d-r) var(--v6d-r); }
+.v6d-arrow{ position:absolute; top:calc(55px - var(--v6d-pr) - var(--v6d-ab) + var(--v6d-bite));
+            width:var(--v6d-ah); height:var(--v6d-ah);
+            border-right:var(--v6d-w) solid var(--v6d-wire);
+            border-bottom:var(--v6d-w) solid var(--v6d-wire); }
+.v6d-arrow--l{ left:calc((100% - var(--v6d-bgap))/4);
+               transform:translate(-50%,-50%) rotate(45deg); }
+.v6d-arrow--r{ right:calc((100% - var(--v6d-bgap))/4);
+               transform:translate(50%,-50%) rotate(45deg); }
+
+/* junctions — fork and merge are real objects straddling the frame edge.
+   The user froze both, including the merge diamond's hover ⊕. */
+.v6d-junc{ position:absolute; left:50%; z-index:5; width:26px; height:26px;
+           background:var(--card); border:1px solid var(--v6d-frame);
+           border-radius:4px; display:flex; align-items:center; justify-content:center;
+           transition:border-color .16s ease, background .16s ease; }
+.v6d-junc--fork { top:-1px;    transform:translate(-50%,-50%) rotate(45deg); }
+.v6d-junc--merge{ bottom:-1px; transform:translate(-50%,50%)  rotate(45deg); }
+.v6d-junc > *{ transform:rotate(-45deg); }
+.v6d-jdot{ width:4px; height:4px; border-radius:50%; background:var(--v6d-wire); }
+.v6d-jplus{ display:none; color:var(--fg); }
+.v6d-junc--merge:hover, .v6d-group:hover .v6d-junc--merge,
+.v6d-group.is-open .v6d-junc--merge{ border-color:var(--fg); }
+.v6d-junc--merge:hover .v6d-jdot, .v6d-group:hover .v6d-junc--merge .v6d-jdot,
+.v6d-group.is-open .v6d-junc--merge .v6d-jdot{ display:none; }
+.v6d-junc--merge:hover .v6d-jplus, .v6d-group:hover .v6d-junc--merge .v6d-jplus,
+.v6d-group.is-open .v6d-junc--merge .v6d-jplus{ display:flex; }
+.v6d-junc--merge:hover{ background:var(--primary); color:var(--primary-fg); }
+.v6d-junc--merge:hover .v6d-jplus{ color:var(--primary-fg); }
+
+/* ==== CARD: EDIT BELOW THIS LINE ==== */
+/* ---------------------------------------------------------------------------
+   5q "Centred", the index leaves the title line's vertical.
+
+   THE INDEX. `3f` proved that the ordinal reads best as TYPOGRAPHY set at the
+   head of the card in a fixed 22px column. 5q keeps that column, same x, same
+   mono face, same 11.5px/600 tabular digits, same 56%-strength ink, and moves
+   ONE thing: the numeral is now optically centred on the CARD's vertical axis
+   instead of sitting on the Newsreader name's baseline. The hairline that `3f`
+   used to bracket the serif's cap band is then free to run the card's whole
+   height, which turns the column into a small RULED REGISTER down the left of
+   every card. Ten cards of identical height put ten numerals at the same x AND
+   the same y, and the register rules line up into a dashed vertical the eye can
+   follow the length of the chart. That is `3c`'s gutter idea: the user's
+   second-favourite index: rebuilt WITHOUT the two things that sank it: no 4%
+   wash (the card face stays one surface, which matters more now that the
+   surface is textured), and, above all, NO loss of the caps kind label.
+
+   WHAT THE REGISTER COSTS, AND WHO PAYS. A full-height rule means BOTH bands
+   start after it: the content column begins at x=42 rather than x=12, so the
+   meta row is 30px narrower than `3f`'s. With the caps label now mandatory,
+   `SEMANTICS  SEM-06` + an origin token + a count + the 45px hover cluster no
+   longer fit on one 176px row at 232px, let alone on 167px at 206px. The count
+   therefore leaves the meta row and becomes MARKS ON THE DIVIDER, `3c`'s pip
+   track verbatim (34.6px, 5 slots, de-hued, `filters:0` = five empties,
+   `filters:null` = no element at all), knocked into the rule's right end the
+   way `3t`'s sync knocks into it. `SED-01`'s `24 papers` is an output quantity,
+   not a magnitude, so it keeps its text, but it now sits in the same slot, so
+   the card has ONE place where quantity is stated instead of two. The card ends
+   up with a small coordinate frame: a vertical register on the left carrying
+   identity, a horizontal rule carrying kind (its tick) and quantity (its
+   track), and the content column inside the corner they make.
+
+   THE ORIGIN stays on the meta row, at its right end, and is reduced to its
+   NUMERAL: `⚯ 03`. That is only readable because of the register: every card
+   in the chart states its number in the same fixed column, so a bare `03` is a
+   pointer at a place you can find by running your eye down the left edge. It
+   is 10px against the code's 11.5px, 54% ink against the code's 62%, and
+   glyph-led, so it can never be mistaken for this card's own code: which is
+   the failure the user named on `3c`.
+
+   PAPER (axis F): NEUTRAL. Every round-3 card was `--card` (#ffffff /
+   #2b2925). 5q's stock is the theme's own card with its warm cast taken out and
+   its value re-set: `oklch(from var(--card) …)`, chroma pinned near zero.
+   Nothing is hardcoded, and the shift is in the NEUTRAL, never toward a hue.
+   Measured off the 3x render: the light sheet's mean is (251,250,250) against
+   the warm (248,245,238) canvas, a plain grey-white sheet on a warm desk, 5.1
+   units of relative luminance clear of the ground. The dark sheet's mean is
+   (45,45,44) against the (40,38,34) canvas, and its deepest trough still lands
+   at 43: three clear units above the canvas, so the 3-unit floor holds.
+
+   FINISH (axis E): `3n`'s LAID GRAIN, recalibrated. `3n`'s own verdict was
+   that it read as "quite similar to 3a", i.e. it did not register at all. Same
+   construction (two repeating gradients, 4px laid period, 58px chain period,
+   ramps not edges, integer periods so nothing beats the device grid at 1x/2x/3x)
+   with three changes: the amplitude is pushed from 4.2/255 to a measured 6/255
+   in light; the ripple is CENTRED on the sheet in both themes rather than only
+   cutting down from white, which keeps the mean where the paper says it is; and
+   the chain wire's phase is moved so no rib lands on the register rule (the
+   swells fall at x = 50, 108, 166, 224, the rule is at 34). Dark runs 4/255,
+   about half of light, per Weber.
+   ------------------------------------------------------------------------ */
+
+.pf6{
+  /* the card contract. 75 = 1 + 36 title + 1 rule + 36 meta + 1. The two bands
+     stay EQUAL, so the rule is dead on the midline and the frozen side port and
+     fan-out button (both `top:50%`) still meet it. */
+  --v6d-h:     75px;
+  --v6d-mh:    36px;
+  --v6d-px:    12px;   /* the card's text gutter, both sides                 */
+  --v6d-ordw:  22px;   /* the register: two tabular digits + air, then a rule */
+  --v6d-cgap:   8px;   /* register rule -> content column                     */
+  --v6d-linkw: 25px;   /* the origin token's measured width (tool docking)    */
+
+  --v6d-cut:   15px;   /* THE chamfer. 45deg, one size, six counts.           */
+  --v6d-rr:    10px;   /* the radius every UNCUT corner keeps                 */
+}
+
+/* ============================ THE SHAPE SYSTEM ============================
+   The merged `3j` x `3l` vocabulary. ONE primitive, per-corner (magnitude,
+   shape): driven by two declarations on the node, so the 1px edge, the
+   resting shadow, the hover shadow and the 4px selection halo all follow the
+   silhouette natively. Six types, six shapes you can say out loud.
+   ======================================================================== */
+.v6d-node{
+  --v6d-tl:var(--v6d-rr); --v6d-tr:var(--v6d-rr);
+  --v6d-br:var(--v6d-rr); --v6d-bl:var(--v6d-rr);
+  --v6d-stl:round; --v6d-str:round; --v6d-sbr:round; --v6d-sbl:round;
+}
+/* 01 SED — the pipeline's TERMINATOR: a stadium left flank (round at h/2). */
+.v6d-node[data-type="sed"]{ --v6d-tl:calc(var(--v6d-h)/2); --v6d-bl:calc(var(--v6d-h)/2); }
+/* 04 DBS — both LEFT corners cut: it draws from OUTSIDE the pipeline.      */
+.v6d-node[data-type="dbs"]{ --v6d-tl:var(--v6d-cut); --v6d-bl:var(--v6d-cut);
+                            --v6d-stl:bevel; --v6d-sbl:bevel; }
+/* 02/08 FWD — the ↗ diagonal pair: it LEANS FORWARD.                       */
+.v6d-node[data-type="fwd"]{ --v6d-tr:var(--v6d-cut); --v6d-bl:var(--v6d-cut);
+                            --v6d-str:bevel; --v6d-sbl:bevel; }
+/* 03/05/09 BWD — the ↖ pair, FWD's exact mirror.                           */
+.v6d-node[data-type="bwd"]{ --v6d-tl:var(--v6d-cut); --v6d-br:var(--v6d-cut);
+                            --v6d-stl:bevel; --v6d-sbr:bevel; }
+/* 06/10 SEM — all four: an OCTAGON. It reaches in every direction.         */
+.v6d-node[data-type="sem"]{ --v6d-tl:var(--v6d-cut); --v6d-tr:var(--v6d-cut);
+                            --v6d-br:var(--v6d-cut); --v6d-bl:var(--v6d-cut);
+                            --v6d-stl:bevel; --v6d-str:bevel;
+                            --v6d-sbr:bevel; --v6d-sbl:bevel; }
+/* 07 RRK — ONE cut, bottom-right: the clipped / dog-eared corner.          */
+.v6d-node[data-type="rrk"]{ --v6d-br:var(--v6d-cut); --v6d-sbr:bevel; }
+
+/* ============================ PAPER + FINISH =============================
+   Paper: a NEUTRAL stock, derived from the theme's own card token with the
+   chroma pinned near zero. Finish: 3n's chain-and-laid grain, recalibrated.
+   Every patch that has to cover the sheet (the hover mask, the two divider
+   knockouts, the pip track's ground) resolves to --v6d-mean, never to a flat
+   --card, or it reads as a hole punched in the paper.
+   ======================================================================== */
+.v6d-node{
+  /* PAPER — the default style's stock: the theme's own --card, flat, no grain.  */
+  --v6d-paper: var(--card);
+  --v6d-crest: var(--card);
+  --v6d-laid:  var(--card);
+  --v6d-chain: transparent;
+  --v6d-mean:  var(--v6d-paper);
+
+  /* the sheet's own edge + rules, re-derived neutral so a warm hairline never
+     sits on a neutral sheet */
+  --v6d-edge:  var(--border);
+  --v6d-div:   var(--divider);
+  --v6d-hair:  color-mix(in oklab, var(--fg) 17%, var(--v6d-paper));
+  --v6d-ordc:  color-mix(in oklab, var(--fg) 56%, var(--v6d-paper));
+  --v6d-codec: color-mix(in oklab, var(--fg) 66%, var(--v6d-paper));
+  --v6d-linkc: color-mix(in oklab, var(--fg) 54%, var(--v6d-paper));
+  --v6d-linkg: color-mix(in oklab, var(--fg) 40%, var(--v6d-paper));
+  --v6d-outc:  color-mix(in oklab, var(--fg) 60%, var(--v6d-paper));
+  --v6d-pip-on:  color-mix(in oklab, var(--fg) 62%, var(--v6d-mean));
+  --v6d-pip-off: color-mix(in oklab, var(--fg) 20%, var(--v6d-mean));
+  --v6d-toolc: color-mix(in oklab, var(--fg) 44%, var(--v6d-paper));
+
+  background-color:var(--v6d-paper);
+  background-origin:padding-box;
+  background-image:
+    /* CHAIN — vertical, 58px = nw/4, a 10px soft swell at half the laid
+       amplitude. Its phase is set so no chain wire lands on the register rule
+       at x=34: the swells fall at 50, 108, 166, 224. */
+    repeating-linear-gradient(90deg,
+      transparent        0px,
+      transparent       45px,
+      var(--v6d-chain)  50px,
+      transparent       55px,
+      transparent       58px),
+    /* LAID — horizontal, 4px period, a triangle ramp: sheet -> fibre -> sheet */
+    repeating-linear-gradient(180deg,
+      var(--v6d-crest)   0px,
+      var(--v6d-laid)    2px,
+      var(--v6d-crest)   4px);
+}
+.pc-root[data-theme="dark"] .v6d-node{
+  /* dark has headroom both ways, so the ripple is CENTRED on the sheet and the
+     mean stays exactly the paper; and it runs at half the light amplitude
+     (Weber: the dark card sits at 45/255, so a unit buys twice as much). */
+  --v6d-paper: var(--card);
+  --v6d-crest: var(--card);
+  --v6d-laid:  var(--card);
+  --v6d-chain: transparent;
+  --v6d-edge:  var(--border);
+  --v6d-div:   var(--divider);
+}
+
+/* ============================== THE CARD ================================= */
+.v6d-node{ position:relative; width:var(--v6d-nw,232px); max-width:100%;
+           height:var(--v6d-h);                      /* <- the pin */
+           display:flex; flex-direction:column; text-align:left;
+           border:1px solid var(--v6d-edge);
+           border-radius:var(--v6d-tl) var(--v6d-tr) var(--v6d-br) var(--v6d-bl);
+           corner-shape:var(--v6d-stl) var(--v6d-str) var(--v6d-sbr) var(--v6d-sbl);
+           box-shadow:0 1px 2px rgba(var(--sh),.05);
+           cursor:pointer;
+           transition:border-color .16s ease, box-shadow .16s ease; }
+.v6d-node:hover, .v6d-node.is-hover{
+           border-color:var(--muted2); box-shadow:var(--shadow-card-hover); }
+.v6d-node.is-sel{ border-color:var(--fg); box-shadow:var(--shadow-node-sel); }
+/* dark: the fill states nothing on charcoal, so spend the contrast on the EDGE.
+   The inset catchlight traces the silhouette itself, the stadium reads as a
+   lit curve, each bevel as a lit facet. */
+.pc-root[data-theme="dark"] .v6d-node{
+           box-shadow:inset 0 1px 0 color-mix(in oklab, var(--fg) 7%, transparent),
+                      0 1px 2px rgba(var(--sh),.35); }
+.pc-root[data-theme="dark"] .v6d-node:hover,
+.pc-root[data-theme="dark"] .v6d-node.is-hover{
+           box-shadow:inset 0 1px 0 color-mix(in oklab, var(--fg) 10%, transparent),
+                      0 3px 10px rgba(var(--sh),.45); }
+.pc-root[data-theme="dark"] .v6d-node.is-sel{ box-shadow:var(--shadow-node-sel); }
+
+/* kind hue. --pc = label strength, --pd = icon/tick strength. House rule: these
+   may tint a 13px icon, a caps label and a 24x2px tick. Never a fill. */
+.v6d-node[data-kind="database"] { --pc:var(--v-teal);   --pd:var(--v-teal-dot); }
+.v6d-node[data-kind="network"]  { --pc:var(--v-gold);   --pd:var(--v-gold-dot); }
+.v6d-node[data-kind="semantics"]{ --pc:var(--v-purple); --pd:var(--v-purple-dot); }
+.v6d-node[data-kind="reranker"] { --pc:var(--v-rose);   --pd:var(--v-rose-dot); }
+
+/* ---- THE REGISTER: the index column, centred on the CARD ----------------
+   One element carries both marks. Its box is the whole column (gutter +
+   digits) and its RIGHT BORDER is the register rule; `align-items:center`
+   centres the numeral on the element, which is centred on the card, so the
+   ordinal's y is fixed for every step in the flow exactly as its x is. The
+   rule is inset 2px top and bottom so it never runs into the border, and so
+   it clears `SED-01`'s stadium flank, whose curve reaches x=24.6 at y=2.
+   Absolutely positioned, so the column can never add a pixel to any row. */
+.v6d-ord{ position:absolute; left:0; top:2px; bottom:2px; z-index:2;
+          width:calc(var(--v6d-px) + var(--v6d-ordw));
+          padding-left:var(--v6d-px);
+          display:flex; align-items:center;
+          border-right:1px solid var(--v6d-hair);
+          font-family:var(--font-mono,ui-monospace,monospace);
+          font-size:11.5px; font-weight:600; letter-spacing:.02em; line-height:1;
+          color:var(--v6d-ordc); font-variant-numeric:tabular-nums;
+          pointer-events:none;
+          transition:color .16s ease, border-color .16s ease; }
+.v6d-node:hover .v6d-ord, .v6d-node.is-hover .v6d-ord{
+          color:var(--fg2);
+          border-right-color:color-mix(in oklab, var(--fg) 26%, var(--v6d-paper)); }
+.v6d-node.is-sel .v6d-ord{
+          color:var(--fg);
+          border-right-color:color-mix(in oklab, var(--fg) 40%, var(--v6d-paper)); }
+
+/* ---- index variant — tweak `cardLayout: Inline index` -------------------
+   The ordinal joins the title line: `01 | ✦ Name`. Same column widths, so
+   the l1/rule/meta geometry and the dash-under-icon invariant are untouched;
+   only the register MARK changes: full-height rule -> a 15px tick on the
+   title line. */
+.pc-root[data-cardlayout="Inline index"] .v6d-ord{
+  top:0; bottom:auto; height:calc(var(--v6d-h) - var(--v6d-mh) - 1px);
+  border-right:0; }
+.pc-root[data-cardlayout="Inline index"] .v6d-ord::after{
+  content:''; position:absolute; right:0; top:50%; transform:translateY(-50%);
+  width:1px; height:15px; background:var(--v6d-hair);
+  transition:background .16s ease; }
+.pc-root[data-cardlayout="Inline index"] .v6d-node:hover .v6d-ord::after,
+.pc-root[data-cardlayout="Inline index"] .v6d-node.is-hover .v6d-ord::after{
+  background:color-mix(in oklab, var(--fg) 26%, var(--v6d-paper)); }
+.pc-root[data-cardlayout="Inline index"] .v6d-node.is-sel .v6d-ord::after{
+  background:color-mix(in oklab, var(--fg) 40%, var(--v6d-paper)); }
+
+/* ---- title band: (icon) Step Name --------------------------------------
+   `flex:1`, so it absorbs the card's remainder and the single fixed-height
+   line it holds can never reach the card's height. */
+.v6d-l1{ position:relative; z-index:1; flex:1 1 auto; min-height:0;
+         display:flex; align-items:center; gap:var(--v6d-cgap);
+         padding-left:calc(var(--v6d-px) + var(--v6d-ordw) + var(--v6d-cgap));
+         padding-right:var(--v6d-px); }
+.v6d-ico{ flex:none; width:13px; height:13px; display:flex; color:var(--pd); }
+.v6d-name{ min-width:0; flex:1 1 auto;
+           font-family:var(--font-serif,'Newsreader',serif);
+           font-size:16.5px; font-weight:500; line-height:1.15; color:var(--fg);
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ---- the divider: the card's other rule ---------------------------------
+   It starts AT the register rule, so the two make a corner rather than a
+   crossing, and runs to the card's right edge. Kind tick at its left (on the
+   content column's x); quantity at its right.  */
+.v6d-rule{ position:relative; z-index:1; flex:none; height:1px;
+           margin-left:calc(var(--v6d-px) + var(--v6d-ordw));
+           background:var(--v6d-div); }
+.v6d-rule > i{ position:absolute; left:var(--v6d-cgap); top:-1px;
+               width:24px; height:2px; background:var(--pd);
+               transition:width .2s var(--ease-out,cubic-bezier(.22,.61,.36,1)),
+                          height .2s ease; }
+.v6d-node.is-sel .v6d-rule > i{ width:52px; height:3px; top:-1.5px; }
+
+/* ---- the count, as marks on the rule ------------------------------------
+   `3c`'s track, verbatim geometry: 5 slots x 5px + 4 gaps x 2.4px = 34.6px,
+   de-hued (quantity is not identity: kind is already the icon and the tick).
+   The slot is 9px tall, which leaves 4.0px of air to the name's line box above
+   and 6.0px to the meta row below, the registry's ~4px comfort target on a
+   75px card. It carries no fill: only a ONE-PIXEL knockout in the sheet's own
+   mean tone, which interrupts the hairline exactly as the frozen
+   PARALLEL/MERGE tabs interrupt the group frame, and adds no weight at all. */
+.v6d-cnt{ position:absolute; right:var(--v6d-px); top:50%;
+          transform:translateY(-50%); z-index:3;
+          height:13px; display:flex; align-items:center; padding:0 6px; }
+/* the knockout is ONE PIXEL — it interrupts the hairline and nothing else. A
+   9px patch of the mean tone would smooth the grain flat and read as a hole. */
+.v6d-cnt::before{ content:''; position:absolute; z-index:-1; left:0; right:0;
+                  top:6px; height:1px; background:var(--v6d-mean); }
+.v6d-pips{ display:flex; align-items:center; gap:2.4px; width:34.6px; }
+.v6d-pips > i{ flex:1; height:5px; border-radius:1.5px;
+               background:var(--v6d-pip-off); transition:background .16s ease; }
+.v6d-pips > i.on{ background:var(--v6d-pip-on); }
+/* SED-01's `24 papers` is an OUTPUT quantity, not a configuration magnitude,
+   so it stays text: but it stays in the SAME slot, so the card states
+   quantity in exactly one place. */
+.v6d-out{ font-family:var(--font-mono,ui-monospace,monospace); font-size:11px;
+          font-weight:600; letter-spacing:.02em; line-height:1;
+          color:var(--v6d-outc); white-space:nowrap;
+          font-variant-numeric:tabular-nums; }
+
+/* ---- meta band: kind - code ... origin ----------------------------------
+   A FIXED height (Bug A cannot happen), and it now carries no quantity, which
+   is what buys the MANDATORY caps kind label its room at 206px on a linked
+   card even with the register taking 30px off the row's head. */
+.v6d-meta{ position:relative; z-index:1; flex:none; height:var(--v6d-mh);
+           display:flex; align-items:center; gap:6px;
+           padding-left:calc(var(--v6d-px) + var(--v6d-ordw) + var(--v6d-cgap));
+           padding-right:var(--v6d-px); }
+.v6d-kind{ flex:none; font-size:10.5px; font-weight:600; letter-spacing:.07em;
+           text-transform:uppercase; color:var(--pc); white-space:nowrap; }
+.v6d-code{ flex:none; font-family:var(--font-mono,ui-monospace,monospace);
+           font-size:11.5px; font-weight:600; letter-spacing:.03em;
+           color:var(--v6d-codec); white-space:nowrap;
+           transition:color .16s ease; }
+.v6d-node.is-sel .v6d-code{ color:var(--fg); }
+.v6d-sp{ flex:1 1 auto; min-width:6px; }
+
+/* ---- the linked-copy origin — flat, glyph-led, and a NUMERAL only -------
+   The register is what makes `03` sufficient: every card in the chart prints
+   its number in the same fixed column, so the origin points at a place you can
+   find by running your eye down the left edge. Two similar IDs never appear
+   adjacent on one run (`3c`'s failure), and it can never be read as this
+   card's own code: 10px against 11.5px, 54% ink against 66%, glyph first, and
+   no fill of any kind. */
+.v6d-link{ flex:none; display:flex; align-items:center; gap:3px; line-height:1;
+           font-family:var(--font-mono,ui-monospace,monospace); font-size:10.5px;
+           font-weight:600; letter-spacing:.02em; color:var(--v6d-linkc);
+           font-variant-numeric:tabular-nums; white-space:nowrap;
+           transition:color .16s ease; }
+.v6d-link > svg{ flex:none; color:var(--v6d-linkg); }
+.v6d-node:hover .v6d-link, .v6d-node.is-hover .v6d-link,
+.v6d-node.is-sel .v6d-link{ color:var(--fg2); }
+
+/* ---- hover/selection tool cluster — `3a`'s design, both bugs fixed ------
+   FIX 1: it now also appears on `.is-sel`, and the selected card carries the
+   cluster in its markup.
+   FIX 2: it can never cover the count, because the count is not on this row
+   at all; and on a linked card it re-docks to the LEFT of the origin token so
+   it cannot cover that either. Its mask resolves to the sheet's mean tone, not
+   to a flat --card, so it is not a hole punched in the paper. */
+.v6d-tools{ position:absolute; right:12px; top:50%; transform:translateY(-50%);
+            z-index:4; display:flex; gap:1px; padding-left:14px;
+            background:linear-gradient(90deg, rgba(0,0,0,0), var(--v6d-mean) 14px);
+            opacity:0; pointer-events:none; transition:opacity .14s ease; }
+.v6d-meta:has(.v6d-link) .v6d-tools{
+            right:calc(var(--v6d-px) + var(--v6d-linkw) + 3px); padding-left:4px;
+            background:linear-gradient(90deg, rgba(0,0,0,0), var(--v6d-mean) 4px); }
+.v6d-node:hover   .v6d-tools,
+.v6d-node.is-hover .v6d-tools,
+.v6d-node.is-sel   .v6d-tools{ opacity:1; pointer-events:auto; }
+.v6d-tool{ width:26px; height:26px; background:transparent; border:0;
+           border-radius:var(--r-tool-sm,6px);
+           color:var(--v6d-toolc); display:flex; align-items:center;
+           justify-content:center; transition:background .14s ease, color .14s ease; }
+.v6d-tool:hover{ background:var(--ghost-hover); color:var(--fg); }
+.v6d-tool[data-act="del"]:hover{ background:var(--error-bg); color:var(--error); }
+
+/* ---- the card's own compact tiers ---------------------------------------
+   The height never moves and the kind label never yields. What tightens is the
+   gutter, the register column, the two content gaps, the origin token and the
+   name's size: in that order, exactly the order Part 2 of the registry sets. */
+@container v6d (max-width:700px){
+  .v6d-node{ --v6d-px:9px; --v6d-ordw:18px; --v6d-cgap:5px; --v6d-linkw:22px; }
+  .v6d-code{ font-size:11px; }
+  .v6d-link{ gap:2px; }
+  .v6d-meta:has(.v6d-link) .v6d-tools{ padding-left:3px;
+            background:linear-gradient(90deg, rgba(0,0,0,0), var(--v6d-mean) 3px); }
+}
+@container v6d (max-width:560px){
+  .v6d-node{ --v6d-px:8px; --v6d-ordw:16px; --v6d-cgap:4px; --v6d-linkw:21px; }
+  .v6d-code{ font-size:10.5px; }
+}
+/* The name never yields: `Diversified Reranker` measures 146.63px at 16.5px and
+   the title row still offers it 150px at --nw:206. The register is paid for out
+   of the gutter, the column and the two gaps instead, which is why the type
+   ladder here is flatter than `3f`'s. */
+
+/* ============================ SHAPE FALLBACK =============================
+   Where `corner-shape` is unsupported, `bevel` degrades to `round` and five of
+   the six silhouettes collapse into rounded rectangles. So under @supports-not
+   the two inner shells take over: `.v6d-sh` paints the 1px edge, `.v6d-fa` the
+   sheet and its grain, each clipped to its own chamfer (offsetting a 45deg
+   chamfer inward by 1px shrinks it by 0.586px). The node keeps its box and its
+   ports: `clip-path` on the node itself would cut the chassis's inlet, outlet
+   and side port off. Acknowledged cost: the resting shadow stays a rounded
+   rectangle behind a chamfered card, which at 5% alpha is not visible.
+   ======================================================================== */
+.v6d-sh{ display:none; }
+@supports not (corner-shape: bevel){
+  .v6d-node{ background-image:none; background-color:transparent;
+             border-color:transparent; }
+  .v6d-sh{ display:block; position:absolute; inset:-1px; z-index:0;
+           pointer-events:none; background:var(--v6d-edge);
+           border-radius:var(--v6d-tl) var(--v6d-tr) var(--v6d-br) var(--v6d-bl);
+           --c:var(--v6d-cut); }
+  .v6d-node:hover > .v6d-sh, .v6d-node.is-hover > .v6d-sh{ background:var(--muted2); }
+  .v6d-node.is-sel > .v6d-sh{ background:var(--fg); }
+  .v6d-fa{ position:absolute; inset:1px; display:block;
+           border-radius:calc(var(--v6d-tl) - 1px) calc(var(--v6d-tr) - 1px)
+                         calc(var(--v6d-br) - 1px) calc(var(--v6d-bl) - 1px);
+           --c:calc(var(--v6d-cut) - .586px);
+           background-color:var(--v6d-paper); background-origin:padding-box;
+           background-image:
+             repeating-linear-gradient(90deg, transparent 0px, transparent 45px,
+               var(--v6d-chain) 50px, transparent 55px, transparent 58px),
+             repeating-linear-gradient(180deg, var(--v6d-crest) 0px,
+               var(--v6d-laid) 2px, var(--v6d-crest) 4px); }
+  /* SED needs no clip: its stadium is pure border-radius and survives intact. */
+  [data-type="dbs"] .v6d-sh, [data-type="dbs"] .v6d-fa{
+    clip-path:polygon(var(--c) 0, 100% 0, 100% 100%, var(--c) 100%,
+                      0 calc(100% - var(--c)), 0 var(--c)); }
+  [data-type="fwd"] .v6d-sh, [data-type="fwd"] .v6d-fa{
+    clip-path:polygon(0 0, calc(100% - var(--c)) 0, 100% var(--c),
+                      100% 100%, var(--c) 100%, 0 calc(100% - var(--c))); }
+  [data-type="bwd"] .v6d-sh, [data-type="bwd"] .v6d-fa{
+    clip-path:polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)),
+                      calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+  [data-type="sem"] .v6d-sh, [data-type="sem"] .v6d-fa{
+    clip-path:polygon(var(--c) 0, calc(100% - var(--c)) 0, 100% var(--c),
+                      100% calc(100% - var(--c)), calc(100% - var(--c)) 100%,
+                      var(--c) 100%, 0 calc(100% - var(--c)), 0 var(--c)); }
+  [data-type="rrk"] .v6d-sh, [data-type="rrk"] .v6d-fa{
+    clip-path:polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+                      calc(100% - var(--c)) 100%, 0 100%); }
+}
+
+/* ============================ PAPER FALLBACK =============================
+   Relative colour syntax is how the neutral stock is derived from the theme's
+   own card token. Without it, fall back to a color-mix against the theme's ink
+  , very slightly warm in dark, but the value and the figure/ground step are
+   preserved.
+   ======================================================================== */
+@supports not (color: oklch(from white l c h)){
+  .v6d-node{
+    --v6d-paper: color-mix(in oklab, var(--fg) 1.5%, var(--card));
+    --v6d-laid:  color-mix(in oklab, var(--fg) 4.2%, var(--card));
+    --v6d-edge:  color-mix(in oklab, var(--fg) 13%, var(--v6d-paper));
+    --v6d-div:   color-mix(in oklab, var(--fg)  8%, var(--v6d-paper)); }
+  .pc-root[data-theme="dark"] .v6d-node{
+    --v6d-paper: color-mix(in oklab, var(--fg) 2%, var(--card));
+    --v6d-crest: color-mix(in oklab, var(--fg) 3.4%, var(--v6d-paper));
+    --v6d-laid:  color-mix(in oklab, rgb(var(--sh)) 3.4%, var(--v6d-paper));
+    --v6d-edge:  color-mix(in oklab, var(--fg) 15%, var(--v6d-paper));
+    --v6d-div:   color-mix(in oklab, var(--fg)  7%, var(--v6d-paper)); }
+}
+/* ==== ROUND 5: ROLE STOCK ================================================
+   The register layout remains, but three visibly different low-chroma stocks
+   group sources, searchers and the operator.  This is hierarchy by material,
+   not kind colour: the coloured caps label remains the only identity hue. */
+.pf6{ --v6d-h:78px; --v6d-mh:38px; --v6d-ordw:25px; }
+.v6d-node{ background-image:none; box-shadow:inset 0 1px 0 rgba(255,255,255,.42); }
+.v6d-node[data-type="sed"],.v6d-node[data-type="dbs"]{
+  --v6d-paper:var(--card); }
+.v6d-node[data-type="fwd"],.v6d-node[data-type="bwd"],.v6d-node[data-type="sem"]{
+  --v6d-paper:var(--card); }
+.v6d-node[data-type="rrk"]{
+  --v6d-paper:var(--card); }
+.v6d-node{
+  --v6d-mean:var(--v6d-paper);
+  --v6d-edge:var(--border);
+  --v6d-div:var(--divider);
+  --v6d-hair:color-mix(in oklab, var(--fg) 20%, var(--v6d-paper));
+  --v6d-pip-on:color-mix(in oklab, var(--fg) 62%, var(--v6d-paper));
+  --v6d-pip-off:color-mix(in oklab, var(--fg) 18%, var(--v6d-paper));
+}
+.pc-root[data-theme="dark"] .v6d-node[data-type="sed"],
+.pc-root[data-theme="dark"] .v6d-node[data-type="dbs"]{ --v6d-paper:var(--card); }
+.pc-root[data-theme="dark"] .v6d-node[data-type="fwd"],
+.pc-root[data-theme="dark"] .v6d-node[data-type="bwd"],
+.pc-root[data-theme="dark"] .v6d-node[data-type="sem"]{ --v6d-paper:var(--card); }
+.pc-root[data-theme="dark"] .v6d-node[data-type="rrk"]{ --v6d-paper:var(--card); }
+.pc-root[data-theme="dark"] .v6d-node{
+  box-shadow:inset 0 1px 0 color-mix(in oklab,var(--fg) 8%,transparent); }
+.v6d-ord{ background:transparent; }
+.v6d-node[data-type="sed"]{ --v6d-px:18px; }
+.v6d-node:hover,.v6d-node.is-hover{ box-shadow:var(--shadow-card-hover); }
+.v6d-node.is-sel{ box-shadow:var(--shadow-node-sel); }
+/* ==== ROUND 6D: EARTH ====================================================
+   Moss, limestone, and terracotta give the three roles a warmer grounded set. */
+.v6d-node[data-type="sed"],.v6d-node[data-type="dbs"]{
+  --v6d-paper:var(--card); }
+.v6d-node[data-type="fwd"],.v6d-node[data-type="bwd"],.v6d-node[data-type="sem"]{
+  --v6d-paper:var(--card); }
+.v6d-node[data-type="rrk"]{
+  --v6d-paper:var(--card); }
+.pc-root[data-theme="dark"] .v6d-node[data-type="sed"],
+.pc-root[data-theme="dark"] .v6d-node[data-type="dbs"]{ --v6d-paper:var(--card); }
+.pc-root[data-theme="dark"] .v6d-node[data-type="fwd"],
+.pc-root[data-theme="dark"] .v6d-node[data-type="bwd"],
+.pc-root[data-theme="dark"] .v6d-node[data-type="sem"]{ --v6d-paper:var(--card); }
+.pc-root[data-theme="dark"] .v6d-node[data-type="rrk"]{ --v6d-paper:var(--card); }
+/* ==== END CARD ==== */
+
+
+
+  /* live inside Paper Card's own canvas panel: drop the standalone panel chrome */
+  .pf6{ display:none; width:100%; max-width:none; border:0; box-shadow:none; background:transparent; margin:0; }
+  .pf6 .v6d-canvas{ padding:22px 0 36px; }
+  .v6d-node, .v6d-node *{ box-sizing:border-box; }
+  .pc-root[data-pstyle="Flow chart (6d)"] .pl-scroll{ container-type:inline-size; container-name:v6d; }
+  .pc-root[data-pstyle="Flow chart (6d)"] .pl-flow button{ font-family:inherit; }
+  .pc-root[data-pstyle="Flow chart (6d)"] .pl-flow{
+    --v6d-nw:232px; --v6d-bgap:52px; --v6d-fpad:20px; --v6d-fw:558px; --v6d-zone:56px; --v6d-r:9px; --v6d-w:1.5px;
+    --v6d-port:7px; --v6d-pr:calc(var(--v6d-port)/2); --v6d-ah:7px; --v6d-ab:calc(var(--v6d-ah)*.7071); --v6d-seat:calc(var(--v6d-w)*1.4142); --v6d-plus:24px; --v6d-air:3px; --v6d-junc:26px; --v6d-jr:calc(var(--v6d-junc)*.7071); --v6d-mzone:36px; --v6d-bite:1px;
+    --v6d-wire:var(--muted); --v6d-frame:color-mix(in oklab, var(--fg) 21%, var(--canvas)); --v6d-hole:var(--canvas);
+    --v6d-gbg:color-mix(in srgb, var(--fg) 3.5%, var(--canvas));
+    --v6d-h:78px; --v6d-mh:38px; --v6d-px:12px; --v6d-ordw:25px; --v6d-cgap:8px; --v6d-linkw:25px; --v6d-cut:15px; --v6d-rr:10px;
+    --shadow-card-hover:0 3px 10px rgba(var(--sh),.09); --shadow-node-sel:0 0 0 4px var(--ring); --shadow-add:0 2px 6px rgba(var(--sh),.12);
+    --r-item:8px; --r-pill:999px; --r-tool-sm:6px;
+    --font-serif:'Newsreader', serif; --font-sans:'Hanken Grotesk', -apple-system, sans-serif; --font-mono:'Hanken Grotesk', -apple-system, sans-serif; --font-mono-unused:ui-monospace, monospace; --ease-out:cubic-bezier(.22,.61,.36,1);
+    font-family:var(--font-sans); color:var(--fg); font-size:13px;
+  }
+
+
+  /* ——— touch hardening (iPad): anything actionable stays visible at rest, chrome
+     doesn't select or pop callouts, coarse pointers get real hit areas ——— */
+  .dr{ touch-action:none; }
+  .dr-h::after{ content:""; position:absolute; left:-9px; right:-9px; top:-9px; bottom:-9px; border-radius:50%; }
+  .pc-root, .pc-root *{ -webkit-tap-highlight-color:transparent; }
+  @media (hover:none){ .pc-root :is(.tb-project,.tb-settings,.pc-theme-toggle,.sb-filter-btn,.sb-sort-btn):hover{ background:transparent !important; } }
+  /* open-state contrast: every popover opener reads clearly pressed */
+  .pc-root :is(button,[role="button"])[aria-expanded="true"]{ background:color-mix(in oklab, var(--fg) 10%, transparent) !important; }
+  /* pressed feedback on every tappable row/card (Outlook-style press tint) */
+  :is(.pr,.sb-opt,.plh-pre-opt,.tb-proj-item):active:not(:has(:is(button,[role="button"]):active)){ background:color-mix(in oklab, var(--fg) 9%, transparent) !important; transition-duration:0s !important; }
+  @media (hover:none){ .cf-tool:is([data-act="up"],[data-act="down"]){ display:none !important; } } /* touch reorders by drag */
+  .tb-nav, .tb-tab, .fc-seg, .rp-pager, .rn-head, .gl-head, .sb-head{ -webkit-user-select:none; user-select:none; }
+  .pr, .rn-run, .rn-step, .rn-vrow, .hm-prow, .hm-crow, .tm-card, .cf-filter, .rsc-row, .mon-row, .cs-row, .lg-net{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  @media (hover:none){
+    .cf-tools, .rsc-tools, .rsc-drag, .cs-del, .pl-join-add, .v6d-fan, .rr-go, .rr-mn, .pr-act, .hm-dots, .th-hist-del, .cc-open{ opacity:.55 !important; pointer-events:auto !important; }
+    .pr-act, .rr-go{ transform:none !important; }
+    .rn-run[data-view="1"] .rr-go{ opacity:0 !important; }
+    .rn-run[data-view="1"] .rr-mn{ right:34px !important; }
+    .pr-star, .hw-seed .pr-star{ opacity:.55 !important; }
+    .pr-star[data-saved="1"], .hw-seed[data-star="1"] .pr-star{ opacity:1 !important; }
+  }
+  @media (pointer:coarse){
+    .nv-zoom, .nv-fitbtn, .tm-zoom, .tm-fitbtn{ width:36px !important; height:36px !important; }
+    .nv-lbl, .tm-lbl{ height:36px !important; }
+    .fc-seg button{ padding-top:9px !important; padding-bottom:9px !important; }
+    .tb-tab{ padding-top:10px !important; padding-bottom:10px !important; }
+    .pr-star{ padding:11px !important; }
+    .pr-act, .rr-mn, .hm-dots, .cf-tool, .rsc-del, .rsc-mv, .cs-del, .lg-eye, .sb-pgb{ min-width:34px !important; min-height:34px !important; }
+    .nv-num{ padding-top:9px !important; padding-bottom:9px !important; }
+  }

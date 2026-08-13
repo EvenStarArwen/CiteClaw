@@ -72,3 +72,82 @@ purpose: `run-mock.js` exposes a large ad-hoc object and the engine's event
 protocol is still being changed (decisions ledger Q4 / Q17). The Runs rewrite
 agent should narrow those fields **in that one file**, so the eventual API
 adapter has a real contract to satisfy rather than a cast at every call site.
+
+---
+
+## Build rewrite lane (`H-BLD-*`) — 2026-08-13
+
+### H-BLD-01 — Build's fixtures are inside the transplanted logic, not behind `DataSource`
+
+The Build screen renders no data from `src/design-data`. Its fixtures are
+embedded in the transplant and in the markup, and every one of them has to move
+behind `data/types.ts` when Build is wired to CiteClaw:
+
+| where | what | source line (`Paper Card.dc.html`) |
+|---|---|---|
+| `build-logic.js` | `mockPapers()` — the paper corpus the sidebar lists | 2530 |
+| `build-logic.js` | `expandMock()` — grows the seeded rows to 91 | 2580 |
+| `build-logic.js` | `plInit()` — the 7-step default pipeline | 5199 |
+| `build-logic.js` | `plParamDefs()` — per-step-type parameter schema | 5083 |
+| `build-logic.js` | `dlLatestRun()` — "Run 6 · yesterday · 214 papers" | 5045 |
+| `build-logic.js` | `llmModels()` — the provider/model tree | 4106 |
+| `BuildSidebar.tsx` | 14 seeded `.pr` rows with `data-venue/-year/-cites/-url/-abstract` | 1650–1789 |
+| `BuildConfigPanel.tsx` | the 5 seeded `.cf-filter` rows incl. the long `data-query` | 2334–2339 |
+| `TopBar.tsx` | the six-project switcher list and their counts | 1359–1435 |
+
+Do this by adding Build-shaped methods to the `DataSource` interface and feeding
+the transplant, **not** by editing the transplant's fixtures in place — the
+parity gate depends on `build-logic.js` staying byte-identical to the demo
+(`scripts/verify-transplants.mjs` enforces it).
+
+### H-BLD-02 — the transplant has no teardown
+
+`build-logic.js` is the demo's `componentDidMount` verbatim. It adds `document`
+and `window` listeners (Escape, `kl-run-activity`, `kl-project`, `resize`) and a
+`ResizeObserver`, and the demo never removed them because its screens never
+unmount. `BuildScreen.tsx` guards against double-mounting with a flag on the
+root node rather than writing the `componentWillUnmount` the demo never had.
+Navigating away from Build repeatedly will therefore leak listeners. Writing
+that teardown is a behaviour change and belongs to the interaction gate, not the
+static one.
+
+### H-BLD-03 — `style-hover` is reproduced as generated CSS
+
+`style-hover="…"` is a dc-runtime directive, not HTML: support.js strips it and
+inserts `.scpN:hover { … !important }` into the CSSOM. The rewrite emits the
+equivalent rules into `src/styles/demo-style-hover.css` with hash-derived class
+names. Six declarations on Build; Runs and Explore add `style-focus` too, which
+is not implemented yet. When those screens land, extend the generator in the
+same pass — a missing `style-focus` rule is invisible at rest and only shows up
+under keyboard navigation, which no parity screenshot exercises.
+
+### H-BLD-04 — the whole design system ships on every screen
+
+Following E-BLD-01, `src/styles/demo-screens.css` pulls all seven screens'
+stylesheets (~300 kB unminified) into any screen that renders demo markup, and
+`public/design-fonts/` adds 4.2 MB of base64 `@font-face` CSS. Both are correct
+for parity and wrong for delivery. The fix is the same single extracted token +
+component sheet that `component-duplication.md` §8 asks for, and it must be
+produced by **diffing** the seven blocks, not by picking one. Do not attempt it
+before E-BLD-01 is answered.
+
+### H-BLD-05 — `multiple` on the import file input
+
+`.sbi-file` carries `multiple` in the template, but the dc-runtime drops the
+attribute, so the demo's own file picker is single-select. The rewrite keeps the
+template's attribute (it is `display:none`, zero pixels, and the template is the
+design source). If the demo's behaviour is the intended one, drop it; if the
+template's is, this is a bug the demo has and the rewrite does not.
+
+### H-BLD-06 — sub-threshold rasterisation delta behind the top-bar popovers
+
+With the project / download / account menu open, the rewrite differs from the
+demo by up to 8/255 on a single channel, confined to the two `.sb-scrim`
+gradient bands at the top and bottom of the papers list (0 pixels over the
+harness's 0.1 threshold; 6 954 raw pixels for the project menu, 7–8 for the
+others). The demo is self-deterministic in that state, so it is a real
+difference — most likely compositing-layer rounding under the popover's
+`element.animate()` layer, made slightly different by the two extra wrapper
+`<div>`s the dc-runtime puts around `.pc-root`. Invisible, but it is the only
+known non-zero delta and should be re-checked if the gate is ever tightened to
+raw byte equality for non-default states.

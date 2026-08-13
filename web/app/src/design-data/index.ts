@@ -67,6 +67,23 @@ export async function loadRunMock(): Promise<KLRunMock> {
   return mock;
 }
 
+/**
+ * Same contract as loadRunMock, for the shared import/triage module. Screens
+ * that render the import flow (Home wizard step 2, Runs "Add papers", Build's
+ * sidebar Import mode) all go through this one module — it is genuinely shared
+ * in the demo, not copy-pasted.
+ */
+export async function loadImportResolver(): Promise<KLImport> {
+  await import('./import-resolver.js');
+  const imp = globalThis.KLImport;
+  if (!imp) {
+    throw new Error(
+      'design-data: import-resolver.js loaded but did not set globalThis.KLImport — the verbatim copy may be truncated.',
+    );
+  }
+  return imp;
+}
+
 /** Same contract as loadRunMock, for the shared paper-card markup module. */
 export async function loadPaperRow(): Promise<KLPaperRow> {
   await import('./paper-row.js');

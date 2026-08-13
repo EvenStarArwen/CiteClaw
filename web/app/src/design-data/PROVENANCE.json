@@ -97,6 +97,17 @@
       "matchesDesignReference": "absent",
       "bundleAsset": "624f4a7b-7d8c-4d04-80ba-8d43138671a8.png",
       "matchesDemoBundle": true
+    },
+    {
+      "name": "import-resolver.js",
+      "destination": "web/app/src/design-data/import-resolver.js",
+      "sha256": "1c3e634cf563a1e11c72745edcf5140d9295657985af2d13dba77157030afc6d",
+      "matchesAppCopy": true,
+      "matchesDesignReference": true,
+      "bundleAsset": null,
+      "matchesDemoBundle": null,
+      "addedBy": "build rewrite lane, 2026-08-13",
+      "$note": "Added for the Build screen's sidebar Import mode (window.KLImport). Verified three ways - design workspace ui_design/, web/design-reference/embedded-sources/ and this copy all sha256 1c3e634cf563. NOT re-checked against the decoded bundle asset: the scaffold's uuid map was not reproduced. web/design-reference/manifest.json already pins the reference copy, so the chain is closed at that end."
     }
   ],
   "presentInDemoButNotCopiedHere": [
